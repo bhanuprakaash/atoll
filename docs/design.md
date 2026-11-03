@@ -51,6 +51,8 @@ it, never a dependency.
 | 19 | Worktrees live at `~/Reef/worktrees/<repo>/<branch-folder>`; the root is a setting. The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs) at first edit; the app makes it lowercase, short and unique (`-2`). Fixed once created. Children: `<parent-branch>--<bot>`. | Visible, organised by repo, named after the work |
 | 20 | Prompt: system prompt = provider's own prompt + appended platform prompt + persona. First message = up to 8 memory items picked by relevance to the message (ties: rules first), a count line per scope, repo/worktree/branch, the message. On resume: only new relevant items. Everything else through `recall` / `read_memory`. | Less context recalls better; load just in time |
 | 21 | The UI says Reef. Repo, Go module, binary and bundle ID say `atoll`; app data lives in `~/Library/Application Support/Atoll`. | Runs beside the old Reef without overwriting its data; rename when it retires |
+| 22 | Sidebar: one row per Bot (creature, name, latest activity, time), a status dot when it needs the user, the creature animates while a run is going. Opening a Bot shows its latest thread; the header has a thread picker and New thread. `+` at the top makes a Bot or a thread. The bottom user row opens Settings (Providers, Connections, Skills, Repos, Memory). No group chats. | Minimal like a messenger; threads stay underneath |
+| 23 | Bots are the old Reef's creatures (`web/src/components/creature.tsx`, copied): 10 creatures, 8 colours, states idle, working, needs-you, asleep, failed. Each Bot has a look (creature + colour), picked at creation, a free pair by default. No creature-per-role mapping. The jellyfish stays the logo. | Already the target style; states map to sidebar rows |
 
 ## v1
 
@@ -69,7 +71,7 @@ it, never a dependency.
 
 Delegation (2–4, child worktrees in 6), GitHub and Slack connections, browser pane (11), background
 processes pane (8b), "Can manage the platform" (16), importing local skills and MCP servers, desktop
-Linux, mobile, memory pins (up to about 5 items always in the prompt).
+Linux, mobile, memory pins (up to about 5 items always in the prompt), routines (scheduled, repeating runs).
 
 An item moves into the build when its absence hurts in daily use.
 
