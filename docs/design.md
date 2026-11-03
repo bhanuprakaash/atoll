@@ -118,4 +118,5 @@ Finish
 
 ## Open questions
 
-- Codex isolation: a per-run `CODEX_HOME` hides personal MCP servers and skills but also its sign-in (`auth.json`); copy it in, or override `mcp_servers` with `-c` and keep the home. Needs a test.
+- Codex isolation, tested on codex-cli 0.165: per-run `CODEX_HOME` with `auth.json` **symlinked** (never copied: refresh tokens are single-use, so a copy logs the other side out), plus `-c skills.bundled.enabled=false --disable plugins --disable remote_plugin --disable apps`. Bot skills go in `$CODEX_HOME/skills`. Sessions and resume work inside that home; `app-server` runs under it. Still open: personal skills in `~/.agents/skills` are found through `$HOME`, not `CODEX_HOME`; disable each by name (`-c skills.config=[...]`) at launch rather than faking `HOME`, which breaks git, ssh and gh for the agent. Also unverified: whether a token refresh replaces the symlink with a file.
+- Claude Code isolation (`CLAUDE_CONFIG_DIR` per run, sign-in, `~/.agents/skills`) is not tested yet.
