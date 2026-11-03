@@ -117,4 +117,3 @@ Finish
 ## Open questions
 
 - Codex isolation: a per-run `CODEX_HOME` hides personal MCP servers and skills but also its sign-in (`auth.json`); copy it in, or override `mcp_servers` with `-c` and keep the home. Needs a test.
-- Codex isolation: exact way to give each run its own config home while keeping its sign-in.
