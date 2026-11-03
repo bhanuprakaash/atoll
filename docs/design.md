@@ -116,6 +116,7 @@ Finish
 
 ## Open questions
 
+- Confirm Claude Code `--strict-mcp-config` (14) and Codex `app-server` (18); both are from docs and write-ups, not tested.
 - Codex isolation: exact way to give each run its own config home while keeping its sign-in.
 - Skills: confirm each provider's `SKILL.md` support and folder.
 - Slack sign-in: allowed redirect for a desktop app.
