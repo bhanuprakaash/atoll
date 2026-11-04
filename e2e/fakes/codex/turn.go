@@ -15,6 +15,7 @@ type (
 	// turn plays recorded turns the way app-server would have in this thread: MCP tool calls
 	// really go to the configured servers, approval requests to the client.
 	turn struct {
+		cwd     string
 		servers map[string]*fake.MCP
 		never   bool // approvalPolicy "never": nothing is asked, so everything asked is declined
 		resumed bool
@@ -48,7 +49,7 @@ func newTurn(cfg map[string]string, p threadParams, resumed bool) *turn {
 	if policy == "" {
 		policy = all["approval_policy"]
 	}
-	t := &turn{servers: map[string]*fake.MCP{}, never: policy == "never", resumed: resumed}
+	t := &turn{cwd: p.Cwd, servers: map[string]*fake.MCP{}, never: policy == "never", resumed: resumed}
 	for k, url := range all {
 		rest, ok := strings.CutPrefix(k, "mcp_servers.")
 		name, ok2 := strings.CutSuffix(rest, ".url")
@@ -77,8 +78,16 @@ func newTurn(cfg map[string]string, p threadParams, resumed bool) *turn {
 func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 	started := map[string]item{}
 	answer, skip := "", false
+	repoReply := ""
 	for _, e := range entries {
 		switch e.Fake {
+		case "repo-fix", "repo-question", "repo-uncommitted", "repo-resume":
+			var err error
+			repoReply, err = fake.RepoStep(t.servers["atoll"], strings.TrimPrefix(e.Fake, "repo-"), t.cwd)
+			if err != nil {
+				return err
+			}
+			continue
 		case "ask":
 			if skip {
 				continue
@@ -100,7 +109,8 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 		if skip {
 			continue
 		}
-		out := e.Msg
+		encoded, _ := json.Marshal(repoReply)
+		out := json.RawMessage(strings.ReplaceAll(string(e.Msg), "$REPO_REPLY", string(encoded[1:len(encoded)-1])))
 		var m message
 		_ = json.Unmarshal(out, &m)
 		var p itemParams
