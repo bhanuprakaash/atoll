@@ -43,6 +43,26 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
+	chiefProvider := "claude"
+	dirs := pathDirs(ctx)
+	for _, adapter := range _adapters {
+		bin := adapter.find(dirs)
+		if bin == "" {
+			continue
+		}
+		dir, err := adapter.dir()
+		if err != nil {
+			continue
+		}
+		signed, err := adapter.signedIn(ctx, bin, dir)
+		if err == nil && signed {
+			chiefProvider = adapter.name
+			break
+		}
+	}
+	if _, err := st.EnsureBot(ctx, store.Bot{ID: "chief", Name: "Chief", Persona: "I help configure Reef.", Provider: chiefProvider, CanManagePlatform: true}); err != nil {
+		return err
+	}
 	mem, err := memory.Open(st.DB(), nil)
 	if err != nil {
 		return err

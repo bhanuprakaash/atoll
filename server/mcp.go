@@ -121,7 +121,18 @@ func (a *api) dispatch(r *http.Request, req rpcRequest) (any, *rpcError) {
 			"serverInfo":      map[string]any{"name": "atoll", "version": "0"},
 		}, nil
 	case "tools/list":
-		return json.RawMessage(_tools), nil
+		bot, _, _, err := a.runs.Source(r.PathValue("token"))
+		if err != nil || !bot.CanManagePlatform {
+			return json.RawMessage(_tools), nil
+		}
+		var base struct {
+			Tools []json.RawMessage `json:"tools"`
+		}
+		_ = json.Unmarshal([]byte(_tools), &base)
+		var extra []json.RawMessage
+		_ = json.Unmarshal([]byte(_platformTools), &extra)
+		base.Tools = append(base.Tools, extra...)
+		return base, nil
 	case "tools/call":
 		return a.callTool(r, req.Params)
 	}
@@ -137,6 +148,9 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		return nil, &rpcError{Code: _invalidParams, Message: "invalid params"}
 	}
 	token := r.PathValue("token")
+	if isPlatformTool(call.Name) {
+		return a.platformCall(r.Context(), token, call.Name, call.Arguments)
+	}
 	switch call.Name {
 	case provider.ToolFinishRun:
 		var rep store.Report

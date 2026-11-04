@@ -64,6 +64,14 @@ func New(st *store.Store, mem *memory.Store, runs *run.Manager, log *slog.Logger
 	mux.HandleFunc("GET /api/connections/{id}", a.getConnection)
 	mux.HandleFunc("POST /api/bots", a.createBot)
 	mux.HandleFunc("GET /api/bots", a.listBots)
+	mux.HandleFunc("GET /api/bots/{id}", a.getBot)
+	mux.HandleFunc("PUT /api/bots/{id}", a.putBot)
+	mux.HandleFunc("POST /api/skills", a.createSkill)
+	mux.HandleFunc("GET /api/skills", a.listSkills)
+	mux.HandleFunc("GET /api/skills/{id}", a.getSkill)
+	mux.HandleFunc("PUT /api/skills/{id}", a.putSkill)
+	mux.HandleFunc("POST /api/platform/changes/{id}/undo", a.undoChange)
+	mux.HandleFunc("GET /api/threads/{id}/changes", a.listChanges)
 	mux.HandleFunc("POST /api/bots/{id}/threads", a.createThread)
 	mux.HandleFunc("GET /api/bots/{id}/threads", a.listThreads)
 	mux.HandleFunc("GET /api/threads/{id}", a.getThread)
@@ -307,7 +315,7 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		fail(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, memory.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed), errors.Is(err, store.ErrExists):
+	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed), errors.Is(err, store.ErrExists), errors.Is(err, store.ErrUndone):
 		fail(w, http.StatusConflict, err.Error())
 	default:
 		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)

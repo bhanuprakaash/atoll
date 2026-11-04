@@ -25,6 +25,13 @@ const (
 	ToolRecall       = "recall"
 	ToolReadMemory   = "read_memory"
 	ToolRetireMemory = "retire_memory"
+	// Platform tools modify platform configuration.
+	ToolCreateBot        = "create_bot"
+	ToolEditBot          = "edit_bot"
+	ToolCreateSkill      = "create_skill"
+	ToolEditSkill        = "edit_skill"
+	ToolRegisterRepo     = "register_repo"
+	ToolAttachConnection = "attach_connection"
 )
 
 // Session drives one provider process holding one session. Call Start or Resume once; Send one
