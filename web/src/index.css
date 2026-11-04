@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-bg: #f5f5f7;
+  --color-card: #ffffff;
+  --color-line: #d9d9de;
+  --color-ink: #1d1d1f;
+  --color-muted: #6e6e73;
+  --color-accent: #0a64d8;
+  --color-accent-ink: #ffffff;
+  --color-danger: #c62828;
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+body {
+  @apply bg-bg font-sans text-ink;
+}
