@@ -165,6 +165,9 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
   approval. Every save shows in the thread with its source (Bot, thread, run) and a Retire button.
   Nothing is deleted.
 - Tools: `remember`, `recall`, `read_memory`, `retire_memory`.
+- Storage: the `memory` package keeps its own tables and migrations in `atoll.db`; ids are random hex.
+  The run fills the source (Bot, thread, run) and the repo/Bot scope id; tools see only the run's
+  shelf (user, its repo, its Bot). Embeddings stay off: no embedder is wired.
 
 ## Prompt
 
@@ -173,6 +176,13 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
 | System prompt | Provider's own prompt, untouched, then the platform prompt, then the persona |
 | First message | Up to 8 memory items picked by relevance to the message across scopes (ties: rules first), with ids; a count line `Memory: repo 42, user 9, bot 6. Use recall.`; repo, worktree, branch; the message |
 | Each resumed message | Relevant memory items the session has not seen; the message |
+
+- Relevance counts distinct non-stop-word message words matching body or why; ties favor convention, decision, lesson, finding, fact, then newer items.
+- In prompts a body is cut to 400 bytes and a why to 200, at a rune boundary, then `…`.
+- Seen items are tracked per provider session id, marked once the turn ends without error.
+- Claude uses `--append-system-prompt` and Codex uses `developerInstructions` on start and resume, every run.
+- `{user}` is the `user_name` setting, or The user when empty.
+- Guidance for start_work and track_mr lives in their tool descriptions.
 
 Budget: platform prompt about 500 tokens; everything Reef adds under about 3–4k. *Less context
 recalls better; load the rest just in time.*

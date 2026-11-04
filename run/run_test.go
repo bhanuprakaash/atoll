@@ -183,7 +183,7 @@ func TestRun_Finish(t *testing.T) {
 			wantReply:  "hi there",
 			wantReport: "prompt 1",
 			wantSends:  1,
-			wantEvents: []string{EventText, EventText, EventRunFinished},
+			wantEvents: []string{EventPrompt, EventText, EventText, EventRunFinished},
 		},
 		{
 			name: "report after the nudge",
@@ -199,7 +199,7 @@ func TestRun_Finish(t *testing.T) {
 			wantReply:  "hi",
 			wantReport: "prompt 2",
 			wantSends:  2,
-			wantEvents: []string{EventText, EventToolCall, EventRunFinished},
+			wantEvents: []string{EventPrompt, EventText, EventToolCall, EventRunFinished},
 		},
 		{
 			name:       "no report after the nudge",
@@ -207,7 +207,7 @@ func TestRun_Finish(t *testing.T) {
 			wantStatus: store.StatusDone,
 			wantReply:  "hi",
 			wantSends:  2,
-			wantEvents: []string{EventText, EventRunFinished},
+			wantEvents: []string{EventPrompt, EventText, EventRunFinished},
 		},
 		{
 			name: "the nudge turn fails",
@@ -218,7 +218,7 @@ func TestRun_Finish(t *testing.T) {
 			wantStatus: store.StatusDone,
 			wantReply:  "hi",
 			wantSends:  2,
-			wantEvents: []string{EventText, EventRunFinished},
+			wantEvents: []string{EventPrompt, EventText, EventRunFinished},
 		},
 		{
 			name:       "provider error",
@@ -226,7 +226,7 @@ func TestRun_Finish(t *testing.T) {
 			wantStatus: store.StatusFailed,
 			wantError:  "rate limited",
 			wantSends:  1,
-			wantEvents: []string{EventRunFinished},
+			wantEvents: []string{EventPrompt, EventRunFinished},
 		},
 		{
 			name:       "events end early",
@@ -234,7 +234,7 @@ func TestRun_Finish(t *testing.T) {
 			wantStatus: store.StatusFailed,
 			wantError:  "provider exited before the turn ended",
 			wantSends:  1,
-			wantEvents: []string{EventRunFinished},
+			wantEvents: []string{EventPrompt, EventRunFinished},
 		},
 	}
 	for _, tt := range tests {

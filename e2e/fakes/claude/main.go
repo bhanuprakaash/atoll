@@ -94,6 +94,12 @@ func stream(log *fake.Log, args []string) error {
 	if flag(args, "--input-format") != "stream-json" || flag(args, "--output-format") != "stream-json" {
 		return errors.New("want --input-format stream-json --output-format stream-json")
 	}
+	if slices.Contains(args, "--system-prompt") || slices.Contains(args, "--system-prompt-file") {
+		return errors.New("reef must append, not replace the provider prompt")
+	}
+	if err := log.Prompt("system", flag(args, "--append-system-prompt")); err != nil {
+		return err
+	}
 	recs, err := load()
 	if err != nil {
 		return err
@@ -116,6 +122,10 @@ func stream(log *fake.Log, args []string) error {
 		if err != nil {
 			return err
 		}
+		if err := log.Prompt("user", prompt); err != nil {
+			return err
+		}
+		p.userMessage = prompt
 		rec, ok := find(recs, prompt, resume)
 		if !ok {
 			return fmt.Errorf("no recording for prompt %q (resume %q)", prompt, resume)

@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"atoll/memory"
 	"atoll/provider"
 	"atoll/store"
 )
@@ -40,6 +41,8 @@ const (
 	EventWorktreeCreated = "worktree_created" // WorktreeCreated
 	EventMRUpdated       = "mr_updated"       // MRUpdated
 	EventWorktreeRemoved = "worktree_removed" // WorktreeRemoved
+	EventMemorySaved     = "memory_saved"     // MemorySaved
+	EventPrompt          = "prompt"           // Prompt
 )
 
 const (
@@ -55,6 +58,8 @@ const (
 		"now with done, tried, blocked and next. Do not reply with anything else."
 )
 
+const _promptItems = 8
+
 // Whether stream shows the turn's text as the reply.
 const (
 	_hideText = false
@@ -69,6 +74,7 @@ type (
 	// Config is what a Manager needs.
 	Config struct {
 		Store  *store.Store
+		Memory *memory.Store
 		Launch Launch
 		// MCPURL is the base of Atoll's MCP endpoint; a run's server is MCPURL + its token.
 		MCPURL string
@@ -138,6 +144,13 @@ type (
 		ID    string          `json:"id"`
 		Tool  string          `json:"tool"`
 		Input json.RawMessage `json:"input"`
+	}
+
+	// Prompt is what Atoll sent the provider: its system addition and the message.
+	Prompt struct {
+		RunID   string `json:"run_id"`
+		System  string `json:"system"`
+		Message string `json:"message"`
 	}
 
 	// Finished ends a run.
@@ -403,6 +416,33 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if cfg.Cwd, err = m.workdir(thread, rp); err != nil {
 		return "", err
 	}
+	user, err := m.cfg.Store.Setting(m.ctx, "user_name")
+	if err != nil {
+		return "", fmt.Errorf("load user name: %w", err)
+	}
+	cfg.SystemPrompt = systemPrompt(bot, user)
+	var items []memory.Item
+	var counts memory.Counts
+	if m.cfg.Memory != nil {
+		shelf := memory.Shelf{RepoID: thread.RepoID, BotID: thread.BotID}
+		var seen map[string]bool
+		if thread.Session != "" {
+			seen, err = m.cfg.Memory.Seen(m.ctx, thread.Session)
+			if err != nil {
+				return "", fmt.Errorf("load seen memory: %w", err)
+			}
+		} else {
+			counts, err = m.cfg.Memory.Count(m.ctx, shelf)
+			if err != nil {
+				return "", fmt.Errorf("count memory: %w", err)
+			}
+		}
+		items, err = m.cfg.Memory.Relevant(m.ctx, shelf, text, _promptItems, seen)
+		if err != nil {
+			return "", fmt.Errorf("select memory: %w", err)
+		}
+	}
+	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
 	cfg.Env = m.gitlabEnv(bot)
 	cfg.MCPURL = m.cfg.MCPURL + a.token
 	if thread.Session != "" {
@@ -413,20 +453,27 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("start %s: %w", bot.Provider, err)
 	}
-	prompt := fmt.Sprintf("You are %s, a Bot in Reef. %s\n"+
-		"When the work is done, call the finish_run tool of the atoll MCP server with done, "+
-		"tried, blocked and next. Do this for every message, even a trivial one. "+
-		"Then reply in 2-3 plain lines.\n\n%s",
-		bot.Name, bot.Persona, text)
-	if rp.ID != "" {
-		prompt = fmt.Sprintf(_repoNotes, rp.Name) + prompt
-	}
+	m.publish(a, EventPrompt, Prompt{RunID: a.run.ID, System: cfg.SystemPrompt, Message: prompt})
 	if err := sess.Send(m.ctx, prompt); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
 	reply, err := m.stream(a, sess, _showText)
 	if err != nil {
 		return "", err
+	}
+	if m.cfg.Memory != nil && len(items) > 0 {
+		// A resume may report a new session id, so the marks follow the reloaded thread.
+		if updated, err := m.cfg.Store.Thread(m.ctx, a.threadID); err != nil {
+			m.cfg.Log.Warn("reload thread", "run_id", a.run.ID, "error", err)
+		} else if updated.Session != "" {
+			ids := make([]string, 0, len(items))
+			for _, item := range items {
+				ids = append(ids, item.ID)
+			}
+			if err := m.cfg.Memory.MarkSeen(m.ctx, updated.Session, ids); err != nil {
+				m.cfg.Log.Warn("mark memory seen", "run_id", a.run.ID, "error", err)
+			}
+		}
 	}
 	run, err := m.cfg.Store.Run(m.ctx, a.run.ID)
 	if err != nil {

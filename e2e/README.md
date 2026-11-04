@@ -123,3 +123,5 @@ replies and `finish_run` work before the product APIs exist.
 The contract does not specify truncation length, branch-folder encoding, UI,
 refresh/revocation flows, or cleanup recovery UI. Implementer decisions beyond
 these tested boundaries belong in `docs/design.md`, not this tests-only MR.
+
+Slice 4 extends this contract in [memory-contract.md](memory-contract.md).

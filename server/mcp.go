@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"atoll/memory"
 	"atoll/provider"
 	"atoll/run"
 	"atoll/store"
@@ -25,18 +26,34 @@ const _tools = `{"tools":[
 "properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string"},"next":{"type":"string"}},
 "required":["done","tried","blocked","next"]}},
 {"name":"start_work",
-"description":"Call before your first edit in a repo thread. Makes this thread's worktree on a new branch type/slug and returns its path and branch as JSON. Change into that path for your edits. Calling it again returns the same worktree.",
+"description":"Repo threads start in a clean read-only checkout. Call before your first edit in a repo thread. Makes this thread's worktree on a new branch type/slug and returns its path and branch as JSON. Change into that path for your edits. Calling it again returns the same worktree.",
 "inputSchema":{"type":"object",
 "properties":{"type":{"type":"string","enum":["feat","fix","chore","docs"]},"slug":{"type":"string"}},
 "required":["type","slug"]}},
 {"name":"track_mr",
-"description":"Call after you open a merge request, with its URL, so Atoll can follow it.",
+"description":"When the change is ready, commit, push, open a merge request, call this tool with its URL, and include the URL in your reply. Never merge.",
 "inputSchema":{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}},
 {"name":"approve",
 "description":"Permission prompt: asks the user whether a tool call may go ahead.",
 "inputSchema":{"type":"object",
 "properties":{"tool_name":{"type":"string"},"input":{"type":"object"},"tool_use_id":{"type":"string"}},
-"required":["tool_name","input"]}}
+"required":["tool_name","input"]}},
+{"name":"remember",
+"description":"Save one lasting fact for later threads: a decision, convention, finding, fact or lesson. Put one idea in body and the reason in why. Scope repo is for this repo, bot for this Bot only, user for the user in every repo. To change an older item, pass its id in replaces: it is retired and this one takes its place. Returns the saved item and a similar array of existing items that look the same.",
+"inputSchema":{"type":"object",
+"properties":{"kind":{"type":"string","enum":["decision","convention","finding","fact","lesson"]},"body":{"type":"string"},"why":{"type":"string"},"scope":{"type":"string","enum":["repo","user","bot"]},"replaces":{"type":"array","items":{"type":"string"}}},
+"required":["kind","body","why","scope"]}},
+{"name":"recall",
+"description":"Search saved memory for this repo, this Bot and the user. Returns an array of items, best match first. Call read_memory with an id for one item.",
+"inputSchema":{"type":"object",
+"properties":{"query":{"type":"string"},"limit":{"type":"integer"}},
+"required":["query"]}},
+{"name":"read_memory",
+"description":"Read one saved memory item by id, with its body and why.",
+"inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}},
+{"name":"retire_memory",
+"description":"Retire a memory item that is wrong or out of date, by id. It stops appearing in recall and in prompts; its history stays. Returns the item.",
+"inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}
 ]}`
 
 type (
@@ -161,6 +178,55 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			return nil, a.toolError(err)
 		}
 		return text("MR tracked."), nil
+	case provider.ToolRemember:
+		var in struct {
+			Kind     string   `json:"kind"`
+			Body     string   `json:"body"`
+			Why      string   `json:"why"`
+			Scope    string   `json:"scope"`
+			Replaces []string `json:"replaces"`
+		}
+		if err := json.Unmarshal(call.Arguments, &in); err != nil {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
+		}
+		item, similar, err := a.runs.Remember(
+			r.Context(), token, in.Kind, in.Body, in.Why, in.Scope, in.Replaces)
+		if err != nil {
+			return nil, a.toolError(err)
+		}
+		return a.jsonText(struct {
+			memory.Item
+			Similar []memory.Similar `json:"similar"`
+		}{Item: item, Similar: orEmpty(similar)})
+	case provider.ToolRecall:
+		var in struct {
+			Query string `json:"query"`
+			Limit int    `json:"limit"`
+		}
+		if err := json.Unmarshal(call.Arguments, &in); err != nil {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
+		}
+		items, err := a.runs.Recall(r.Context(), token, in.Query, in.Limit)
+		if err != nil {
+			return nil, a.toolError(err)
+		}
+		return a.jsonText(orEmpty(items))
+	case provider.ToolReadMemory, provider.ToolRetireMemory:
+		var in struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(call.Arguments, &in); err != nil || in.ID == "" {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
+		}
+		read := a.runs.ReadMemory
+		if call.Name == provider.ToolRetireMemory {
+			read = a.runs.RetireMemory
+		}
+		item, err := read(r.Context(), token, in.ID)
+		if err != nil {
+			return nil, a.toolError(err)
+		}
+		return a.jsonText(item)
 	case provider.ToolApprove:
 		var in struct {
 			ToolName  string          `json:"tool_name"`
@@ -192,10 +258,19 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 }
 
 func (a *api) toolError(err error) *rpcError {
-	if !errors.Is(err, run.ErrNotFound) {
+	if !errors.Is(err, run.ErrNotFound) && !errors.Is(err, memory.ErrNotFound) &&
+		!errors.Is(err, memory.ErrInvalid) {
 		a.log.Error("mcp tool failed", "err", err)
 	}
 	return &rpcError{Code: _internalError, Message: err.Error()}
+}
+
+func (a *api) jsonText(v any) (any, *rpcError) {
+	body, err := json.Marshal(v)
+	if err != nil {
+		return nil, a.toolError(err)
+	}
+	return text(string(body)), nil
 }
 
 func text(s string) any {

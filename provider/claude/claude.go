@@ -289,6 +289,9 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 		"--strict-mcp-config",
 		"--settings", `{"disableAllHooks":true}`,
 	}
+	if cfg.SystemPrompt != "" {
+		args = append(args, "--append-system-prompt", cfg.SystemPrompt)
+	}
 	if cfg.MCPURL != "" {
 		servers, err := json.Marshal(map[string]any{"mcpServers": map[string]any{
 			provider.MCPServer: map[string]string{"type": "http", "url": cfg.MCPURL},

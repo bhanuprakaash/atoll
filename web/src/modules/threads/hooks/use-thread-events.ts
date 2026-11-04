@@ -78,6 +78,10 @@ export function useThreadEvents(threadId: string) {
     }));
     source.addEventListener('run_finished', () => {
       void queryClient.invalidateQueries({ queryKey: ['messages', threadId] });
+      void queryClient.invalidateQueries({ queryKey: ['memory'] });
+    });
+    source.addEventListener('memory_saved', () => {
+      void queryClient.invalidateQueries({ queryKey: ['memory'] });
     });
     source.addEventListener('worktree_created', () => {
       void queryClient.invalidateQueries({ queryKey: ['thread', threadId] });

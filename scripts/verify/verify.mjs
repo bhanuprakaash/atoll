@@ -23,6 +23,10 @@ const recall = "Which codeword did I give you? Reply with just the word.";
 const tools =
   "How many lines does notes.txt have? List the folder first, then read the file.";
 const write = "Use the Write tool to create hello.txt containing the word hi.";
+const remember = {
+  fake: "Save the SQLite journal decision in user memory.",
+  real: 'Use the remember tool with scope user to save the decision "Use SQLite WAL for the journal." because "Readers must not block journal writes.". Reply with just: saved',
+};
 const root = resolve(import.meta.dirname, "../..");
 const { values: opt } = parseArgs({
   options: {
@@ -227,6 +231,13 @@ async function uiPass(base, provider) {
       await page.getByText(/Created .*hello\.txt/).waitFor();
     }
     await shot("5-done");
+    await say(fake ? remember.fake : remember.real);
+    const saved = page.getByRole("region", { name: "Saved memory" });
+    await saved.waitFor();
+    await shot("6-memory-saved");
+    await saved.getByRole("button", { name: "Retire", exact: true }).click();
+    await seen(/^Retired$/);
+    await shot("7-memory-retired");
     check(true, `ui: ${provider} flow done`);
   } catch (err) {
     await shot("failed").catch(() => {});

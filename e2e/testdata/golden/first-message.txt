@@ -1,0 +1,16 @@
+Memory items:
+- [<user-item>] convention (user): SQLite journal changes require a rollback plan.
+  Why: Keep recovery predictable.
+- [<repo-item>] decision (repo): Use SQLite WAL for the journal.
+  Why: Readers must not block journal writes.
+- [<bot-item>] lesson (bot): Check SQLite journal locks before tuning.
+  Why: Measure contention first.
+
+Memory: repo 1, user 1, bot 1. Use recall.
+
+Repo: seeded (<repo>)
+Worktree: <checkout>
+Branch: detached
+
+Message:
+Recall the SQLite journal decision and explain why.
