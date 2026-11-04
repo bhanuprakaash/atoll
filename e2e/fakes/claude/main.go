@@ -1,7 +1,10 @@
 // Command claude is a fake Claude Code for the e2e tests. It answers --version and
 // `auth status`, and in -p stream-json mode replays the recording in e2e/testdata/claude whose
-// prompt matches the one it reads on stdin. Signed in means CLAUDE_CONFIG_DIR (default
-// ~/.claude) holds .credentials.json. Every call is logged to <executable>.log.
+// prompt the user message on stdin contains. Like the real CLI it calls the HTTP MCP servers of
+// --mcp-config when a recording uses their tools, and asks --permission-prompt-tool before a call
+// the recording marks with a "fake" ask line, unless --allowedTools allows it. Signed in means
+// CLAUDE_CONFIG_DIR (default ~/.claude) holds .credentials.json. Every call is logged to
+// <executable>.log.
 package main
 
 import (
@@ -11,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"atoll/e2e/fakes/fake"
 )
@@ -33,6 +37,7 @@ type (
 	recording struct {
 		session string
 		prompt  string
+		resumed bool // only plays on --resume of its session
 		lines   []string
 	}
 
@@ -93,6 +98,10 @@ func stream(log *fake.Log, args []string) error {
 	if err != nil {
 		return err
 	}
+	p, err := newPlayer(args)
+	if err != nil {
+		return err
+	}
 	resume := flag(args, "--resume")
 	in := fake.Lines()
 	for in.Scan() {
@@ -103,29 +112,54 @@ func stream(log *fake.Log, args []string) error {
 		if json.Unmarshal(in.Bytes(), &l) != nil || l.Type != "user" {
 			continue
 		}
-		var prompt string
-		if json.Unmarshal(l.Message.Content, &prompt) != nil {
-			return fmt.Errorf("user message content is not a string: %s", l.Message.Content)
+		prompt, err := text(l.Message.Content)
+		if err != nil {
+			return err
 		}
 		rec, ok := find(recs, prompt, resume)
 		if !ok {
 			return fmt.Errorf("no recording for prompt %q (resume %q)", prompt, resume)
 		}
-		for _, out := range rec.lines {
-			fmt.Println(out)
+		if err := p.play(rec.lines); err != nil {
+			return err
 		}
 	}
 	return in.Err()
 }
 
-// find returns the recording of prompt. With a resume id it must belong to that session.
-func find(recs []recording, prompt, resume string) (recording, bool) {
-	for _, r := range recs {
-		if r.prompt == prompt && (resume == "" || r.session == resume) {
-			return r, true
+// text is the text of a user message: a string, or the text blocks of a content array.
+func text(content json.RawMessage) (string, error) {
+	var s string
+	if json.Unmarshal(content, &s) == nil {
+		return s, nil
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(content, &blocks); err != nil {
+		return "", fmt.Errorf("user message content is neither a string nor blocks: %s", content)
+	}
+	var parts []string
+	for _, b := range blocks {
+		if b.Type == "text" {
+			parts = append(parts, b.Text)
 		}
 	}
-	return recording{}, false
+	return strings.Join(parts, "\n"), nil
+}
+
+// find returns the recording whose prompt the message contains, the longest if several do.
+// With a resume id it must belong to that session; without one it must not be marked resumed.
+func find(recs []recording, prompt, resume string) (recording, bool) {
+	var best recording
+	for _, r := range recs {
+		if r.prompt != "" && strings.Contains(prompt, r.prompt) && (resume == "" && !r.resumed || r.session == resume) &&
+			len(r.prompt) > len(best.prompt) {
+			best = r
+		}
+	}
+	return best, best.prompt != ""
 }
 
 func load() ([]recording, error) {
@@ -137,6 +171,10 @@ func load() ([]recording, error) {
 	for _, lines := range all {
 		r := recording{lines: lines}
 		for _, s := range lines {
+			if fake.Directive([]byte(s)) == "resumed" {
+				r.resumed = true
+				continue
+			}
 			var l line
 			if err := json.Unmarshal([]byte(s), &l); err != nil {
 				return nil, err

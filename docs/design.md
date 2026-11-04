@@ -31,9 +31,10 @@ never a dependency.
 - Persona holds expertise only. Who the Bot talks to comes from the run, not the persona.
 - Model is one field, e.g. `Claude Code · Opus 5.5`, `Codex · GPT-5`, listing only enabled, ready providers.
 - Repo access: All (default) or Only these. *A block list would silently grant new repos.*
-- Every Bot runs in its provider's auto mode. No per-tool lists, no platform hard limits. Approval
-  requests from any run, children included, come to the user in the thread. *The provider already
-  decides what needs approval.*
+- Codex runs in its auto mode and Claude in default mode with Reef's permission prompt tool, *so
+  its approvals reach the thread*. No per-tool lists, no platform hard limits. Approval requests
+  from any run, children included, come to the user in the thread. *The provider already decides
+  what needs approval.*
 - Bot settings changed mid-run apply from the next run.
 
 **Chief.** Created on first launch. It has the "Can manage the platform" switch on: tools to create
@@ -46,7 +47,21 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
   exits after replying. No agent process lives between messages.
 - Resume by default. A fresh session only comes from starting a new thread or delegation.
 - Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply stays
-  2–3 plain lines. *The report feeds memory, parents and fresh starts.*
+  2–3 plain lines. *The report feeds memory, parents and fresh starts.* A turn that ends without
+  the report gets one more prompt in the same session asking for it; its text is not shown. If
+  there is still none, the run ends `done` with `report: null` and a logged warning.
+- One provider process per run, in the thread's folder (`<data>/threads/<id>`): a provider
+  resumes a session only in the folder that started it. One run per thread at a time; a message
+  sent while one is going is refused (`409`).
+- Reef's own MCP tools (`finish_run`, and `approve` as Claude's permission prompt tool) are served
+  over streamable HTTP on Reef's own server at `/mcp/<run token>`. *They need live server state
+  (open approvals, the run being reported); stdio would need a child that calls back anyway.*
+  Reef's own tools are allow-listed, so they never ask the user.
+- Codex runs with `approvalPolicy: on-request` and the `workspace-write` sandbox, its auto mode;
+  approvals come as app-server requests. Claude runs in default mode; approvals come through the
+  permission prompt tool.
+- Each run's event stream is saved to `<data>/runs/<id>.jsonl`. A run left `running` or `waiting`
+  when the server starts is marked `failed` with a reason.
 - Processes a Bot starts (dev server, watcher, browser) belong to the thread and outlive the run.
   When the thread closes or the app quits, the app asks whether to stop them.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
@@ -181,6 +196,8 @@ Finish
   ticks, 8 colours; a free pair by default. States by motion: idle blinks, working scans the eyes
   side to side, needs-you is a pulsing red dot, asleep fades and drifts, failed is grey with X eyes.
   The jellyfish stays the logo. Mockup: [design/bots.html](design/bots.html).
+- The Go server serves the UI at `/` and the API under `/api/`, one address. Vite builds `web/`
+  into `server/ui`, which the binary embeds (`make ui`); the Tauri shell comes later.
 - Names: the UI says Reef. Repo, Go module, binary and bundle ID say `atoll`; app data lives in
   `~/Library/Application Support/Atoll`. *Runs beside the old Reef; rename when it retires.*
 

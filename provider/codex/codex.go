@@ -47,27 +47,36 @@ type (
 		writeMu  sync.Mutex    // serializes writes to stdin
 		mu       sync.Mutex    // guards used, cmd and Interrupt
 		used     bool
-		msgID    string // agent message item the last text delta belonged to; owned by run
-		wrote    bool   // the turn in progress has sent text; owned by run
+		msgID    string          // agent message item the last text delta belonged to; owned by run
+		wrote    bool            // the turn in progress has sent text; owned by run
+		notes    map[string]bool // commentary agent message items of the turn; owned by run
+
+		// asks holds the raw request id of each open approval, by event ID.
+		askMu sync.Mutex
+		asks  map[string]json.RawMessage
 	}
 
 	message struct {
 		ID     json.RawMessage `json:"id"`
 		Method string          `json:"method"`
-		Params struct {
-			Delta  string `json:"delta"`
-			ItemID string `json:"itemId"`
-			Turn   struct {
-				Status string `json:"status"`
-				Error  *struct {
-					Message string `json:"message"`
-				} `json:"error"`
-			} `json:"turn"`
-		} `json:"params"`
+		Params json.RawMessage `json:"params"`
 		Result json.RawMessage `json:"result"`
 		Error  *struct {
 			Message string `json:"message"`
 		} `json:"error"`
+	}
+
+	body struct {
+		Delta      string          `json:"delta"`
+		ItemID     string          `json:"itemId"`
+		ServerName string          `json:"serverName"`
+		Item       json.RawMessage `json:"item"`
+		Turn       struct {
+			Status string `json:"status"`
+			Error  *struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		} `json:"turn"`
 	}
 
 	// tail is an io.Writer that keeps the last 4 KB written to it.
@@ -78,6 +87,8 @@ type (
 func New() *Session {
 	return &Session{
 		events: make(chan provider.Event, 1),
+		asks:   map[string]json.RawMessage{},
+		notes:  map[string]bool{},
 		done:   make(chan struct{}),
 		exited: make(chan struct{}),
 	}
@@ -138,6 +149,22 @@ func (s *Session) Send(_ context.Context, prompt string) error {
 
 // Events streams events until codex exits, then closes the channel.
 func (s *Session) Events() <-chan provider.Event { return s.events }
+
+// Answer replies to the approval request with id. It is safe to call while run reads.
+func (s *Session) Answer(id string, allow bool) error {
+	s.askMu.Lock()
+	raw, ok := s.asks[id]
+	delete(s.asks, id)
+	s.askMu.Unlock()
+	if !ok {
+		return fmt.Errorf("no open approval request %s", id)
+	}
+	decision := "decline"
+	if allow {
+		decision = "accept"
+	}
+	return s.write(map[string]any{"id": raw, "result": map[string]string{"decision": decision}})
+}
 
 // Interrupt stops codex, waits for it, and closes Events. Codex gets SIGTERM so it can stop the
 // commands it started, which run in their own process groups; SIGKILL follows after _killAfter.
@@ -316,11 +343,9 @@ func (s *Session) read() {
 		var m message
 		if json.Unmarshal(line, &m) == nil {
 			if m.Method != "" && len(m.ID) > 0 {
-				// Codex asks the client something; nobody is there to answer.
-				_ = s.write(map[string]any{
-					"id":    m.ID,
-					"error": map[string]any{"code": -32601, "message": "unsupported"},
-				})
+				if !s.serverRequest(m) {
+					return
+				}
 			} else if !s.handle(m) {
 				return
 			}
@@ -331,18 +356,63 @@ func (s *Session) read() {
 	}
 }
 
-// handle emits the event for m and reports whether to keep reading. A break goes before the text
-// of a second agent message in a turn.
+// serverRequest turns an approval request into a KindApproval event and refuses any other
+// request, which nobody is there to answer. It reports whether to keep reading.
+func (s *Session) serverRequest(m message) bool {
+	var name string
+	switch m.Method {
+	case "item/commandExecution/requestApproval":
+		name = "commandExecution"
+	case "item/fileChange/requestApproval":
+		name = "fileChange"
+	case "mcpServer/elicitation/request":
+		// Codex asks before every MCP tool call; Atoll's own tools never reach the user.
+		action := "decline"
+		if m.body().ServerName == provider.MCPServer {
+			action = "accept"
+		}
+		_ = s.write(map[string]any{"id": m.ID, "result": map[string]any{"action": action}})
+		return true
+	default:
+		_ = s.write(map[string]any{
+			"id":    m.ID,
+			"error": map[string]any{"code": -32601, "message": "unsupported"},
+		})
+		return true
+	}
+	id := string(m.ID)
+	s.askMu.Lock()
+	s.asks[id] = m.ID
+	s.askMu.Unlock()
+	return s.emit(provider.Event{Kind: provider.KindApproval, ID: id, Name: name, Input: m.Params})
+}
+
+// handle emits the event for m and reports whether to keep reading. Text of a commentary agent
+// message, Codex's working notes, is dropped. A break goes before the text of a second answer
+// message in a turn.
 func (s *Session) handle(m message) bool {
 	switch m.Method {
 	case "turn/started":
 		s.msgID, s.wrote = "", false
+		clear(s.notes)
+	case "item/started":
+		var it struct {
+			ID    string `json:"id"`
+			Phase string `json:"phase"`
+		}
+		if json.Unmarshal(m.body().Item, &it) == nil && it.Phase == "commentary" {
+			s.notes[it.ID] = true
+		}
 	case "item/agentMessage/delta":
-		if s.wrote && m.Params.ItemID != s.msgID &&
+		itemID := m.body().ItemID
+		if s.notes[itemID] {
+			return true
+		}
+		if s.wrote && itemID != s.msgID &&
 			!s.emit(provider.Event{Kind: provider.KindText, Text: _messageBreak}) {
 			return false
 		}
-		s.msgID, s.wrote = m.Params.ItemID, true
+		s.msgID, s.wrote = itemID, true
 	}
 	ev, ok := m.event()
 	if !ok {
@@ -377,13 +447,20 @@ func (s *Session) signal(sig syscall.Signal) error {
 	return err
 }
 
+func (m message) body() (b body) {
+	_ = json.Unmarshal(m.Params, &b)
+	return b
+}
+
 func (m message) event() (ev provider.Event, ok bool) {
-	p := m.Params
+	p := m.body()
 	switch {
 	case m.Method == "" && m.Error != nil:
 		return provider.Event{Kind: provider.KindError, Text: m.Error.Message}, true
 	case m.Method == "item/agentMessage/delta":
 		return provider.Event{Kind: provider.KindText, Text: p.Delta}, true
+	case m.Method == "item/started":
+		return toolCall(p.Item)
 	case m.Method == "turn/completed" && p.Turn.Status != "completed":
 		msg := "turn " + p.Turn.Status
 		if p.Turn.Error != nil {
@@ -394,6 +471,25 @@ func (m message) event() (ev provider.Event, ok bool) {
 		return provider.Event{Kind: provider.KindTurnEnd}, true
 	}
 	return provider.Event{}, false
+}
+
+// toolCall is the KindToolCall event for a started item, unless the item is a message.
+func toolCall(item json.RawMessage) (ev provider.Event, ok bool) {
+	var it struct {
+		Type string `json:"type"`
+		ID   string `json:"id"`
+		Tool string `json:"tool"`
+	}
+	if json.Unmarshal(item, &it) != nil {
+		return provider.Event{}, false
+	}
+	switch it.Type {
+	case "", "userMessage", "agentMessage", "reasoning":
+		return provider.Event{}, false
+	case "mcpToolCall":
+		it.Type = it.Tool
+	}
+	return provider.Event{Kind: provider.KindToolCall, ID: it.ID, Name: it.Type, Input: item}, true
 }
 
 func (t *tail) Write(p []byte) (int, error) {
@@ -417,7 +513,15 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"cwd": cfg.Cwd, "approvalPolicy": "never", "config": config}, nil
+	params := map[string]any{"cwd": cfg.Cwd, "approvalPolicy": "never", "config": config}
+	if cfg.MCPURL != "" {
+		config["mcp_servers"] = map[string]any{
+			provider.MCPServer: map[string]string{"url": cfg.MCPURL},
+		}
+		params["approvalPolicy"] = "on-request"
+		params["sandbox"] = "workspace-write"
+	}
+	return params, nil
 }
 
 // threadConfig turns off everything of the user's that Codex would load besides what CODEX_HOME

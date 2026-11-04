@@ -1,1 +1,4 @@
 node_modules/
+server/ui/*
+!server/ui/.keep
+.verify/
