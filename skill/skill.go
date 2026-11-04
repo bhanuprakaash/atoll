@@ -40,8 +40,8 @@ func Place(dir, providerName string, skills []store.Skill) (string, error) {
 	return dir, nil
 }
 
-// Strip returns the skill text a provider gets. Codex rejects the frontmatter keys allowed-tools
-// and context, so their lines go; every other byte stays.
+// Strip returns the skill text a provider gets. allowed-tools and context are Claude invocation
+// controls, so Codex copies drop their lines; every other byte stays.
 func Strip(content, providerName string) string {
 	if providerName != "codex" || !strings.HasPrefix(content, "---\n") {
 		return content
