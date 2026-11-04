@@ -1,6 +1,9 @@
 // Command codex is a fake Codex for the e2e tests. It answers --version and `login status`,
 // and as `codex app-server` speaks JSON-RPC on stdin and stdout, replaying the recordings in
-// e2e/testdata/codex: a turn/start gets the recording whose prompt matches. Methods no recording
+// e2e/testdata/codex: a turn/start gets the recording whose prompt the input contains; one
+// recorded on a resumed thread only plays on a resumed thread. Like the real app-server it calls
+// the HTTP MCP servers of its config (mcp_servers.<name>.url) when a recording uses their tools,
+// and sends a recorded approval request unless approvalPolicy is "never". Methods no recording
 // has get an empty result. Signed in means CODEX_HOME (default ~/.codex) holds auth.json. Every
 // call is logged to <executable>.log.
 package main
@@ -12,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"atoll/e2e/fakes/fake"
 )
@@ -20,8 +24,9 @@ const _version = "codex-cli 0.166.0"
 
 type (
 	entry struct {
-		Dir string          `json:"dir"`
-		Msg json.RawMessage `json:"msg"`
+		Fake string          `json:"fake"`
+		Dir  string          `json:"dir"`
+		Msg  json.RawMessage `json:"msg"`
 	}
 
 	message struct {
@@ -37,12 +42,14 @@ type (
 		thread  string
 		prompt  string
 		replies map[string]json.RawMessage // result of each request, by method
-		turn    []json.RawMessage          // notifications after turn/start, through turn/completed
+		turn    []entry                    // what follows the turn/start reply, through turn/completed
 	}
 
 	threadParams struct {
-		ThreadID string `json:"threadId"`
-		Input    []struct {
+		ThreadID       string         `json:"threadId"`
+		ApprovalPolicy string         `json:"approvalPolicy"`
+		Config         map[string]any `json:"config"`
+		Input          []struct {
 			Text string `json:"text"`
 		} `json:"input"`
 	}
@@ -67,7 +74,7 @@ func run(args []string) error {
 	case slices.Contains(args, "login") && slices.Contains(args, "status"):
 		return status()
 	case slices.Contains(args, "app-server"):
-		return serve(log)
+		return serve(log, args)
 	}
 	return fmt.Errorf("unsupported arguments %q", args)
 }
@@ -82,12 +89,20 @@ func status() error {
 	return nil
 }
 
-func serve(log *fake.Log) error {
+func serve(log *fake.Log, args []string) error {
 	recs, err := load()
 	if err != nil {
 		return err
 	}
+	cfg := map[string]string{}
+	for i, a := range args {
+		if (a == "-c" || a == "--config") && i+1 < len(args) {
+			k, v, _ := strings.Cut(args[i+1], "=")
+			cfg[strings.TrimSpace(k)] = strings.Trim(strings.TrimSpace(v), `"'`)
+		}
+	}
 	var thread *recording
+	var t *turn
 	in := fake.Lines()
 	for in.Scan() {
 		if err := log.Stdin(in.Text()); err != nil {
@@ -102,6 +117,7 @@ func serve(log *fake.Log) error {
 		switch m.Method {
 		case "thread/start":
 			thread = find(recs, func(r recording) bool { return r.replies[m.Method] != nil })
+			t = newTurn(cfg, p, false)
 			reply(m.ID, thread.replies[m.Method], "")
 		case "thread/resume":
 			thread = find(recs, func(r recording) bool { return r.thread == p.ThreadID && r.replies[m.Method] != nil })
@@ -109,22 +125,27 @@ func serve(log *fake.Log) error {
 				reply(m.ID, nil, fmt.Sprintf("no rollout found for thread id %s", p.ThreadID))
 				continue
 			}
+			t = newTurn(cfg, p, true)
 			reply(m.ID, thread.replies[m.Method], "")
 		case "turn/start":
 			prompt := ""
 			if len(p.Input) > 0 {
 				prompt = p.Input[0].Text
 			}
-			rec := find(recs, func(r recording) bool {
-				return r.prompt == prompt && thread != nil && r.thread == thread.thread
-			})
+			var rec *recording
+			for i, r := range recs {
+				if r.prompt != "" && strings.Contains(prompt, r.prompt) && thread != nil && r.thread == thread.thread &&
+					(r.replies["thread/resume"] == nil || t.resumed) && (rec == nil || len(r.prompt) > len(rec.prompt)) {
+					rec = &recs[i]
+				}
+			}
 			if rec == nil {
 				reply(m.ID, nil, fmt.Sprintf("fake codex: no recording for prompt %q", prompt))
 				continue
 			}
 			reply(m.ID, rec.replies[m.Method], "")
-			for _, n := range rec.turn {
-				fmt.Println(string(n))
+			if err := t.play(rec.turn, in, log); err != nil {
+				return err
 			}
 		default:
 			result := json.RawMessage(`{}`)
@@ -182,8 +203,10 @@ func parse(lines []string) (recording, error) {
 			return r, err
 		}
 		var m message
-		if err := json.Unmarshal(e.Msg, &m); err != nil {
-			return r, err
+		if e.Msg != nil {
+			if err := json.Unmarshal(e.Msg, &m); err != nil {
+				return r, err
+			}
 		}
 		switch {
 		case e.Dir == "in" && m.Method != "" && len(m.ID) > 0:
@@ -197,8 +220,8 @@ func parse(lines []string) (recording, error) {
 			method := methods[string(m.ID)]
 			r.replies[method] = m.Result
 			inTurn = method == "turn/start"
-		case e.Dir == "out" && inTurn:
-			r.turn = append(r.turn, e.Msg)
+		case inTurn && (e.Dir == "out" || e.Fake != ""):
+			r.turn = append(r.turn, e)
 		}
 	}
 	return r, nil

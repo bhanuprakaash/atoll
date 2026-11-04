@@ -32,8 +32,15 @@ test:
 run:
 	go run ./cmd/atoll
 
-e2e:
-	go test -count=1 -timeout=3m ./e2e
+e2e: e2e/ui/node_modules
+	@status=0; \
+	go test -count=1 -timeout=3m ./e2e || status=1; \
+	(cd e2e/ui && $(PNPM) exec playwright test) || status=1; \
+	exit $$status
+
+e2e/ui/node_modules: e2e/ui/pnpm-lock.yaml
+	cd e2e/ui && $(PNPM) install --frozen-lockfile && $(PNPM) exec playwright install chromium
+	@touch $@
 
 web/node_modules: web/pnpm-lock.yaml
 	cd web && $(PNPM) install --frozen-lockfile

@@ -36,6 +36,7 @@ type machine struct {
 
 // call is one run of a fake provider, from its log.
 type call struct {
+	pid   int
 	argv  []string
 	env   map[string]string
 	stdin []string
@@ -137,7 +138,7 @@ func (m *machine) calls(t *testing.T, provider string) []*call {
 		}
 		c, ok := byPID[r.PID]
 		if !ok {
-			c = &call{argv: r.Argv, env: map[string]string{}}
+			c = &call{pid: r.PID, argv: r.Argv, env: map[string]string{}}
 			for _, kv := range r.Env {
 				k, v, _ := strings.Cut(kv, "=")
 				c.env[k] = v

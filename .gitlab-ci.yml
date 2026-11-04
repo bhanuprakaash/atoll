@@ -28,12 +28,23 @@ check:
     - make check
 
 e2e:
-  extends: .go
+  # Ubuntu with Node and Chromium for Playwright (amd64 and arm64); Go is added below.
+  image: mcr.microsoft.com/playwright:v1.64.1-noble
+  variables:
+    GO_VERSION: "1.27.3"
+    GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
+    GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+    npm_config_cache: $CI_PROJECT_DIR/.cache/npm
+    pnpm_config_store_dir: $CI_PROJECT_DIR/.cache/pnpm-store
   cache:
     key:
       prefix: e2e
-      files: [go.sum]
+      files: [go.sum, e2e/ui/pnpm-lock.yaml]
     paths: [.cache/]
+  before_script:
+    - curl -fsSL "https://go.dev/dl/go$GO_VERSION.linux-$(dpkg --print-architecture).tar.gz" | tar -xz -C /usr/local
+    - export PATH="/usr/local/go/bin:$PATH"
+    - npm i -g "$(node -p "require('./e2e/ui/package.json').packageManager")"
   script:
     - make e2e
 
