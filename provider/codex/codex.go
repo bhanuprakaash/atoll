@@ -47,8 +47,9 @@ type (
 		writeMu  sync.Mutex    // serializes writes to stdin
 		mu       sync.Mutex    // guards used, cmd and Interrupt
 		used     bool
-		msgID    string // agent message item the last text delta belonged to; owned by run
-		wrote    bool   // the turn in progress has sent text; owned by run
+		msgID    string          // agent message item the last text delta belonged to; owned by run
+		wrote    bool            // the turn in progress has sent text; owned by run
+		notes    map[string]bool // commentary agent message items of the turn; owned by run
 
 		// asks holds the raw request id of each open approval, by event ID.
 		askMu sync.Mutex
@@ -87,6 +88,7 @@ func New() *Session {
 	return &Session{
 		events: make(chan provider.Event, 1),
 		asks:   map[string]json.RawMessage{},
+		notes:  map[string]bool{},
 		done:   make(chan struct{}),
 		exited: make(chan struct{}),
 	}
@@ -385,14 +387,27 @@ func (s *Session) serverRequest(m message) bool {
 	return s.emit(provider.Event{Kind: provider.KindApproval, ID: id, Name: name, Input: m.Params})
 }
 
-// handle emits the event for m and reports whether to keep reading. A break goes before the text
-// of a second agent message in a turn.
+// handle emits the event for m and reports whether to keep reading. Text of a commentary agent
+// message, Codex's working notes, is dropped. A break goes before the text of a second answer
+// message in a turn.
 func (s *Session) handle(m message) bool {
 	switch m.Method {
 	case "turn/started":
 		s.msgID, s.wrote = "", false
+		clear(s.notes)
+	case "item/started":
+		var it struct {
+			ID    string `json:"id"`
+			Phase string `json:"phase"`
+		}
+		if json.Unmarshal(m.body().Item, &it) == nil && it.Phase == "commentary" {
+			s.notes[it.ID] = true
+		}
 	case "item/agentMessage/delta":
 		itemID := m.body().ItemID
+		if s.notes[itemID] {
+			return true
+		}
 		if s.wrote && itemID != s.msgID &&
 			!s.emit(provider.Event{Kind: provider.KindText, Text: _messageBreak}) {
 			return false

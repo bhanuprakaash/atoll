@@ -60,9 +60,9 @@ func TestSession(t *testing.T) {
 			wantSession: _threadID,
 		},
 		{
-			name:        "two agent messages are split",
+			name:        "commentary is left out of the reply",
 			prompt:      _skills,
-			wantReply:   "I’ll check the connected MCP resource and template registries so the server list is complete. No skills catalog was provided in this session.\n\n- Skills: none.\n- MCP servers: none connected or exposed.",
+			wantReply:   "- Skills: none.\n- MCP servers: none connected or exposed.",
 			wantSession: _threadID,
 			wantCalls:   "list_mcp_resource_templates,list_mcp_resources",
 		},
@@ -146,6 +146,79 @@ func TestSession(t *testing.T) {
 				t.Errorf("got reply %q session %q calls %q ask %q, want %q %q %q %q",
 					reply.String(), session, strings.Join(calls, ","), ask,
 					tt.wantReply, tt.wantSession, tt.wantCalls, tt.wantAsk)
+			}
+		})
+	}
+}
+
+func TestSession_handleText(t *testing.T) {
+	started := func(id, phase string) string {
+		item := `{"type":"agentMessage","id":"` + id + `"`
+		if phase != "" {
+			item += `,"phase":"` + phase + `"`
+		}
+		return `{"method":"item/started","params":{"item":` + item + `}}}`
+	}
+	delta := func(id, text string) string {
+		return `{"method":"item/agentMessage/delta","params":{"itemId":"` + id + `","delta":"` + text + `"}}`
+	}
+	turn := `{"method":"turn/started","params":{}}`
+	tests := []struct {
+		name string
+		give []string
+		want string
+	}{
+		{
+			name: "commentary then answer",
+			give: []string{
+				turn,
+				started("a", "commentary"), delta("a", "I'll remember."),
+				started("b", "final_answer"), delta("b", "ok"),
+			},
+			want: "ok",
+		},
+		{
+			name: "answer without a phase",
+			give: []string{turn, started("a", ""), delta("a", "ok")},
+			want: "ok",
+		},
+		{
+			name: "two answers are split",
+			give: []string{
+				turn,
+				started("a", "final_answer"), delta("a", "one"),
+				started("b", "commentary"), delta("b", "note"),
+				started("c", "final_answer"), delta("c", "two"),
+			},
+			want: "one\n\ntwo",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New()
+			var reply strings.Builder
+			drained := make(chan struct{})
+			go func() {
+				defer close(drained)
+				for ev := range s.events {
+					if ev.Kind == provider.KindText {
+						reply.WriteString(ev.Text)
+					}
+				}
+			}()
+			for _, line := range tt.give {
+				var m message
+				if err := json.Unmarshal([]byte(line), &m); err != nil {
+					t.Fatal(err)
+				}
+				if !s.handle(m) {
+					t.Fatal("handle stopped reading")
+				}
+			}
+			close(s.events)
+			<-drained
+			if reply.String() != tt.want {
+				t.Errorf("reply %q, want %q", reply.String(), tt.want)
 			}
 		})
 	}
