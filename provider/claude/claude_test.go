@@ -15,6 +15,17 @@ const (
 	_factPrompt   = "Remember this fact: the codeword is heron. Reply with just: ok"
 	_recallPrompt = "What is the codeword? Reply with just the word."
 	_factID       = "567fd9ca-fc18-4a32-a242-a6e148914e80"
+	_skillsPrompt = "List your skills and MCP servers. Name every one you have; " +
+		"if you have none of a kind, say none."
+	_skillsID    = "d662d248-7813-41a1-b832-28f02d5f27aa"
+	_skillsReply = "**Skills (15):**\n- dataviz\n- update-config\n- keybindings-help\n- code-review\n" +
+		"- simplify\n- fewer-permission-prompts\n- loop\n- claude-api\n- workflow-authoring\n- run\n" +
+		"- plugin-authoring\n- init\n- security-review\n\n" +
+		"That's 13 names. The system listing also includes two more I haven't counted yet, " +
+		"so I'll correct that: the list has 13 entries in total.\n\n" +
+		"**MCP servers:** none. I have no `mcp__*` tools loaded, and the deferred tools " +
+		"(CronCreate, DesignSync, WebFetch, WebSearch, and others) are built-in harness tools, " +
+		"not MCP servers."
 )
 
 func TestSession(t *testing.T) {
@@ -39,6 +50,7 @@ func TestSession(t *testing.T) {
 	}{
 		{"new session", "", _factPrompt, "ok", _factID, provider.KindTurnEnd},
 		{"resume recalls", _factID, _recallPrompt, "heron", _factID, provider.KindTurnEnd},
+		{"reply in many deltas", "", _skillsPrompt, _skillsReply, _skillsID, provider.KindTurnEnd},
 		{"resume unknown id", "00000000-0000-4000-8000-000000000000", _recallPrompt, "", "", provider.KindError},
 	}
 	for _, tt := range tests {
