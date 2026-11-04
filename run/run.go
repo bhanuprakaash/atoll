@@ -113,6 +113,7 @@ type (
 		threadID string
 		token    string
 		run      store.Run
+		bot      store.Bot // settings as the run started
 		log      *os.File
 		open     int                      // approvals open
 		calls    map[string]chan struct{} // closed once the tool call with that id is published
@@ -396,6 +397,9 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("load bot: %w", err)
 	}
+	m.mu.Lock()
+	a.bot = bot
+	m.mu.Unlock()
 	m.cfg.Log.Info("run started", "run_id", a.run.ID, "thread_id", a.threadID,
 		"provider", bot.Provider)
 	sess, cfg, err := m.cfg.Launch(m.ctx, bot.Provider)
