@@ -5,6 +5,8 @@ export type Provider = 'claude' | 'codex';
 
 export type Bot = { id: string; name: string; persona: string; provider: Provider };
 
+export type NewBot = Omit<Bot, 'id'> & { repo_access: 'all' | string[]; connections: string[] };
+
 export function useBots() {
   return useQuery({ queryKey: ['bots'], queryFn: () => api<Bot[]>('/bots') });
 }
@@ -12,7 +14,7 @@ export function useBots() {
 export function useCreateBot() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (bot: Omit<Bot, 'id'>) => api<Bot>('/bots', { method: 'POST', body: bot }),
+    mutationFn: (bot: NewBot) => api<Bot>('/bots', { method: 'POST', body: bot }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
   });
 }
