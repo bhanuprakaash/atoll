@@ -83,8 +83,7 @@ start from the templates in `.gitlab/`.
 - If a test looks wrong, stop and report it. Never edit, skip or weaken a test to make code pass.
 - Unit tests are for fiddly logic. Add a case to an existing table-driven test, not a test per bug.
 - `test-guard` (`scripts/check-tests`) fails an MR that mixes `e2e/` with other code, deletes a
-  test, adds a skip or `.only(`, or edits CI. Never add the `tests-approved` label; only the user
-  does.
+  test, adds a skip or `.only(`, or edits CI. Never add `tests-approved`; only the user does.
 
 ## Definition of done
 
