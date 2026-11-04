@@ -10,7 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,6 +23,8 @@ import (
 )
 
 var _ provider.Session = (*Session)(nil)
+
+var _unsafe = regexp.MustCompile(`[^A-Za-z0-9]`)
 
 const (
 	// SIGTERM lets claude stop the tool processes it started; they are not in its group.
@@ -103,8 +108,12 @@ func (s *Session) Start(_ context.Context, cfg provider.Config) error {
 	return s.start(cfg)
 }
 
-// Resume launches claude in cfg.Cwd continuing the session with the given id.
+// Resume launches claude in cfg.Cwd continuing the session with the given id. Claude resumes only
+// the sessions of its own folder, so a session file made in another folder is copied here first.
 func (s *Session) Resume(_ context.Context, cfg provider.Config, id string) error {
+	if err := adoptSession(cfg, id); err != nil {
+		return fmt.Errorf("move session: %w", err)
+	}
 	return s.start(cfg, "--resume", id)
 }
 
@@ -191,6 +200,30 @@ func configEnv(dir string) []string {
 	return provider.Env("CLAUDE_CONFIG_DIR=" + dir)
 }
 
+// adoptSession copies the file of session id into the project folder claude uses for cfg.Cwd,
+// named after the path with every character outside [A-Za-z0-9] as "-". It does nothing when the
+// file is there already or exists nowhere.
+func adoptSession(cfg provider.Config, id string) error {
+	projects := filepath.Join(cfg.Dir, "projects")
+	name := id + ".jsonl"
+	dst := filepath.Join(projects, _unsafe.ReplaceAllString(cfg.Cwd, "-"), name)
+	if _, err := os.Stat(dst); err == nil {
+		return nil
+	}
+	found, err := filepath.Glob(filepath.Join(projects, "*", name))
+	if err != nil || len(found) == 0 {
+		return err
+	}
+	body, err := os.ReadFile(found[0])
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, body, 0o600)
+}
+
 // exitReason is the text of the error event claude left when it exited before it read the
 // prompt, such as on a session it could not resume. The caller of a failed write is not
 // reading Events, so the reason would otherwise never reach it.
@@ -225,6 +258,7 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	cmd := exec.Command(cfg.Bin, args...)
 	cmd.Dir = cfg.Cwd
 	cmd.Env = append(configEnv(cfg.Dir), "ENABLE_CLAUDEAI_MCP_SERVERS=false")
+	cmd.Env = append(cmd.Env, cfg.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.WaitDelay = _waitDelay
 	cmd.Stderr = &s.stderr

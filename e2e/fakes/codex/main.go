@@ -46,6 +46,7 @@ type (
 	}
 
 	threadParams struct {
+		Cwd            string         `json:"cwd"`
 		ThreadID       string         `json:"threadId"`
 		ApprovalPolicy string         `json:"approvalPolicy"`
 		Config         map[string]any `json:"config"`

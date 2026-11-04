@@ -16,7 +16,7 @@ export default tseslint.config(
       'import/no-restricted-paths': [
         'error',
         {
-          zones: ['bots', 'threads'].map((m) => ({
+          zones: ['bots', 'threads', 'repos', 'connections'].map((m) => ({
             target: `./src/modules/${m}`,
             from: './src/modules',
             except: [`./${m}`],

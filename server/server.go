@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"atoll/run"
@@ -21,7 +23,10 @@ import (
 // MCPPath is where Atoll's MCP endpoint lives; a run's server is MCPPath + its token.
 const MCPPath = "/mcp/"
 
-const _pingEvery = 15 * time.Second
+const (
+	_pingEvery     = 15 * time.Second
+	_signInTimeout = 30 * time.Second
+)
 
 //go:embed all:ui
 var _ui embed.FS
@@ -30,17 +35,34 @@ type api struct {
 	st   *store.Store
 	runs *run.Manager
 	log  *slog.Logger
+	http *http.Client // for GitLab sign-in
+
+	mu      sync.Mutex
+	devices map[string]string // device code of each pending sign-in, by connection id
 }
 
 // New returns the handler for the API, the MCP tools and the UI.
 func New(st *store.Store, runs *run.Manager, log *slog.Logger) http.Handler {
-	a := &api{st: st, runs: runs, log: log}
+	a := &api{
+		st: st, runs: runs, log: log,
+		http:    &http.Client{Timeout: _signInTimeout},
+		devices: map[string]string{},
+	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/settings", a.getSettings)
+	mux.HandleFunc("PUT /api/settings", a.putSettings)
+	mux.HandleFunc("POST /api/repos", a.createRepo)
+	mux.HandleFunc("GET /api/repos", a.listRepos)
+	mux.HandleFunc("GET /api/connections", a.listConnections)
+	mux.HandleFunc("POST /api/connections/gitlab/start", a.startGitLab)
+	mux.HandleFunc("POST /api/connections/{id}/poll", a.pollConnection)
+	mux.HandleFunc("GET /api/connections/{id}", a.getConnection)
 	mux.HandleFunc("POST /api/bots", a.createBot)
 	mux.HandleFunc("GET /api/bots", a.listBots)
 	mux.HandleFunc("POST /api/bots/{id}/threads", a.createThread)
 	mux.HandleFunc("GET /api/bots/{id}/threads", a.listThreads)
 	mux.HandleFunc("GET /api/threads/{id}", a.getThread)
+	mux.HandleFunc("POST /api/threads/{id}/close", a.closeThread)
 	mux.HandleFunc("POST /api/threads/{id}/messages", a.sendMessage)
 	mux.HandleFunc("GET /api/threads/{id}/messages", a.listMessages)
 	mux.HandleFunc("GET /api/threads/{id}/events", a.events)
@@ -115,7 +137,29 @@ func (a *api) listBots(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
-	t, err := a.st.CreateThread(r.Context(), r.PathValue("id"))
+	var body struct {
+		RepoID string `json:"repo_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		fail(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	botID := r.PathValue("id")
+	if body.RepoID != "" {
+		bot, err := a.st.Bot(r.Context(), botID)
+		if err == nil {
+			_, err = a.st.Repo(r.Context(), body.RepoID)
+		}
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		if !bot.RepoAccess.Allows(body.RepoID) {
+			fail(w, http.StatusForbidden, "the Bot has no access to this repo")
+			return
+		}
+	}
+	t, err := a.st.CreateThread(r.Context(), botID, body.RepoID)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -149,11 +193,10 @@ func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
 		active = &ru
 	}
 	write(w, http.StatusOK, struct {
-		ID        string         `json:"id"`
-		BotID     string         `json:"bot_id"`
+		store.Thread
 		ActiveRun *store.Run     `json:"active_run"`
 		Approvals []run.Approval `json:"approvals"`
-	}{ID: t.ID, BotID: t.BotID, ActiveRun: active, Approvals: orEmpty(approvals)})
+	}{Thread: t, ActiveRun: active, Approvals: orEmpty(approvals)})
 }
 
 func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
@@ -256,7 +299,7 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, store.ErrNotFound), errors.Is(err, run.ErrNotFound):
 		fail(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, run.ErrBusy):
+	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed), errors.Is(err, store.ErrExists):
 		fail(w, http.StatusConflict, err.Error())
 	default:
 		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)

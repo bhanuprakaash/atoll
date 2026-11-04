@@ -82,6 +82,7 @@ func (m *machine) serve(t *testing.T) *server {
 		"ATOLL_DATA_DIR=" + m.data,
 		"ATOLL_PROVIDER_PATH=" + m.bin,
 	}
+	s.cmd.Env = append(s.cmd.Env, m.env...)
 	s.cmd.Stderr = s.log
 	stdout, err := s.cmd.StdoutPipe()
 	if err != nil {

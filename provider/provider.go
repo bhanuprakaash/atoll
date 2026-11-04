@@ -16,6 +16,10 @@ const (
 	ToolFinishRun = "finish_run"
 	// ToolApprove is Claude's permission prompt tool: it answers once the user does.
 	ToolApprove = "approve"
+	// ToolStartWork takes {type, slug} and returns the worktree {path, branch} of the thread.
+	ToolStartWork = "start_work"
+	// ToolTrackMR takes {url}: the merge request the thread opened.
+	ToolTrackMR = "track_mr"
 )
 
 // Session drives one provider process holding one session. Call Start or Resume once; Send one
@@ -40,6 +44,8 @@ type Config struct {
 	Bin string // provider executable
 	Dir string // Atoll's settings folder for this provider
 	Cwd string
+	// Env is extra environment for the provider process, as KEY=value.
+	Env []string
 	// MCPURL is Atoll's MCP server for this run. Empty runs without it, and without approvals:
 	// nobody is there to answer them.
 	MCPURL string
@@ -69,12 +75,14 @@ type Event struct {
 }
 
 // Env returns the parent environment without the variables that carry a provider's credentials or
-// session state (ANTHROPIC_*, CLAUDE*, OPENAI_*, CODEX_*), followed by kv.
+// session state (ANTHROPIC_*, CLAUDE*, OPENAI_*, CODEX_*) or the user's own GitLab token
+// (GITLAB_TOKEN, GITLAB_ACCESS_TOKEN: glab would prefer it to a Bot's OAUTH_TOKEN), followed by kv.
 func Env(kv ...string) []string {
 	var env []string
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "ANTHROPIC_") && !strings.HasPrefix(e, "CLAUDE") &&
-			!strings.HasPrefix(e, "OPENAI_") && !strings.HasPrefix(e, "CODEX_") {
+			!strings.HasPrefix(e, "OPENAI_") && !strings.HasPrefix(e, "CODEX_") &&
+			!strings.HasPrefix(e, "GITLAB_TOKEN=") && !strings.HasPrefix(e, "GITLAB_ACCESS_TOKEN=") {
 			env = append(env, e)
 		}
 	}

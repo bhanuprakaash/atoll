@@ -1,0 +1,199 @@
+// Package repo runs the git work behind a registered repo: worktrees, branch names and
+// snapshots of unfinished work.
+package repo
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+const _maxSlug = 40
+
+var (
+	// ErrType means the branch type is not one of feat, fix, chore or docs.
+	ErrType = errors.New("type must be feat, fix, chore or docs")
+
+	_nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
+)
+
+// Branch normalises a branch name: ("fix", "Seeded BUG") -> "fix/seeded-bug". The slug is
+// lowercased, every run of characters outside [a-z0-9] becomes "-", the ends are trimmed of "-"
+// and the slug is cut to 40 characters.
+func Branch(typ, slug string) (string, error) {
+	switch typ {
+	case "feat", "fix", "chore", "docs":
+	default:
+		return "", fmt.Errorf("branch type %q: %w", typ, ErrType)
+	}
+	s := strings.Trim(_nonSlug.ReplaceAllString(strings.ToLower(slug), "-"), "-")
+	if len(s) > _maxSlug {
+		s = strings.TrimRight(s[:_maxSlug], "-")
+	}
+	if s == "" {
+		return "", errors.New("branch slug is empty")
+	}
+	return typ + "/" + s, nil
+}
+
+// Create makes a new worktree of repoPath on a new branch at <root>/<repoName>/<folder>, where
+// folder is the branch with "/" replaced by "-". When the branch or the folder exists it tries
+// <branch>-2, <branch>-3 and so on. The branch starts at origin/HEAD when that resolves, else at
+// HEAD. It returns the absolute path and the branch used. No fetch, no network.
+func Create(ctx context.Context, repoPath, root, repoName, branch string) (path, used string, err error) {
+	start := "HEAD"
+	if _, err := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", "origin/HEAD^{commit}"); err == nil {
+		start = "origin/HEAD"
+	}
+	for n := 1; ; n++ {
+		used = branch
+		if n > 1 {
+			used = branch + "-" + strconv.Itoa(n)
+		}
+		path, err = filepath.Abs(filepath.Join(root, repoName, strings.ReplaceAll(used, "/", "-")))
+		if err != nil {
+			return "", "", fmt.Errorf("worktree path: %w", err)
+		}
+		if _, err := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", "refs/heads/"+used); err == nil {
+			continue
+		}
+		if _, err := os.Lstat(path); err == nil {
+			continue
+		}
+		break
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", "", fmt.Errorf("make worktree folder: %w", err)
+	}
+	if _, err := git(ctx, repoPath, nil, "worktree", "add", "--no-track", "-b", used, path, start); err != nil {
+		return "", "", fmt.Errorf("add worktree: %w", err)
+	}
+	return path, used, nil
+}
+
+// Checkout makes dir a detached worktree of repoPath at HEAD. A dir that already is a worktree
+// is left alone.
+func Checkout(ctx context.Context, repoPath, dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return fmt.Errorf("make checkout folder: %w", err)
+	}
+	if _, err := git(ctx, repoPath, nil, "worktree", "add", "--detach", dir, "HEAD"); err != nil {
+		return fmt.Errorf("add checkout: %w", err)
+	}
+	return nil
+}
+
+// Save stores HEAD plus every tracked change and untracked file (ignored ones left out) of the
+// checkout at dir as a commit at ref. The index, HEAD and the files are not touched: the tree is
+// built in a temporary index that starts as a copy of the real one. It returns false and writes
+// nothing when the checkout is clean.
+func Save(ctx context.Context, dir, ref string) (bool, error) {
+	status, err := git(ctx, dir, nil, "status", "--porcelain")
+	if err != nil {
+		return false, fmt.Errorf("read status: %w", err)
+	}
+	if status == "" {
+		return false, nil
+	}
+	head, err := git(ctx, dir, nil, "rev-parse", "--verify", "HEAD")
+	if err != nil {
+		return false, fmt.Errorf("read HEAD: %w", err)
+	}
+	tmp, err := os.MkdirTemp("", "atoll-save-")
+	if err != nil {
+		return false, fmt.Errorf("make temp index: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
+	index := filepath.Join(tmp, "index")
+	if err := seedIndex(ctx, dir, index); err != nil {
+		return false, err
+	}
+	env := []string{
+		"GIT_INDEX_FILE=" + index,
+		"GIT_AUTHOR_NAME=Atoll", "GIT_AUTHOR_EMAIL=atoll@localhost",
+		"GIT_COMMITTER_NAME=Atoll", "GIT_COMMITTER_EMAIL=atoll@localhost",
+	}
+	if _, err := git(ctx, dir, env, "add", "-A"); err != nil {
+		return false, fmt.Errorf("stage changes: %w", err)
+	}
+	tree, err := git(ctx, dir, env, "write-tree")
+	if err != nil {
+		return false, fmt.Errorf("write tree: %w", err)
+	}
+	commit, err := git(ctx, dir, env, "commit-tree", tree, "-p", head, "-m", "atoll unfinished work")
+	if err != nil {
+		return false, fmt.Errorf("commit tree: %w", err)
+	}
+	if _, err := git(ctx, dir, nil, "update-ref", ref, commit); err != nil {
+		return false, fmt.Errorf("write ref: %w", err)
+	}
+	return true, nil
+}
+
+// Remove force-removes the worktree at dir of repoPath and keeps its branch. A missing dir is
+// not an error.
+func Remove(ctx context.Context, repoPath, dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		return nil
+	}
+	if _, err := git(context.WithoutCancel(ctx), repoPath, nil, "worktree", "remove", "--force", dir); err != nil {
+		return fmt.Errorf("remove worktree: %w", err)
+	}
+	return nil
+}
+
+// IsRepo reports whether path is the top level of a git work tree with a commit.
+func IsRepo(ctx context.Context, path string) bool {
+	top, err := git(ctx, path, nil, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return false
+	}
+	want, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+	got, err := filepath.EvalSymlinks(top)
+	if err != nil || got != want {
+		return false
+	}
+	_, err = git(ctx, path, nil, "rev-parse", "--verify", "--quiet", "HEAD")
+	return err == nil
+}
+
+func seedIndex(ctx context.Context, dir, to string) error {
+	from, err := git(ctx, dir, nil, "rev-parse", "--path-format=absolute", "--git-path", "index")
+	if err != nil {
+		return fmt.Errorf("find index: %w", err)
+	}
+	data, err := os.ReadFile(from)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read index: %w", err)
+	}
+	if err := os.WriteFile(to, data, 0o600); err != nil {
+		return fmt.Errorf("copy index: %w", err)
+	}
+	return nil
+}
+
+func git(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0"), env...)
+	out, err := cmd.CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil {
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, text)
+	}
+	return text, nil
+}

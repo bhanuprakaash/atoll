@@ -93,8 +93,16 @@ func newPlayer(args []string) (*player, error) {
 func (p *player) play(lines []string) error {
 	var last *toolUse
 	answer, skip := "", false
+	repoReply := ""
 	for _, s := range lines {
-		switch fake.Directive([]byte(s)) {
+		switch directive := fake.Directive([]byte(s)); directive {
+		case "repo-fix", "repo-question", "repo-uncommitted", "repo-resume":
+			var err error
+			repoReply, err = fake.RepoStep(p.servers["atoll"], strings.TrimPrefix(directive, "repo-"), "")
+			if err != nil {
+				return err
+			}
+			continue
 		case "ask":
 			if skip {
 				continue
@@ -121,6 +129,8 @@ func (p *player) play(lines []string) error {
 		if skip {
 			continue
 		}
+		encoded, _ := json.Marshal(repoReply)
+		s = strings.ReplaceAll(s, "$REPO_REPLY", string(encoded[1:len(encoded)-1]))
 		var m map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(s), &m); err != nil {
 			return err

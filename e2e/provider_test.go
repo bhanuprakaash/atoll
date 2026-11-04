@@ -28,10 +28,11 @@ const (
 // machine is a user's machine atoll runs on. It sees nothing of the real one: HOME, its data
 // dir and the folders provider discovery searches are all temporary.
 type machine struct {
-	home string // HOME
-	data string // ATOLL_DATA_DIR
-	bin  string // ATOLL_PROVIDER_PATH: the fakes installed
-	path string // PATH
+	home string   // HOME
+	data string   // ATOLL_DATA_DIR
+	bin  string   // ATOLL_PROVIDER_PATH: the fakes installed
+	path string   // PATH
+	env  []string // extra server env for Slice 3
 }
 
 // call is one run of a fake provider, from its log.

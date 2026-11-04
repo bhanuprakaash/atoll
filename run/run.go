@@ -24,6 +24,8 @@ import (
 var (
 	// ErrBusy is returned when a thread already has a run going.
 	ErrBusy = errors.New("thread has a run going")
+	// ErrClosed is returned when a message is sent to a closed thread.
+	ErrClosed = errors.New("thread is closed")
 	// ErrNotFound is wrapped when an approval id or run token matches nothing open.
 	ErrNotFound = errors.New("not found")
 )
@@ -34,6 +36,10 @@ const (
 	EventToolCall    = "tool_call"    // ToolCall
 	EventApproval    = "approval"     // Approval
 	EventRunFinished = "run_finished" // Finished
+
+	EventWorktreeCreated = "worktree_created" // WorktreeCreated
+	EventMRUpdated       = "mr_updated"       // MRUpdated
+	EventWorktreeRemoved = "worktree_removed" // WorktreeRemoved
 )
 
 const (
@@ -69,7 +75,11 @@ type (
 		// DataDir holds runs/<run id>.jsonl, each run's event stream, and threads/<thread id>,
 		// the folder a thread's runs work in: a provider resumes a session only in its folder.
 		DataDir string
-		Log     *slog.Logger
+		// WorktreeRoot is where worktrees go until the user sets another root.
+		WorktreeRoot string
+		// PollInterval is how often Start's watcher checks the MRs.
+		PollInterval time.Duration
+		Log          *slog.Logger
 	}
 
 	// Manager runs messages and fans their events out to the thread's subscribers.
@@ -175,17 +185,33 @@ func (m *Manager) Send(ctx context.Context, threadID, text string) (store.Messag
 	m.wg.Add(1)
 	m.mu.Unlock()
 
-	msg, run, err := m.cfg.Store.StartRun(ctx, threadID, text)
+	msg, run, err := m.start(ctx, threadID, text)
 	if err != nil {
 		m.drop(a)
 		m.wg.Done()
-		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
+		return store.Message{}, store.Run{}, err
 	}
 	m.mu.Lock()
 	a.run = run
 	m.tokens[a.token] = a
 	m.mu.Unlock()
 	go m.execute(a, text)
+	return msg, run, nil
+}
+
+// start refuses a closed thread, then stores the message and its run.
+func (m *Manager) start(ctx context.Context, threadID, text string) (store.Message, store.Run, error) {
+	t, err := m.cfg.Store.Thread(ctx, threadID)
+	if err != nil {
+		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
+	}
+	if t.Closed {
+		return store.Message{}, store.Run{}, ErrClosed
+	}
+	msg, run, err := m.cfg.Store.StartRun(ctx, threadID, text)
+	if err != nil {
+		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
+	}
 	return msg, run, nil
 }
 
@@ -368,10 +394,16 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 			m.cfg.Log.Warn("interrupt provider", "run_id", a.run.ID, "error", err)
 		}
 	}()
-	cfg.Cwd = filepath.Join(m.cfg.DataDir, "threads", thread.ID)
-	if err := os.MkdirAll(cfg.Cwd, 0o700); err != nil {
-		return "", fmt.Errorf("create thread folder: %w", err)
+	var rp store.Repo
+	if thread.RepoID != "" {
+		if rp, err = m.cfg.Store.Repo(m.ctx, thread.RepoID); err != nil {
+			return "", fmt.Errorf("load repo: %w", err)
+		}
 	}
+	if cfg.Cwd, err = m.workdir(thread, rp); err != nil {
+		return "", err
+	}
+	cfg.Env = m.gitlabEnv(bot)
 	cfg.MCPURL = m.cfg.MCPURL + a.token
 	if thread.Session != "" {
 		err = sess.Resume(m.ctx, cfg, thread.Session)
@@ -386,6 +418,9 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		"tried, blocked and next. Do this for every message, even a trivial one. "+
 		"Then reply in 2-3 plain lines.\n\n%s",
 		bot.Name, bot.Persona, text)
+	if rp.ID != "" {
+		prompt = fmt.Sprintf(_repoNotes, rp.Name) + prompt
+	}
 	if err := sess.Send(m.ctx, prompt); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
@@ -511,22 +546,44 @@ func (m *Manager) resume(ctx context.Context, a *active, id string) {
 func (m *Manager) publish(a *active, typ string, data any) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if a.log != nil {
-		line, err := json.Marshal(eventLine{Type: typ, Data: data, At: time.Now().UTC()})
-		if err == nil {
-			_, err = a.log.Write(append(line, '\n'))
-		}
-		if err != nil {
-			m.cfg.Log.Warn("write event", "run_id", a.run.ID, "error", err)
+	m.deliver(a.threadID, a.run.ID, a.log, typ, data)
+}
+
+// announce is publish for an event outside a run: it goes to the file of the thread's latest run.
+func (m *Manager) announce(threadID, runID, typ string, data any) {
+	var f *os.File
+	if runID != "" {
+		var err error
+		if f, err = m.openLog(runID); err != nil {
+			m.cfg.Log.Warn("open event file", "run_id", runID, "error", err)
+		} else {
+			defer func() { _ = f.Close() }()
 		}
 	}
-	for ch := range m.subs[a.threadID] {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.deliver(threadID, runID, f, typ, data)
+}
+
+// deliver writes the event to log, when there is one, and sends it to the thread's subscribers.
+// The caller holds mu.
+func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data any) {
+	if log != nil {
+		line, err := json.Marshal(eventLine{Type: typ, Data: data, At: time.Now().UTC()})
+		if err == nil {
+			_, err = log.Write(append(line, '\n'))
+		}
+		if err != nil {
+			m.cfg.Log.Warn("write event", "run_id", runID, "error", err)
+		}
+	}
+	for ch := range m.subs[threadID] {
 		select {
 		case ch <- Event{Type: typ, Data: data}:
 		default:
-			delete(m.subs[a.threadID], ch)
+			delete(m.subs[threadID], ch)
 			close(ch)
-			m.cfg.Log.Warn("subscriber full, stream closed", "run_id", a.run.ID, "type", typ)
+			m.cfg.Log.Warn("subscriber full, stream closed", "run_id", runID, "type", typ)
 		}
 	}
 }

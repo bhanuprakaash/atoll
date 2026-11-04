@@ -2,15 +2,37 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import type { Run } from '@/modules/threads/api/messages';
 
-export type Thread = { id: string; bot_id: string; created_at: string };
+export type Thread = {
+  id: string;
+  bot_id: string;
+  repo_id: string;
+  branch: string;
+  worktree: string;
+  mr_url: string;
+  mr_state: string;
+  closed: boolean;
+  created_at: string;
+};
 
 export const getThread = (threadId: string) =>
-  api<{
-    id: string;
-    bot_id: string;
-    active_run: Run | null;
-    approvals: { run_id: string; id: string; tool: string; input: unknown }[];
-  }>(`/threads/${threadId}`);
+  api<
+    Thread & {
+      active_run: Run | null;
+      approvals: { run_id: string; id: string; tool: string; input: unknown }[];
+    }
+  >(`/threads/${threadId}`);
+
+export function useThread(threadId: string) {
+  return useQuery({ queryKey: ['thread', threadId], queryFn: () => getThread(threadId) });
+}
+
+export function useCloseThread(threadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<void>(`/threads/${threadId}/close`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['thread', threadId] }),
+  });
+}
 
 export function useThreads(botId: string) {
   return useQuery({
@@ -22,7 +44,11 @@ export function useThreads(botId: string) {
 export function useCreateThread(botId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => api<Thread>(`/bots/${botId}/threads`, { method: 'POST' }),
+    mutationFn: (repoId?: string) =>
+      api<Thread>(`/bots/${botId}/threads`, {
+        method: 'POST',
+        body: repoId ? { repo_id: repoId } : undefined,
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['threads', botId] }),
   });
 }
