@@ -1,0 +1,22 @@
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+check:
+  image: golang:1.27
+  variables:
+    NODE_VERSION: "22.22.1"
+    GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
+    GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+    npm_config_cache: $CI_PROJECT_DIR/.cache/npm
+  cache:
+    key:
+      files: [go.sum, web/package-lock.json]
+    paths: [.cache/]
+  before_script:
+    - curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.gz" | tar -xz -C /usr/local --strip-components=1
+  script:
+    - make check
