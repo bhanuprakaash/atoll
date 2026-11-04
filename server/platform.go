@@ -147,14 +147,18 @@ func (a *api) platformCall(ctx context.Context, token, name string, args json.Ra
 		if json.Unmarshal(args, &in) != nil || in.ID == "" {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid bot id"}
 		}
-		var b store.Bot
-		b, err = a.st.Bot(ctx, in.ID)
+		var prev, b store.Bot
+		prev, err = a.st.Bot(ctx, in.ID)
 		if err == nil {
-			before = b
+			before = prev
+			b = prev
+			b.Skills = slices.Clone(prev.Skills)
+			b.Connections = slices.Clone(prev.Connections)
+			b.RepoAccess = slices.Clone(prev.RepoAccess)
 			if json.Unmarshal(args, &b) != nil {
 				return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
 			}
-			b.ID, b.CanManagePlatform = in.ID, before.(store.Bot).CanManagePlatform
+			b.ID, b.CanManagePlatform = in.ID, prev.CanManagePlatform
 			if !validBot(b) {
 				return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
 			}
