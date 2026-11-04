@@ -66,7 +66,7 @@ of `web/package.json`). Nothing else: golangci-lint and lefthook are pinned as t
 go tool lefthook install   # once per clone: pre-commit hook (gofmt, prettier on staged files)
 make check                 # format check, lint, vet, type-check, tests (pnpm install when needed)
 make format                # gofmt -w and prettier --write
-make run                   # go run ./cmd/atoll
+make run                   # builds the UI, then go run ./cmd/atoll serve
 make e2e                   # e2e/: builds the real binary and drives it
 ```
 
