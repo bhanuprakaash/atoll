@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { getRun } from '@/modules/threads/api/runs';
+import { getThread } from '@/modules/threads/api/threads';
 
 export type LiveRun = {
   text: string;
@@ -12,6 +13,11 @@ export type LiveRun = {
 type Data<T> = T & { run_id: string };
 
 const empty: LiveRun = { text: '', tools: [], approvals: [] };
+
+const withApproval = (run: LiveRun, a: { id: string; tool: string; input: unknown }): LiveRun =>
+  run.approvals.some((x) => x.id === a.id)
+    ? run
+    : { ...run, approvals: [...run.approvals, { id: a.id, tool: a.tool, input: a.input }] };
 
 export function useThreadEvents(threadId: string) {
   const queryClient = useQueryClient();
@@ -35,6 +41,13 @@ export function useThreadEvents(threadId: string) {
 
     source.onopen = () => {
       setConnected(true);
+      void getThread(threadId).then(({ active_run, approvals }) => {
+        if (!active_run) return;
+        setRuns((prev) => ({
+          ...prev,
+          [active_run.id]: approvals.reduce(withApproval, prev[active_run.id] ?? empty),
+        }));
+      });
       for (const [runId, run] of Object.entries(runsRef.current)) {
         if (run.finished) continue;
         void getRun(runId).then((ended) => {
@@ -56,10 +69,7 @@ export function useThreadEvents(threadId: string) {
       ...run,
       tools: [...run.tools, { id: d.id, name: d.name }],
     }));
-    on<{ id: string; tool: string; input: unknown }>('approval', (d, run) => ({
-      ...run,
-      approvals: [...run.approvals, { id: d.id, tool: d.tool, input: d.input }],
-    }));
+    on<{ id: string; tool: string; input: unknown }>('approval', (d, run) => withApproval(run, d));
     on<{ status: string; error: string }>('run_finished', (d, run) => ({
       ...run,
       finished: { status: d.status, error: d.error },

@@ -40,6 +40,7 @@ func New(st *store.Store, runs *run.Manager, log *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /api/bots", a.listBots)
 	mux.HandleFunc("POST /api/bots/{id}/threads", a.createThread)
 	mux.HandleFunc("GET /api/bots/{id}/threads", a.listThreads)
+	mux.HandleFunc("GET /api/threads/{id}", a.getThread)
 	mux.HandleFunc("POST /api/threads/{id}/messages", a.sendMessage)
 	mux.HandleFunc("GET /api/threads/{id}/messages", a.listMessages)
 	mux.HandleFunc("GET /api/threads/{id}/events", a.events)
@@ -129,6 +130,30 @@ func (a *api) listThreads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, http.StatusOK, orEmpty(threads))
+}
+
+func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
+	t, err := a.st.Thread(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	var active *store.Run
+	runID, approvals, ok := a.runs.Active(t.ID)
+	if ok {
+		ru, err := a.st.Run(r.Context(), runID)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		active = &ru
+	}
+	write(w, http.StatusOK, struct {
+		ID        string         `json:"id"`
+		BotID     string         `json:"bot_id"`
+		ActiveRun *store.Run     `json:"active_run"`
+		Approvals []run.Approval `json:"approvals"`
+	}{ID: t.ID, BotID: t.BotID, ActiveRun: active, Approvals: orEmpty(approvals)})
 }
 
 func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {

@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -234,7 +235,9 @@ func TestRun_Approval(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newEnv(t, &fakeSession{
-				script:   []provider.Event{{Kind: provider.KindApproval, ID: "p1", Name: "Write"}},
+				script: []provider.Event{
+					{Kind: provider.KindApproval, ID: "p1", Name: "Write", Input: json.RawMessage(`{"a":1}`)},
+				},
 				answered: make(chan struct{}),
 				release:  make(chan struct{}),
 			})
@@ -243,6 +246,10 @@ func TestRun_Approval(t *testing.T) {
 				t.Fatal(err)
 			}
 			ap := nextAs[Approval](t, e, EventApproval)
+			gotRun, gotOpen, ok := e.m.Active(e.thread.ID)
+			if !ok || gotRun != run.ID || !reflect.DeepEqual(gotOpen, []Approval{ap}) {
+				t.Errorf("Active = %q, %v, %v; want %q, [%v], true", gotRun, gotOpen, ok, run.ID, ap)
+			}
 			if got, _ := e.st.Run(t.Context(), run.ID); got.Status != store.StatusWaiting {
 				t.Errorf("status %q when the approval was published, want waiting", got.Status)
 			}
@@ -251,6 +258,9 @@ func TestRun_Approval(t *testing.T) {
 			}
 			if err := e.m.Answer(t.Context(), ap.ID, tt.allow); err != nil {
 				t.Fatal(err)
+			}
+			if _, gotOpen, _ := e.m.Active(e.thread.ID); len(gotOpen) != 0 {
+				t.Errorf("Active lists %v after the answer, want none", gotOpen)
 			}
 			if err := e.m.Answer(t.Context(), ap.ID, tt.allow); !errors.Is(err, ErrNotFound) {
 				t.Errorf("second Answer: %v, want ErrNotFound", err)

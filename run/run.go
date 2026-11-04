@@ -74,8 +74,14 @@ type (
 		mu        sync.Mutex
 		runs      map[string]*active                 // by thread id
 		tokens    map[string]*active                 // by run token
-		approvals map[string]chan bool               // open approvals; each channel takes one answer
+		approvals map[string]open                    // open approvals, by approval id
 		subs      map[string]map[chan Event]struct{} // by thread id
+	}
+
+	// open is an approval waiting for the user; answer takes its one answer.
+	open struct {
+		approval Approval
+		answer   chan bool
 	}
 
 	// active is a run in progress. The Manager's mu guards log and open.
@@ -139,7 +145,7 @@ func New(cfg Config) *Manager {
 		cancel:    cancel,
 		runs:      map[string]*active{},
 		tokens:    map[string]*active{},
-		approvals: map[string]chan bool{},
+		approvals: map[string]open{},
 		subs:      map[string]map[chan Event]struct{}{},
 	}
 }
@@ -167,8 +173,8 @@ func (m *Manager) Send(ctx context.Context, threadID, text string) (store.Messag
 		m.wg.Done()
 		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
 	}
-	a.run = run
 	m.mu.Lock()
+	a.run = run
 	m.tokens[a.token] = a
 	m.mu.Unlock()
 	go m.execute(a, text)
@@ -199,16 +205,33 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 	}
 }
 
+// Active returns the id of the run going in the thread and its open approvals. ok is false when
+// the thread has no run going.
+func (m *Manager) Active(threadID string) (runID string, approvals []Approval, ok bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.runs[threadID]
+	if !ok || a.run.ID == "" {
+		return "", nil, false
+	}
+	for _, o := range m.approvals {
+		if o.approval.RunID == a.run.ID {
+			approvals = append(approvals, o.approval)
+		}
+	}
+	return a.run.ID, approvals, true
+}
+
 // Answer gives the user's answer to the open approval id. It wraps ErrNotFound when none is open.
 func (m *Manager) Answer(_ context.Context, id string, allow bool) error {
 	m.mu.Lock()
-	ch, ok := m.approvals[id]
+	o, ok := m.approvals[id]
 	delete(m.approvals, id)
 	m.mu.Unlock()
 	if !ok {
 		return fmt.Errorf("approval %s: %w", id, ErrNotFound)
 	}
-	ch <- allow
+	o.answer <- allow
 	return nil
 }
 
@@ -409,15 +432,16 @@ func (m *Manager) approve(
 ) (bool, error) {
 	id := randHex(8)
 	answer := make(chan bool, 1) // Answer must not wait for the run to read
+	ap := Approval{RunID: a.run.ID, ID: id, Tool: tool, Input: input}
 	m.mu.Lock()
-	m.approvals[id] = answer
+	m.approvals[id] = open{approval: ap, answer: answer}
 	a.open++
 	m.mu.Unlock()
 	defer m.resume(ctx, a, id)
 	if err := m.cfg.Store.SetStatus(ctx, a.run.ID, store.StatusWaiting); err != nil {
 		return false, fmt.Errorf("approval %s: %w", id, err)
 	}
-	m.publish(a, EventApproval, Approval{RunID: a.run.ID, ID: id, Tool: tool, Input: input})
+	m.publish(a, EventApproval, ap)
 	select {
 	case allow := <-answer:
 		return allow, nil
