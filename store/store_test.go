@@ -139,6 +139,7 @@ func TestStore_UndoChange(t *testing.T) {
 		{"skill create", store.EntitySkill, store.ActionCreate, `INSERT INTO skills VALUES ('item', 'new', 'text')`, `null`, `missing`},
 		{"skill edit", store.EntitySkill, store.ActionEdit, `INSERT INTO skills VALUES ('item', 'new', 'text')`, `{"id":"item","name":"old","content":"original"}`, `{"id":"item","name":"old","content":"original"}`},
 		{"repo create", store.EntityRepo, store.ActionCreate, `INSERT INTO repos VALUES ('item', 'new', '/repo')`, `null`, `missing`},
+		{"repo create in use", store.EntityRepo, store.ActionCreate, `INSERT INTO repos VALUES ('item', 'new', '/repo'); INSERT INTO bots (id, name, persona, provider) VALUES ('bot', 'b', 'p', 'claude'); INSERT INTO threads (id, bot_id, created, repo_id) VALUES ('thread', 'bot', 1, 'item')`, `null`, `in use`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -156,6 +157,18 @@ func TestStore_UndoChange(t *testing.T) {
 				t.Fatal(err)
 			}
 			undone, err := st.UndoChange(ctx, c.ID)
+			if tt.want == "in use" {
+				if !errors.Is(err, store.ErrInUse) {
+					t.Fatalf("undo = %v, want ErrInUse", err)
+				}
+				if _, err := st.Repo(ctx, "item"); err != nil {
+					t.Fatalf("repo after refused undo: %v", err)
+				}
+				if _, err := st.UndoChange(ctx, c.ID); !errors.Is(err, store.ErrInUse) {
+					t.Fatalf("second undo = %v, want ErrInUse", err)
+				}
+				return
+			}
 			if err != nil || !undone.Undone {
 				t.Fatalf("undo = %+v, %v", undone, err)
 			}

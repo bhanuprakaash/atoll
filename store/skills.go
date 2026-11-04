@@ -220,6 +220,15 @@ func (s *Store) UndoChange(ctx context.Context, id string) (Change, error) {
 			case EntitySkill:
 				stmt = "DELETE FROM skills WHERE id = ?"
 			case EntityRepo:
+				var threads int
+				err := tx.QueryRowContext(ctx,
+					"SELECT count(*) FROM threads WHERE repo_id = ?", c.EntityID).Scan(&threads)
+				if err != nil {
+					return fmt.Errorf("count repo threads: %w", err)
+				}
+				if threads > 0 {
+					return fmt.Errorf("repo %s: %w", c.EntityID, ErrInUse)
+				}
 				stmt = "DELETE FROM repos WHERE id = ?"
 			default:
 				return fmt.Errorf("unknown change entity %q", c.Entity)

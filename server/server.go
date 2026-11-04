@@ -315,7 +315,8 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		fail(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, memory.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed), errors.Is(err, store.ErrExists), errors.Is(err, store.ErrUndone):
+	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed), errors.Is(err, store.ErrExists), errors.Is(err, store.ErrUndone),
+		errors.Is(err, store.ErrInUse):
 		fail(w, http.StatusConflict, err.Error())
 	default:
 		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)

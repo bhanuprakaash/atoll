@@ -29,6 +29,8 @@ var (
 	ErrExists = errors.New("already exists")
 	// ErrUndone is wrapped when a change has already been undone.
 	ErrUndone = errors.New("already undone")
+	// ErrInUse is wrapped when an entity cannot be removed because a thread uses it.
+	ErrInUse = errors.New("in use")
 )
 
 //go:embed migrations/*.sql
