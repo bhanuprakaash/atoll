@@ -51,7 +51,7 @@ e2e/ui/node_modules: e2e/ui/pnpm-lock.yaml
 
 # Real server, API and UI; proof lands in .verify/. ARGS: --fake, --provider, --out.
 verify: ui scripts/verify/node_modules
-	node scripts/verify/verify.ts $(ARGS)
+	node scripts/verify/verify.mjs $(ARGS)
 
 scripts/verify/node_modules: scripts/verify/pnpm-lock.yaml
 	cd scripts/verify && $(PNPM) install --frozen-lockfile && $(PNPM) exec playwright install chromium
