@@ -2,19 +2,205 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"strings"
+
+	"atoll/provider"
+	"atoll/provider/claude"
+	"atoll/provider/codex"
 )
 
+const _usage = `usage:
+  atoll provider status
+  atoll provider run <claude|codex> [--resume <id>] <prompt>
+  atoll provider login <claude|codex>`
+
+func usage() error { return errors.New(_usage) }
+
+type adapter struct {
+	name     string
+	new      func() provider.Session
+	signedIn func(ctx context.Context, bin, dir string) (bool, error)
+	login    func(ctx context.Context, bin, dir string) *exec.Cmd
+}
+
+var _adapters = []adapter{
+	{"claude", func() provider.Session { return claude.New() }, claude.SignedIn, claude.Login},
+	{"codex", func() provider.Session { return codex.New() }, codex.SignedIn, codex.Login},
+}
+
 func main() {
-	if err := run(os.Stdout); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	err := run(ctx, os.Args[1:], os.Stdout)
+	stop()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(w io.Writer) error {
-	_, err := fmt.Fprintln(w, "atoll")
-	return err
+func run(ctx context.Context, args []string, w io.Writer) error {
+	if len(args) == 0 {
+		_, err := fmt.Fprintln(w, "atoll")
+		return err
+	}
+	if len(args) < 2 || args[0] != "provider" {
+		return usage()
+	}
+	if args[1] == "status" && len(args) == 2 {
+		return status(ctx, w)
+	}
+	if len(args) < 3 {
+		return usage()
+	}
+	var a *adapter
+	for i := range _adapters {
+		if _adapters[i].name == args[2] {
+			a = &_adapters[i]
+		}
+	}
+	switch {
+	case a == nil:
+		return usage()
+	case args[1] == "run":
+		return a.chat(ctx, args[3:], w)
+	case args[1] == "login" && len(args) == 3:
+		return a.signIn(ctx)
+	}
+	return usage()
+}
+
+func status(ctx context.Context, w io.Writer) error {
+	for _, a := range _adapters {
+		bin := a.find(ctx)
+		if bin == "" {
+			if _, err := fmt.Fprintf(w, "%s\tnot installed\n", a.name); err != nil {
+				return err
+			}
+			continue
+		}
+		version, err := provider.Version(ctx, bin)
+		if err != nil {
+			return err
+		}
+		dir, err := a.dir()
+		if err != nil {
+			return err
+		}
+		in, err := a.signedIn(ctx, bin, dir)
+		if err != nil {
+			return fmt.Errorf("%s sign-in: %w", a.name, err)
+		}
+		state := "signed out"
+		if in {
+			state = "signed in"
+		}
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", a.name, bin, version, state); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// chat sends one prompt and prints the reply, then the session id.
+func (a adapter) chat(ctx context.Context, args []string, w io.Writer) error {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	resume := fs.String("resume", "", "session id to resume")
+	if err := fs.Parse(args); err != nil || fs.NArg() != 1 {
+		return usage()
+	}
+	bin, dir, err := a.prepare(ctx)
+	if err != nil {
+		return err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	cfg := provider.Config{Bin: bin, Dir: dir, Cwd: cwd}
+	s := a.new()
+	if *resume == "" {
+		err = s.Start(ctx, cfg)
+	} else {
+		err = s.Resume(ctx, cfg, *resume)
+	}
+	if err != nil {
+		return fmt.Errorf("start %s: %w", a.name, err)
+	}
+	defer func() { _ = s.Interrupt() }()
+	if err := s.Send(ctx, fs.Arg(0)); err != nil {
+		return fmt.Errorf("send: %w", err)
+	}
+
+	var reply strings.Builder
+	var session string
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case ev, ok := <-s.Events():
+			if !ok {
+				return fmt.Errorf("%s exited before the turn ended", a.name)
+			}
+			switch ev.Kind {
+			case provider.KindText:
+				reply.WriteString(ev.Text)
+			case provider.KindSession:
+				session = ev.SessionID
+			case provider.KindError:
+				return errors.New(ev.Text)
+			case provider.KindTurnEnd:
+				_, err := fmt.Fprintf(w, "%s\nsession: %s\n", strings.TrimSpace(reply.String()), session)
+				return err
+			}
+		}
+	}
+}
+
+// signIn signs a in to Atoll's own folder for it.
+func (a adapter) signIn(ctx context.Context) error {
+	bin, dir, err := a.prepare(ctx)
+	if err != nil {
+		return err
+	}
+	cmd := a.login(ctx, bin, dir)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return cmd.Run()
+}
+
+// prepare finds a's executable and creates its folder.
+func (a adapter) prepare(ctx context.Context) (bin, dir string, err error) {
+	if bin = a.find(ctx); bin == "" {
+		return "", "", fmt.Errorf("%s is not installed", a.name)
+	}
+	if dir, err = a.dir(); err != nil {
+		return "", "", err
+	}
+	return bin, dir, os.MkdirAll(dir, 0o700)
+}
+
+func (a adapter) find(ctx context.Context) string {
+	override := os.Getenv("ATOLL_" + strings.ToUpper(a.name) + "_PATH")
+	return provider.Find(a.name, override, provider.Dirs(ctx))
+}
+
+// dir is Atoll's settings folder for a.
+func (a adapter) dir() (string, error) {
+	data := os.Getenv("ATOLL_DATA_DIR")
+	if data == "" {
+		cfg, err := os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		data = filepath.Join(cfg, "Atoll")
+	}
+	return filepath.Join(data, "providers", a.name), nil
 }
