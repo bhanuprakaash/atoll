@@ -36,8 +36,8 @@ func TestFind(t *testing.T) {
 		want     string
 	}{
 		{"override wins", second, []string{dir("first")}, second},
-		{"override not executable falls back", plain, []string{dir("first")}, first},
-		{"override missing falls back", dir("none"), []string{dir("first")}, first},
+		{"override not executable is not found", plain, []string{dir("first")}, ""},
+		{"override missing is not found", dir("none"), []string{dir("first")}, ""},
 		{"first dir wins", "", []string{dir("first"), dir("second")}, first},
 		{"non-executable file skipped", "", []string{dir("plain"), dir("second")}, second},
 		{"directory skipped", "", []string{dir("asdir"), dir("second")}, second},

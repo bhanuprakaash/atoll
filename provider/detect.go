@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -39,11 +38,16 @@ func Dirs(ctx context.Context) []string {
 	return dedupe(dirs)
 }
 
-// Find returns the path of the provider executable name: override when it is an executable file,
-// else the first match in dirs. It returns "" when there is none.
+// Find returns the path of the provider executable name. A non-empty override is the only answer:
+// its absolute path when it is an executable file, else "". With no override it is the first match
+// in dirs, or "" when there is none.
 func Find(name, override string, dirs []string) string {
-	if override != "" && isExecutable(override) {
-		return override
+	if override != "" {
+		abs, err := filepath.Abs(override)
+		if err != nil || !isExecutable(abs) {
+			return ""
+		}
+		return abs
 	}
 	for _, dir := range dirs {
 		if p := filepath.Join(dir, name); isExecutable(p) {
@@ -64,7 +68,7 @@ func Version(ctx context.Context, bin string) (string, error) {
 			return f, nil
 		}
 	}
-	return "", errors.New("no version in " + strings.TrimSpace(string(out)))
+	return "", fmt.Errorf("no version in %s", strings.TrimSpace(string(out)))
 }
 
 // shellPath returns the PATH of the user's login shell, or nil if it cannot be read.
@@ -75,7 +79,7 @@ func shellPath(ctx context.Context) []string {
 	}
 	ctx, cancel := context.WithTimeout(ctx, _shellTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, shell, "-l", "-c", "printenv PATH")
+	cmd := exec.CommandContext(ctx, shell, "-i", "-l", "-c", "printenv PATH")
 	cmd.WaitDelay = time.Second
 	out, err := cmd.Output()
 	if err != nil {
