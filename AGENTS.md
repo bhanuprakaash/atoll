@@ -64,17 +64,27 @@ of `web/package.json`). Nothing else: golangci-lint and lefthook are pinned as t
 
 ```sh
 go tool lefthook install   # once per clone: pre-commit hook (gofmt, prettier on staged files)
-make check                 # format check, lint, vet, type-check, tests (runs pnpm install when needed)
+make check                 # format check, lint, vet, type-check, tests (pnpm install when needed)
 make format                # gofmt -w and prettier --write
 make run                   # go run ./cmd/atoll
-make e2e                   # end-to-end suite (not set up yet)
+make e2e                   # e2e/: builds the real binary and drives it
 ```
 
 To upgrade a tool: `go get -tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<version>`
 (same for `github.com/evilmartians/lefthook/v2`), then `go mod tidy`.
 
-CI (`.gitlab-ci.yml`) runs `make check` on every MR. New issues and MRs start from the templates in
-`.gitlab/`.
+CI (`.gitlab-ci.yml`) runs `make check`, `make e2e` and `test-guard` on every MR. New issues and MRs
+start from the templates in `.gitlab/`.
+
+## Tests
+
+- `e2e/` tests come from a ticket's acceptance lines, in their own commit, before the code, written
+  by the user or a separate session. The implementing agent never edits `e2e/`.
+- If a test looks wrong, stop and report it. Never edit, skip or weaken a test to make code pass.
+- Unit tests are for fiddly logic. Add a case to an existing table-driven test, not a test per bug.
+- `test-guard` (`scripts/check-tests`) fails an MR that mixes `e2e/` with other code, deletes a
+  test, adds a skip or `.only(`, or edits CI. Never add the `tests-approved` label; only the user
+  does.
 
 ## Definition of done
 
@@ -101,8 +111,10 @@ closes. It is done after a verification pass by an agent on Opus:
    `docs/design.md`, correctness, design.
 3. `blast-radius` on what the slice changed that earlier slices depend on; prove the one fact it is
    safe because of by running code.
-4. Every finding becomes a ticket or a written reason to skip it.
-5. Close the slice with one comment: acceptance lines and proof, interrogate and blast-radius
-   summaries, skipped findings with reasons.
+4. Run gremlins (`go run github.com/go-gremlins/gremlins/cmd/gremlins@v0.5.1 unleash <pkg>`) on
+   the packages the slice changed. Each surviving mutant becomes a finding.
+5. Every finding becomes a ticket or a written reason to skip it.
+6. Close the slice with one comment: acceptance lines and proof, interrogate and blast-radius
+   summaries, gremlins results, skipped findings with reasons.
 
 Each slice issue carries this checklist in its Verification section.

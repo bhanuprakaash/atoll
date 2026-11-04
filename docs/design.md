@@ -178,6 +178,20 @@ Finish
 - Names: the UI says Reef. Repo, Go module, binary and bundle ID say `atoll`; app data lives in
   `~/Library/Application Support/Atoll`. *Runs beside the old Reef; rename when it retires.*
 
+## Testing
+
+Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloat the suite. So:
+
+- The contract is a small black-box suite in `e2e/` that builds and drives the real binary. Its
+  tests come from a ticket's acceptance lines, in their own commit, before the code, written by the
+  user or a separate session. The implementing agent never edits them; CI is the referee.
+- Unit tests are for fiddly logic, as table cases. They run shuffled with a 60s timeout.
+- `test-guard` fails an MR that mixes `e2e/` with other code, deletes or renames a test file, adds
+  a skip or `.only(`, or edits CI or the guard. CI runs the target branch's copy of the guard. Only
+  the user's `tests-approved` label lets such an MR pass.
+- Slice verification runs mutation testing (gremlins) on changed packages; a surviving mutant is a
+  finding.
+
 ## v1
 
 | Area | In v1 |
