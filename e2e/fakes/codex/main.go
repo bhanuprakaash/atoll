@@ -104,6 +104,7 @@ func serve(log *fake.Log, args []string) error {
 			cfg[strings.TrimSpace(k)] = strings.Trim(strings.TrimSpace(v), `"'`)
 		}
 	}
+	var extraRoots []string
 	var thread *recording
 	var t *turn
 	in := fake.Lines()
@@ -133,9 +134,18 @@ func serve(log *fake.Log, args []string) error {
 			}
 		}
 		switch m.Method {
+		case "skills/extraRoots/set":
+			var roots struct {
+				ExtraRoots []string `json:"extraRoots"`
+			}
+			if err := json.Unmarshal(m.Params, &roots); err != nil {
+				return err
+			}
+			extraRoots = roots.ExtraRoots
+			reply(m.ID, json.RawMessage(`{}`), "")
 		case "thread/start":
 			thread = find(recs, func(r recording) bool { return r.replies[m.Method] != nil })
-			t = newTurn(cfg, p, false)
+			t = newTurn(cfg, p, false, extraRoots)
 			reply(m.ID, thread.replies[m.Method], "")
 		case "thread/resume":
 			thread = find(recs, func(r recording) bool { return r.thread == p.ThreadID && r.replies[m.Method] != nil })
@@ -143,7 +153,7 @@ func serve(log *fake.Log, args []string) error {
 				reply(m.ID, nil, fmt.Sprintf("no rollout found for thread id %s", p.ThreadID))
 				continue
 			}
-			t = newTurn(cfg, p, true)
+			t = newTurn(cfg, p, true, extraRoots)
 			reply(m.ID, thread.replies[m.Method], "")
 		case "turn/start":
 			prompt := ""

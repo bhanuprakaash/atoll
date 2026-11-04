@@ -9,12 +9,15 @@ import (
 	"time"
 
 	"atoll/e2e/fakes/fake"
+
+	"github.com/BurntSushi/toml"
 )
 
 type (
 	// turn plays recorded turns the way app-server would have in this thread: MCP tool calls
 	// really go to the configured servers, approval requests to the client.
 	turn struct {
+		skills      []fake.SkillCopy
 		userMessage string
 		cwd         string
 		servers     map[string]*fake.MCP
@@ -36,7 +39,7 @@ type (
 )
 
 // newTurn connects the MCP servers of the -c config and the thread's config.
-func newTurn(cfg map[string]string, p threadParams, resumed bool) *turn {
+func newTurn(cfg map[string]string, p threadParams, resumed bool, extra []string) *turn {
 	all := map[string]string{}
 	for k, v := range cfg {
 		all[k] = v
@@ -73,6 +76,39 @@ func newTurn(cfg map[string]string, p threadParams, resumed bool) *turn {
 		}
 		t.servers[name] = c
 	}
+
+	var disabled []string
+	var entries []struct {
+		Path    string `json:"path"`
+		Enabled bool   `json:"enabled"`
+	}
+	if raw := all["skills.config"]; raw != "" {
+		if err := json.Unmarshal([]byte(raw), &entries); err != nil {
+			var decoded struct {
+				Config []struct {
+					Path    string `json:"path"`
+					Enabled bool   `json:"enabled"`
+				}
+			}
+			if _, err := toml.Decode("config="+raw, &decoded); err != nil {
+				fmt.Fprintln(os.Stderr, "skills.config:", err)
+			}
+			entries = decoded.Config
+		}
+	}
+	for _, e := range entries {
+		if !e.Enabled {
+			disabled = append(disabled, e.Path)
+		}
+	}
+	var err error
+	t.skills, err = fake.DiscoverSkills("codex", p.Cwd, extra, disabled)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	if err := fake.LogSkills(t.skills); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
 	return t
 }
 
@@ -82,6 +118,32 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 	repoReply := ""
 	for _, e := range entries {
 		switch e.Fake {
+		case "platform-create", "platform-edit", "platform-denied", "platform-configure":
+			var err error
+			repoReply, err = fake.PlatformStep(t.servers["atoll"], strings.TrimPrefix(e.Fake, "platform-"), t.userMessage, nil)
+			if err != nil {
+				return err
+			}
+			continue
+		case "skills-use", "skills-hold", "skills-worktree":
+			if e.Fake == "skills-worktree" {
+				var err error
+				t.skills, err = fake.WorktreeSkills(t.servers["atoll"], "codex", t.skills)
+				if err != nil {
+					return err
+				}
+			}
+			if e.Fake == "skills-hold" {
+				if err := fake.HoldSkills(); err != nil {
+					return err
+				}
+			}
+			var err error
+			repoReply, err = fake.SkillsReply(t.skills)
+			if err != nil {
+				return err
+			}
+			continue
 		case "memory-save", "memory-save-user", "memory-recall", "memory-resume", "memory-retire":
 			var err error
 			repoReply, err = fake.MemoryStep(t.servers["atoll"], strings.TrimPrefix(e.Fake, "memory-"), t.userMessage, nil)
