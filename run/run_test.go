@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -14,10 +16,13 @@ import (
 )
 
 // fakeSession plays script when the prompt is sent, then closes Events if end is set. Every
-// answer it gets is recorded and ends the turn.
+// answer it gets is recorded and ends the turn; when answered is set, the turn ends only after
+// release is closed.
 type fakeSession struct {
-	script []provider.Event
-	end    bool
+	script   []provider.Event
+	end      bool
+	answered chan struct{}
+	release  chan struct{}
 
 	mu          sync.Mutex
 	events      chan provider.Event
@@ -46,8 +51,12 @@ func (f *fakeSession) Send(_ context.Context, prompt string) error {
 
 func (f *fakeSession) Answer(_ string, allow bool) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.answers = append(f.answers, allow)
+	f.mu.Unlock()
+	if f.answered != nil {
+		f.answered <- struct{}{}
+		<-f.release
+	}
 	f.events <- provider.Event{Kind: provider.KindTurnEnd}
 	return nil
 }
@@ -183,9 +192,11 @@ func TestRun_Approval(t *testing.T) {
 	}{{"allow", true}, {"deny", false}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := newEnv(t, &fakeSession{script: []provider.Event{
-				{Kind: provider.KindApproval, ID: "p1", Name: "Write"},
-			}})
+			e := newEnv(t, &fakeSession{
+				script:   []provider.Event{{Kind: provider.KindApproval, ID: "p1", Name: "Write"}},
+				answered: make(chan struct{}),
+				release:  make(chan struct{}),
+			})
 			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello")
 			if err != nil {
 				t.Fatal(err)
@@ -203,11 +214,65 @@ func TestRun_Approval(t *testing.T) {
 			if err := e.m.Answer(t.Context(), ap.ID, tt.allow); !errors.Is(err, ErrNotFound) {
 				t.Errorf("second Answer: %v, want ErrNotFound", err)
 			}
+			<-e.sess.answered
+			if got, _ := e.st.Run(t.Context(), run.ID); got.Status != store.StatusRunning {
+				t.Errorf("status %q after the answer, want running", got.Status)
+			}
+			close(e.sess.release)
 			e.next(t, EventRunFinished)
 			e.sess.mu.Lock()
 			defer e.sess.mu.Unlock()
 			if len(e.sess.answers) != 1 || e.sess.answers[0] != tt.allow {
 				t.Errorf("provider answers %v, want [%v]", e.sess.answers, tt.allow)
+			}
+		})
+	}
+}
+
+func TestRun_ApprovalOutlivesRun(t *testing.T) {
+	tests := []struct {
+		name       string
+		finish     func(*fakeSession)
+		wantStatus string
+	}{
+		{"provider exits", func(f *fakeSession) { f.close() }, store.StatusFailed},
+		{
+			"turn ends",
+			func(f *fakeSession) { f.events <- provider.Event{Kind: provider.KindTurnEnd} },
+			store.StatusDone,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newEnv(t, &fakeSession{script: []provider.Event{
+				{Kind: provider.KindToolCall, ID: "tu1", Name: "Write"},
+			}})
+			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello")
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.next(t, EventToolCall)
+			e.m.mu.Lock()
+			token := slices.Collect(maps.Keys(e.m.tokens))[0]
+			e.m.mu.Unlock()
+			asked := make(chan error, 1)
+			go func() {
+				_, err := e.m.Ask(t.Context(), token, "tu1", "Write", nil)
+				asked <- err
+			}()
+			ap := e.next(t, EventApproval).Data.(Approval)
+			e.sess.mu.Lock()
+			tt.finish(e.sess)
+			e.sess.mu.Unlock()
+			e.next(t, EventRunFinished)
+			if err := e.m.Answer(t.Context(), ap.ID, true); err != nil {
+				t.Fatal(err)
+			}
+			if err := <-asked; err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := e.st.Run(t.Context(), run.ID); got.Status != tt.wantStatus {
+				t.Errorf("status %q after the approval was answered, want %s", got.Status, tt.wantStatus)
 			}
 		})
 	}

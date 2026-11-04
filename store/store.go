@@ -243,9 +243,11 @@ func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 	return r, nil
 }
 
-// SetStatus sets the status of an unfinished run: running or waiting.
+// SetStatus sets the status of a run that is running or waiting; a finished run keeps its status.
 func (s *Store) SetStatus(ctx context.Context, runID, status string) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE runs SET status = ? WHERE id = ?", status, runID)
+	res, err := s.db.ExecContext(ctx,
+		"UPDATE runs SET status = CASE WHEN status IN (?, ?) THEN ? ELSE status END WHERE id = ?",
+		StatusRunning, StatusWaiting, status, runID)
 	if err != nil {
 		return fmt.Errorf("set status: %w", err)
 	}
