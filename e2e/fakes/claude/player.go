@@ -15,14 +15,15 @@ type (
 	// player prints a recording the way claude would have produced it in this process: MCP tool
 	// calls really go to the configured servers and permission asks to the prompt tool.
 	player struct {
-		servers map[string]*fake.MCP // connected, by name
-		failed  []string             // configured servers that did not connect
-		prompt  string               // --permission-prompt-tool
-		allowed []string             // --allowedTools
-		partial bool                 // --include-partial-messages: print stream_event lines
-		denied  map[string]string    // denial message, by tool_use id
-		uses    map[string]toolUse   // tool calls printed so far, by id
-		started bool
+		servers     map[string]*fake.MCP // connected, by name
+		failed      []string             // configured servers that did not connect
+		prompt      string               // --permission-prompt-tool
+		allowed     []string             // --allowedTools
+		partial     bool                 // --include-partial-messages: print stream_event lines
+		denied      map[string]string    // denial message, by tool_use id
+		uses        map[string]toolUse   // tool calls printed so far, by id
+		userMessage string
+		started     bool
 	}
 
 	mcpConfig struct {
@@ -96,6 +97,22 @@ func (p *player) play(lines []string) error {
 	repoReply := ""
 	for _, s := range lines {
 		switch directive := fake.Directive([]byte(s)); directive {
+		case "memory-save", "memory-save-user", "memory-recall", "memory-resume", "memory-retire":
+			var err error
+			repoReply, err = fake.MemoryStep(p.servers["atoll"], strings.TrimPrefix(directive, "memory-"), p.userMessage, func(name string, args json.RawMessage) error {
+				answer, err := p.ask(&toolUse{ID: "memory-" + name, Name: "mcp__atoll__" + name, Input: args})
+				if err != nil {
+					return err
+				}
+				if answer != "allow" {
+					return fmt.Errorf("memory tool %s was denied", name)
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			continue
 		case "repo-fix", "repo-question", "repo-uncommitted", "repo-resume":
 			var err error
 			repoReply, err = fake.RepoStep(p.servers["atoll"], strings.TrimPrefix(directive, "repo-"), "")

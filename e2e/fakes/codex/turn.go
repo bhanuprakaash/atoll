@@ -15,10 +15,11 @@ type (
 	// turn plays recorded turns the way app-server would have in this thread: MCP tool calls
 	// really go to the configured servers, approval requests to the client.
 	turn struct {
-		cwd     string
-		servers map[string]*fake.MCP
-		never   bool // approvalPolicy "never": nothing is asked, so everything asked is declined
-		resumed bool
+		userMessage string
+		cwd         string
+		servers     map[string]*fake.MCP
+		never       bool // approvalPolicy "never": nothing is asked, so everything asked is declined
+		resumed     bool
 	}
 
 	item struct {
@@ -81,6 +82,13 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 	repoReply := ""
 	for _, e := range entries {
 		switch e.Fake {
+		case "memory-save", "memory-save-user", "memory-recall", "memory-resume", "memory-retire":
+			var err error
+			repoReply, err = fake.MemoryStep(t.servers["atoll"], strings.TrimPrefix(e.Fake, "memory-"), t.userMessage, nil)
+			if err != nil {
+				return err
+			}
+			continue
 		case "repo-fix", "repo-question", "repo-uncommitted", "repo-resume":
 			var err error
 			repoReply, err = fake.RepoStep(t.servers["atoll"], strings.TrimPrefix(e.Fake, "repo-"), t.cwd)

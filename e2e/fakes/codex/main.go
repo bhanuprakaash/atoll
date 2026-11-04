@@ -46,11 +46,13 @@ type (
 	}
 
 	threadParams struct {
-		Cwd            string         `json:"cwd"`
-		ThreadID       string         `json:"threadId"`
-		ApprovalPolicy string         `json:"approvalPolicy"`
-		Config         map[string]any `json:"config"`
-		Input          []struct {
+		DeveloperInstructions *string        `json:"developerInstructions"`
+		BaseInstructions      *string        `json:"baseInstructions"`
+		Cwd                   string         `json:"cwd"`
+		ThreadID              string         `json:"threadId"`
+		ApprovalPolicy        string         `json:"approvalPolicy"`
+		Config                map[string]any `json:"config"`
+		Input                 []struct {
 			Text string `json:"text"`
 		} `json:"input"`
 	}
@@ -115,6 +117,21 @@ func serve(log *fake.Log, args []string) error {
 		}
 		var p threadParams
 		_ = json.Unmarshal(m.Params, &p)
+		if m.Method == "thread/start" || m.Method == "thread/resume" {
+			if p.BaseInstructions != nil || p.Config["base_instructions"] != nil || cfg["base_instructions"] != "" {
+				return fmt.Errorf("reef must preserve baseInstructions")
+			}
+			addition := cfg["developer_instructions"]
+			if v, ok := p.Config["developer_instructions"].(string); ok {
+				addition = v
+			}
+			if p.DeveloperInstructions != nil {
+				addition = *p.DeveloperInstructions
+			}
+			if err := log.Prompt("system", addition); err != nil {
+				return err
+			}
+		}
 		switch m.Method {
 		case "thread/start":
 			thread = find(recs, func(r recording) bool { return r.replies[m.Method] != nil })
@@ -132,6 +149,12 @@ func serve(log *fake.Log, args []string) error {
 			prompt := ""
 			if len(p.Input) > 0 {
 				prompt = p.Input[0].Text
+			}
+			if err := log.Prompt("user", prompt); err != nil {
+				return err
+			}
+			if t != nil {
+				t.userMessage = prompt
 			}
 			var rec *recording
 			for i, r := range recs {

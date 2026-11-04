@@ -92,3 +92,17 @@ func ConfigDir(env, dir string) string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, dir)
 }
+
+// Prompt records decoded additions separately so the original argv/stdin log stays intact.
+func (l *Log) Prompt(kind, text string) error {
+	f, err := os.OpenFile(l.f.Name()+".prompts", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	return json.NewEncoder(f).Encode(struct {
+		PID  int    `json:"pid"`
+		Kind string `json:"kind"`
+		Text string `json:"text"`
+	}{PID: os.Getpid(), Kind: kind, Text: text})
+}
