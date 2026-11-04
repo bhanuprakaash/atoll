@@ -42,6 +42,9 @@ const (
 	_subscriberBuffer = 64
 	_stopReason       = "Atoll stopped while the run was going"
 	_atollTools       = "mcp__" + provider.MCPServer + "__"
+	// _callWait bounds how long Ask waits for its tool call to come through the provider's
+	// stdout, which races the permission prompt arriving over HTTP.
+	_callWait = 2 * time.Second
 )
 
 type (
@@ -81,7 +84,8 @@ type (
 		token    string
 		run      store.Run
 		log      *os.File
-		open     int // approvals open
+		open     int                      // approvals open
+		calls    map[string]chan struct{} // closed once the tool call with that id is published
 	}
 
 	// Event is one event on a thread's stream. Data is one of the types below.
@@ -216,8 +220,11 @@ func (m *Manager) Report(ctx context.Context, token string, r store.Report) erro
 }
 
 // Ask is Claude's permission prompt for the run with token: it opens an approval and blocks
-// until the user answers or ctx ends. Atoll's own tools are allowed without asking.
-func (m *Manager) Ask(ctx context.Context, token, tool string, input json.RawMessage) (bool, error) {
+// until the user answers or ctx ends. Atoll's own tools are allowed without asking. The approval
+// follows the tool call toolUseID on the thread's stream.
+func (m *Manager) Ask(
+	ctx context.Context, token, toolUseID, tool string, input json.RawMessage,
+) (bool, error) {
 	a, err := m.byToken(token)
 	if err != nil {
 		return false, err
@@ -225,7 +232,28 @@ func (m *Manager) Ask(ctx context.Context, token, tool string, input json.RawMes
 	if strings.HasPrefix(tool, _atollTools) {
 		return true, nil
 	}
+	select {
+	case <-m.called(a, toolUseID):
+	case <-time.After(_callWait):
+	case <-ctx.Done():
+		return false, ctx.Err()
+	}
 	return m.approve(ctx, a, tool, input)
+}
+
+// called returns the channel closed once the tool call id of run a is published.
+func (m *Manager) called(a *active, id string) chan struct{} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if a.calls == nil {
+		a.calls = map[string]chan struct{}{}
+	}
+	ch, ok := a.calls[id]
+	if !ok {
+		ch = make(chan struct{})
+		a.calls[id] = ch
+	}
+	return ch
 }
 
 // Close stops every run, marks it failed, and waits for them.
@@ -334,6 +362,9 @@ func (m *Manager) stream(a *active, sess provider.Session) (string, error) {
 			case provider.KindToolCall:
 				m.publish(a, EventToolCall,
 					ToolCall{RunID: a.run.ID, ID: ev.ID, Name: ev.Name, Input: ev.Input})
+				if ch := m.called(a, ev.ID); !isClosed(ch) {
+					close(ch)
+				}
 			case provider.KindApproval:
 				allow, err := m.approve(m.ctx, a, ev.Name, ev.Input)
 				if err != nil {
@@ -448,4 +479,13 @@ func randHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func isClosed(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
 }

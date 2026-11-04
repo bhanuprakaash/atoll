@@ -124,13 +124,14 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		return text("Report saved."), nil
 	case provider.ToolApprove:
 		var in struct {
-			ToolName string          `json:"tool_name"`
-			Input    json.RawMessage `json:"input"`
+			ToolName  string          `json:"tool_name"`
+			Input     json.RawMessage `json:"input"`
+			ToolUseID string          `json:"tool_use_id"`
 		}
 		if err := json.Unmarshal(call.Arguments, &in); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		allow, err := a.runs.Ask(r.Context(), token, in.ToolName, in.Input)
+		allow, err := a.runs.Ask(r.Context(), token, in.ToolUseID, in.ToolName, in.Input)
 		if err != nil {
 			return nil, a.toolError(err)
 		}
