@@ -6,7 +6,7 @@ ticket needs it.
 
 ## Stack
 
-- Vite, React, TypeScript with `strict: true`, React Router, TanStack Query. npm for packages.
+- Vite, React, TypeScript with `strict: true`, React Router, TanStack Query. pnpm for packages.
 - Tailwind v4 utility classes. Colours, radii and fonts are tokens in the `@theme` block of
   `src/index.css`. Use token classes (`bg-card`, `text-muted`), never hex values or `dark:`
   variants, and the shared pieces in `components/` instead of hand-rolled controls.

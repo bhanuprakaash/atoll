@@ -9,4 +9,4 @@ pre-commit:
     - name: prettier
       root: web/
       glob: "*.{ts,js,json,css,html}"
-      run: npx prettier --check {staged_files}
+      run: pnpm exec prettier --check {staged_files}

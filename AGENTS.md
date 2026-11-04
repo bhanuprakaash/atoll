@@ -58,12 +58,13 @@ cmd/atoll -> server -> run -> provider | memory | repo | skill | connection -> s
 
 ## Commands
 
-Needs Go 1.27 and Node 22. Nothing else: golangci-lint and lefthook are pinned as tool
-dependencies in `go.mod` and run through `go tool`.
+Needs Go 1.27, Node 22 and pnpm (`npm i -g pnpm@<version>`, the version pinned in `packageManager`
+of `web/package.json`). Nothing else: golangci-lint and lefthook are pinned as tool dependencies in
+`go.mod` and run through `go tool`.
 
 ```sh
 go tool lefthook install   # once per clone: pre-commit hook (gofmt, prettier on staged files)
-make check                 # format check, lint, vet, type-check, tests (runs npm ci when needed)
+make check                 # format check, lint, vet, type-check, tests (runs pnpm install when needed)
 make format                # gofmt -w and prettier --write
 make run                   # go run ./cmd/atoll
 make e2e                   # end-to-end suite (not set up yet)
