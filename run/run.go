@@ -37,8 +37,8 @@ const (
 )
 
 const (
-	// A slow SSE client must not stall the run: its channel holds this many events and an event
-	// is dropped when it is full.
+	// A slow SSE client must not stall the run: its channel holds this many events and the
+	// subscriber is closed when it is full, so the client reconnects.
 	_subscriberBuffer = 64
 	_stopReason       = "Atoll stopped while the run was going"
 	_atollTools       = "mcp__" + provider.MCPServer + "__"
@@ -179,6 +179,11 @@ func (m *Manager) Send(ctx context.Context, threadID, text string) (store.Messag
 func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()) {
 	ch := make(chan Event, _subscriberBuffer)
 	m.mu.Lock()
+	if m.ctx.Err() != nil {
+		close(ch)
+		m.mu.Unlock()
+		return ch, func() {}
+	}
 	if m.subs[threadID] == nil {
 		m.subs[threadID] = map[chan Event]struct{}{}
 	}
@@ -256,12 +261,20 @@ func (m *Manager) called(a *active, id string) chan struct{} {
 	return ch
 }
 
-// Close stops every run, marks it failed, and waits for them.
+// Close stops every run, marks it failed, waits for them, and closes every subscriber.
 func (m *Manager) Close() error {
 	m.mu.Lock()
 	m.cancel()
 	m.mu.Unlock()
 	m.wg.Wait()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, chs := range m.subs {
+		for ch := range chs {
+			delete(chs, ch)
+			close(ch)
+		}
+	}
 	return nil
 }
 
@@ -441,7 +454,9 @@ func (m *Manager) publish(a *active, typ string, data any) {
 		select {
 		case ch <- Event{Type: typ, Data: data}:
 		default:
-			m.cfg.Log.Warn("subscriber full, event dropped", "run_id", a.run.ID, "type", typ)
+			delete(m.subs[a.threadID], ch)
+			close(ch)
+			m.cfg.Log.Warn("subscriber full, stream closed", "run_id", a.run.ID, "type", typ)
 		}
 	}
 }

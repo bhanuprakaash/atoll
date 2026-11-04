@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { getRun } from '@/modules/threads/api/runs';
 
 export type LiveRun = {
   text: string;
@@ -16,6 +17,10 @@ export function useThreadEvents(threadId: string) {
   const queryClient = useQueryClient();
   const [runs, setRuns] = useState<Record<string, LiveRun>>({});
   const [connected, setConnected] = useState(false);
+  const runsRef = useRef(runs);
+  useEffect(() => {
+    runsRef.current = runs;
+  });
 
   const update = (runId: string, change: (run: LiveRun) => LiveRun) =>
     setRuns((prev) => ({ ...prev, [runId]: change(prev[runId] ?? empty) }));
@@ -28,7 +33,23 @@ export function useThreadEvents(threadId: string) {
         setRuns((prev) => ({ ...prev, [data.run_id]: change(data, prev[data.run_id] ?? empty) }));
       });
 
-    source.onopen = () => setConnected(true);
+    source.onopen = () => {
+      setConnected(true);
+      for (const [runId, run] of Object.entries(runsRef.current)) {
+        if (run.finished) continue;
+        void getRun(runId).then((ended) => {
+          if (ended.status !== 'done' && ended.status !== 'failed') return;
+          setRuns((prev) => ({
+            ...prev,
+            [runId]: {
+              ...(prev[runId] ?? empty),
+              finished: { status: ended.status, error: ended.error },
+            },
+          }));
+          void queryClient.invalidateQueries({ queryKey: ['messages', threadId] });
+        });
+      }
+    };
     source.onerror = () => setConnected(false);
     on<{ text: string }>('text', (d, run) => ({ ...run, text: run.text + d.text }));
     on<{ id: string; name: string }>('tool_call', (d, run) => ({

@@ -7,6 +7,7 @@ export type Run = {
   id: string;
   thread_id: string;
   status: 'running' | 'waiting' | 'done' | 'failed';
+  error: string;
 };
 
 export function useMessages(threadId: string) {

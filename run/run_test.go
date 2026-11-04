@@ -277,3 +277,31 @@ func TestRun_ApprovalOutlivesRun(t *testing.T) {
 		})
 	}
 }
+
+func TestManager_Subscribers(t *testing.T) {
+	tests := []struct {
+		name       string
+		do         func(*env)
+		wantEvents int
+	}{
+		{"a full buffer closes the stream", func(e *env) {
+			for range _subscriberBuffer + 1 {
+				e.m.publish(&active{threadID: e.thread.ID}, EventText, Text{})
+			}
+		}, _subscriberBuffer},
+		{"Close closes the stream", func(e *env) { _ = e.m.Close() }, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newEnv(t, &fakeSession{})
+			tt.do(e)
+			got := 0
+			for range e.events {
+				got++
+			}
+			if got != tt.wantEvents {
+				t.Errorf("subscriber got %d events before its stream closed, want %d", got, tt.wantEvents)
+			}
+		})
+	}
+}
