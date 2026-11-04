@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -48,7 +49,41 @@ func New(st *store.Store, runs *run.Manager, log *slog.Logger) http.Handler {
 	// fs.Sub fails only for an invalid dir name.
 	sub, _ := fs.Sub(_ui, "ui")
 	mux.Handle("/", uiHandler(sub))
-	return mux
+	return localOnly(mux)
+}
+
+// localOnly refuses an API or MCP request that is not for a local host, or that a page on
+// another origin sent: otherwise any web page could drive Bots, which run code.
+func localOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		guarded := strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, MCPPath)
+		if !guarded || (isLocalHost(r.Host) && sameOrigin(r)) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		fail(w, http.StatusForbidden, "forbidden")
+	})
+}
+
+func isLocalHost(host string) bool {
+	u, err := url.Parse("//" + host)
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(u.Hostname()) {
+	case "127.0.0.1", "localhost", "::1":
+		return true
+	}
+	return false
+}
+
+func sameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	return err == nil && strings.EqualFold(u.Host, r.Host)
 }
 
 func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
