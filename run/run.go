@@ -400,11 +400,16 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if run.Report != nil {
 		return reply, nil
 	}
-	if err := sess.Send(m.ctx, _nudge); err != nil {
-		return "", fmt.Errorf("send nudge: %w", err)
+	// The nudge only asks for the report: its failure keeps the first turn's reply.
+	nerr := sess.Send(m.ctx, _nudge)
+	if nerr == nil {
+		_, nerr = m.stream(a, sess, _hideText)
 	}
-	if _, err := m.stream(a, sess, _hideText); err != nil {
-		return "", err
+	if m.ctx.Err() != nil {
+		return "", m.ctx.Err()
+	}
+	if nerr != nil {
+		m.cfg.Log.Warn("finish_run nudge failed", "run_id", a.run.ID, "error", nerr)
 	}
 	if run, err = m.cfg.Store.Run(m.ctx, a.run.ID); err != nil {
 		return "", fmt.Errorf("load run: %w", err)

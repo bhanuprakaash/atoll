@@ -210,6 +210,17 @@ func TestRun_Finish(t *testing.T) {
 			wantEvents: []string{EventText, EventRunFinished},
 		},
 		{
+			name: "the nudge turn fails",
+			give: &fakeSession{
+				script: []provider.Event{{Kind: provider.KindText, Text: "hi"}, turnEnd},
+				nudge:  []provider.Event{{Kind: provider.KindError, Text: "rate limited"}},
+			},
+			wantStatus: store.StatusDone,
+			wantReply:  "hi",
+			wantSends:  2,
+			wantEvents: []string{EventText, EventRunFinished},
+		},
+		{
 			name:       "provider error",
 			give:       &fakeSession{script: []provider.Event{{Kind: provider.KindError, Text: "rate limited"}}},
 			wantStatus: store.StatusFailed,
