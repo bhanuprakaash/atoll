@@ -41,6 +41,7 @@ const (
 	EventWorktreeCreated = "worktree_created" // WorktreeCreated
 	EventMRUpdated       = "mr_updated"       // MRUpdated
 	EventWorktreeRemoved = "worktree_removed" // WorktreeRemoved
+	EventMemorySaved     = "memory_saved"     // MemorySaved
 )
 
 const (

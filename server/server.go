@@ -55,6 +55,9 @@ func New(st *store.Store, mem *memory.Store, runs *run.Manager, log *slog.Logger
 	mux.HandleFunc("PUT /api/settings", a.putSettings)
 	mux.HandleFunc("POST /api/repos", a.createRepo)
 	mux.HandleFunc("GET /api/repos", a.listRepos)
+	mux.HandleFunc("POST /api/memory", a.createMemory)
+	mux.HandleFunc("GET /api/memory", a.listMemory)
+	mux.HandleFunc("POST /api/memory/{id}/retire", a.retireMemory)
 	mux.HandleFunc("GET /api/connections", a.listConnections)
 	mux.HandleFunc("POST /api/connections/gitlab/start", a.startGitLab)
 	mux.HandleFunc("POST /api/connections/{id}/poll", a.pollConnection)
@@ -299,8 +302,11 @@ func (a *api) events(w http.ResponseWriter, r *http.Request) {
 // fail answers err with the status it maps to, and logs it when it is a 500.
 func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
-	case errors.Is(err, store.ErrNotFound), errors.Is(err, run.ErrNotFound):
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, run.ErrNotFound),
+		errors.Is(err, memory.ErrNotFound):
 		fail(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, memory.ErrInvalid):
+		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed), errors.Is(err, store.ErrExists):
 		fail(w, http.StatusConflict, err.Error())
 	default:

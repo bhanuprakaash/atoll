@@ -20,6 +20,11 @@ const (
 	ToolStartWork = "start_work"
 	// ToolTrackMR takes {url}: the merge request the thread opened.
 	ToolTrackMR = "track_mr"
+	// ToolRemember, ToolRecall, ToolReadMemory and ToolRetireMemory are the memory tools.
+	ToolRemember     = "remember"
+	ToolRecall       = "recall"
+	ToolReadMemory   = "read_memory"
+	ToolRetireMemory = "retire_memory"
 )
 
 // Session drives one provider process holding one session. Call Start or Resume once; Send one
