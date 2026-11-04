@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -80,6 +81,8 @@ func shellPath(ctx context.Context) []string {
 	ctx, cancel := context.WithTimeout(ctx, _shellTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, shell, "-i", "-l", "-c", "printenv PATH")
+	// An interactive shell takes the terminal's foreground group and does not give it back.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.WaitDelay = time.Second
 	out, err := cmd.Output()
 	if err != nil {
