@@ -285,11 +285,8 @@ try {
         throw new Error(`${dir} not found: sign in to ${name} in Atoll first`);
       symlinkSync(dir, join(data, "providers", name));
     }
-    env = {
-      HOME: homedir(),
-      PATH: process.env.PATH ?? "",
-      ATOLL_DATA_DIR: data,
-    };
+    // Discovery reads the login shell's PATH and the ATOLL_*_PATH overrides.
+    env = { ...process.env, HOME: homedir(), ATOLL_DATA_DIR: data };
   }
   step("start server");
   const child = spawn(
