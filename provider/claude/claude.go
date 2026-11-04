@@ -393,10 +393,14 @@ func parse(line []byte, st *state) []provider.Event {
 			return []provider.Event{{Kind: provider.KindText, Text: text}}
 		}
 	case "result":
+		wrote := st.wrote
 		*st = state{}
 		if l.IsError {
 			text := strings.Join(append([]string{l.Result}, l.Errors...), "\n")
 			return []provider.Event{{Kind: provider.KindError, Text: strings.TrimSpace(text)}}
+		}
+		if !wrote && l.Result != "" {
+			return []provider.Event{{Kind: provider.KindText, Text: l.Result}, {Kind: provider.KindTurnEnd}}
 		}
 		return []provider.Event{{Kind: provider.KindTurnEnd}}
 	}
