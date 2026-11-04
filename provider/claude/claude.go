@@ -125,6 +125,12 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 // Events streams events until claude exits, then closes the channel.
 func (s *Session) Events() <-chan provider.Event { return s.events }
 
+// Answer always fails: claude asks through the permission prompt tool on Atoll's MCP server and
+// never sends a KindApproval event.
+func (s *Session) Answer(string, bool) error {
+	return errors.New("claude asks for approval through its permission prompt tool")
+}
+
 // Interrupt kills claude and anything it spawned, and waits until Events is closed.
 func (s *Session) Interrupt() error {
 	s.mu.Lock()

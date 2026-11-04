@@ -21,6 +21,7 @@ import (
 )
 
 const _usage = `usage:
+  atoll serve [--addr host:port]
   atoll provider status
   atoll provider run <claude|codex> [--resume <id>] <prompt>
   atoll provider login <claude|codex>`
@@ -63,6 +64,9 @@ func run(ctx context.Context, args []string, w io.Writer) error {
 	if len(args) == 0 {
 		_, err := fmt.Fprintln(w, "atoll")
 		return err
+	}
+	if args[0] == "serve" {
+		return serve(ctx, args[1:], w)
 	}
 	if len(args) < 2 || args[0] != "provider" {
 		return usage()
@@ -230,13 +234,20 @@ func pathDirs(ctx context.Context) []string {
 }
 
 func (a adapter) dir() (string, error) {
-	data := os.Getenv("ATOLL_DATA_DIR")
-	if data == "" {
-		cfg, err := os.UserConfigDir()
-		if err != nil {
-			return "", err
-		}
-		data = filepath.Join(cfg, "Atoll")
+	data, err := dataDir()
+	if err != nil {
+		return "", err
 	}
 	return filepath.Join(data, "providers", a.name), nil
+}
+
+func dataDir() (string, error) {
+	if data := os.Getenv("ATOLL_DATA_DIR"); data != "" {
+		return data, nil
+	}
+	cfg, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cfg, "Atoll"), nil
 }

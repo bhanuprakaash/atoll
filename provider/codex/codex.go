@@ -139,6 +139,11 @@ func (s *Session) Send(_ context.Context, prompt string) error {
 // Events streams events until codex exits, then closes the channel.
 func (s *Session) Events() <-chan provider.Event { return s.events }
 
+// Answer replies to the approval request with id.
+func (s *Session) Answer(id string, allow bool) error {
+	return errors.New("not built yet")
+}
+
 // Interrupt stops codex, waits for it, and closes Events. Codex gets SIGTERM so it can stop the
 // commands it started, which run in their own process groups; SIGKILL follows after _killAfter.
 func (s *Session) Interrupt() error {

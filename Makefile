@@ -1,4 +1,4 @@
-.PHONY: check fmt format lint vet typecheck test run e2e
+.PHONY: check fmt format lint vet typecheck test run e2e ui
 
 # web/node_modules ships Go files; keep them out of every Go command.
 GO_DIRS = $(shell go list -f '{{.Dir}}' ./... | grep -v /node_modules/)
@@ -29,10 +29,17 @@ typecheck: web/node_modules
 test:
 	go test -shuffle=on -timeout=60s $(filter-out $(CURDIR)/e2e,$(GO_DIRS))
 
-run:
-	go run ./cmd/atoll
+run: ui
+	go run ./cmd/atoll serve
 
-e2e: e2e/ui/node_modules
+# The binary embeds server/ui, built from web/.
+ui: server/ui/index.html
+
+server/ui/index.html: web/node_modules $(shell find web/src -type f) $(wildcard web/*.html web/*.ts web/*.json)
+	cd web && $(PNPM) run build
+	@touch server/ui/.keep
+
+e2e: ui e2e/ui/node_modules
 	@status=0; \
 	go test -count=1 -timeout=3m ./e2e || status=1; \
 	(cd e2e/ui && $(PNPM) exec playwright test) || status=1; \
