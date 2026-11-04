@@ -10,9 +10,11 @@ const toggle = (list: string[], id: string) =>
 export function NewBotForm({
   repos,
   connections,
+  skills,
   onCreated,
 }: {
   repos: { id: string; name: string }[];
+  skills: { id: string; name: string }[];
   connections: { id: string; instance_url: string }[];
   onCreated: (bot: Bot) => void;
 }) {
@@ -22,6 +24,7 @@ export function NewBotForm({
   const [onlyThese, setOnlyThese] = useState(false);
   const [repoIds, setRepoIds] = useState<string[]>([]);
   const [connectionIds, setConnectionIds] = useState<string[]>([]);
+  const [skillIds, setSkillIds] = useState<string[]>([]);
   const create = useCreateBot();
 
   const submit = (e: FormEvent) => {
@@ -33,6 +36,7 @@ export function NewBotForm({
         provider,
         repo_access: onlyThese ? repoIds : 'all',
         connections: connectionIds,
+        skills: skillIds,
       },
       { onSuccess: onCreated },
     );
@@ -106,6 +110,19 @@ export function NewBotForm({
               label={c.instance_url}
               checked={connectionIds.includes(c.id)}
               onChange={() => setConnectionIds(toggle(connectionIds, c.id))}
+            />
+          ))}
+        </fieldset>
+      )}
+      {skills.length > 0 && (
+        <fieldset className="flex flex-col gap-1">
+          <legend className="text-sm font-medium">Skills</legend>
+          {skills.map((s) => (
+            <Checkbox
+              key={s.id}
+              label={s.name}
+              checked={skillIds.includes(s.id)}
+              onChange={() => setSkillIds(toggle(skillIds, s.id))}
             />
           ))}
         </fieldset>
