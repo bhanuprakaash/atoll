@@ -66,6 +66,14 @@ type (
 				Text string `json:"text"`
 			} `json:"delta"`
 		} `json:"event"`
+		Message struct {
+			Content []struct {
+				Type  string          `json:"type"`
+				ID    string          `json:"id"`
+				Name  string          `json:"name"`
+				Input json.RawMessage `json:"input"`
+			} `json:"content"`
+		} `json:"message"`
 		IsError bool     `json:"is_error"`
 		Result  string   `json:"result"`
 		Errors  []string `json:"errors"`
@@ -210,15 +218,10 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	}
 	s.started = true
 
-	args := append([]string{
-		"-p",
-		"--input-format", "stream-json",
-		"--output-format", "stream-json",
-		"--verbose",
-		"--include-partial-messages",
-		"--strict-mcp-config",
-		"--settings", `{"disableAllHooks":true}`,
-	}, extra...)
+	args, err := argv(cfg, extra...)
+	if err != nil {
+		return err
+	}
 	cmd := exec.Command(cfg.Bin, args...)
 	cmd.Dir = cfg.Cwd
 	cmd.Env = append(configEnv(cfg.Dir), "ENABLE_CLAUDEAI_MCP_SERVERS=false")
@@ -240,6 +243,33 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	s.cmd, s.stdin = cmd, stdin
 	go s.read(stdout)
 	return nil
+}
+
+func argv(cfg provider.Config, extra ...string) ([]string, error) {
+	args := []string{
+		"-p",
+		"--input-format", "stream-json",
+		"--output-format", "stream-json",
+		"--verbose",
+		"--include-partial-messages",
+		"--strict-mcp-config",
+		"--settings", `{"disableAllHooks":true}`,
+	}
+	if cfg.MCPURL != "" {
+		servers, err := json.Marshal(map[string]any{"mcpServers": map[string]any{
+			provider.MCPServer: map[string]string{"type": "http", "url": cfg.MCPURL},
+		}})
+		if err != nil {
+			return nil, err
+		}
+		mcp := "mcp__" + provider.MCPServer
+		args = append(args,
+			"--mcp-config", string(servers),
+			"--permission-prompt-tool", mcp+"__"+provider.ToolApprove,
+			"--allowedTools", mcp,
+		)
+	}
+	return append(args, extra...), nil
 }
 
 func (s *Session) read(stdout io.Reader) {
@@ -288,7 +318,8 @@ func (s *Session) emit(ev provider.Event) bool {
 }
 
 // parse maps one stdout line to Events. Text comes from the partial-message deltas, so the
-// complete assistant text blocks that follow are skipped. Unknown lines give none.
+// complete assistant text blocks that follow are skipped; tool calls come from the complete
+// assistant line, as the partial input is cut off. Unknown lines give none.
 func parse(line []byte, st *state) []provider.Event {
 	var l outputLine
 	if err := json.Unmarshal(line, &l); err != nil {
@@ -299,6 +330,16 @@ func parse(line []byte, st *state) []provider.Event {
 		if l.Subtype == "init" {
 			return []provider.Event{{Kind: provider.KindSession, SessionID: l.SessionID}}
 		}
+	case "assistant":
+		var evs []provider.Event
+		for _, c := range l.Message.Content {
+			if c.Type == "tool_use" {
+				evs = append(evs, provider.Event{
+					Kind: provider.KindToolCall, ID: c.ID, Name: c.Name, Input: c.Input,
+				})
+			}
+		}
+		return evs
 	case "stream_event":
 		if l.Event.Type == "message_start" {
 			st.breakNext = st.wrote
