@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -20,11 +21,15 @@ import (
 	"atoll/store"
 )
 
-// fakeSession plays script when the prompt is sent, then closes Events if end is set. Every
+// fakeSession plays script when the first prompt is sent and nudge for each later one (a bare
+// turn end when nudge is empty), then closes Events if end is set. onSend gets the number of
+// prompts sent so far, first prompt included. Every
 // answer it gets is recorded and ends the turn; when answered is set, the turn ends only after
 // release is closed.
 type fakeSession struct {
 	script   []provider.Event
+	nudge    []provider.Event
+	onSend   func(n int)
 	end      bool
 	answered chan struct{}
 	release  chan struct{}
@@ -32,7 +37,7 @@ type fakeSession struct {
 	mu          sync.Mutex
 	events      chan provider.Event
 	closed      bool
-	prompt      string
+	prompts     []string
 	answers     []bool
 	interrupted int
 }
@@ -44,8 +49,18 @@ func (f *fakeSession) Events() <-chan provider.Event                         { r
 func (f *fakeSession) Send(_ context.Context, prompt string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.prompt = prompt
-	for _, ev := range f.script {
+	f.prompts = append(f.prompts, prompt)
+	if f.onSend != nil {
+		f.onSend(len(f.prompts))
+	}
+	script := f.script
+	if len(f.prompts) > 1 {
+		script = []provider.Event{{Kind: provider.KindTurnEnd}}
+		if len(f.nudge) > 0 {
+			script = f.nudge
+		}
+	}
+	for _, ev := range script {
 		f.events <- ev
 	}
 	if f.end {
@@ -150,9 +165,12 @@ func TestRun_Finish(t *testing.T) {
 	tests := []struct {
 		name       string
 		give       *fakeSession
+		reportOn   int // the prompt that gets a finish_run report; 0 for none
 		wantStatus string
 		wantReply  string
 		wantError  string
+		wantReport string
+		wantSends  int
 		wantEvents []string
 	}{
 		{
@@ -160,15 +178,43 @@ func TestRun_Finish(t *testing.T) {
 			give: &fakeSession{script: []provider.Event{
 				{Kind: provider.KindText, Text: " hi "}, {Kind: provider.KindText, Text: "there\n"}, turnEnd,
 			}},
+			reportOn:   1,
 			wantStatus: store.StatusDone,
 			wantReply:  "hi there",
+			wantReport: "prompt 1",
+			wantSends:  1,
 			wantEvents: []string{EventText, EventText, EventRunFinished},
+		},
+		{
+			name: "report after the nudge",
+			give: &fakeSession{
+				script: []provider.Event{{Kind: provider.KindText, Text: "hi"}, turnEnd},
+				nudge: []provider.Event{
+					{Kind: provider.KindToolCall, ID: "tu1", Name: "mcp__atoll__finish_run"},
+					{Kind: provider.KindText, Text: "reported"}, turnEnd,
+				},
+			},
+			reportOn:   2,
+			wantStatus: store.StatusDone,
+			wantReply:  "hi",
+			wantReport: "prompt 2",
+			wantSends:  2,
+			wantEvents: []string{EventText, EventToolCall, EventRunFinished},
+		},
+		{
+			name:       "no report after the nudge",
+			give:       &fakeSession{script: []provider.Event{{Kind: provider.KindText, Text: "hi"}, turnEnd}},
+			wantStatus: store.StatusDone,
+			wantReply:  "hi",
+			wantSends:  2,
+			wantEvents: []string{EventText, EventRunFinished},
 		},
 		{
 			name:       "provider error",
 			give:       &fakeSession{script: []provider.Event{{Kind: provider.KindError, Text: "rate limited"}}},
 			wantStatus: store.StatusFailed,
 			wantError:  "rate limited",
+			wantSends:  1,
 			wantEvents: []string{EventRunFinished},
 		},
 		{
@@ -176,12 +222,25 @@ func TestRun_Finish(t *testing.T) {
 			give:       &fakeSession{end: true},
 			wantStatus: store.StatusFailed,
 			wantError:  "provider exited before the turn ended",
+			wantSends:  1,
 			wantEvents: []string{EventRunFinished},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newEnv(t, tt.give)
+			tt.give.onSend = func(n int) {
+				if n != tt.reportOn {
+					return
+				}
+				e.m.mu.Lock()
+				token := slices.Collect(maps.Keys(e.m.tokens))[0]
+				e.m.mu.Unlock()
+				rep := store.Report{Done: "prompt " + strconv.Itoa(n)}
+				if err := e.m.Report(t.Context(), token, rep); err != nil {
+					t.Error(err)
+				}
+			}
 			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello")
 			if err != nil {
 				t.Fatal(err)
@@ -195,6 +254,16 @@ func TestRun_Finish(t *testing.T) {
 				got.Error != tt.wantError {
 				t.Errorf("run_finished %+v, stored %+v; want %s, reply %q, error %q",
 					fin, got, tt.wantStatus, tt.wantReply, tt.wantError)
+			}
+			if (got.Report == nil) != (tt.wantReport == "") ||
+				got.Report != nil && got.Report.Done != tt.wantReport {
+				t.Errorf("stored report %+v, want done %q", got.Report, tt.wantReport)
+			}
+			if len(tt.give.prompts) != tt.wantSends {
+				t.Errorf("%d prompts sent, want %d", len(tt.give.prompts), tt.wantSends)
+			}
+			if tt.wantSends == 2 && tt.give.prompts[1] != _nudge {
+				t.Errorf("second prompt %q is not the nudge", tt.give.prompts[1])
 			}
 			if tt.give.interrupted != 1 {
 				t.Errorf("Interrupt called %d times, want 1", tt.give.interrupted)

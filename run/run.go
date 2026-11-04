@@ -45,6 +45,14 @@ const (
 	// _callWait bounds how long Ask waits for its tool call to come through the provider's
 	// stdout, which races the permission prompt arriving over HTTP.
 	_callWait = 2 * time.Second
+	_nudge    = "You did not call finish_run. Call the finish_run tool of the atoll MCP server " +
+		"now with done, tried, blocked and next. Do not reply with anything else."
+)
+
+// Whether stream shows the turn's text as the reply.
+const (
+	_hideText = false
+	_showText = true
 )
 
 type (
@@ -381,11 +389,35 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if err := sess.Send(m.ctx, prompt); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
-	return m.stream(a, sess)
+	reply, err := m.stream(a, sess, _showText)
+	if err != nil {
+		return "", err
+	}
+	run, err := m.cfg.Store.Run(m.ctx, a.run.ID)
+	if err != nil {
+		return "", fmt.Errorf("load run: %w", err)
+	}
+	if run.Report != nil {
+		return reply, nil
+	}
+	if err := sess.Send(m.ctx, _nudge); err != nil {
+		return "", fmt.Errorf("send nudge: %w", err)
+	}
+	if _, err := m.stream(a, sess, _hideText); err != nil {
+		return "", err
+	}
+	if run, err = m.cfg.Store.Run(m.ctx, a.run.ID); err != nil {
+		return "", fmt.Errorf("load run: %w", err)
+	}
+	if run.Report == nil {
+		m.cfg.Log.Warn("run ended without a finish_run report", "run_id", a.run.ID)
+	}
+	return reply, nil
 }
 
-// stream reads the turn's events until it ends and returns the reply.
-func (m *Manager) stream(a *active, sess provider.Session) (string, error) {
+// stream reads the turn's events until it ends and returns the reply. With showText false the
+// turn's text is dropped.
+func (m *Manager) stream(a *active, sess provider.Session, showText bool) (string, error) {
 	var reply strings.Builder
 	for {
 		select {
@@ -397,8 +429,10 @@ func (m *Manager) stream(a *active, sess provider.Session) (string, error) {
 			}
 			switch ev.Kind {
 			case provider.KindText:
-				reply.WriteString(ev.Text)
-				m.publish(a, EventText, Text{RunID: a.run.ID, Text: ev.Text})
+				if showText {
+					reply.WriteString(ev.Text)
+					m.publish(a, EventText, Text{RunID: a.run.ID, Text: ev.Text})
+				}
 			case provider.KindSession:
 				if err := m.cfg.Store.SetSession(m.ctx, a.threadID, ev.SessionID); err != nil {
 					return "", fmt.Errorf("save session: %w", err)

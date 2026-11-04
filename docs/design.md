@@ -47,7 +47,9 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
   exits after replying. No agent process lives between messages.
 - Resume by default. A fresh session only comes from starting a new thread or delegation.
 - Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply stays
-  2–3 plain lines. *The report feeds memory, parents and fresh starts.*
+  2–3 plain lines. *The report feeds memory, parents and fresh starts.* A turn that ends without
+  the report gets one more prompt in the same session asking for it; its text is not shown. If
+  there is still none, the run ends `done` with `report: null` and a logged warning.
 - One provider process per run, in the thread's folder (`<data>/threads/<id>`): a provider
   resumes a session only in the folder that started it. One run per thread at a time; a message
   sent while one is going is refused (`409`).
