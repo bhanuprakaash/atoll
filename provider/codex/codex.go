@@ -285,7 +285,7 @@ func (s *Session) call(method string, params any) (json.RawMessage, error) {
 			continue
 		}
 		if m.Error != nil {
-			return nil, errors.New(m.Error.Message)
+			return nil, fmt.Errorf("%s", m.Error.Message)
 		}
 		return m.Result, nil
 	}
@@ -384,8 +384,8 @@ func (m message) event() (ev provider.Event, ok bool) {
 		return provider.Event{Kind: provider.KindError, Text: m.Error.Message}, true
 	case m.Method == "item/agentMessage/delta":
 		return provider.Event{Kind: provider.KindText, Text: p.Delta}, true
-	case m.Method == "turn/completed" && p.Turn.Status == "failed":
-		msg := "turn failed"
+	case m.Method == "turn/completed" && p.Turn.Status != "completed":
+		msg := "turn " + p.Turn.Status
 		if p.Turn.Error != nil {
 			msg = p.Turn.Error.Message
 		}
