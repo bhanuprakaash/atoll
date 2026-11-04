@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"atoll/store"
 )
+
+var _unsafe = regexp.MustCompile(`[^a-z0-9_-]+`)
 
 // Place writes read-only copies of skills into dir, a new folder that belongs to one run, and
 // returns the root to hand the provider: Claude reads dir/.claude/skills, Codex reads dir. With no
@@ -27,8 +30,15 @@ func Place(dir, providerName string, skills []store.Skill) (string, error) {
 	if providerName == "claude" {
 		root = filepath.Join(dir, ".claude", "skills")
 	}
+	used := map[string]bool{}
 	for _, s := range skills {
-		folder := filepath.Join(root, s.ID)
+		// Claude invokes a skill by its folder name.
+		name := _unsafe.ReplaceAllString(strings.ToLower(s.Name), "-")
+		if name == "" || used[name] {
+			name = s.ID
+		}
+		used[name] = true
+		folder := filepath.Join(root, name)
 		if err := os.MkdirAll(folder, 0o700); err != nil {
 			return "", fmt.Errorf("make skill folder: %w", err)
 		}
