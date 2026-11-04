@@ -87,6 +87,19 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
 - The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs) at first edit; the app makes it
   lowercase, short and unique (`-2`). Fixed once created.
 - The worktree is removed when the MR merges or the thread closes; uncommitted work is saved first.
+- The read-only checkout is a detached git worktree of the repo's HEAD at `<data>/threads/<id>`,
+  outside the worktree root. It is removed when the thread closes.
+- A new branch starts at `origin/HEAD` when it resolves, else HEAD. The server never fetches.
+- The slug is lowercased, every run of characters outside `[a-z0-9]` becomes `-`, and it is cut to
+  40 characters. The worktree folder is the branch with `/` replaced by `-`.
+- Repo names are unique, because the worktree folder uses them.
+- Unfinished work is saved as a commit at `refs/atoll/unfinished/<thread id>` before removal. A
+  failed save removes nothing and leaves the thread open.
+- A thread's cwd moves from the checkout to its worktree. Claude resumes only the sessions of its own
+  cwd, so the Claude adapter copies the session file into the new cwd's project folder first.
+- Atoll checks each MR with `glab mr view` every minute (`ATOLL_REPO_POLL_INTERVAL`, a Go duration).
+  A merged MR with a worktree is cleaned up like a closed thread, but only while no run is going in
+  the thread. One watcher runs inside the server and resumes after a restart.
 
 ## Providers
 
@@ -129,6 +142,10 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
   - GitHub (v2): hosted MCP server `api.githubcopilot.com/mcp/`.
   - Slack (v2): needs a small hosted token exchange. *Its MCP server wants a confidential client;
     desktop PKCE sign-in cannot get bot scopes and expires in 30 days.*
+- The device code stays in server memory, so a sign-in pending at restart is started again.
+- A run with a connected GitLab connection gets `GITLAB_TOKEN`, `GITLAB_HOST` and a git credential
+  helper given only through env (`GIT_CONFIG_*`), which clears the user's own helpers. The token is
+  never written to a file or log.
 - Tokens live in the OS secret store through one cross-platform library. Targets: macOS and desktop
   Linux; headless Linux is out.
 - Skills: one library in standard `SKILL.md`, created in the app; each Bot picks its skills. A
