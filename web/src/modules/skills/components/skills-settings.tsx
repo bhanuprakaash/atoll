@@ -66,7 +66,7 @@ export function SkillsSettings() {
     <div className="flex max-w-2xl flex-col gap-6 p-6">
       <SkillForm />
       {skills.map((skill) => (
-        <SkillForm key={skill.id} skill={skill} />
+        <SkillForm key={skill.id + skill.content + skill.name} skill={skill} />
       ))}
     </div>
   );

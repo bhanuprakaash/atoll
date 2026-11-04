@@ -28,7 +28,7 @@ export function useUndoChange(id: string) {
     mutationFn: () => api<void>(`/platform/changes/${id}/undo`, { method: 'POST' }),
     onSuccess: async () => {
       await Promise.all(
-        ['changes', 'bots', 'skills'].map((key) =>
+        ['changes', 'bots', 'skills', 'repos'].map((key) =>
           queryClient.invalidateQueries({ queryKey: [key] }),
         ),
       );

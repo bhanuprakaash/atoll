@@ -82,7 +82,7 @@ export function useThreadEvents(threadId: string) {
     });
     for (const type of ['platform_changed', 'run_finished']) {
       source.addEventListener(type, () => {
-        for (const queryKey of [['changes', threadId], ['bots'], ['skills']]) {
+        for (const queryKey of [['changes', threadId], ['bots'], ['skills'], ['repos']]) {
           void queryClient.invalidateQueries({ queryKey });
         }
       });
