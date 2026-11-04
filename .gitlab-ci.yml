@@ -42,7 +42,7 @@ e2e:
       files: [go.sum, e2e/ui/pnpm-lock.yaml]
     paths: [.cache/]
   before_script:
-    - curl -fsSL "https://go.dev/dl/go$GO_VERSION.linux-$(dpkg --print-architecture).tar.gz" | tar -xz -C /usr/local
+    - curl -fsSL "https://dl.google.com/go/go$GO_VERSION.linux-$(dpkg --print-architecture).tar.gz" | tar -xz -C /usr/local
     - export PATH="/usr/local/go/bin:$PATH"
     - npm i -g "$(node -p "require('./e2e/ui/package.json').packageManager")"
   script:
