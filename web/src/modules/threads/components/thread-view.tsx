@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Button } from '@/components/button';
 import { useMessages } from '@/modules/threads/api/messages';
 import { useCloseThread, useThread } from '@/modules/threads/api/threads';
@@ -5,7 +6,15 @@ import { Composer } from '@/modules/threads/components/composer';
 import { LiveRun } from '@/modules/threads/components/live-run';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 
-export function ThreadView({ threadId, repoName }: { threadId: string; repoName?: string }) {
+export function ThreadView({
+  threadId,
+  repoName,
+  memory,
+}: {
+  threadId: string;
+  repoName?: string;
+  memory?: ReactNode;
+}) {
   const { data: messages = [] } = useMessages(threadId);
   const { data: thread } = useThread(threadId);
   const close = useCloseThread(threadId);
@@ -56,6 +65,7 @@ export function ThreadView({ threadId, repoName }: { threadId: string; repoName?
             <LiveRun key={runId} run={run} />
           ))}
       </div>
+      {memory}
       <Composer
         threadId={threadId}
         busy={!connected || running || closed}

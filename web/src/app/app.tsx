@@ -3,9 +3,11 @@ import { BrowserRouter, Route, Routes, useNavigate, useParams } from 'react-rout
 import { BotPage, LatestThread } from '@/app/bot-page';
 import { SettingsPage } from '@/app/settings-page';
 import { Shell } from '@/app/shell';
+import { useBots } from '@/modules/bots/api/bots';
 import { NewBotForm } from '@/modules/bots/components/new-bot-form';
 import { useConnections } from '@/modules/connections/api/connections';
 import { ConnectionsSettings } from '@/modules/connections/components/connections-settings';
+import { SavedMemory } from '@/modules/memory/components/saved-memory';
 import { useRepos } from '@/modules/repos/api/repos';
 import { ReposSettings } from '@/modules/repos/components/repos-settings';
 import { useThread } from '@/modules/threads/api/threads';
@@ -30,8 +32,17 @@ function ThreadPage() {
   const { threadId = '' } = useParams();
   const { data: thread } = useThread(threadId);
   const { data: repos = [] } = useRepos();
+  const { data: bots = [] } = useBots();
   const repoName = repos.find((r) => r.id === thread?.repo_id)?.name;
-  return <ThreadView key={threadId} threadId={threadId} repoName={repoName} />;
+  const botNames = Object.fromEntries(bots.map((b) => [b.id, b.name]));
+  return (
+    <ThreadView
+      key={threadId}
+      threadId={threadId}
+      repoName={repoName}
+      memory={<SavedMemory threadId={threadId} botNames={botNames} />}
+    />
+  );
 }
 
 export function App() {
