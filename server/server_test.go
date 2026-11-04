@@ -5,20 +5,52 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"atoll/run"
 	"atoll/store"
 )
 
-func TestLocalOnly(t *testing.T) {
+func newHandler(t *testing.T) http.Handler {
+	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := New(st, run.New(run.Config{Store: st, Log: log}), log)
+	return New(st, run.New(run.Config{Store: st, Log: log}), log)
+}
+
+func TestAnswer_RequiresApprove(t *testing.T) {
+	tests := []struct {
+		name       string
+		give       string
+		wantStatus int
+	}{
+		{"no approve field", `{}`, 400},
+		{"not JSON", `nope`, 400},
+		{"approve true", `{"approve":true}`, 404},
+		{"approve false", `{"approve":false}`, 404},
+	}
+	h := newHandler(t)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/approvals/x",
+				strings.NewReader(tt.give))
+			req.Host = "127.0.0.1:4317"
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status %d, want %d; body: %s", rec.Code, tt.wantStatus, rec.Body)
+			}
+		})
+	}
+}
+
+func TestLocalOnly(t *testing.T) {
+	h := newHandler(t)
 
 	tests := []struct {
 		name       string

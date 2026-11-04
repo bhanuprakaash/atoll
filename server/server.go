@@ -170,13 +170,13 @@ func (a *api) getRun(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) answer(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Approve bool `json:"approve"`
+		Approve *bool `json:"approve"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		fail(w, http.StatusBadRequest, "invalid JSON body")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Approve == nil {
+		fail(w, http.StatusBadRequest, "approve is required")
 		return
 	}
-	if err := a.runs.Answer(r.Context(), r.PathValue("id"), body.Approve); err != nil {
+	if err := a.runs.Answer(r.Context(), r.PathValue("id"), *body.Approve); err != nil {
 		a.fail(w, r, err)
 		return
 	}
