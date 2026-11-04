@@ -3,8 +3,15 @@
 package server
 
 import (
+	"embed"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
+	"time"
 
 	"atoll/run"
 	"atoll/store"
@@ -13,7 +20,229 @@ import (
 // MCPPath is where Atoll's MCP endpoint lives; a run's server is MCPPath + its token.
 const MCPPath = "/mcp/"
 
+const _pingEvery = 15 * time.Second
+
+//go:embed all:ui
+var _ui embed.FS
+
+type api struct {
+	st   *store.Store
+	runs *run.Manager
+	log  *slog.Logger
+}
+
 // New returns the handler for the API, the MCP tools and the UI.
 func New(st *store.Store, runs *run.Manager, log *slog.Logger) http.Handler {
-	return http.NotFoundHandler()
+	a := &api{st: st, runs: runs, log: log}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/bots", a.createBot)
+	mux.HandleFunc("GET /api/bots", a.listBots)
+	mux.HandleFunc("POST /api/bots/{id}/threads", a.createThread)
+	mux.HandleFunc("GET /api/bots/{id}/threads", a.listThreads)
+	mux.HandleFunc("POST /api/threads/{id}/messages", a.sendMessage)
+	mux.HandleFunc("GET /api/threads/{id}/messages", a.listMessages)
+	mux.HandleFunc("GET /api/threads/{id}/events", a.events)
+	mux.HandleFunc("GET /api/runs/{id}", a.getRun)
+	mux.HandleFunc("POST /api/approvals/{id}", a.answer)
+	mux.HandleFunc(MCPPath+"{token}", a.mcp)
+	// fs.Sub fails only for an invalid dir name.
+	sub, _ := fs.Sub(_ui, "ui")
+	mux.Handle("/", uiHandler(sub))
+	return mux
+}
+
+func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
+	var b store.Bot
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		fail(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if b.Name == "" || (b.Provider != "claude" && b.Provider != "codex") {
+		fail(w, http.StatusBadRequest, "name is required and provider must be claude or codex")
+		return
+	}
+	b, err := a.st.CreateBot(r.Context(), b)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusCreated, b)
+}
+
+func (a *api) listBots(w http.ResponseWriter, r *http.Request) {
+	bots, err := a.st.Bots(r.Context())
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusOK, orEmpty(bots))
+}
+
+func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
+	t, err := a.st.CreateThread(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusCreated, t)
+}
+
+func (a *api) listThreads(w http.ResponseWriter, r *http.Request) {
+	threads, err := a.st.Threads(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusOK, orEmpty(threads))
+}
+
+func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Text == "" {
+		fail(w, http.StatusBadRequest, "text is required")
+		return
+	}
+	m, ru, err := a.runs.Send(r.Context(), r.PathValue("id"), body.Text)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusAccepted, struct {
+		Message store.Message `json:"message"`
+		Run     store.Run     `json:"run"`
+	}{m, ru})
+}
+
+func (a *api) listMessages(w http.ResponseWriter, r *http.Request) {
+	msgs, err := a.st.Messages(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusOK, orEmpty(msgs))
+}
+
+func (a *api) getRun(w http.ResponseWriter, r *http.Request) {
+	ru, err := a.st.Run(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusOK, ru)
+}
+
+func (a *api) answer(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Approve bool `json:"approve"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		fail(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := a.runs.Answer(r.Context(), r.PathValue("id"), body.Approve); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// events streams the thread's run events. Subscribing comes before the headers are flushed, so a
+// client that sees the response misses nothing sent after.
+func (a *api) events(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, err := a.st.Thread(r.Context(), id); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	events, cancel := a.runs.Subscribe(id)
+	defer cancel()
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	rc := http.NewResponseController(w)
+	if rc.Flush() != nil {
+		return
+	}
+	ping := time.NewTicker(_pingEvery)
+	defer ping.Stop()
+	for {
+		var err error
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ping.C:
+			_, err = fmt.Fprint(w, ": ping\n\n")
+		case ev, ok := <-events:
+			if !ok {
+				return
+			}
+			var data []byte
+			if data, err = json.Marshal(ev.Data); err != nil {
+				a.log.Error("encode event", "type", ev.Type, "err", err)
+				continue
+			}
+			_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, data)
+		}
+		if err != nil || rc.Flush() != nil {
+			return
+		}
+	}
+}
+
+// fail answers err with the status it maps to, and logs it when it is a 500.
+func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, run.ErrNotFound):
+		fail(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, run.ErrBusy):
+		fail(w, http.StatusConflict, err.Error())
+	default:
+		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
+		fail(w, http.StatusInternalServerError, "internal error")
+	}
+}
+
+func fail(w http.ResponseWriter, status int, msg string) {
+	write(w, status, struct {
+		Error string `json:"error"`
+	}{msg})
+}
+
+func write(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func orEmpty[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
+// uiHandler serves the built UI; a path that is not a file gets index.html, for client routes.
+func uiHandler(ui fs.FS) http.Handler {
+	files := http.FileServerFS(ui)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			fail(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, MCPPath) {
+			fail(w, http.StatusNotFound, "not found")
+			return
+		}
+		if _, err := fs.Stat(ui, "index.html"); err != nil {
+			http.Error(w, "UI not built: run make ui", http.StatusServiceUnavailable)
+			return
+		}
+		if fi, err := fs.Stat(ui, strings.TrimPrefix(r.URL.Path, "/")); err != nil || fi.IsDir() {
+			r.URL.Path = "/"
+		}
+		files.ServeHTTP(w, r)
+	})
 }
