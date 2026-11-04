@@ -53,7 +53,8 @@ func Place(dir, providerName string, skills []store.Skill) (string, error) {
 // Strip returns the skill text a provider gets. allowed-tools and context are Claude invocation
 // controls, so Codex copies drop their lines; every other byte stays.
 func Strip(content, providerName string) string {
-	if providerName != "codex" || !strings.HasPrefix(content, "---\n") {
+	if providerName != "codex" ||
+		(!strings.HasPrefix(content, "---\n") && !strings.HasPrefix(content, "---\r\n")) {
 		return content
 	}
 	var out strings.Builder
