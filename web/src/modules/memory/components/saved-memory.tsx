@@ -1,5 +1,3 @@
-import { useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/button';
 import { type MemoryItem, useMemory, useRetireMemory } from '@/modules/memory/api/memory';
 
@@ -31,16 +29,7 @@ export function SavedMemory({
   threadId: string;
   botNames: Record<string, string>;
 }) {
-  const queryClient = useQueryClient();
   const { data: items = [] } = useMemory();
-
-  useEffect(() => {
-    const source = new EventSource(`/api/threads/${threadId}/events`);
-    source.addEventListener('memory_saved', () => {
-      void queryClient.invalidateQueries({ queryKey: ['memory'] });
-    });
-    return () => source.close();
-  }, [threadId, queryClient]);
 
   const saved = items.filter((item) => item.source_thread_id === threadId);
   if (saved.length === 0) return null;

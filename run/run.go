@@ -58,6 +58,8 @@ const (
 		"now with done, tried, blocked and next. Do not reply with anything else."
 )
 
+const _promptItems = 8
+
 // Whether stream shows the turn's text as the reply.
 const (
 	_hideText = false
@@ -435,7 +437,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 				return "", fmt.Errorf("count memory: %w", err)
 			}
 		}
-		items, err = m.cfg.Memory.Relevant(m.ctx, shelf, text, 8, seen)
+		items, err = m.cfg.Memory.Relevant(m.ctx, shelf, text, _promptItems, seen)
 		if err != nil {
 			return "", fmt.Errorf("select memory: %w", err)
 		}
@@ -460,21 +462,16 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		return "", err
 	}
 	if m.cfg.Memory != nil && len(items) > 0 {
-		session := thread.Session
-		if session == "" {
-			updated, loadErr := m.cfg.Store.Thread(m.ctx, a.threadID)
-			if loadErr != nil {
-				return "", fmt.Errorf("reload thread: %w", loadErr)
-			}
-			session = updated.Session
-		}
-		if session != "" {
+		// A resume may report a new session id, so the marks follow the reloaded thread.
+		if updated, err := m.cfg.Store.Thread(m.ctx, a.threadID); err != nil {
+			m.cfg.Log.Warn("reload thread", "run_id", a.run.ID, "error", err)
+		} else if updated.Session != "" {
 			ids := make([]string, 0, len(items))
 			for _, item := range items {
 				ids = append(ids, item.ID)
 			}
-			if markErr := m.cfg.Memory.MarkSeen(m.ctx, session, ids); markErr != nil {
-				return "", fmt.Errorf("mark memory seen: %w", markErr)
+			if err := m.cfg.Memory.MarkSeen(m.ctx, updated.Session, ids); err != nil {
+				m.cfg.Log.Warn("mark memory seen", "run_id", a.run.ID, "error", err)
 			}
 		}
 	}

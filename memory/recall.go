@@ -7,7 +7,11 @@ import (
 	"unicode"
 )
 
-const _defaultLimit = 10
+const (
+	_defaultLimit = 10
+	// _maxWords caps the queries one Relevant call runs, so a pasted log stays cheap.
+	_maxWords = 64
+)
 
 var (
 	_stopWords = map[string]bool{
@@ -51,7 +55,8 @@ func (s *Store) Relevant(
 	scores := map[string]int{}
 	found := map[string]Item{}
 	words := slices.Compact(slices.Sorted(slices.Values(terms(message))))
-	for _, w := range slices.DeleteFunc(words, func(w string) bool { return _stopWords[w] }) {
+	words = slices.DeleteFunc(words, func(w string) bool { return _stopWords[w] })
+	for _, w := range words[:min(len(words), _maxWords)] {
 		items, err := queryItems(ctx, s.db,
 			`WHERE m.seq IN (SELECT rowid FROM memory_fts WHERE memory_fts MATCH ?) AND `+where,
 			append([]any{matchAny([]string{w})}, args...)...)

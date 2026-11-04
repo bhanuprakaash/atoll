@@ -9,6 +9,11 @@ import (
 	"atoll/store"
 )
 
+const (
+	_bodyCut = 400
+	_whyCut  = 200
+)
+
 const _platformPrompt = `You are {bot}, a Bot in Reef. {user} talks to you in a thread; you do the work and bring back the result.
 
 How you talk
@@ -53,21 +58,26 @@ func cut(s string, limit int) string {
 	return s[:limit] + "…"
 }
 
-func messagePrompt(text string, items []memory.Item, counts memory.Counts, thread store.Thread, repo store.Repo, cwd string) string {
+func messagePrompt(
+	text string, items []memory.Item, counts memory.Counts, thread store.Thread, repo store.Repo,
+	cwd string,
+) string {
 	var blocks []string
 	if len(items) > 0 {
 		var b strings.Builder
 		b.WriteString("Memory items:")
 		for _, item := range items {
-			fmt.Fprintf(&b, "\n- [%s] %s (%s): %s", item.ID, item.Kind, item.Scope, cut(item.Body, 400))
+			fmt.Fprintf(&b, "\n- [%s] %s (%s): %s",
+				item.ID, item.Kind, item.Scope, cut(item.Body, _bodyCut))
 			if item.Why != "" {
-				fmt.Fprintf(&b, "\n  Why: %s", cut(item.Why, 200))
+				fmt.Fprintf(&b, "\n  Why: %s", cut(item.Why, _whyCut))
 			}
 		}
 		blocks = append(blocks, b.String())
 	}
 	if thread.Session == "" {
-		blocks = append(blocks, fmt.Sprintf("Memory: repo %d, user %d, bot %d. Use recall.", counts.Repo, counts.User, counts.Bot))
+		blocks = append(blocks, fmt.Sprintf("Memory: repo %d, user %d, bot %d. Use recall.",
+			counts.Repo, counts.User, counts.Bot))
 		if repo.ID != "" {
 			path, branch := thread.Worktree, thread.Branch
 			if path == "" {
@@ -76,7 +86,8 @@ func messagePrompt(text string, items []memory.Item, counts memory.Counts, threa
 			if branch == "" {
 				branch = "detached"
 			}
-			blocks = append(blocks, fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s", repo.Name, repo.ID, path, branch))
+			blocks = append(blocks, fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s",
+				repo.Name, repo.ID, path, branch))
 		}
 	}
 	blocks = append(blocks, "Message:\n"+text)
