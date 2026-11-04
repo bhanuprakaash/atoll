@@ -117,6 +117,6 @@ Finish
 - End every run with finish_run: done, tried and failed, blocked on, next. Then reply in 2-3 lines.
 ```
 
-## Open questions
+## Notes from testing
 
-- Isolation tests (codex-cli 0.165, Claude Code 2.1.317) found: a Codex `CODEX_HOME` with copied `auth.json` breaks logins (single-use refresh tokens); Codex reads `~/.agents/skills` through `HOME`; a fresh `CLAUDE_CONFIG_DIR` starts signed out until logged in there; Bot skills load from `<config dir>/skills` for both; sessions and resume work inside the folder. Decision 14 follows from these. Still to check: per-skill disable for `~/.agents/skills` at launch, and that `ENABLE_CLAUDEAI_MCP_SERVERS=false` hides claude.ai connectors.
+- Isolation tests (codex-cli 0.165, Claude Code 2.1.317) found: a Codex `CODEX_HOME` with copied `auth.json` breaks logins (single-use refresh tokens); Codex reads `~/.agents/skills` through `HOME`; a fresh `CLAUDE_CONFIG_DIR` starts signed out until logged in there; Bot skills load from `<config dir>/skills` for both; sessions and resume work inside the folder. Decision 14 follows from these. Verified 2026-11-04: Codex with each `~/.agents/skills` name disabled (`-c skills.config=[{name=…,enabled=false},…]`) lists none of the 23 personal skills. Claude Code with `--strict-mcp-config`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`, `disableAllHooks` and `--setting-sources project,local` shows no MCP servers, no personal skills or subagents, only built-ins. The user has no claude.ai connectors, so hiding those is untested.
