@@ -42,6 +42,7 @@ const (
 	EventMRUpdated       = "mr_updated"       // MRUpdated
 	EventWorktreeRemoved = "worktree_removed" // WorktreeRemoved
 	EventMemorySaved     = "memory_saved"     // MemorySaved
+	EventPrompt          = "prompt"           // Prompt
 )
 
 const (
@@ -141,6 +142,13 @@ type (
 		ID    string          `json:"id"`
 		Tool  string          `json:"tool"`
 		Input json.RawMessage `json:"input"`
+	}
+
+	// Prompt is what Atoll sent the provider: its system addition and the message.
+	Prompt struct {
+		RunID   string `json:"run_id"`
+		System  string `json:"system"`
+		Message string `json:"message"`
 	}
 
 	// Finished ends a run.
@@ -443,6 +451,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("start %s: %w", bot.Provider, err)
 	}
+	m.publish(a, EventPrompt, Prompt{RunID: a.run.ID, System: cfg.SystemPrompt, Message: prompt})
 	if err := sess.Send(m.ctx, prompt); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
