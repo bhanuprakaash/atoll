@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -116,6 +117,7 @@ type (
 		log      *os.File
 		open     int                      // approvals open
 		calls    map[string]chan struct{} // closed once the tool call with that id is published
+		shown    []string                 // memory ids the run's memory tools returned
 	}
 
 	// Event is one event on a thread's stream. Data is one of the types below.
@@ -461,15 +463,17 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if m.cfg.Memory != nil && len(items) > 0 {
+	m.mu.Lock()
+	ids := slices.Clone(a.shown)
+	m.mu.Unlock()
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	if m.cfg.Memory != nil && len(ids) > 0 {
 		// A resume may report a new session id, so the marks follow the reloaded thread.
 		if updated, err := m.cfg.Store.Thread(m.ctx, a.threadID); err != nil {
 			m.cfg.Log.Warn("reload thread", "run_id", a.run.ID, "error", err)
 		} else if updated.Session != "" {
-			ids := make([]string, 0, len(items))
-			for _, item := range items {
-				ids = append(ids, item.ID)
-			}
 			if err := m.cfg.Memory.MarkSeen(m.ctx, updated.Session, ids); err != nil {
 				m.cfg.Log.Warn("mark memory seen", "run_id", a.run.ID, "error", err)
 			}

@@ -3,7 +3,9 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -95,6 +97,11 @@ func TestRelevant(t *testing.T) {
 			skip: map[string]bool{ids[decision]: true}, want: []string{convention, lesson},
 		},
 		{name: "stop words only", limit: 10, message: "Why the and how?", want: []string{}},
+		{
+			name: "the word cap keeps message order", limit: 10,
+			message: "durability " + fillerWords(70),
+			want:    []string{"Durability needs write barriers.", "Durability needs fsync."},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -142,4 +149,13 @@ func TestRemember_Replaces(t *testing.T) {
 	if err != nil || len(all) != 3 {
 		t.Fatalf("list = %d items, err %v; the failed saves must write nothing", len(all), err)
 	}
+}
+
+// fillerWords returns n distinct words that sort before every word in the notes.
+func fillerWords(n int) string {
+	words := make([]string, n)
+	for i := range words {
+		words[i] = fmt.Sprintf("aa%03d", i)
+	}
+	return strings.Join(words, " ")
 }

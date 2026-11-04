@@ -54,9 +54,15 @@ func (s *Store) Relevant(
 	where, args := shelfWhere(sh)
 	scores := map[string]int{}
 	found := map[string]Item{}
-	words := slices.Compact(slices.Sorted(slices.Values(terms(message))))
-	words = slices.DeleteFunc(words, func(w string) bool { return _stopWords[w] })
-	for _, w := range words[:min(len(words), _maxWords)] {
+	var words []string
+	kept := map[string]bool{}
+	for _, w := range terms(message) {
+		if !_stopWords[w] && !kept[w] && len(words) < _maxWords {
+			kept[w] = true
+			words = append(words, w)
+		}
+	}
+	for _, w := range words {
 		items, err := queryItems(ctx, s.db,
 			`WHERE m.seq IN (SELECT rowid FROM memory_fts WHERE memory_fts MATCH ?) AND `+where,
 			append([]any{matchAny([]string{w})}, args...)...)

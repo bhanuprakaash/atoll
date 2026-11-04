@@ -48,6 +48,7 @@ func (m *Manager) Remember(
 	}
 	m.publish(a, EventMemorySaved,
 		MemorySaved{Item: item, SourceBotID: t.BotID, ThreadID: t.ID, RunID: a.run.ID})
+	m.show(token, item)
 	return item, similar, nil
 }
 
@@ -59,7 +60,12 @@ func (m *Manager) Recall(
 	if err != nil {
 		return nil, err
 	}
-	return m.cfg.Memory.Recall(ctx, sh, query, limit)
+	items, err := m.cfg.Memory.Recall(ctx, sh, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	m.show(token, items...)
+	return items, nil
 }
 
 // ReadMemory returns item id. It wraps memory.ErrNotFound for an item off the run's shelf.
@@ -68,7 +74,12 @@ func (m *Manager) ReadMemory(ctx context.Context, token, id string) (memory.Item
 	if err != nil {
 		return memory.Item{}, err
 	}
-	return m.onShelf(ctx, sh, id)
+	it, err := m.onShelf(ctx, sh, id)
+	if err != nil {
+		return memory.Item{}, err
+	}
+	m.show(token, it)
+	return it, nil
 }
 
 // RetireMemory retires item id. It wraps memory.ErrNotFound for an item off the run's shelf.
@@ -105,4 +116,17 @@ func (m *Manager) shelf(ctx context.Context, token string) (memory.Shelf, error)
 		return memory.Shelf{}, fmt.Errorf("load thread: %w", err)
 	}
 	return memory.Shelf{RepoID: t.RepoID, BotID: t.BotID}, nil
+}
+
+// show records items the provider got from a memory tool, so resumed messages leave them out.
+func (m *Manager) show(token string, items ...memory.Item) {
+	a, err := m.byToken(token)
+	if err != nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, it := range items {
+		a.shown = append(a.shown, it.ID)
+	}
 }

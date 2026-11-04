@@ -48,6 +48,11 @@ func systemPrompt(bot store.Bot, user string) string {
 	return prompt
 }
 
+// _repoWork ends the repo block: providers may not load a tool's description until they search
+// for it, so the tools a change needs are named here.
+const _repoWork = "Before your first edit, call start_work and work in the path it returns. " +
+	"After you open the MR, call track_mr with its URL."
+
 func cut(s string, limit int) string {
 	if len(s) <= limit {
 		return s
@@ -86,8 +91,8 @@ func messagePrompt(
 			if branch == "" {
 				branch = "detached"
 			}
-			blocks = append(blocks, fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s",
-				repo.Name, repo.ID, path, branch))
+			blocks = append(blocks, fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s\n%s",
+				repo.Name, repo.ID, path, branch, _repoWork))
 		}
 	}
 	blocks = append(blocks, "Message:\n"+text)
