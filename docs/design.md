@@ -165,6 +165,9 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
   approval. Every save shows in the thread with its source (Bot, thread, run) and a Retire button.
   Nothing is deleted.
 - Tools: `remember`, `recall`, `read_memory`, `retire_memory`.
+- Storage: the `memory` package keeps its own tables and migrations in `atoll.db`; ids are random hex.
+  The run fills the source (Bot, thread, run) and the repo/Bot scope id; tools see only the run's
+  shelf (user, its repo, its Bot). Embeddings stay off: no embedder is wired.
 
 ## Prompt
 
