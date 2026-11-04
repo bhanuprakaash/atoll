@@ -88,6 +88,11 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
     `disableAllHooks`.
   - Codex: `skills.bundled.enabled=false`; plugins, remote plugins and apps off; each skill in
     `~/.agents/skills` disabled by name (Codex finds that folder through `HOME`).
+- Env knobs, for tests and dev: `ATOLL_DATA_DIR` replaces `~/Library/Application Support/Atoll`;
+  `ATOLL_PROVIDER_PATH` (PATH syntax) is the only place discovery looks; `ATOLL_CLAUDE_PATH` and
+  `ATOLL_CODEX_PATH` are the path override until settings are stored. Codex skills in
+  `~/.agents/skills` are disabled by the path of their `SKILL.md` (`skills.config`), since a
+  skill's name can differ from its folder.
 - Transport: Codex through `codex app-server` (JSON-RPC over stdio). Claude Code as
   `claude -p --input-format stream-json --output-format stream-json`, driven from Go. Copy both
   adapters from old Reef (`agent/codex`, `agent/claude`). *The Claude Agent SDK runs the same CLI
