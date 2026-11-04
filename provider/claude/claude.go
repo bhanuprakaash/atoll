@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -175,7 +174,7 @@ func Login(ctx context.Context, bin, dir string) *exec.Cmd {
 }
 
 func configEnv(dir string) []string {
-	return append(os.Environ(), "CLAUDE_CONFIG_DIR="+dir)
+	return provider.Env("CLAUDE_CONFIG_DIR=" + dir)
 }
 
 // exitReason is the text of the error event claude left when it exited before it read the

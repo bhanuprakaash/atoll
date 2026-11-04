@@ -405,7 +405,7 @@ func (t *tail) Write(p []byte) (int, error) {
 }
 
 func env(dir string) []string {
-	return append(os.Environ(), "CODEX_HOME="+dir)
+	return provider.Env("CODEX_HOME=" + dir)
 }
 
 func threadParams(cfg provider.Config) (map[string]any, error) {

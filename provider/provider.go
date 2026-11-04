@@ -2,7 +2,11 @@
 // streams.
 package provider
 
-import "context"
+import (
+	"context"
+	"os"
+	"strings"
+)
 
 // Session drives one provider process holding one session. Call Start or Resume once; Send one
 // prompt per turn; read Events until it closes. Interrupt is the only way to stop it.
@@ -42,4 +46,17 @@ type Event struct {
 	Kind      Kind
 	Text      string
 	SessionID string
+}
+
+// Env returns the parent environment without the variables that carry a provider's credentials or
+// session state (ANTHROPIC_*, CLAUDE*, OPENAI_*, CODEX_*), followed by kv.
+func Env(kv ...string) []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "ANTHROPIC_") && !strings.HasPrefix(e, "CLAUDE") &&
+			!strings.HasPrefix(e, "OPENAI_") && !strings.HasPrefix(e, "CODEX_") {
+			env = append(env, e)
+		}
+	}
+	return append(env, kv...)
 }
