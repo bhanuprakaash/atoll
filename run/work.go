@@ -24,13 +24,6 @@ const (
 	_snapshotRefPrefix   = "refs/atoll/unfinished/"
 	_mrOpened            = "opened"
 	_mrMerged            = "merged"
-
-	// _repoNotes goes before the prompt of a repo thread; %s is the repo name.
-	_repoNotes = "You work in the repo %s, starting in a clean read-only checkout. " +
-		"Before your first edit, call the start_work tool of the atoll MCP server with type " +
-		"(feat, fix, chore or docs) and slug, and cd to the path it returns. " +
-		"When the change is ready, commit, push, run glab mr create, call the track_mr tool of " +
-		"the atoll MCP server with the MR URL, and put the URL in your reply. Never merge.\n\n"
 )
 
 type (

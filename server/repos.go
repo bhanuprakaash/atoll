@@ -14,6 +14,7 @@ import (
 
 type settings struct {
 	WorktreeRoot string `json:"worktree_root"`
+	UserName     string `json:"user_name"`
 }
 
 func (a *api) getSettings(w http.ResponseWriter, r *http.Request) {
@@ -22,7 +23,12 @@ func (a *api) getSettings(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusOK, settings{WorktreeRoot: root})
+	name, err := a.st.Setting(r.Context(), "user_name")
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusOK, settings{WorktreeRoot: root, UserName: name})
 }
 
 func (a *api) putSettings(w http.ResponseWriter, r *http.Request) {
@@ -32,6 +38,10 @@ func (a *api) putSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.runs.SetWorktreeRoot(r.Context(), body.WorktreeRoot); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if err := a.st.SetSetting(r.Context(), "user_name", body.UserName); err != nil {
 		a.fail(w, r, err)
 		return
 	}

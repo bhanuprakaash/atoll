@@ -174,6 +174,13 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
 | First message | Up to 8 memory items picked by relevance to the message across scopes (ties: rules first), with ids; a count line `Memory: repo 42, user 9, bot 6. Use recall.`; repo, worktree, branch; the message |
 | Each resumed message | Relevant memory items the session has not seen; the message |
 
+- Relevance counts distinct non-stop-word message words matching body or why; ties favor convention, decision, lesson, finding, fact, then newer items.
+- Prompt bodies and reasons are cut at 400 and 200 bytes, respectively, at rune boundaries.
+- Seen items are tracked per provider session id.
+- Claude uses `--append-system-prompt` and Codex uses `developerInstructions` on start and resume, every run.
+- `{user}` is the `user_name` setting, or The user when empty.
+- Guidance for start_work and track_mr lives in their tool descriptions.
+
 Budget: platform prompt about 500 tokens; everything Reef adds under about 3–4k. *Less context
 recalls better; load the rest just in time.*
 

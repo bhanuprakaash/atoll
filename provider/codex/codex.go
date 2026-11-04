@@ -514,6 +514,9 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 		return nil, err
 	}
 	params := map[string]any{"cwd": cfg.Cwd, "approvalPolicy": "never", "config": config}
+	if cfg.SystemPrompt != "" {
+		params["developerInstructions"] = cfg.SystemPrompt
+	}
 	if cfg.MCPURL != "" {
 		config["mcp_servers"] = map[string]any{
 			provider.MCPServer: map[string]string{"url": cfg.MCPURL},

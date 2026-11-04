@@ -405,6 +405,33 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if cfg.Cwd, err = m.workdir(thread, rp); err != nil {
 		return "", err
 	}
+	user, err := m.cfg.Store.Setting(m.ctx, "user_name")
+	if err != nil {
+		return "", fmt.Errorf("load user name: %w", err)
+	}
+	cfg.SystemPrompt = systemPrompt(bot, user)
+	var items []memory.Item
+	var counts memory.Counts
+	if m.cfg.Memory != nil {
+		shelf := memory.Shelf{RepoID: thread.RepoID, BotID: thread.BotID}
+		var seen map[string]bool
+		if thread.Session != "" {
+			seen, err = m.cfg.Memory.Seen(m.ctx, thread.Session)
+			if err != nil {
+				return "", fmt.Errorf("load seen memory: %w", err)
+			}
+		} else {
+			counts, err = m.cfg.Memory.Count(m.ctx, shelf)
+			if err != nil {
+				return "", fmt.Errorf("count memory: %w", err)
+			}
+		}
+		items, err = m.cfg.Memory.Relevant(m.ctx, shelf, text, 8, seen)
+		if err != nil {
+			return "", fmt.Errorf("select memory: %w", err)
+		}
+	}
+	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
 	cfg.Env = m.gitlabEnv(bot)
 	cfg.MCPURL = m.cfg.MCPURL + a.token
 	if thread.Session != "" {
@@ -415,18 +442,29 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("start %s: %w", bot.Provider, err)
 	}
-	prompt := fmt.Sprintf("You are %s, a Bot in Reef. %s\n"+
-		"When the work is done, call the finish_run tool of the atoll MCP server with done, "+
-		"tried, blocked and next. Do this for every message, even a trivial one. "+
-		"Then reply in 2-3 plain lines.\n\n%s",
-		bot.Name, bot.Persona, text)
-	if rp.ID != "" {
-		prompt = fmt.Sprintf(_repoNotes, rp.Name) + prompt
-	}
 	if err := sess.Send(m.ctx, prompt); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
 	reply, err := m.stream(a, sess, _showText)
+	if m.cfg.Memory != nil && len(items) > 0 {
+		session := thread.Session
+		if session == "" {
+			updated, loadErr := m.cfg.Store.Thread(m.ctx, a.threadID)
+			if loadErr != nil {
+				return "", fmt.Errorf("reload thread: %w", loadErr)
+			}
+			session = updated.Session
+		}
+		if session != "" {
+			ids := make([]string, 0, len(items))
+			for _, item := range items {
+				ids = append(ids, item.ID)
+			}
+			if markErr := m.cfg.Memory.MarkSeen(m.ctx, session, ids); markErr != nil {
+				return "", fmt.Errorf("mark memory seen: %w", markErr)
+			}
+		}
+	}
 	if err != nil {
 		return "", err
 	}

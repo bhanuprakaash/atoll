@@ -119,17 +119,19 @@ func TestArgv(t *testing.T) {
 	tests := []struct {
 		name   string
 		mcpURL string
+		system string
 		extra  []string
 		want   []string
 	}{
-		{"without MCP", "", nil, base},
-		{"with MCP", "http://127.0.0.1:9/mcp/t0k", nil, append(base[:len(base):len(base)], mcp...)},
-		{"resume comes last", "http://127.0.0.1:9/mcp/t0k", []string{"--resume", "abc"},
+		{"without MCP", "", "", nil, base},
+		{"with MCP", "http://127.0.0.1:9/mcp/t0k", "", nil, append(base[:len(base):len(base)], mcp...)},
+		{"resume comes last", "http://127.0.0.1:9/mcp/t0k", "", []string{"--resume", "abc"},
 			append(append(base[:len(base):len(base)], mcp...), "--resume", "abc")},
+		{"system on resume", "", "addition", []string{"--resume", "abc"}, append(base[:len(base):len(base)], "--append-system-prompt", "addition", "--resume", "abc")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := argv(provider.Config{MCPURL: tt.mcpURL}, tt.extra...)
+			got, err := argv(provider.Config{MCPURL: tt.mcpURL, SystemPrompt: tt.system}, tt.extra...)
 			if err != nil {
 				t.Fatal(err)
 			}

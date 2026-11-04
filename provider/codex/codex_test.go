@@ -271,6 +271,7 @@ func TestThreadParams(t *testing.T) {
 	tests := []struct {
 		name   string
 		mcpURL string
+		system string
 		want   string
 	}{
 		{
@@ -285,11 +286,13 @@ func TestThreadParams(t *testing.T) {
 				`"remote_plugin":false},"mcp_servers":{"atoll":{"url":"http://127.0.0.1:9/mcp/t0k"}},` +
 				`"skills":{"bundled":{"enabled":false}}},"cwd":"/work","sandbox":"workspace-write"}`,
 		},
+		{name: "system addition", system: "addition", want: `{"approvalPolicy":"never","config":{"features":{"apps":false,"plugins":false,` +
+			`"remote_plugin":false},"skills":{"bundled":{"enabled":false}}},"cwd":"/work","developerInstructions":"addition"}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			params, err := threadParams(provider.Config{Cwd: "/work", MCPURL: tt.mcpURL})
+			params, err := threadParams(provider.Config{Cwd: "/work", MCPURL: tt.mcpURL, SystemPrompt: tt.system})
 			if err != nil {
 				t.Fatal(err)
 			}
