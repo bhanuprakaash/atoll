@@ -20,7 +20,7 @@ const (
 
 const _tools = `{"tools":[
 {"name":"finish_run",
-"description":"Report how this run went. Call it once, at the end of every run, after your reply is ready.",
+"description":"Report how this run went. Call it once in every run, when the work is done and before your final reply.",
 "inputSchema":{"type":"object",
 "properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string"},"next":{"type":"string"}},
 "required":["done","tried","blocked","next"]}},
