@@ -66,10 +66,11 @@ type (
 	}
 
 	body struct {
-		Delta  string          `json:"delta"`
-		ItemID string          `json:"itemId"`
-		Item   json.RawMessage `json:"item"`
-		Turn   struct {
+		Delta      string          `json:"delta"`
+		ItemID     string          `json:"itemId"`
+		ServerName string          `json:"serverName"`
+		Item       json.RawMessage `json:"item"`
+		Turn       struct {
 			Status string `json:"status"`
 			Error  *struct {
 				Message string `json:"message"`
@@ -362,6 +363,14 @@ func (s *Session) serverRequest(m message) bool {
 		name = "commandExecution"
 	case "item/fileChange/requestApproval":
 		name = "fileChange"
+	case "mcpServer/elicitation/request":
+		// Codex asks before every MCP tool call; Atoll's own tools never reach the user.
+		action := "decline"
+		if m.body().ServerName == provider.MCPServer {
+			action = "accept"
+		}
+		_ = s.write(map[string]any{"id": m.ID, "result": map[string]any{"action": action}})
+		return true
 	default:
 		_ = s.write(map[string]any{
 			"id":    m.ID,
