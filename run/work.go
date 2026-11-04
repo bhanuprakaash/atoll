@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -233,7 +234,8 @@ func (m *Manager) threadDir(threadID string) string {
 }
 
 // gitlabEnv is the environment that lets git and glab act as the Bot's first connected GitLab
-// connection: the token for glab and a git credential helper that passes it. It is empty when the
+// connection: the token as OAUTH_TOKEN with a glab config marking the host OAuth, and a git
+// credential helper that passes it. It is empty when the
 // Bot has none. The token goes only into the environment.
 func (m *Manager) gitlabEnv(b store.Bot) []string {
 	for _, id := range b.Connections {
@@ -246,18 +248,44 @@ func (m *Manager) gitlabEnv(b store.Bot) []string {
 			m.cfg.Log.Warn("read connection token", "connection_id", id, "error", err)
 			continue
 		}
+		dir, err := m.glabConfig(id, c.InstanceURL)
+		if err != nil {
+			m.cfg.Log.Warn("write glab config", "connection_id", id, "error", err)
+			continue
+		}
 		return []string{
-			"GITLAB_TOKEN=" + token,
+			"OAUTH_TOKEN=" + token,
+			"GLAB_CONFIG_DIR=" + dir,
 			"GITLAB_HOST=" + c.InstanceURL,
 			"GIT_CONFIG_COUNT=2",
 			"GIT_CONFIG_KEY_0=credential.helper",
 			"GIT_CONFIG_VALUE_0=",
 			"GIT_CONFIG_KEY_1=credential." + c.InstanceURL + ".helper",
 			`GIT_CONFIG_VALUE_1=!f() { test "$1" = get && echo username=oauth2 && ` +
-				`echo "password=$GITLAB_TOKEN"; }; f`,
+				`echo "password=$OAUTH_TOKEN"; }; f`,
 		}
 	}
 	return nil
+}
+
+// glabConfig writes the glab config folder of connection id and returns it. It holds no token: it
+// only marks the instance's host as OAuth, so glab sends OAUTH_TOKEN as a Bearer token. glab
+// would send GITLAB_TOKEN as a personal access token, which an OAuth token is not.
+func (m *Manager) glabConfig(id, instance string) (string, error) {
+	u, err := url.Parse(instance)
+	if err != nil || u.Host == "" {
+		return "", fmt.Errorf("instance URL %q: %w", instance, err)
+	}
+	dir := filepath.Join(m.cfg.DataDir, "glab", id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create glab config folder: %w", err)
+	}
+	body := fmt.Sprintf("hosts:\n  %s:\n    is_oauth2: \"true\"\n    api_protocol: %s\n    git_protocol: %s\n",
+		u.Host, u.Scheme, u.Scheme)
+	if err := os.WriteFile(filepath.Join(dir, "config.yml"), []byte(body), 0o600); err != nil {
+		return "", fmt.Errorf("write glab config: %w", err)
+	}
+	return dir, nil
 }
 
 // watch is the goroutine that polls the MRs.

@@ -136,16 +136,18 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
 
 - Bots see only Reef's connections and skills, never the provider's own.
 - Connections are built in, each with a sign-in flow, no token pasting. Each Bot picks its own. One
-  sign-in feeds both the service's MCP server and its CLI (`GITLAB_TOKEN`, `GH_TOKEN`).
+  sign-in feeds both the service's MCP server and its CLI (`OAUTH_TOKEN` for `glab`, `GH_TOKEN`).
   - GitLab (v1): OAuth device flow, instance URL (default gitlab.com); Bots use `glab`. *GitLab's own
     MCP server is beta and needs Premium/Ultimate plus Duo.*
   - GitHub (v2): hosted MCP server `api.githubcopilot.com/mcp/`.
   - Slack (v2): needs a small hosted token exchange. *Its MCP server wants a confidential client;
     desktop PKCE sign-in cannot get bot scopes and expires in 30 days.*
 - The device code stays in server memory, so a sign-in pending at restart is started again.
-- A run with a connected GitLab connection gets `GITLAB_TOKEN`, `GITLAB_HOST` and a git credential
-  helper given only through env (`GIT_CONFIG_*`), which clears the user's own helpers. The token is
-  never written to a file or log.
+- A run with a connected GitLab connection gets `OAUTH_TOKEN`, `GITLAB_HOST`, `GLAB_CONFIG_DIR` (a
+  token-free config marking the host `is_oauth2`) and a git credential helper given only through env
+  (`GIT_CONFIG_*`), which clears the user's own helpers. Never `GITLAB_TOKEN`: glab sends it as a
+  personal access token, which an OAuth token is not; the user's own is dropped from the env. The
+  token is never written to a file or log.
 - Tokens live in the OS secret store through one cross-platform library. Targets: macOS and desktop
   Linux; headless Linux is out.
 - Skills: one library in standard `SKILL.md`, created in the app; each Bot picks its skills. A
