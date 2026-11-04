@@ -246,6 +246,145 @@ async function uiPass(base, provider) {
     await browser.close();
   }
 }
+const greeting =
+  "---\nname: reef-greeting\ndescription: Give the Reef greeting.\nallowed-tools: Read\ncontext: fork\n---\nHello from the lagoon.\n";
+const ask = {
+  fake: (p) => `Create reef-greeting and a Lagoon Bot using ${p}.`,
+  real: (p) =>
+    `Use your create_skill tool to create a skill named reef-greeting with exactly this SKILL.md content:\n\n${greeting}\nThen use your create_bot tool to create a Bot named Lagoon with persona "A lagoon guide.", provider ${p}, and skills set to the id create_skill returned. Reply with just: created`,
+};
+const useSkill = {
+  fake: "List your skills and use reef-greeting.",
+  real: "List the names of the skills available to you, then use the reef-greeting skill and quote exactly what it tells you to say.",
+};
+// Chief makes a skill and a Bot that has it; the Bot uses it, alone and in a repo with its own
+// committed skills; Undo of the Bot's creation removes it.
+async function chiefPass(base, provider, undo) {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 800 },
+  });
+  page.setDefaultTimeout(limit);
+  const shot = (name) =>
+    page.screenshot({ path: join(out, `chief-${provider}-${name}.png`) });
+  const say = async (text) => {
+    await page.getByRole("textbox", { name: "Message" }).fill(text);
+    await page.getByRole("button", { name: "Send" }).click();
+  };
+  const newThread = async () => {
+    const created = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.url().endsWith("/threads"),
+    );
+    await page.getByRole("button", { name: "New thread" }).click();
+    const { id } = await (await created).json();
+    await page.waitForURL((u) => u.href.endsWith(`/threads/${id}`));
+  };
+  // Claude asks before it uses a skill; the user approves in the thread.
+  const answered = async (target, name) => {
+    const approve = page.getByRole("button", { name: "Approve" }).first();
+    let shown = false;
+    for (const end = Date.now() + limit; Date.now() < end; await sleep(200)) {
+      if (await target.isVisible()) return;
+      if (await approve.isVisible()) {
+        if (!shown) await shot(`${name}-approval`);
+        shown = true;
+        await approve.click().catch(() => {});
+      }
+    }
+    throw new Error(`timed out after ${limit} ms waiting for ${name}`);
+  };
+  const api = async (path, init) => {
+    const res = await fetch(base + "/api" + path, init);
+    return res.status === 204 ? null : res.json();
+  };
+  try {
+    const before = new Set((await api("/bots")).map((b) => b.id));
+    await page.goto(base);
+    await page
+      .getByRole("navigation")
+      .getByText("Chief", { exact: true })
+      .click();
+    await newThread();
+    await say((fake ? ask.fake : ask.real)(provider));
+    const change = page
+      .getByRole("region", { name: "Platform change" })
+      .filter({ has: page.getByText("Lagoon", { exact: true }) })
+      .last();
+    await change.waitFor();
+    await shot("1-chief-changes");
+    const chiefURL = page.url();
+    const lagoon = (await api("/bots")).find(
+      (b) => !before.has(b.id) && b.name === "Lagoon",
+    );
+    const skills = await api("/skills");
+    const skill = skills.find((s) => s.id === lagoon?.skills?.[0]);
+    check(
+      lagoon?.provider === provider &&
+        skill?.content.trimEnd() === greeting.trimEnd(),
+      `chief: ${provider} created skill and Bot`,
+      JSON.stringify({ bot: lagoon, skill: skill?.name }),
+    );
+    await page.goto(`${base}/settings/skills`);
+    await shot("2-skill-library");
+    await page.goto(`${base}/bots/${lagoon.id}`);
+    await newThread();
+    await say(fake ? useSkill.fake : useSkill.real);
+    await answered(page.getByText(/Hello from the lagoon/).first(), "3");
+    await shot("3-bot-uses-skill");
+    check(true, `chief: ${provider} Bot lists and uses the skill`);
+
+    const repoDir = join(tmp, `atoll-fixture-${provider}`);
+    const git = (...args) =>
+      execFileSync("git", args, { cwd: repoDir, stdio: "ignore" });
+    for (const dir of [".claude", ".agents"]) {
+      mkdirSync(join(repoDir, dir, "skills", "repo-skill"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(repoDir, dir, "skills", "repo-skill", "SKILL.md"),
+        "---\nname: repo-skill\ndescription: A skill this repo commits.\n---\nSay: the repo skill is here.\n",
+      );
+    }
+    git("init", "-q", "-b", "main");
+    git("add", ".");
+    git("-c", "user.name=v", "-c", "user.email=v@v", "commit", "-qm", "skills");
+    await api("/repos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `atoll-fixture-${provider}`,
+        path: repoDir,
+      }),
+    });
+    await page.goto(`${base}/bots/${lagoon.id}`);
+    await page
+      .getByRole("combobox", { name: "Repo" })
+      .selectOption({ label: `atoll-fixture-${provider}` });
+    await newThread();
+    await say(fake ? useSkill.fake : useSkill.real);
+    await answered(page.getByText(/repo-skill/).first(), "4");
+    await page
+      .getByText(/reef-greeting/)
+      .last()
+      .waitFor();
+    await shot("4-repo-and-bot-skills");
+    check(true, `chief: ${provider} Bot sees repo skill next to its own`);
+
+    if (undo) {
+      await page.goto(chiefURL);
+      await change.getByRole("button", { name: "Undo", exact: true }).click();
+      await change.getByText("Undone", { exact: true }).waitFor();
+      await shot("5-undone");
+      const gone = !(await api("/bots")).some((b) => b.id === lagoon.id);
+      check(gone, `chief: ${provider} Undo removed the Bot`);
+    }
+  } catch (err) {
+    await shot("failed").catch(() => {});
+    fail(`chief: ${provider}`, err);
+  } finally {
+    await browser.close();
+  }
+}
 mkdirSync(join(out, "bin"), { recursive: true });
 const tmp = mkdtempSync(join(tmpdir(), "atoll-verify-"));
 const bin = join(tmp, "bin");
@@ -335,6 +474,10 @@ try {
   }
   step(`UI pass: ${providers[0]}`);
   await uiPass(base, providers[0]);
+  for (const [i, p] of providers.entries()) {
+    step(`Chief pass: ${p}`);
+    await chiefPass(base, p, i === providers.length - 1);
+  }
 } catch (err) {
   fail("setup", err);
 } finally {
