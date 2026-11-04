@@ -332,8 +332,9 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		return "", fmt.Errorf("start %s: %w", bot.Provider, err)
 	}
 	prompt := fmt.Sprintf("You are %s, a Bot in Reef. %s\n"+
-		"End every run by calling finish_run(done, tried, blocked, next), "+
-		"then reply in 2-3 plain lines.\n\n%s", bot.Name, bot.Persona, text)
+		"For every message, even a trivial one: first call the finish_run tool of the atoll "+
+		"MCP server with done, tried, blocked and next, then reply in 2-3 plain lines.\n\n%s",
+		bot.Name, bot.Persona, text)
 	if err := sess.Send(m.ctx, prompt); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
