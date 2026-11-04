@@ -27,13 +27,13 @@ typecheck: web/node_modules
 	cd web && $(PNPM) exec tsc --noEmit
 
 test:
-	go test $(GO_DIRS)
+	go test -shuffle=on -timeout=60s $(filter-out $(CURDIR)/e2e,$(GO_DIRS))
 
 run:
 	go run ./cmd/atoll
 
 e2e:
-	@echo "e2e: no suite yet"
+	go test -count=1 -timeout=3m ./e2e
 
 web/node_modules: web/pnpm-lock.yaml
 	cd web && $(PNPM) install --frozen-lockfile
