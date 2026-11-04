@@ -19,6 +19,7 @@ import (
 
 	"atoll/memory"
 	"atoll/provider"
+	"atoll/skill"
 	"atoll/store"
 )
 
@@ -406,6 +407,12 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("launch %s: %w", bot.Provider, err)
 	}
+	skillDir := filepath.Join(cfg.Dir, "runs", a.run.ID)
+	defer func() {
+		if err := os.RemoveAll(skillDir); err != nil {
+			m.cfg.Log.Warn("remove skill dir", "run_id", a.run.ID, "error", err)
+		}
+	}()
 	defer func() {
 		if err := sess.Interrupt(); err != nil {
 			m.cfg.Log.Warn("interrupt provider", "run_id", a.run.ID, "error", err)
@@ -425,6 +432,20 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		return "", fmt.Errorf("load user name: %w", err)
 	}
 	cfg.SystemPrompt = systemPrompt(bot, user)
+	skills := make([]store.Skill, 0, len(bot.Skills))
+	for _, id := range bot.Skills {
+		sk, err := m.cfg.Store.Skill(m.ctx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("load skill: %w", err)
+		}
+		skills = append(skills, sk)
+	}
+	if cfg.SkillDir, err = skill.Place(skillDir, bot.Provider, skills); err != nil {
+		return "", fmt.Errorf("place skills: %w", err)
+	}
 	var items []memory.Item
 	var counts memory.Counts
 	if m.cfg.Memory != nil {
