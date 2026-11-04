@@ -299,9 +299,15 @@ func (m *Manager) execute(a *active, text string) {
 		}
 	}
 	// A background context: FinishRun must outlive Close's cancel.
-	err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, status, strings.TrimSpace(reply), errText)
+	for range 2 {
+		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, status, strings.TrimSpace(reply), errText)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		m.cfg.Log.Error("finish run", "run_id", a.run.ID, "error", err)
+		status, errText = store.StatusFailed, "could not save the run: "+err.Error()
 	}
 	m.cfg.Log.Info("run finished", "run_id", a.run.ID, "status", status, "error", errText,
 		"duration", time.Since(start))

@@ -205,6 +205,27 @@ func TestRun_Finish(t *testing.T) {
 	}
 }
 
+func TestRun_FinishNotSaved(t *testing.T) {
+	e := newEnv(t, &fakeSession{script: []provider.Event{
+		{Kind: provider.KindText, Text: "hi"}, {Kind: provider.KindTurnEnd},
+	}})
+	e.m.cfg.Launch = func(context.Context, string) (provider.Session, provider.Config, error) {
+		_ = e.st.Close()
+		return e.sess, provider.Config{}, nil
+	}
+	_, _, err := e.m.Send(t.Context(), e.thread.ID, "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fin := nextAs[Finished](t, e, EventRunFinished)
+	if fin.Status != store.StatusFailed || fin.Error != "could not save the run: begin: sql: database is closed" {
+		t.Errorf("run_finished %+v, want failed with the save error", fin)
+	}
+	if _, _, err := e.m.Send(t.Context(), e.thread.ID, "again"); errors.Is(err, ErrBusy) {
+		t.Error("thread is still busy after the run finished")
+	}
+}
+
 func TestRun_Approval(t *testing.T) {
 	tests := []struct {
 		name  string
