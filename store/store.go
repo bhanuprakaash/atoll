@@ -341,7 +341,8 @@ func (s *Store) CreateThread(ctx context.Context, botID, repoID string) (Thread,
 		Created: time.Now().UTC().Truncate(time.Microsecond),
 	}
 	res, err := s.db.ExecContext(ctx,
-		"INSERT INTO threads (id, bot_id, repo_id, created) SELECT ?, id, ?, ? FROM bots WHERE id = ?",
+		"INSERT INTO threads (id, bot_id, repo_id, created) "+
+			"SELECT ?, id, ?, ? FROM bots WHERE id = ? AND removed = 0",
 		t.ID, t.RepoID, t.Created.UnixMicro(), botID)
 	if err != nil {
 		return Thread{}, fmt.Errorf("insert thread: %w", err)
