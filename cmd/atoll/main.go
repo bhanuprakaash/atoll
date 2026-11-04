@@ -11,7 +11,9 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
+	"syscall"
 
 	"atoll/provider"
 	"atoll/provider/claude"
@@ -33,12 +35,22 @@ type adapter struct {
 }
 
 var _adapters = []adapter{
-	{"claude", func() provider.Session { return claude.New() }, claude.SignedIn, claude.Login},
-	{"codex", func() provider.Session { return codex.New() }, codex.SignedIn, codex.Login},
+	{
+		name:     "claude",
+		new:      func() provider.Session { return claude.New() },
+		signedIn: claude.SignedIn,
+		login:    claude.Login,
+	},
+	{
+		name:     "codex",
+		new:      func() provider.Session { return codex.New() },
+		signedIn: codex.SignedIn,
+		login:    codex.Login,
+	},
 }
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	err := run(ctx, os.Args[1:], os.Stdout)
 	stop()
 	if err != nil {
@@ -79,35 +91,48 @@ func run(ctx context.Context, args []string, w io.Writer) error {
 }
 
 func status(ctx context.Context, w io.Writer) error {
+	dirs := pathDirs(ctx)
 	for _, a := range _adapters {
-		bin := a.find(ctx)
+		bin := a.find(dirs)
 		if bin == "" {
 			if _, err := fmt.Fprintf(w, "%s\tnot installed\n", a.name); err != nil {
 				return err
 			}
 			continue
 		}
-		version, err := provider.Version(ctx, bin)
-		if err != nil {
-			return err
-		}
 		dir, err := a.dir()
 		if err != nil {
 			return err
 		}
-		in, err := a.signedIn(ctx, bin, dir)
+		line, err := a.describe(ctx, bin, dir)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
-			return fmt.Errorf("%s sign-in: %w", a.name, err)
+			line = "error: " + err.Error()
 		}
-		state := "signed out"
-		if in {
-			state = "signed in"
-		}
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", a.name, bin, version, state); err != nil {
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n", a.name, bin, line); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// describe returns a's version and sign-in state, tab separated.
+func (a adapter) describe(ctx context.Context, bin, dir string) (string, error) {
+	version, err := provider.Version(ctx, bin)
+	if err != nil {
+		return "", err
+	}
+	in, err := a.signedIn(ctx, bin, dir)
+	if err != nil {
+		return "", fmt.Errorf("sign-in: %w", err)
+	}
+	state := "signed out"
+	if in {
+		state = "signed in"
+	}
+	return version + "\t" + state, nil
 }
 
 // chat sends one prompt and prints the reply, then the session id.
@@ -165,7 +190,6 @@ func (a adapter) chat(ctx context.Context, args []string, w io.Writer) error {
 	}
 }
 
-// signIn signs a in to Atoll's own folder for it.
 func (a adapter) signIn(ctx context.Context) error {
 	bin, dir, err := a.prepare(ctx)
 	if err != nil {
@@ -176,9 +200,8 @@ func (a adapter) signIn(ctx context.Context) error {
 	return cmd.Run()
 }
 
-// prepare finds a's executable and creates its folder.
 func (a adapter) prepare(ctx context.Context) (bin, dir string, err error) {
-	if bin = a.find(ctx); bin == "" {
+	if bin = a.find(pathDirs(ctx)); bin == "" {
 		return "", "", fmt.Errorf("%s is not installed", a.name)
 	}
 	if dir, err = a.dir(); err != nil {
@@ -187,12 +210,25 @@ func (a adapter) prepare(ctx context.Context) (bin, dir string, err error) {
 	return bin, dir, os.MkdirAll(dir, 0o700)
 }
 
-func (a adapter) find(ctx context.Context) string {
+func (a adapter) find(dirs []string) string {
 	override := os.Getenv("ATOLL_" + strings.ToUpper(a.name) + "_PATH")
-	return provider.Find(a.name, override, provider.Dirs(ctx))
+	return provider.Find(a.name, override, dirs)
 }
 
-// dir is Atoll's settings folder for a.
+// pathDirs lists the provider folders and puts them first on PATH, so that every child process
+// finds what the provider needs, such as node for a script with an env shebang.
+func pathDirs(ctx context.Context) []string {
+	dirs := provider.Dirs(ctx)
+	var path []string
+	for _, d := range slices.Concat(dirs, filepath.SplitList(os.Getenv("PATH"))) {
+		if d != "" && !slices.Contains(path, d) {
+			path = append(path, d)
+		}
+	}
+	_ = os.Setenv("PATH", strings.Join(path, string(os.PathListSeparator)))
+	return dirs
+}
+
 func (a adapter) dir() (string, error) {
 	data := os.Getenv("ATOLL_DATA_DIR")
 	if data == "" {
