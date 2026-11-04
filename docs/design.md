@@ -178,8 +178,8 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
 | Each resumed message | Relevant memory items the session has not seen; the message |
 
 - Relevance counts distinct non-stop-word message words matching body or why; ties favor convention, decision, lesson, finding, fact, then newer items.
-- Prompt bodies and reasons are cut at 400 and 200 bytes, respectively, at rune boundaries.
-- Seen items are tracked per provider session id.
+- In prompts a body is cut to 400 bytes and a why to 200, at a rune boundary, then `…`.
+- Seen items are tracked per provider session id, marked once the turn ends without error.
 - Claude uses `--append-system-prompt` and Codex uses `developerInstructions` on start and resume, every run.
 - `{user}` is the `user_name` setting, or The user when empty.
 - Guidance for start_work and track_mr lives in their tool descriptions.

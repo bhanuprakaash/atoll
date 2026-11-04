@@ -456,6 +456,9 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
 	reply, err := m.stream(a, sess, _showText)
+	if err != nil {
+		return "", err
+	}
 	if m.cfg.Memory != nil && len(items) > 0 {
 		session := thread.Session
 		if session == "" {
@@ -474,9 +477,6 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 				return "", fmt.Errorf("mark memory seen: %w", markErr)
 			}
 		}
-	}
-	if err != nil {
-		return "", err
 	}
 	run, err := m.cfg.Store.Run(m.ctx, a.run.ID)
 	if err != nil {
