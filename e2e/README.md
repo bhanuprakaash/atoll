@@ -42,7 +42,13 @@ fields used by the tests. Additional fields are allowed.
 
 `repo_access` is `"all"` (default) or an array of allowed repo IDs. An empty array
 allows no repos. `connections` is an array of connection IDs; a selected GitLab
-connection supplies `GITLAB_TOKEN` to the provider and to `glab` on its PATH. These
+connection gives the provider and `glab` on its PATH `OAUTH_TOKEN=<token>`,
+`GITLAB_HOST=<instance url>` and `GLAB_CONFIG_DIR=<dir>`, and no `GITLAB_TOKEN`.
+`<dir>` is a folder owned by Atoll (it may live under `ATOLL_DATA_DIR`) whose
+`config.yml` sets `is_oauth2: "true"` for the instance's host under `hosts:` and holds
+no token. Real glab 1.123 sends `GITLAB_TOKEN` as `PRIVATE-TOKEN`, but a device-flow
+OAuth token works only as Bearer, which glab uses for `OAUTH_TOKEN` when the host has
+`is_oauth2`. These
 fields are optional, preserving issue #3's create-Bot contract. A closed thread
 refuses new messages with `409`.
 

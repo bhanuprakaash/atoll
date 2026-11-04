@@ -199,17 +199,13 @@ func TestRepo_FixPushMRAndMerge(t *testing.T) {
 				t.Fatal("MR URL absent from bot reply")
 			}
 			for _, c := range f.m.sessions(t, provider) {
-				if c.env["GITLAB_TOKEN"] != token {
-					t.Fatal("provider missing GITLAB_TOKEN")
-				}
+				assertGitLabEnv(t, "provider", c.env, token)
 			}
 			create := false
 			for _, c := range f.m.calls(t, "glab") {
 				if len(c.argv) >= 2 && c.argv[0] == "mr" && c.argv[1] == "create" {
 					create = true
-					if c.env["GITLAB_TOKEN"] != token {
-						t.Fatal("glab create missing token")
-					}
+					assertGitLabEnv(t, "glab create", c.env, token)
 				}
 			}
 			if !create {
@@ -442,6 +438,29 @@ func (f *repoFixture) connect(t *testing.T) (string, string) {
 	}
 	t.Cleanup(func() { _ = deleteSecret.Run() })
 	return start.ID, token
+}
+
+// assertGitLabEnv checks the env a selected GitLab connection gives: glab sends GITLAB_TOKEN as a
+// personal token, so the OAuth token must come as OAUTH_TOKEN with a config marking the host OAuth.
+func assertGitLabEnv(t *testing.T, who string, env map[string]string, token string) {
+	t.Helper()
+	if env["OAUTH_TOKEN"] != token {
+		t.Fatalf("%s missing OAUTH_TOKEN", who)
+	}
+	if _, ok := env["GITLAB_TOKEN"]; ok {
+		t.Fatalf("%s has GITLAB_TOKEN", who)
+	}
+	dir := env["GLAB_CONFIG_DIR"]
+	if dir == "" {
+		t.Fatalf("%s missing GLAB_CONFIG_DIR", who)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "config.yml"))
+	if err != nil {
+		t.Fatalf("%s glab config: %v", who, err)
+	}
+	if !bytes.Contains(b, []byte("is_oauth2")) || bytes.Contains(b, []byte(token)) {
+		t.Fatalf("%s glab config must set is_oauth2 and hold no token", who)
+	}
 }
 
 func assertNoSecret(t *testing.T, token string, roots ...string) {
