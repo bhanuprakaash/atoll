@@ -1,4 +1,4 @@
-.PHONY: check fmt format lint vet typecheck test run e2e ui
+.PHONY: check fmt format lint vet typecheck test run e2e ui verify
 
 # web/node_modules ships Go files; keep them out of every Go command.
 GO_DIRS = $(shell go list -f '{{.Dir}}' ./... | grep -v /node_modules/)
@@ -47,6 +47,14 @@ e2e: ui e2e/ui/node_modules
 
 e2e/ui/node_modules: e2e/ui/pnpm-lock.yaml
 	cd e2e/ui && $(PNPM) install --frozen-lockfile && $(PNPM) exec playwright install chromium
+	@touch $@
+
+# Real server, API and UI; proof lands in .verify/. ARGS: --fake, --provider, --out.
+verify: ui scripts/verify/node_modules
+	node scripts/verify/verify.ts $(ARGS)
+
+scripts/verify/node_modules: scripts/verify/pnpm-lock.yaml
+	cd scripts/verify && $(PNPM) install --frozen-lockfile && $(PNPM) exec playwright install chromium
 	@touch $@
 
 web/node_modules: web/pnpm-lock.yaml
