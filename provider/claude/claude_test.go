@@ -3,6 +3,7 @@ package claude
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -167,5 +168,26 @@ func TestParse(t *testing.T) {
 				t.Errorf("parse = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAdoptSession(t *testing.T) {
+	dir := t.TempDir()
+	from := filepath.Join(dir, "projects", "-data-threads-t1")
+	if err := os.MkdirAll(from, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(from, "s1.jsonl"), []byte("history"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := provider.Config{Dir: dir, Cwd: "/data/trees/seeded/fix-seeded.bug"}
+	if err := adoptSession(cfg, "s1"); err != nil {
+		t.Fatal(err)
+	}
+
+	to := filepath.Join(dir, "projects", "-data-trees-seeded-fix-seeded-bug", "s1.jsonl")
+	if got, err := os.ReadFile(to); err != nil || string(got) != "history" {
+		t.Fatalf("copied session = %q, %v; want %q", got, err, "history")
 	}
 }

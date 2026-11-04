@@ -16,6 +16,10 @@ const (
 	ToolFinishRun = "finish_run"
 	// ToolApprove is Claude's permission prompt tool: it answers once the user does.
 	ToolApprove = "approve"
+	// ToolStartWork takes {type, slug} and returns the worktree {path, branch} of the thread.
+	ToolStartWork = "start_work"
+	// ToolTrackMR takes {url}: the merge request the thread opened.
+	ToolTrackMR = "track_mr"
 )
 
 // Session drives one provider process holding one session. Call Start or Resume once; Send one
@@ -40,6 +44,8 @@ type Config struct {
 	Bin string // provider executable
 	Dir string // Atoll's settings folder for this provider
 	Cwd string
+	// Env is extra environment for the provider process, as KEY=value.
+	Env []string
 	// MCPURL is Atoll's MCP server for this run. Empty runs without it, and without approvals:
 	// nobody is there to answer them.
 	MCPURL string

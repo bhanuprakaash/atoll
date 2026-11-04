@@ -230,7 +230,7 @@ func (s *Session) spawn(
 	s.used = true
 	cmd := exec.Command(cfg.Bin, "app-server")
 	cmd.Dir = cfg.Cwd
-	cmd.Env = env(cfg.Dir)
+	cmd.Env = append(env(cfg.Dir), cfg.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stderr = &s.stderr
 	cmd.WaitDelay = _waitDelay
