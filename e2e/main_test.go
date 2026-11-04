@@ -9,8 +9,9 @@ import (
 	"testing"
 )
 
-// _atoll is the path to the binary TestMain builds once for every test.
-var _atoll string
+// _atoll is the path to the binary TestMain builds once for every test; _fakes is the folder
+// with the fake claude and codex it builds next to it.
+var _atoll, _fakes string
 
 func TestMain(m *testing.M) {
 	os.Exit(run(m))
@@ -30,6 +31,22 @@ func run(m *testing.M) int {
 	if err := build.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "build atoll:", err)
 		return 1
+	}
+
+	testdata, err := filepath.Abs("testdata")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	_fakes = filepath.Join(dir, "fakes")
+	for _, name := range []string{"claude", "codex"} {
+		build := exec.Command("go", "build", "-o", filepath.Join(_fakes, name),
+			"-ldflags", "-X atoll/e2e/fakes/fake._testdata="+testdata, "atoll/e2e/fakes/"+name)
+		build.Stdout, build.Stderr = os.Stderr, os.Stderr
+		if err := build.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "build fake %s: %v\n", name, err)
+			return 1
+		}
 	}
 	return m.Run()
 }
