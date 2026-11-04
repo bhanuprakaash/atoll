@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"atoll/memory"
 	"atoll/run"
 	"atoll/store"
 )
@@ -33,6 +34,7 @@ var _ui embed.FS
 
 type api struct {
 	st   *store.Store
+	mem  *memory.Store
 	runs *run.Manager
 	log  *slog.Logger
 	http *http.Client // for GitLab sign-in
@@ -42,9 +44,9 @@ type api struct {
 }
 
 // New returns the handler for the API, the MCP tools and the UI.
-func New(st *store.Store, runs *run.Manager, log *slog.Logger) http.Handler {
+func New(st *store.Store, mem *memory.Store, runs *run.Manager, log *slog.Logger) http.Handler {
 	a := &api{
-		st: st, runs: runs, log: log,
+		st: st, mem: mem, runs: runs, log: log,
 		http:    &http.Client{Timeout: _signInTimeout},
 		devices: map[string]string{},
 	}

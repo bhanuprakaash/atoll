@@ -19,7 +19,7 @@ func TestMCP(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := httptest.NewServer(New(st, run.New(run.Config{Store: st, Log: log}), log))
+	srv := httptest.NewServer(New(st, nil, run.New(run.Config{Store: st, Log: log}), log))
 	t.Cleanup(srv.Close)
 
 	tests := []struct {

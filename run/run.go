@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"atoll/memory"
 	"atoll/provider"
 	"atoll/store"
 )
@@ -69,6 +70,7 @@ type (
 	// Config is what a Manager needs.
 	Config struct {
 		Store  *store.Store
+		Memory *memory.Store
 		Launch Launch
 		// MCPURL is the base of Atoll's MCP endpoint; a run's server is MCPURL + its token.
 		MCPURL string

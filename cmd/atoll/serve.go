@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"atoll/memory"
 	"atoll/provider"
 	threadrun "atoll/run"
 	"atoll/server"
@@ -42,6 +43,10 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
+	mem, err := memory.Open(st.DB(), nil)
+	if err != nil {
+		return err
+	}
 	failed, err := st.FailUnfinished(ctx, _restartReason)
 	if err != nil {
 		return err
@@ -61,6 +66,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	}
 	runs := threadrun.New(threadrun.Config{
 		Store:        st,
+		Memory:       mem,
 		Launch:       launch,
 		MCPURL:       url + server.MCPPath,
 		DataDir:      data,
@@ -70,7 +76,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	})
 	pathDirs(ctx) // glab is found on the provider folders' PATH
 	runs.Start()
-	srv := &http.Server{Handler: server.New(st, runs, log), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: server.New(st, mem, runs, log), ReadHeaderTimeout: 10 * time.Second}
 	var serveErr error
 	served := make(chan struct{})
 	go func() {

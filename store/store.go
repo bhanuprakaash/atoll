@@ -172,6 +172,9 @@ func Open(dir string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// DB is the shared handle, for packages that keep their own tables in the same file.
+func (s *Store) DB() *sql.DB { return s.db }
+
 // Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
 
