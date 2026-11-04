@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"atoll/provider"
@@ -54,13 +55,21 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		return err
 	}
 	url := "http://" + ln.Addr().String()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
 	runs := threadrun.New(threadrun.Config{
-		Store:   st,
-		Launch:  launch,
-		MCPURL:  url + server.MCPPath,
-		DataDir: data,
-		Log:     log,
+		Store:        st,
+		Launch:       launch,
+		MCPURL:       url + server.MCPPath,
+		DataDir:      data,
+		WorktreeRoot: filepath.Join(home, "Reef", "worktrees"),
+		PollInterval: pollInterval(),
+		Log:          log,
 	})
+	pathDirs(ctx) // glab is found on the provider folders' PATH
+	runs.Start()
 	srv := &http.Server{Handler: server.New(st, runs, log), ReadHeaderTimeout: 10 * time.Second}
 	var serveErr error
 	served := make(chan struct{})
@@ -87,6 +96,16 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		serveErr = nil
 	}
 	return errors.Join(err, serveErr, closeErr)
+}
+
+// pollInterval is ATOLL_REPO_POLL_INTERVAL, a Go duration, or a minute when it is unset, invalid
+// or not positive.
+func pollInterval() time.Duration {
+	d, err := time.ParseDuration(os.Getenv("ATOLL_REPO_POLL_INTERVAL"))
+	if err != nil || d <= 0 {
+		return time.Minute
+	}
+	return d
 }
 
 // launch returns a session for the provider name with its binary and settings folder.

@@ -24,6 +24,14 @@ const _tools = `{"tools":[
 "inputSchema":{"type":"object",
 "properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string"},"next":{"type":"string"}},
 "required":["done","tried","blocked","next"]}},
+{"name":"start_work",
+"description":"Call before your first edit in a repo thread. Makes this thread's worktree on a new branch type/slug and returns its path and branch as JSON. Change into that path for your edits. Calling it again returns the same worktree.",
+"inputSchema":{"type":"object",
+"properties":{"type":{"type":"string","enum":["feat","fix","chore","docs"]},"slug":{"type":"string"}},
+"required":["type","slug"]}},
+{"name":"track_mr",
+"description":"Call after you open a merge request, with its URL, so Atoll can follow it.",
+"inputSchema":{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}},
 {"name":"approve",
 "description":"Permission prompt: asks the user whether a tool call may go ahead.",
 "inputSchema":{"type":"object",
@@ -122,6 +130,37 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			return nil, a.toolError(err)
 		}
 		return text("Report saved."), nil
+	case provider.ToolStartWork:
+		var in struct {
+			Type string `json:"type"`
+			Slug string `json:"slug"`
+		}
+		if err := json.Unmarshal(call.Arguments, &in); err != nil {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
+		}
+		path, branch, err := a.runs.StartWork(r.Context(), token, in.Type, in.Slug)
+		if err != nil {
+			return nil, a.toolError(err)
+		}
+		body, err := json.Marshal(struct {
+			Path   string `json:"path"`
+			Branch string `json:"branch"`
+		}{Path: path, Branch: branch})
+		if err != nil {
+			return nil, a.toolError(err)
+		}
+		return text(string(body)), nil
+	case provider.ToolTrackMR:
+		var in struct {
+			URL string `json:"url"`
+		}
+		if err := json.Unmarshal(call.Arguments, &in); err != nil || in.URL == "" {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
+		}
+		if err := a.runs.TrackMR(r.Context(), token, in.URL); err != nil {
+			return nil, a.toolError(err)
+		}
+		return text("MR tracked."), nil
 	case provider.ToolApprove:
 		var in struct {
 			ToolName  string          `json:"tool_name"`

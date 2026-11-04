@@ -45,6 +45,9 @@ const (
 	StatusFailed  = "failed"
 )
 
+// KindGitLab is the kind of a GitLab connection.
+const KindGitLab = "gitlab"
+
 // Connection statuses.
 const (
 	ConnectionPending   = "pending"
