@@ -55,6 +55,8 @@ type Config struct {
 	// MCPURL is Atoll's MCP server for this run. Empty runs without it, and without approvals:
 	// nobody is there to answer them.
 	MCPURL string
+	// SkillDir is the absolute root of this run's skill copies. Empty runs without them.
+	SkillDir string
 }
 
 // Kind says what an Event carries.
