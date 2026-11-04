@@ -1,0 +1,57 @@
+#!/bin/sh
+# Fails when a change weakens tests. Usage: scripts/check-tests <target ref>
+set -eu
+
+case ",${CI_MERGE_REQUEST_LABELS:-}," in
+*,tests-approved,*)
+	echo "test-guard: tests-approved label set, skipping"
+	exit 0
+	;;
+esac
+
+base=$(git merge-base "${1:?usage: scripts/check-tests <target ref>}" HEAD)
+tab=$(printf '\t')
+found=$(mktemp)
+
+is_test() {
+	case $1 in
+	e2e/* | *_test.go | *.test.ts | *.test.tsx) return 0 ;;
+	esac
+	return 1
+}
+
+files=$(mktemp)
+trap 'rm -f "$found" "$files"' EXIT
+git diff -M --name-status "$base" HEAD | while IFS=$tab read -r status path new; do
+	printf '%s\n' "$path" ${new:+"$new"}
+	case $status in
+	D) ! is_test "$path" || echo "$path: deletes a test file" >>"$found" ;;
+	R*) ! is_test "$path" || echo "$path: renames a test file to $new" >>"$found" ;;
+	esac
+done >"$files"
+
+grep -Fx -e .gitlab-ci.yml -e scripts/check-tests "$files" | sed 's/$/: changes the test guard or CI config/' >>"$found" || true
+if grep -q '^e2e/' "$files" && grep -qv '^e2e/' "$files"; then
+	sed 's|$|: e2e/ and other files change in one MR|' "$files" >>"$found"
+fi
+
+git diff -U0 --no-color --no-ext-diff "$base" HEAD | awk '
+/^\+\+\+ / { f = substr($0, 7); next }
+/^@@ / { split($3, a, ","); n = substr(a[1], 2); next }
+/^\+/ {
+	if (f ~ /^e2e\// || f ~ /_test\.go$/ || f ~ /\.test\.tsx?$/) {
+		s = substr($0, 2)
+		if (s ~ /\.Skip(f|Now)?\(/) print f ":" n ": adds a test skip"
+		else if (s ~ /\.skip\(/) print f ":" n ": adds .skip("
+		else if (s ~ /\.only\(/) print f ":" n ": adds .only("
+		else if (s ~ /(^|[^A-Za-z0-9_])xit\(/) print f ":" n ": adds xit("
+	}
+	n++
+}' >>"$found"
+
+if [ -s "$found" ]; then
+	sed 's/^/test-guard: /' "$found"
+	echo "test-guard: this MR weakens or rewrites tests. Undo it, or ask the user to review and add the tests-approved label."
+	exit 1
+fi
+echo "test-guard: ok"

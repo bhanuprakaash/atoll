@@ -1,0 +1,12 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: gofmt
+      glob: "*.go"
+      run: |
+        files=$(gofmt -l {staged_files})
+        [ -z "$files" ] || { echo "not gofmt-ed: $files"; exit 1; }
+    - name: prettier
+      root: web/
+      glob: "*.{ts,js,json,css,html}"
+      run: pnpm exec prettier --check {staged_files}
