@@ -1,4 +1,4 @@
-package atoll_test
+package main_test
 
 import (
 	"encoding/json"
@@ -34,7 +34,7 @@ var _allowed = map[string][]string{
 }
 
 func TestImports_Directions(t *testing.T) {
-	out, err := exec.Command("go", "list", "-json", "./...").Output()
+	out, err := exec.Command("go", "list", "-json", "atoll/...").Output()
 	if err != nil {
 		t.Fatalf("go list: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestImports_Directions(t *testing.T) {
 		if err := dec.Decode(&p); err != nil {
 			t.Fatal(err)
 		}
-		if p.ImportPath == "atoll" || strings.HasPrefix(p.ImportPath, "atoll/e2e") ||
+		if strings.HasPrefix(p.ImportPath, "atoll/e2e") ||
 			strings.HasPrefix(p.ImportPath, "atoll/web/node_modules") {
 			continue
 		}
