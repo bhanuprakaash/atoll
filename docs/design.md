@@ -31,9 +31,10 @@ never a dependency.
 - Persona holds expertise only. Who the Bot talks to comes from the run, not the persona.
 - Model is one field, e.g. `Claude Code · Opus 5.5`, `Codex · GPT-5`, listing only enabled, ready providers.
 - Repo access: All (default) or Only these. *A block list would silently grant new repos.*
-- Every Bot runs in its provider's auto mode. No per-tool lists, no platform hard limits. Approval
-  requests from any run, children included, come to the user in the thread. *The provider already
-  decides what needs approval.*
+- Codex runs in its auto mode and Claude in default mode with Reef's permission prompt tool, *so
+  its approvals reach the thread*. No per-tool lists, no platform hard limits. Approval requests
+  from any run, children included, come to the user in the thread. *The provider already decides
+  what needs approval.*
 - Bot settings changed mid-run apply from the next run.
 
 **Chief.** Created on first launch. It has the "Can manage the platform" switch on: tools to create
