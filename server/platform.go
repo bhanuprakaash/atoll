@@ -251,7 +251,7 @@ func validateRepo(ctx context.Context, rp store.Repo) error {
 		return errors.New("name and path are required")
 	}
 	if !filepath.IsAbs(rp.Path) || !repo.IsRepo(ctx, rp.Path) {
-		return errors.New("path must be the top level of a git repo with a commit")
+		return errors.New("path must be the top level of a git repo")
 	}
 	return nil
 }
