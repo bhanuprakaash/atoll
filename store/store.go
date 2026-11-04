@@ -98,14 +98,21 @@ type (
 // Open opens dir/atoll.db, creating dir and the file if needed, and applies any migration the
 // file lacks.
 func Open(dir string) (*Store, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolve data dir: %w", err)
 	}
-	uri := url.URL{Scheme: "file", Path: filepath.Join(abs, "atoll.db"), RawQuery: _dsnParams}
+	path := filepath.Join(abs, "atoll.db")
+	// SQLite creates a missing file as 0644 and gives its -wal and -shm files the same mode.
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("create db file: %w", err)
+	}
+	_ = f.Close()
+	uri := url.URL{Scheme: "file", Path: path, RawQuery: _dsnParams}
 	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)

@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"testing"
@@ -303,5 +305,28 @@ func TestManager_Subscribers(t *testing.T) {
 				t.Errorf("subscriber got %d events before its stream closed, want %d", got, tt.wantEvents)
 			}
 		})
+	}
+}
+
+func TestRun_PrivateFiles(t *testing.T) {
+	e := newEnv(t, &fakeSession{script: []provider.Event{{Kind: provider.KindTurnEnd}}})
+	_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.next(t, EventRunFinished)
+	data := e.m.cfg.DataDir
+	for path, want := range map[string]os.FileMode{
+		filepath.Join(data, "runs"):                  0o700,
+		filepath.Join(data, "runs", run.ID+".jsonl"): 0o600,
+		filepath.Join(data, "threads", e.thread.ID):  0o700,
+	} {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fi.Mode().Perm(); got != want {
+			t.Errorf("%s mode %v, want %v", path, got, want)
+		}
 	}
 }

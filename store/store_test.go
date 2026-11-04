@@ -2,11 +2,38 @@ package store_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
 	"atoll/store"
 )
+
+func TestStore_Open_Private(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if _, err := st.CreateBot(t.Context(), store.Bot{Name: "a", Persona: "p", Provider: "claude"}); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]os.FileMode{
+		dir:                                0o700,
+		filepath.Join(dir, "atoll.db"):     0o600,
+		filepath.Join(dir, "atoll.db-wal"): 0o600,
+	} {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fi.Mode().Perm(); got != want {
+			t.Errorf("%s mode %v, want %v", path, got, want)
+		}
+	}
+}
 
 func TestStore_FailUnfinished(t *testing.T) {
 	tests := []struct {

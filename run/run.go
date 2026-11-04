@@ -332,7 +332,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		}
 	}()
 	cfg.Cwd = filepath.Join(m.cfg.DataDir, "threads", thread.ID)
-	if err := os.MkdirAll(cfg.Cwd, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.Cwd, 0o700); err != nil {
 		return "", fmt.Errorf("create thread folder: %w", err)
 	}
 	cfg.MCPURL = m.cfg.MCPURL + a.token
@@ -464,11 +464,11 @@ func (m *Manager) publish(a *active, typ string, data any) {
 
 func (m *Manager) openLog(runID string) (*os.File, error) {
 	dir := filepath.Join(m.cfg.DataDir, "runs")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create runs folder: %w", err)
 	}
 	f, err := os.OpenFile(filepath.Join(dir, runID+".jsonl"),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open event file: %w", err)
 	}
