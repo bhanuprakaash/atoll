@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"atoll/memory"
+	"atoll/repo"
 	"atoll/run"
 	"atoll/store"
 )
@@ -160,8 +161,9 @@ func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
 	botID := r.PathValue("id")
 	if body.RepoID != "" {
 		bot, err := a.st.Bot(r.Context(), botID)
+		var rp store.Repo
 		if err == nil {
-			_, err = a.st.Repo(r.Context(), body.RepoID)
+			rp, err = a.st.Repo(r.Context(), body.RepoID)
 		}
 		if err != nil {
 			a.fail(w, r, err)
@@ -169,6 +171,10 @@ func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
 		}
 		if !bot.RepoAccess.Allows(body.RepoID) {
 			fail(w, http.StatusForbidden, "the Bot has no access to this repo")
+			return
+		}
+		if !repo.HasCommit(r.Context(), rp.Path) {
+			fail(w, http.StatusBadRequest, "repo has no commit yet")
 			return
 		}
 	}

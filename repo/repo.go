@@ -165,6 +165,12 @@ func IsRepo(ctx context.Context, path string) bool {
 	return err == nil && got == want
 }
 
+// HasCommit reports whether the repo at path has a commit to branch from.
+func HasCommit(ctx context.Context, path string) bool {
+	_, err := git(ctx, path, nil, "rev-parse", "--verify", "--quiet", "HEAD")
+	return err == nil
+}
+
 func seedIndex(ctx context.Context, dir, to string) error {
 	from, err := git(ctx, dir, nil, "rev-parse", "--path-format=absolute", "--git-path", "index")
 	if err != nil {

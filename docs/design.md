@@ -85,6 +85,7 @@ Undo of a repo registration is refused while a thread uses the repo.
 ## Repos and worktrees
 
 - Repos are registered once. A thread works in one repo.
+- A repo registers without a commit; a thread on it is refused until it has one.
 - A thread gets a worktree on its first edit, at `~/Reef/worktrees/<repo>/<branch-folder>` (root is
   a setting). Read-only threads use a clean checkout.
 - The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs) at first edit; the app makes it
