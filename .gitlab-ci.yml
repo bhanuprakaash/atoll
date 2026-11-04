@@ -36,3 +36,20 @@ e2e:
     paths: [.cache/]
   script:
     - make e2e
+
+test-guard:
+  image: golang:1.27
+  variables:
+    GIT_DEPTH: 0
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    # Run the target's copy so an MR cannot loosen the guard it is checked by.
+    - |
+      if git cat-file -e FETCH_HEAD:scripts/check-tests 2>/dev/null; then
+        git show FETCH_HEAD:scripts/check-tests >/tmp/check-tests
+        sh /tmp/check-tests FETCH_HEAD
+      else
+        echo "test-guard: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME has no scripts/check-tests yet, nothing to enforce"
+      fi
