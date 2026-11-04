@@ -187,7 +187,9 @@ the change created, and keeps the record marked undone. *Records survive restart
 - Seen items are tracked per provider session id, marked once the turn ends without error.
 - Claude uses `--append-system-prompt` and Codex uses `developerInstructions` on start and resume, every run.
 - `{user}` is the `user_name` setting, or The user when empty.
-- Guidance for start_work and track_mr lives in their tool descriptions.
+- The first message's repo block ends with one line naming start_work and track_mr. *Claude Code
+  may not load a tool's description until it searches for the tool; without the line, Bots
+  branched in the clean checkout.*
 
 Budget: platform prompt about 500 tokens; everything Reef adds under about 3–4k. *Less context
 recalls better; load the rest just in time.*

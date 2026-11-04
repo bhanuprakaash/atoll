@@ -11,6 +11,7 @@ Memory: repo 1, user 1, bot 1. Use recall.
 Repo: seeded (<repo>)
 Worktree: <checkout>
 Branch: detached
+Before your first edit, call start_work and work in the path it returns. After you open the MR, call track_mr with its URL.
 
 Message:
 Recall the SQLite journal decision and explain why.
