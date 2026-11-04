@@ -27,6 +27,8 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrExists is wrapped when a name is already taken.
 	ErrExists = errors.New("already exists")
+	// ErrUndone is wrapped when a change has already been undone.
+	ErrUndone = errors.New("already undone")
 )
 
 //go:embed migrations/*.sql
@@ -67,12 +69,14 @@ type (
 	// Bot is a configured agent. Provider is "claude" or "codex". Connections are the ids of the
 	// connections it may use.
 	Bot struct {
-		ID          string     `json:"id"`
-		Name        string     `json:"name"`
-		Persona     string     `json:"persona"`
-		Provider    string     `json:"provider"`
-		RepoAccess  RepoAccess `json:"repo_access"`
-		Connections []string   `json:"connections"`
+		ID                string     `json:"id"`
+		Name              string     `json:"name"`
+		Persona           string     `json:"persona"`
+		Provider          string     `json:"provider"`
+		RepoAccess        RepoAccess `json:"repo_access"`
+		Connections       []string   `json:"connections"`
+		Skills            []string   `json:"skills"`
+		CanManagePlatform bool       `json:"can_manage_platform"`
 	}
 
 	// RepoAccess is the repos a Bot may work in. Nil allows every repo and is "all" as JSON;
@@ -139,7 +143,7 @@ type (
 )
 
 const (
-	_botColumns    = "id, name, persona, provider, repo_access, connections"
+	_botColumns    = "id, name, persona, provider, repo_access, connections, skills, can_manage_platform"
 	_threadColumns = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created"
 )
 
@@ -208,24 +212,13 @@ func (a *RepoAccess) UnmarshalJSON(b []byte) error {
 // CreateBot stores b with a new id and returns it.
 func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 	b.ID = newID()
-	if b.Connections == nil {
-		b.Connections = []string{}
-	}
-	var access sql.NullString
-	if b.RepoAccess != nil {
-		body, err := json.Marshal([]string(b.RepoAccess))
-		if err != nil {
-			return Bot{}, fmt.Errorf("encode repo access: %w", err)
-		}
-		access = sql.NullString{String: string(body), Valid: true}
-	}
-	conns, err := json.Marshal(b.Connections)
+	b = normalizeBot(b)
+	args, err := botArgs(b)
 	if err != nil {
-		return Bot{}, fmt.Errorf("encode connections: %w", err)
+		return Bot{}, err
 	}
 	_, err = s.db.ExecContext(ctx,
-		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?)",
-		b.ID, b.Name, b.Persona, b.Provider, access, string(conns))
+		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?)", args...)
 	if err != nil {
 		return Bot{}, fmt.Errorf("insert bot: %w", err)
 	}
@@ -234,7 +227,7 @@ func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 
 // Bot returns the Bot with id.
 func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
-	rows, err := query(ctx, s.db, "SELECT "+_botColumns+" FROM bots WHERE id = ?", scanBot, id)
+	rows, err := query(ctx, s.db, "SELECT "+_botColumns+" FROM bots WHERE id = ? AND removed = 0", scanBot, id)
 	if err != nil {
 		return Bot{}, fmt.Errorf("read bot %s: %w", id, err)
 	}
@@ -246,7 +239,7 @@ func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
 
 // Bots lists every Bot, oldest first.
 func (s *Store) Bots(ctx context.Context) ([]Bot, error) {
-	return query(ctx, s.db, "SELECT "+_botColumns+" FROM bots ORDER BY rowid", scanBot)
+	return query(ctx, s.db, "SELECT "+_botColumns+" FROM bots WHERE removed = 0 ORDER BY rowid", scanBot)
 }
 
 // CreateRepo registers a repo. It wraps ErrExists when the name is taken.
@@ -612,8 +605,8 @@ func scanThread(r *sql.Rows) (Thread, error) {
 func scanBot(r *sql.Rows) (Bot, error) {
 	var b Bot
 	var access sql.NullString
-	var conns string
-	if err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns); err != nil {
+	var conns, skills string
+	if err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills, &b.CanManagePlatform); err != nil {
 		return Bot{}, err
 	}
 	if access.Valid {
@@ -624,7 +617,10 @@ func scanBot(r *sql.Rows) (Bot, error) {
 	if err := json.Unmarshal([]byte(conns), &b.Connections); err != nil {
 		return Bot{}, fmt.Errorf("decode connections of bot %s: %w", b.ID, err)
 	}
-	return b, nil
+	if err := json.Unmarshal([]byte(skills), &b.Skills); err != nil {
+		return Bot{}, fmt.Errorf("decode skills of bot %s: %w", b.ID, err)
+	}
+	return normalizeBot(b), nil
 }
 
 func scanRepo(r *sql.Rows) (rp Repo, err error) {
