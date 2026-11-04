@@ -147,7 +147,7 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusAccepted, struct {
 		Message store.Message `json:"message"`
 		Run     store.Run     `json:"run"`
-	}{m, ru})
+	}{Message: m, Run: ru})
 }
 
 func (a *api) listMessages(w http.ResponseWriter, r *http.Request) {
@@ -242,7 +242,7 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 func fail(w http.ResponseWriter, status int, msg string) {
 	write(w, status, struct {
 		Error string `json:"error"`
-	}{msg})
+	}{Error: msg})
 }
 
 func write(w http.ResponseWriter, status int, v any) {

@@ -166,5 +166,5 @@ func text(s string) any {
 	}
 	return struct {
 		Content []part `json:"content"`
-	}{[]part{{"text", s}}}
+	}{Content: []part{{Type: "text", Text: s}}}
 }

@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -133,6 +135,15 @@ func (e *env) next(t *testing.T, typ string) Event {
 	}
 }
 
+func nextAs[T any](t *testing.T, e *env, typ string) T {
+	t.Helper()
+	v, ok := e.next(t, typ).Data.(T)
+	if !ok {
+		t.Fatalf("%s event data is not %T", typ, v)
+	}
+	return v
+}
+
 func TestRun_Finish(t *testing.T) {
 	turnEnd := provider.Event{Kind: provider.KindTurnEnd}
 	tests := []struct {
@@ -141,6 +152,7 @@ func TestRun_Finish(t *testing.T) {
 		wantStatus string
 		wantReply  string
 		wantError  string
+		wantEvents []string
 	}{
 		{
 			name: "reply",
@@ -149,18 +161,21 @@ func TestRun_Finish(t *testing.T) {
 			}},
 			wantStatus: store.StatusDone,
 			wantReply:  "hi there",
+			wantEvents: []string{EventText, EventText, EventRunFinished},
 		},
 		{
 			name:       "provider error",
 			give:       &fakeSession{script: []provider.Event{{Kind: provider.KindError, Text: "rate limited"}}},
 			wantStatus: store.StatusFailed,
 			wantError:  "rate limited",
+			wantEvents: []string{EventRunFinished},
 		},
 		{
 			name:       "events end early",
 			give:       &fakeSession{end: true},
 			wantStatus: store.StatusFailed,
 			wantError:  "provider exited before the turn ended",
+			wantEvents: []string{EventRunFinished},
 		},
 	}
 	for _, tt := range tests {
@@ -170,7 +185,7 @@ func TestRun_Finish(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fin := e.next(t, EventRunFinished).Data.(Finished)
+			fin := nextAs[Finished](t, e, EventRunFinished)
 			got, err := e.st.Run(t.Context(), run.ID)
 			if err != nil {
 				t.Fatal(err)
@@ -182,6 +197,9 @@ func TestRun_Finish(t *testing.T) {
 			}
 			if tt.give.interrupted != 1 {
 				t.Errorf("Interrupt called %d times, want 1", tt.give.interrupted)
+			}
+			if got := eventTypes(t, e, run.ID); !slices.Equal(got, tt.wantEvents) {
+				t.Errorf("event file holds %v, want %v", got, tt.wantEvents)
 			}
 		})
 	}
@@ -203,7 +221,7 @@ func TestRun_Approval(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ap := e.next(t, EventApproval).Data.(Approval)
+			ap := nextAs[Approval](t, e, EventApproval)
 			if got, _ := e.st.Run(t.Context(), run.ID); got.Status != store.StatusWaiting {
 				t.Errorf("status %q when the approval was published, want waiting", got.Status)
 			}
@@ -262,7 +280,7 @@ func TestRun_ApprovalOutlivesRun(t *testing.T) {
 				_, err := e.m.Ask(t.Context(), token, "tu1", "Write", nil)
 				asked <- err
 			}()
-			ap := e.next(t, EventApproval).Data.(Approval)
+			ap := nextAs[Approval](t, e, EventApproval)
 			e.sess.mu.Lock()
 			tt.finish(e.sess)
 			e.sess.mu.Unlock()
@@ -329,4 +347,22 @@ func TestRun_PrivateFiles(t *testing.T) {
 			t.Errorf("%s mode %v, want %v", path, got, want)
 		}
 	}
+}
+
+// eventTypes returns the types of the events in the run's event file, in order.
+func eventTypes(t *testing.T, e *env, runID string) []string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(e.m.cfg.DataDir, "runs", runID+".jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var types []string
+	for _, line := range strings.Split(strings.TrimSpace(string(body)), "\n") {
+		var ev eventLine
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatal(err)
+		}
+		types = append(types, ev.Type)
+	}
+	return types
 }
