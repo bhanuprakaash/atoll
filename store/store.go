@@ -145,7 +145,8 @@ type (
 )
 
 const (
-	_botColumns    = "id, name, persona, provider, repo_access, connections, skills, can_manage_platform"
+	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
+		"can_manage_platform"
 	_threadColumns = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created"
 )
 
@@ -229,7 +230,8 @@ func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 
 // Bot returns the Bot with id.
 func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
-	rows, err := query(ctx, s.db, "SELECT "+_botColumns+" FROM bots WHERE id = ? AND removed = 0", scanBot, id)
+	rows, err := query(ctx, s.db,
+		"SELECT "+_botColumns+" FROM bots WHERE id = ? AND removed = 0", scanBot, id)
 	if err != nil {
 		return Bot{}, fmt.Errorf("read bot %s: %w", id, err)
 	}
@@ -241,7 +243,8 @@ func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
 
 // Bots lists every Bot, oldest first.
 func (s *Store) Bots(ctx context.Context) ([]Bot, error) {
-	return query(ctx, s.db, "SELECT "+_botColumns+" FROM bots WHERE removed = 0 ORDER BY rowid", scanBot)
+	return query(ctx, s.db,
+		"SELECT "+_botColumns+" FROM bots WHERE removed = 0 ORDER BY rowid", scanBot)
 }
 
 // CreateRepo registers a repo. It wraps ErrExists when the name is taken.
@@ -609,7 +612,9 @@ func scanBot(r *sql.Rows) (Bot, error) {
 	var b Bot
 	var access sql.NullString
 	var conns, skills string
-	if err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills, &b.CanManagePlatform); err != nil {
+	err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills,
+		&b.CanManagePlatform)
+	if err != nil {
 		return Bot{}, err
 	}
 	if access.Valid {

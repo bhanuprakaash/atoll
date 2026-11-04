@@ -73,7 +73,10 @@ func botArgs(b Bot) ([]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encode skills: %w", err)
 	}
-	return []any{b.ID, b.Name, b.Persona, b.Provider, access, string(conns), string(skills), b.CanManagePlatform}, nil
+	return []any{
+		b.ID, b.Name, b.Persona, b.Provider, access, string(conns), string(skills),
+		b.CanManagePlatform,
+	}, nil
 }
 
 // EnsureBot inserts b if its ID has never been stored.
@@ -82,7 +85,9 @@ func (s *Store) EnsureBot(ctx context.Context, b Bot) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	res, err := s.db.ExecContext(ctx, "INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING", args...)
+	res, err := s.db.ExecContext(ctx,
+		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?) "+
+			"ON CONFLICT(id) DO NOTHING", args...)
 	if err != nil {
 		return false, fmt.Errorf("ensure bot: %w", err)
 	}
@@ -103,7 +108,9 @@ func updateBot(ctx context.Context, db execer, b Bot) error {
 		return err
 	}
 	args = append(args[1:], b.ID)
-	res, err := db.ExecContext(ctx, "UPDATE bots SET name = ?, persona = ?, provider = ?, repo_access = ?, connections = ?, skills = ?, can_manage_platform = ? WHERE id = ? AND removed = 0", args...)
+	res, err := db.ExecContext(ctx,
+		"UPDATE bots SET name = ?, persona = ?, provider = ?, repo_access = ?, connections = ?, "+
+			"skills = ?, can_manage_platform = ? WHERE id = ? AND removed = 0", args...)
 	if err != nil {
 		return fmt.Errorf("update bot: %w", err)
 	}
@@ -122,17 +129,22 @@ func (s *Store) UpdateBot(ctx context.Context, b Bot) (Bot, error) {
 // CreateSkill adds a skill to the library.
 func (s *Store) CreateSkill(ctx context.Context, name, content string) (Skill, error) {
 	sk := Skill{ID: newID(), Name: name, Content: content}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO skills (id, name, content) VALUES (?, ?, ?)", sk.ID, sk.Name, sk.Content)
+	_, err := s.db.ExecContext(ctx, "INSERT INTO skills (id, name, content) VALUES (?, ?, ?)",
+		sk.ID, sk.Name, sk.Content)
 	if err != nil {
 		return Skill{}, fmt.Errorf("insert skill: %w", err)
 	}
 	return sk, nil
 }
-func scanSkill(r *sql.Rows) (sk Skill, err error) { return sk, r.Scan(&sk.ID, &sk.Name, &sk.Content) }
+
+func scanSkill(r *sql.Rows) (sk Skill, err error) {
+	return sk, r.Scan(&sk.ID, &sk.Name, &sk.Content)
+}
 
 // Skill returns the skill with id.
 func (s *Store) Skill(ctx context.Context, id string) (Skill, error) {
-	rows, err := query(ctx, s.db, "SELECT id, name, content FROM skills WHERE id = ?", scanSkill, id)
+	rows, err := query(ctx, s.db,
+		"SELECT id, name, content FROM skills WHERE id = ?", scanSkill, id)
 	if err != nil {
 		return Skill{}, fmt.Errorf("read skill %s: %w", id, err)
 	}
@@ -146,8 +158,10 @@ func (s *Store) Skill(ctx context.Context, id string) (Skill, error) {
 func (s *Store) Skills(ctx context.Context) ([]Skill, error) {
 	return query(ctx, s.db, "SELECT id, name, content FROM skills ORDER BY rowid", scanSkill)
 }
+
 func updateSkill(ctx context.Context, db execer, sk Skill) error {
-	res, err := db.ExecContext(ctx, "UPDATE skills SET name = ?, content = ? WHERE id = ?", sk.Name, sk.Content, sk.ID)
+	res, err := db.ExecContext(ctx, "UPDATE skills SET name = ?, content = ? WHERE id = ?",
+		sk.Name, sk.Content, sk.ID)
 	if err != nil {
 		return fmt.Errorf("update skill: %w", err)
 	}
@@ -162,13 +176,16 @@ func (s *Store) UpdateSkill(ctx context.Context, sk Skill) (Skill, error) {
 	return sk, nil
 }
 
-const _changeColumns = "id, entity, entity_id, action, before, after, undone, source_bot_id, source_thread_id, source_run_id, created"
+const _changeColumns = "id, entity, entity_id, action, before, after, undone, source_bot_id, " +
+	"source_thread_id, source_run_id, created"
 
 func scanChange(r *sql.Rows) (Change, error) {
 	var c Change
 	var before, after string
 	var created int64
-	if err := r.Scan(&c.ID, &c.Entity, &c.EntityID, &c.Action, &before, &after, &c.Undone, &c.SourceBotID, &c.SourceThreadID, &c.SourceRunID, &created); err != nil {
+	err := r.Scan(&c.ID, &c.Entity, &c.EntityID, &c.Action, &before, &after, &c.Undone,
+		&c.SourceBotID, &c.SourceThreadID, &c.SourceRunID, &created)
+	if err != nil {
 		return Change{}, err
 	}
 	c.Before = json.RawMessage(before)
@@ -184,7 +201,10 @@ func (s *Store) RecordChange(ctx context.Context, c Change) (Change, error) {
 	if len(c.Before) == 0 {
 		c.Before = json.RawMessage("null")
 	}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO changes ("+_changeColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", c.ID, c.Entity, c.EntityID, c.Action, string(c.Before), string(c.After), c.Undone, c.SourceBotID, c.SourceThreadID, c.SourceRunID, c.Created.UnixMicro())
+	_, err := s.db.ExecContext(ctx,
+		"INSERT INTO changes ("+_changeColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		c.ID, c.Entity, c.EntityID, c.Action, string(c.Before), string(c.After), c.Undone,
+		c.SourceBotID, c.SourceThreadID, c.SourceRunID, c.Created.UnixMicro())
 	if err != nil {
 		return Change{}, fmt.Errorf("insert change: %w", err)
 	}
@@ -193,14 +213,17 @@ func (s *Store) RecordChange(ctx context.Context, c Change) (Change, error) {
 
 // Changes lists a thread’s changes in creation order.
 func (s *Store) Changes(ctx context.Context, threadID string) ([]Change, error) {
-	return query(ctx, s.db, "SELECT "+_changeColumns+" FROM changes WHERE source_thread_id = ? ORDER BY rowid", scanChange, threadID)
+	return query(ctx, s.db,
+		"SELECT "+_changeColumns+" FROM changes WHERE source_thread_id = ? ORDER BY rowid",
+		scanChange, threadID)
 }
 
 // UndoChange restores the state before a change and marks it undone.
 func (s *Store) UndoChange(ctx context.Context, id string) (Change, error) {
 	var c Change
 	err := s.tx(ctx, func(tx *sql.Tx) error {
-		rows, err := query(ctx, tx, "SELECT "+_changeColumns+" FROM changes WHERE id = ?", scanChange, id)
+		rows, err := query(ctx, tx,
+			"SELECT "+_changeColumns+" FROM changes WHERE id = ?", scanChange, id)
 		if err != nil {
 			return fmt.Errorf("read change %s: %w", id, err)
 		}

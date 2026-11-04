@@ -25,6 +25,7 @@ func (a *api) getBot(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, http.StatusOK, b)
 }
+
 func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 	b, err := a.st.Bot(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -43,6 +44,7 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, http.StatusOK, b)
 }
+
 func (a *api) createSkill(w http.ResponseWriter, r *http.Request) {
 	var sk store.Skill
 	if json.NewDecoder(r.Body).Decode(&sk) != nil || sk.Name == "" {
@@ -56,6 +58,7 @@ func (a *api) createSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, http.StatusCreated, sk)
 }
+
 func (a *api) listSkills(w http.ResponseWriter, r *http.Request) {
 	sk, err := a.st.Skills(r.Context())
 	if err != nil {
@@ -64,6 +67,7 @@ func (a *api) listSkills(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, http.StatusOK, orEmpty(sk))
 }
+
 func (a *api) getSkill(w http.ResponseWriter, r *http.Request) {
 	sk, err := a.st.Skill(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -72,6 +76,7 @@ func (a *api) getSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, http.StatusOK, sk)
 }
+
 func (a *api) putSkill(w http.ResponseWriter, r *http.Request) {
 	sk, err := a.st.Skill(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -90,6 +95,7 @@ func (a *api) putSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, http.StatusOK, sk)
 }
+
 func (a *api) undoChange(w http.ResponseWriter, r *http.Request) {
 	_, err := a.st.UndoChange(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -98,6 +104,7 @@ func (a *api) undoChange(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
 func (a *api) listChanges(w http.ResponseWriter, r *http.Request) {
 	changes, err := a.st.Changes(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -117,10 +124,15 @@ const _platformTools = `[
 ]`
 
 func isPlatformTool(name string) bool {
-	return slices.Contains([]string{provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill, provider.ToolEditSkill, provider.ToolRegisterRepo, provider.ToolAttachConnection}, name)
+	return slices.Contains([]string{
+		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
+		provider.ToolEditSkill, provider.ToolRegisterRepo, provider.ToolAttachConnection,
+	}, name)
 }
 
-func (a *api) platformCall(ctx context.Context, token, name string, args json.RawMessage) (any, *rpcError) {
+func (a *api) platformCall(
+	ctx context.Context, token, name string, args json.RawMessage,
+) (any, *rpcError) {
 	source, thread, runID, err := a.runs.Source(token)
 	if err != nil {
 		return nil, a.toolError(err)
@@ -235,7 +247,10 @@ func (a *api) platformCall(ctx context.Context, token, name string, args json.Ra
 	if err != nil {
 		return nil, a.toolError(err)
 	}
-	change, err := a.st.RecordChange(ctx, store.Change{Entity: entity, EntityID: id, Action: action, Before: oldJSON, After: newJSON, SourceBotID: source.ID, SourceThreadID: thread.ID, SourceRunID: runID})
+	change, err := a.st.RecordChange(ctx, store.Change{
+		Entity: entity, EntityID: id, Action: action, Before: oldJSON, After: newJSON,
+		SourceBotID: source.ID, SourceThreadID: thread.ID, SourceRunID: runID,
+	})
 	if err != nil {
 		return nil, a.toolError(err)
 	}
