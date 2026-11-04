@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -35,6 +36,35 @@ func TestStore_Open_Private(t *testing.T) {
 	}
 }
 
+func TestRepoAccess_JSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		give    string
+		wantAll bool
+		want    string
+	}{
+		{"all", `"all"`, true, `"all"`},
+		{"null is all", `null`, true, `"all"`},
+		{"list", `["a","b"]`, false, `["a","b"]`},
+		{"empty list allows none", `[]`, false, `[]`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got store.RepoAccess
+			if err := json.Unmarshal([]byte(tt.give), &got); err != nil {
+				t.Fatal(err)
+			}
+			if (got == nil) != tt.wantAll {
+				t.Fatalf("nil = %v, want %v", got == nil, tt.wantAll)
+			}
+			out, err := json.Marshal(got)
+			if err != nil || string(out) != tt.want {
+				t.Fatalf("marshal = %s, %v; want %s", out, err, tt.want)
+			}
+		})
+	}
+}
+
 func TestStore_FailUnfinished(t *testing.T) {
 	tests := []struct {
 		name string
@@ -54,7 +84,7 @@ func TestStore_FailUnfinished(t *testing.T) {
 				t.Fatal(err)
 			}
 			bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
-			th, err := st.CreateThread(ctx, bot.ID)
+			th, err := st.CreateThread(ctx, bot.ID, "")
 			if err != nil {
 				t.Fatal(err)
 			}

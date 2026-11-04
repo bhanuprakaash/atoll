@@ -116,7 +116,7 @@ func newEnv(t *testing.T, sess *fakeSession) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	thread, err := st.CreateThread(t.Context(), bot.ID)
+	thread, err := st.CreateThread(t.Context(), bot.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}

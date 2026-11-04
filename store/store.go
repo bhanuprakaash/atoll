@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,8 +22,12 @@ import (
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
 )
 
-// ErrNotFound is wrapped when the id asked for matches no row.
-var ErrNotFound = errors.New("not found")
+var (
+	// ErrNotFound is wrapped when the id asked for matches no row.
+	ErrNotFound = errors.New("not found")
+	// ErrExists is wrapped when a name is already taken.
+	ErrExists = errors.New("already exists")
+)
 
 //go:embed migrations/*.sql
 var _migrations embed.FS
@@ -40,6 +45,12 @@ const (
 	StatusFailed  = "failed"
 )
 
+// Connection statuses.
+const (
+	ConnectionPending   = "pending"
+	ConnectionConnected = "connected"
+)
+
 // Message roles.
 const (
 	RoleUser = "user"
@@ -50,21 +61,50 @@ type (
 	// Store is Atoll's data, read and written through one SQLite file.
 	Store struct{ db *sql.DB }
 
-	// Bot is a configured agent. Provider is "claude" or "codex".
+	// Bot is a configured agent. Provider is "claude" or "codex". Connections are the ids of the
+	// connections it may use.
 	Bot struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Persona  string `json:"persona"`
-		Provider string `json:"provider"`
+		ID          string     `json:"id"`
+		Name        string     `json:"name"`
+		Persona     string     `json:"persona"`
+		Provider    string     `json:"provider"`
+		RepoAccess  RepoAccess `json:"repo_access"`
+		Connections []string   `json:"connections"`
+	}
+
+	// RepoAccess is the repos a Bot may work in. Nil allows every repo and is "all" as JSON;
+	// an empty list allows none.
+	RepoAccess []string
+
+	// Repo is a registered local git repo.
+	Repo struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		Path string `json:"path"`
+	}
+
+	// Connection is a sign-in to an external service. Status is pending or connected.
+	Connection struct {
+		ID          string `json:"id"`
+		Kind        string `json:"kind"`
+		InstanceURL string `json:"instance_url"`
+		Status      string `json:"status"`
 	}
 
 	// Thread is a chat with one Bot. Session is the provider session its runs resume; empty
-	// until the first run starts one.
+	// until the first run starts one. The repo, branch, worktree and MR fields are empty until
+	// set.
 	Thread struct {
-		ID      string    `json:"id"`
-		BotID   string    `json:"bot_id"`
-		Session string    `json:"-"`
-		Created time.Time `json:"created_at"`
+		ID       string    `json:"id"`
+		BotID    string    `json:"bot_id"`
+		Session  string    `json:"-"`
+		RepoID   string    `json:"repo_id"`
+		Branch   string    `json:"branch"`
+		Worktree string    `json:"worktree"`
+		MRURL    string    `json:"mr_url"`
+		MRState  string    `json:"mr_state"`
+		Closed   bool      `json:"closed"`
+		Created  time.Time `json:"created_at"`
 	}
 
 	// Message is one chat line. A bot message holds a run's reply.
@@ -93,6 +133,11 @@ type (
 		Blocked string `json:"blocked"`
 		Next    string `json:"next"`
 	}
+)
+
+const (
+	_botColumns    = "id, name, persona, provider, repo_access, connections"
+	_threadColumns = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created"
 )
 
 // Open opens dir/atoll.db, creating dir and the file if needed, and applies any migration the
@@ -127,12 +172,54 @@ func Open(dir string) (*Store, error) {
 // Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
 
+// Allows reports whether a Bot with this access may work in the repo with id.
+func (a RepoAccess) Allows(id string) bool {
+	return a == nil || slices.Contains(a, id)
+}
+
+// MarshalJSON writes nil as "all" and a list as an array.
+func (a RepoAccess) MarshalJSON() ([]byte, error) {
+	if a == nil {
+		return []byte(`"all"`), nil
+	}
+	return json.Marshal([]string(a))
+}
+
+// UnmarshalJSON reads "all" or null as nil and an array, even an empty one, as a list.
+func (a *RepoAccess) UnmarshalJSON(b []byte) error {
+	if string(b) == `"all"` {
+		*a = nil
+		return nil
+	}
+	var ids []string
+	if err := json.Unmarshal(b, &ids); err != nil {
+		return fmt.Errorf("repo_access must be \"all\" or a list of repo ids: %w", err)
+	}
+	*a = ids
+	return nil
+}
+
 // CreateBot stores b with a new id and returns it.
 func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 	b.ID = newID()
-	_, err := s.db.ExecContext(ctx,
-		"INSERT INTO bots (id, name, persona, provider) VALUES (?, ?, ?, ?)",
-		b.ID, b.Name, b.Persona, b.Provider)
+	if b.Connections == nil {
+		b.Connections = []string{}
+	}
+	var access sql.NullString
+	if b.RepoAccess != nil {
+		body, err := json.Marshal([]string(b.RepoAccess))
+		if err != nil {
+			return Bot{}, fmt.Errorf("encode repo access: %w", err)
+		}
+		access = sql.NullString{String: string(body), Valid: true}
+	}
+	conns, err := json.Marshal(b.Connections)
+	if err != nil {
+		return Bot{}, fmt.Errorf("encode connections: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx,
+		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?)",
+		b.ID, b.Name, b.Persona, b.Provider, access, string(conns))
 	if err != nil {
 		return Bot{}, fmt.Errorf("insert bot: %w", err)
 	}
@@ -141,33 +228,122 @@ func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 
 // Bot returns the Bot with id.
 func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
-	var b Bot
-	err := s.db.QueryRowContext(ctx,
-		"SELECT id, name, persona, provider FROM bots WHERE id = ?", id).
-		Scan(&b.ID, &b.Name, &b.Persona, &b.Provider)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Bot{}, fmt.Errorf("bot %s: %w", id, ErrNotFound)
-	}
+	rows, err := query(ctx, s.db, "SELECT "+_botColumns+" FROM bots WHERE id = ?", scanBot, id)
 	if err != nil {
 		return Bot{}, fmt.Errorf("read bot %s: %w", id, err)
 	}
-	return b, nil
+	if len(rows) == 0 {
+		return Bot{}, fmt.Errorf("bot %s: %w", id, ErrNotFound)
+	}
+	return rows[0], nil
 }
 
 // Bots lists every Bot, oldest first.
 func (s *Store) Bots(ctx context.Context) ([]Bot, error) {
-	return query(ctx, s.db, "SELECT id, name, persona, provider FROM bots ORDER BY rowid",
-		func(r *sql.Rows) (b Bot, err error) {
-			return b, r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider)
-		})
+	return query(ctx, s.db, "SELECT "+_botColumns+" FROM bots ORDER BY rowid", scanBot)
 }
 
-// CreateThread starts a thread with the Bot botID.
-func (s *Store) CreateThread(ctx context.Context, botID string) (Thread, error) {
-	t := Thread{ID: newID(), BotID: botID, Created: time.Now().UTC().Truncate(time.Microsecond)}
+// CreateRepo registers a repo. It wraps ErrExists when the name is taken.
+func (s *Store) CreateRepo(ctx context.Context, name, path string) (Repo, error) {
+	r := Repo{ID: newID(), Name: name, Path: path}
+	_, err := s.db.ExecContext(ctx, "INSERT INTO repos (id, name, path) VALUES (?, ?, ?)",
+		r.ID, r.Name, r.Path)
+	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: repos.name") {
+		return Repo{}, fmt.Errorf("repo name %q: %w", name, ErrExists)
+	}
+	if err != nil {
+		return Repo{}, fmt.Errorf("insert repo: %w", err)
+	}
+	return r, nil
+}
+
+// Repo returns the repo with id.
+func (s *Store) Repo(ctx context.Context, id string) (Repo, error) {
+	rows, err := query(ctx, s.db, "SELECT id, name, path FROM repos WHERE id = ?", scanRepo, id)
+	if err != nil {
+		return Repo{}, fmt.Errorf("read repo %s: %w", id, err)
+	}
+	if len(rows) == 0 {
+		return Repo{}, fmt.Errorf("repo %s: %w", id, ErrNotFound)
+	}
+	return rows[0], nil
+}
+
+// Repos lists every repo, oldest first.
+func (s *Store) Repos(ctx context.Context) ([]Repo, error) {
+	return query(ctx, s.db, "SELECT id, name, path FROM repos ORDER BY rowid", scanRepo)
+}
+
+// Setting returns the value stored under key, or "" when there is none.
+func (s *Store) Setting(ctx context.Context, key string) (string, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, "SELECT value FROM settings WHERE key = ?", key).Scan(&value)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("read setting %s: %w", key, err)
+	}
+	return value, nil
+}
+
+// SetSetting stores value under key.
+func (s *Store) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.db.ExecContext(ctx,
+		"INSERT INTO settings (key, value) VALUES (?, ?) "+
+			"ON CONFLICT (key) DO UPDATE SET value = excluded.value", key, value)
+	if err != nil {
+		return fmt.Errorf("set setting %s: %w", key, err)
+	}
+	return nil
+}
+
+// CreateConnection stores a new pending connection of kind to instanceURL.
+func (s *Store) CreateConnection(ctx context.Context, kind, instanceURL string) (Connection, error) {
+	c := Connection{ID: newID(), Kind: kind, InstanceURL: instanceURL, Status: ConnectionPending}
+	_, err := s.db.ExecContext(ctx,
+		"INSERT INTO connections (id, kind, instance_url, status) VALUES (?, ?, ?, ?)",
+		c.ID, c.Kind, c.InstanceURL, c.Status)
+	if err != nil {
+		return Connection{}, fmt.Errorf("insert connection: %w", err)
+	}
+	return c, nil
+}
+
+// Connection returns the connection with id.
+func (s *Store) Connection(ctx context.Context, id string) (Connection, error) {
+	rows, err := query(ctx, s.db,
+		"SELECT id, kind, instance_url, status FROM connections WHERE id = ?", scanConnection, id)
+	if err != nil {
+		return Connection{}, fmt.Errorf("read connection %s: %w", id, err)
+	}
+	if len(rows) == 0 {
+		return Connection{}, fmt.Errorf("connection %s: %w", id, ErrNotFound)
+	}
+	return rows[0], nil
+}
+
+// Connections lists every connection, oldest first.
+func (s *Store) Connections(ctx context.Context) ([]Connection, error) {
+	return query(ctx, s.db,
+		"SELECT id, kind, instance_url, status FROM connections ORDER BY rowid", scanConnection)
+}
+
+// SetConnectionStatus sets the status of the connection with id.
+func (s *Store) SetConnectionStatus(ctx context.Context, id, status string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE connections SET status = ? WHERE id = ?", status, id)
+	if err != nil {
+		return fmt.Errorf("set connection status: %w", err)
+	}
+	return found(res, "connection", id)
+}
+
+// CreateThread starts a thread with the Bot botID, in the repo repoID when it is not empty.
+func (s *Store) CreateThread(ctx context.Context, botID, repoID string) (Thread, error) {
+	t := Thread{
+		ID: newID(), BotID: botID, RepoID: repoID,
+		Created: time.Now().UTC().Truncate(time.Microsecond),
+	}
 	res, err := s.db.ExecContext(ctx,
-		"INSERT INTO threads (id, bot_id, created) SELECT ?, id, ? FROM bots WHERE id = ?",
-		t.ID, t.Created.UnixMicro(), botID)
+		"INSERT INTO threads (id, bot_id, repo_id, created) SELECT ?, id, ?, ? FROM bots WHERE id = ?",
+		t.ID, t.RepoID, t.Created.UnixMicro(), botID)
 	if err != nil {
 		return Thread{}, fmt.Errorf("insert thread: %w", err)
 	}
@@ -180,7 +356,7 @@ func (s *Store) CreateThread(ctx context.Context, botID string) (Thread, error) 
 // Thread returns the thread with id.
 func (s *Store) Thread(ctx context.Context, id string) (Thread, error) {
 	rows, err := query(ctx, s.db,
-		"SELECT id, bot_id, session, created FROM threads WHERE id = ?", scanThread, id)
+		"SELECT "+_threadColumns+" FROM threads WHERE id = ?", scanThread, id)
 	if err != nil {
 		return Thread{}, fmt.Errorf("read thread %s: %w", id, err)
 	}
@@ -193,8 +369,55 @@ func (s *Store) Thread(ctx context.Context, id string) (Thread, error) {
 // Threads lists the threads of the Bot botID, newest first.
 func (s *Store) Threads(ctx context.Context, botID string) ([]Thread, error) {
 	return query(ctx, s.db,
-		"SELECT id, bot_id, session, created FROM threads WHERE bot_id = ? ORDER BY rowid DESC",
+		"SELECT "+_threadColumns+" FROM threads WHERE bot_id = ? ORDER BY rowid DESC",
 		scanThread, botID)
+}
+
+// Watched lists the threads with an MR and a worktree: the ones whose MR is polled.
+func (s *Store) Watched(ctx context.Context) ([]Thread, error) {
+	return query(ctx, s.db,
+		"SELECT "+_threadColumns+" FROM threads WHERE mr_url != '' AND worktree != '' ORDER BY rowid",
+		scanThread)
+}
+
+// SetWorktree records the thread's branch and worktree; an empty worktree clears it.
+func (s *Store) SetWorktree(ctx context.Context, threadID, branch, worktree string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET branch = ?, worktree = ? WHERE id = ?",
+		branch, worktree, threadID)
+	if err != nil {
+		return fmt.Errorf("set worktree: %w", err)
+	}
+	return found(res, "thread", threadID)
+}
+
+// SetMR records the thread's MR and its state.
+func (s *Store) SetMR(ctx context.Context, threadID, url, state string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET mr_url = ?, mr_state = ? WHERE id = ?",
+		url, state, threadID)
+	if err != nil {
+		return fmt.Errorf("set MR: %w", err)
+	}
+	return found(res, "thread", threadID)
+}
+
+// SetClosed closes the thread: it takes no more messages.
+func (s *Store) SetClosed(ctx context.Context, threadID string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET closed = 1 WHERE id = ?", threadID)
+	if err != nil {
+		return fmt.Errorf("close thread: %w", err)
+	}
+	return found(res, "thread", threadID)
+}
+
+// LatestRun returns the id of the thread's newest run, or "" when it has none.
+func (s *Store) LatestRun(ctx context.Context, threadID string) (string, error) {
+	var id string
+	err := s.db.QueryRowContext(ctx,
+		"SELECT id FROM runs WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1", threadID).Scan(&id)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("read latest run of thread %s: %w", threadID, err)
+	}
+	return id, nil
 }
 
 // SetSession records the provider session the thread's next runs resume.
@@ -368,12 +591,42 @@ func found(res sql.Result, kind, id string) error {
 
 func scanThread(r *sql.Rows) (Thread, error) {
 	var t Thread
+	var closed int
 	var created int64
-	if err := r.Scan(&t.ID, &t.BotID, &t.Session, &created); err != nil {
+	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
+		&t.MRState, &closed, &created)
+	if err != nil {
 		return Thread{}, err
 	}
+	t.Closed = closed != 0
 	t.Created = time.UnixMicro(created).UTC()
 	return t, nil
+}
+
+func scanBot(r *sql.Rows) (Bot, error) {
+	var b Bot
+	var access sql.NullString
+	var conns string
+	if err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns); err != nil {
+		return Bot{}, err
+	}
+	if access.Valid {
+		if err := json.Unmarshal([]byte(access.String), &b.RepoAccess); err != nil {
+			return Bot{}, fmt.Errorf("decode repo access of bot %s: %w", b.ID, err)
+		}
+	}
+	if err := json.Unmarshal([]byte(conns), &b.Connections); err != nil {
+		return Bot{}, fmt.Errorf("decode connections of bot %s: %w", b.ID, err)
+	}
+	return b, nil
+}
+
+func scanRepo(r *sql.Rows) (rp Repo, err error) {
+	return rp, r.Scan(&rp.ID, &rp.Name, &rp.Path)
+}
+
+func scanConnection(r *sql.Rows) (c Connection, err error) {
+	return c, r.Scan(&c.ID, &c.Kind, &c.InstanceURL, &c.Status)
 }
 
 type queryer interface {
