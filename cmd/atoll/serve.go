@@ -62,16 +62,19 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		Log:     log,
 	})
 	srv := &http.Server{Handler: server.New(st, runs, log), ReadHeaderTimeout: 10 * time.Second}
-	served := make(chan error, 1)
-	go func() { served <- srv.Serve(ln) }()
+	var serveErr error
+	served := make(chan struct{})
+	go func() {
+		serveErr = srv.Serve(ln)
+		close(served)
+	}()
 	log.Info("serving", "url", url, "data_dir", data)
-	if _, err := fmt.Fprintln(w, "listening on "+url); err != nil {
-		return err
-	}
-
-	select {
-	case err = <-served:
-	case <-ctx.Done():
+	_, err = fmt.Fprintln(w, "listening on "+url)
+	if err == nil {
+		select {
+		case <-served:
+		case <-ctx.Done():
+		}
 	}
 	closeErr := runs.Close()
 	shutdown, cancel := context.WithTimeout(context.Background(), _shutdownGrace)
@@ -79,10 +82,11 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	if err := srv.Shutdown(shutdown); err != nil {
 		closeErr = errors.Join(closeErr, err)
 	}
-	if errors.Is(err, http.ErrServerClosed) {
-		err = nil
+	<-served
+	if errors.Is(serveErr, http.ErrServerClosed) {
+		serveErr = nil
 	}
-	return errors.Join(err, closeErr)
+	return errors.Join(err, serveErr, closeErr)
 }
 
 // launch returns a session for the provider name with its binary and settings folder.
