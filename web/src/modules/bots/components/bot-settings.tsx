@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Creature } from '@/components/creature';
 import { controlClass, Field } from '@/components/field';
 import { useUpdateBot, type Bot, type NewBot } from '@/modules/bots/api/bots';
@@ -13,7 +13,8 @@ export function BotSettings({
   repos,
   skills,
   connections,
-}: Choices & { bot: Bot; onClose: () => void; modelControl: ModelControl }) {
+  memory,
+}: Choices & { bot: Bot; onClose: () => void; modelControl: ModelControl; memory?: ReactNode }) {
   const [name, setName] = useState(bot.name);
   const [persona, setPersona] = useState(bot.persona);
   const [look, setLook] = useState(bot.look);
@@ -152,6 +153,7 @@ export function BotSettings({
               mutate({ connections: value });
             }}
           />
+          {memory}
           {bot.can_manage_platform && (
             <label className="flex items-center justify-between border-t border-line pt-4 text-sm">
               Manage platform

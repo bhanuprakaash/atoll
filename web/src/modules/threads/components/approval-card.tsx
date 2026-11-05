@@ -19,6 +19,14 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
   const diff = [details.old_string, details.new_string, details.content]
     .filter((value): value is string => typeof value === 'string')
     .join('\n');
+  const added =
+    typeof details.new_string === 'string'
+      ? details.new_string.split('\n').length
+      : typeof details.content === 'string'
+        ? details.content.split('\n').length
+        : 0;
+  const removed =
+    typeof details.old_string === 'string' ? details.old_string.split('\n').length : 0;
   const respond = (approve: boolean) =>
     answer.mutate(approve, { onSuccess: () => setAnswered(approve) });
   return (
@@ -39,6 +47,12 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
               : 'Denied'}{' '}
         <span className="font-mono">{target}</span>
       </span>{' '}
+      {edit && (added > 0 || removed > 0) && (
+        <span>
+          <span className="text-ok">+{added}</span>{' '}
+          <span className="text-danger">−{removed}</span>{' '}
+        </span>
+      )}
       {edit && (
         <button type="button" onClick={() => setShowDiff(!showDiff)} className="underline">
           {showDiff ? 'Hide diff' : 'Show diff'}

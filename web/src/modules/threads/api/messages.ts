@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
-export type Message = { id: string; role: 'user' | 'bot'; text: string; run_id: string };
+export type Message = {
+  id: string;
+  role: 'user' | 'bot';
+  text: string;
+  run_id: string;
+  created_at: string;
+};
 
 export type Run = {
   id: string;

@@ -1,18 +1,39 @@
+import { useState } from 'react';
 import { Button } from '@/components/button';
 import { type MemoryItem, useMemory, useRetireMemory } from '@/modules/memory/api/memory';
 
 function SavedItem({ item, botName }: { item: MemoryItem; botName?: string }) {
   const retire = useRetireMemory(item.id);
+  const [expanded, setExpanded] = useState(false);
   return (
     <li className="flex items-center gap-3 py-2 text-sm">
       <div className="flex flex-1 flex-col gap-0.5">
         <p>
-          <span>{item.body}</span> ·{' '}
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            className={item.status === 'retired' ? 'line-through' : ''}
+          >
+            {item.body}
+          </button>{' '}
+          ·{' '}
           <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
             {item.kind}
           </span>
         </p>
         <p className="text-muted">{item.why}</p>
+        {expanded && (
+          <dl className="text-muted">
+            <div>Kind: {item.kind}</div>
+            <div>
+              Scope: {item.scope}
+              {item.scope_id ? ` · ${item.scope_id}` : ''}
+            </div>
+
+            {(item.replaces?.length ?? 0) > 0 && <div>Replaces: {item.replaces.join(', ')}</div>}
+          </dl>
+        )}
         <p className="text-xs text-muted">{botName}</p>
         {retire.isError && <p className="text-danger">{retire.error.message}</p>}
       </div>

@@ -124,11 +124,12 @@ type (
 
 	// Message is one chat line. A bot message holds a run's reply.
 	Message struct {
-		ID       string `json:"id"`
-		ThreadID string `json:"-"`
-		Role     string `json:"role"`
-		Text     string `json:"text"`
-		RunID    string `json:"run_id"`
+		ID        string    `json:"id"`
+		ThreadID  string    `json:"-"`
+		Role      string    `json:"role"`
+		Text      string    `json:"text"`
+		RunID     string    `json:"run_id"`
+		CreatedAt time.Time `json:"created_at"`
 	}
 
 	// Run is one message handled.
@@ -586,9 +587,16 @@ func (s *Store) FailUnfinished(ctx context.Context, reason string) ([]string, er
 // Messages lists the thread's messages, oldest first.
 func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error) {
 	return query(ctx, s.db,
-		"SELECT id, thread_id, role, text, run_id FROM messages WHERE thread_id = ? ORDER BY rowid",
+		`SELECT m.id, m.thread_id, m.role, m.text, m.run_id,
+            CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END
+         FROM messages m JOIN runs r ON r.id = m.run_id WHERE m.thread_id = ? ORDER BY m.rowid`,
 		func(r *sql.Rows) (m Message, err error) {
-			return m, r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID)
+			var at int64
+			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &at)
+			if at != 0 {
+				m.CreatedAt = time.UnixMicro(at).UTC()
+			}
+			return m, err
 		}, threadID)
 }
 

@@ -65,6 +65,7 @@ function ThreadPage() {
       botName={bots.find((b) => b.id === botId)?.name ?? ''}
       look={bots.find((b) => b.id === botId)?.look}
       repos={repos}
+      bot={bots.find((b) => b.id === botId)}
       repoName={repoName}
       memory={
         <>
@@ -87,9 +88,19 @@ function DraftThreadPage() {
       botId={botId}
       botName={bot?.name ?? ''}
       look={bot?.look}
+      bot={bot}
       repos={repos}
     />
   );
+}
+
+function StartPage() {
+  const { data: bots } = useBots();
+  if (!bots) return null;
+  const latest = [...bots]
+    .filter((bot) => bot.last_activity)
+    .sort((a, b) => b.last_activity.localeCompare(a.last_activity))[0];
+  return <Navigate to={`/bots/${latest?.id ?? 'chief'}`} replace />;
 }
 
 function AppRoutes() {
@@ -125,7 +136,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route element={<Shell />}>
-        <Route index element={null} />
+        <Route index element={<StartPage />} />
         <Route path="settings" element={<SettingsPage />}>
           <Route index element={<Navigate to="general" replace />} />
           <Route path="general" element={<GeneralSettings />} />

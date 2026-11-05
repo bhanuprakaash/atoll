@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
+import { Fragment, useState, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router';
+import { BrandLogo } from '@/components/brand-logo';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { Markdown } from '@/components/markdown';
 import {
@@ -48,6 +49,11 @@ function RunResult({ id, retry }: { id: string; retry: () => void }) {
       {run.status === 'failed' && (
         <p>
           Run failed{run.error ? `: ${run.error}` : '.'}{' '}
+          {/sign.?in|authenticat/i.test(run.error) && (
+            <Link className="underline" to="/settings/providers">
+              Sign in
+            </Link>
+          )}{' '}
           <button type="button" className="underline" onClick={retry}>
             Retry
           </button>
@@ -76,6 +82,7 @@ function MessageLine({ message, retry }: { message: Message; retry: () => void }
 function EmptyThread({
   botName,
   look,
+  setup,
   repos,
   repoId,
   setRepoId,
@@ -87,6 +94,7 @@ function EmptyThread({
 }: {
   botName: string;
   look?: CreatureLook;
+  setup?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
   repoId: string;
   setRepoId: (id: string) => void;
@@ -100,6 +108,13 @@ function EmptyThread({
     <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-4">
       <Creature look={look} size={88} />
       <h2 className="text-[28px] tracking-tight">What should {botName} work on?</h2>
+      {setup && (
+        <div className="flex items-center gap-2 text-sm text-muted">
+          <BrandLogo brand={setup.provider} className="size-4" />
+          {setup.model} · {setup.skills?.length ?? 0} skills
+          {(setup.connections?.length ?? 0) > 0 && ' · GitLab'}
+        </div>
+      )}
       <label className="text-sm text-muted">
         Repo{' '}
         <select
@@ -149,11 +164,13 @@ export function DraftThread({
   botId,
   botName,
   look,
+  bot,
   repos,
 }: {
   botId: string;
   botName: string;
   look?: CreatureLook;
+  bot?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
 }) {
   const navigate = useNavigate();
@@ -179,6 +196,7 @@ export function DraftThread({
         <EmptyThread
           botName={botName}
           look={look}
+          setup={bot}
           repos={repos}
           repoId={repoId}
           setRepoId={setRepoId}
@@ -188,7 +206,7 @@ export function DraftThread({
           onSent={() => {}}
         />
         {create.isError && (
-          <p className="text-center text-sm text-danger">Could not complete the request</p>
+          <p className="text-center text-sm text-danger">{create.error.message}</p>
         )}
       </div>
     </div>
@@ -200,6 +218,7 @@ export function ThreadView({
   botId,
   botName,
   look,
+  bot,
   repos,
   repoName,
   memory,
@@ -208,6 +227,7 @@ export function ThreadView({
   botId: string;
   botName: string;
   look?: CreatureLook;
+  bot?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
   repoName?: string;
   memory?: ReactNode;
@@ -288,6 +308,7 @@ export function ThreadView({
           <EmptyThread
             botName={botName}
             look={look}
+            setup={bot}
             repos={repos}
             repoId={repoId}
             setRepoId={setRepoId}
@@ -303,9 +324,30 @@ export function ThreadView({
             Working on <span className="font-mono">{thread.branch}</span>
           </p>
         )}
-        {messages.map((m) => (
-          <MessageLine key={m.id} message={m} retry={retry} />
-        ))}
+        {messages.map((m, index) => {
+          const day = new Date(m.created_at);
+          const previous = index > 0 ? new Date(messages[index - 1].created_at) : null;
+          const valid = Number.isFinite(day.getTime()) && day.getFullYear() > 1;
+          const showDay = valid && (!previous || day.toDateString() !== previous.toDateString());
+          return (
+            <Fragment key={m.id}>
+              {showDay && (
+                <div className="flex items-center gap-3 text-xs text-muted">
+                  <span className="h-px flex-1 bg-line" />
+                  {day.toDateString() === new Date().toDateString()
+                    ? 'Today'
+                    : day.toLocaleDateString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                  <span className="h-px flex-1 bg-line" />
+                </div>
+              )}
+              <MessageLine message={m} retry={retry} />
+            </Fragment>
+          );
+        })}
         {Object.entries(runs).map(([id, run]) => (
           <div key={id}>
             <LiveRun id={id} run={run} look={look} />
@@ -336,7 +378,15 @@ export function ThreadView({
               <div className="flex-1">
                 This thread is closed{' '}
                 {thread.branch && (
-                  <span className="block font-mono text-xs text-muted">{thread.branch}</span>
+                  <span className="block font-mono text-xs text-muted">
+                    {[
+                      thread.branch,
+                      iid && `!${iid} ${mrState || 'open'}`,
+                      worktreeRemoved && 'worktree cleaned up',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
                 )}
               </div>
               <button

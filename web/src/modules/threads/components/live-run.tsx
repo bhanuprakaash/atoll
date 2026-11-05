@@ -27,13 +27,21 @@ export function LiveRun({ id, run, look }: { id: string; run: Live; look?: Creat
     ? Math.max(0, Math.floor((now - Date.parse(data.started_at)) / 1000))
     : 0;
   const kind = run.tool?.kind ?? 'none';
+  const name = run.tool?.name ?? '';
+  const verb = /start_work/.test(name)
+    ? 'Starting a branch'
+    : /track_mr/.test(name)
+      ? 'Opening the MR'
+      : /save_memory|remember/.test(name)
+        ? 'Taking a note'
+        : (verbs[kind] ?? 'Working');
   return (
     <div className="flex flex-col gap-2">
       {!run.finished && (
         <div className="flex items-center gap-2 text-sm text-muted">
           <Creature look={look} state="working" kind={kind} size={24} />
           <span role="status" className="motion-safe:animate-pulse">
-            {verbs[kind] ?? 'Working'}
+            {verb}
             {run.tool?.target ? ` ${run.tool.target}` : ''}
           </span>
           {data?.started_at && (

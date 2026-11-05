@@ -6,7 +6,7 @@ import { getThread } from '@/modules/threads/api/threads';
 
 export type LiveRun = {
   text: string;
-  tool?: { kind: ToolKind; target: string };
+  tool?: { kind: ToolKind; target: string; name: string };
   approvals: { id: string; tool: string; input: unknown }[];
   finished?: { status: string; error: string; blocked?: string };
 };
@@ -76,9 +76,9 @@ export function useThreadEvents(threadId: string) {
       setConnected(false);
     };
     on<{ text: string }>('text', (d, run) => ({ ...run, text: run.text + d.text }));
-    on<{ kind: ToolKind; target: string }>('tool_call', (d, run) => ({
+    on<{ kind: ToolKind; target: string; name: string }>('tool_call', (d, run) => ({
       ...run,
-      tool: { kind: d.kind, target: d.target },
+      tool: { kind: d.kind, target: d.target, name: d.name },
     }));
     on<{ id: string; tool: string; input: unknown }>('approval', (d, run) => withApproval(run, d));
     on<{ status: string; error: string; blocked?: string }>('run_finished', (d, run) => ({

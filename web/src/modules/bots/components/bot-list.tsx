@@ -3,12 +3,14 @@ import { Creature } from '@/components/creature';
 import { useBots } from '@/modules/bots/api/bots';
 
 function relativeTime(value: string) {
-  const seconds = Math.floor((Date.now() - Date.parse(value)) / 1000);
-  if (!Number.isFinite(seconds)) return '';
-  if (seconds < 60) return 'now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86400)}d`;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  const now = new Date();
+  if (date.toDateString() === now.toDateString())
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+  if (date >= start) return date.toLocaleDateString([], { weekday: 'short' });
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 export function BotList() {

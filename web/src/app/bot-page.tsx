@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Navigate, Outlet, useNavigate, useParams } from 'react-router';
 import { Creature } from '@/components/creature';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
+import { BotMemory } from '@/modules/memory/components/bot-memory';
 import { BotSettings } from '@/modules/bots/components/bot-settings';
 import { useConnections } from '@/modules/connections/api/connections';
 import { useProviders } from '@/modules/providers/api/providers';
@@ -25,7 +26,10 @@ export function BotHeader({
   onSettings?: () => void;
 }) {
   return (
-    <header className="flex min-h-16 items-center gap-3 border-b border-line px-5 py-2">
+    <header
+      data-tauri-drag-region
+      className="flex min-h-16 items-center gap-3 border-b border-line px-5 py-2"
+    >
       {bot && <Creature look={bot.look} state={bot.state} size={30} />}
       <div className="min-w-0 flex-1">
         <h1>{bot?.name}</h1>
@@ -94,6 +98,7 @@ export function BotPage() {
         <BotSettings
           key={bot.id}
           bot={bot}
+          memory={<BotMemory botId={bot.id} />}
           onClose={() => setSettingsOpen(false)}
           repos={repos}
           skills={skills}

@@ -278,6 +278,7 @@ Finish
   in; Meet Chief with example asks, each opening Chief's thread with that message sent.
 - The Go server serves the UI at `/` and the API under `/api/`, one address. Vite builds `web/`
   into `server/ui`, which the binary embeds (`make ui`).
+- The desktop shell uses an overlay title bar; the Bot header’s empty space is a window drag region.
 - The Tauri shell (`desktop/`, `make app`) starts `atoll serve --addr 127.0.0.1:4317`, loads the
   URL it prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
   SIGTERM; the page shows Reconnecting meanwhile. A page's `window.open` (provider sign-in) opens in
