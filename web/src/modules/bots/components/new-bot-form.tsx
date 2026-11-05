@@ -173,7 +173,7 @@ export function NewBotForm({
             Create Bot
           </Button>
         </form>
-        <aside aria-label="Preview" className="w-80 max-w-full">
+        <section aria-label="Preview" className="w-80 max-w-full">
           <h2 className="mb-4 text-sm text-muted">Preview</h2>
           <div className="rounded-control border border-line bg-card p-6">
             <Creature look={look} size={64} />
@@ -187,7 +187,7 @@ export function NewBotForm({
               <div className="text-sm text-muted">New Bot</div>
             </div>
           </div>
-        </aside>
+        </section>
       </div>
     </div>
   );
