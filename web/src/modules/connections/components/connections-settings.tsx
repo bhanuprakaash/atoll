@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { BrandLogo } from '@/components/brand-logo';
 import type { CreatureLook } from '@/components/creature';
 import {
   Box,
@@ -11,6 +12,7 @@ import {
   Tile,
   UsedBy,
 } from '@/components/settings-ui';
+import { TextField } from '@/components/text-field';
 import {
   pollConnection,
   useConnections,
@@ -19,46 +21,6 @@ import {
 } from '@/modules/connections/api/connections';
 
 type Bot = { id: string; name: string; look: CreatureLook; connections: string[] };
-
-function GitLabIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 21L3 14l2-9 3 6h8l3-6 2 9z" fill="var(--color-gitlab)" />
-      <path d="M12 21l-4-10h8z" fill="var(--color-gitlab-dark)" />
-      <path d="M3 14l5-3 4 10z" fill="var(--color-gitlab-light)" />
-      <path d="M21 14l-5-3-4 10z" fill="var(--color-gitlab-light)" />
-    </svg>
-  );
-}
-
-function GitHubIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M9 19c-4 1.3-4-2-6-2.5M15 21v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1-.3-3.3 1.3a11.4 11.4 0 0 0-6 0C6.9 2.8 5.9 3.1 5.9 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4.5 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21" />
-    </svg>
-  );
-}
-
-function SlackIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <rect x="10" y="2" width="4" height="9" rx="2" />
-      <rect x="10" y="13" width="4" height="9" rx="2" />
-      <rect x="2" y="10" width="9" height="4" rx="2" />
-      <rect x="13" y="10" width="9" height="4" rx="2" />
-    </svg>
-  );
-}
 
 export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
   const queryClient = useQueryClient();
@@ -109,7 +71,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
           return (
             <div key={c.id} className={rowClass}>
               <Tile className="bg-gitlab-bg">
-                <GitLabIcon />
+                <BrandLogo brand="gitlab" className="size-[22px]" />
               </Tile>
               <RowText title="GitLab" detail={c.instance_url.replace(/^https?:\/\//, '')} />
               {users.length > 0 && <UsedBy bots={users} />}
@@ -121,14 +83,14 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
         })}
         <div className={`${rowClass} text-muted`}>
           <Tile className="bg-line">
-            <GitHubIcon />
+            <BrandLogo brand="github" className="size-5" />
           </Tile>
           <RowText title="GitHub" detail="Coming later" />
           <Tag>Later</Tag>
         </div>
         <div className={`${rowClass} text-muted`}>
           <Tile className="bg-line">
-            <SlackIcon />
+            <BrandLogo brand="slack" className="size-5" />
           </Tile>
           <RowText title="Slack" detail="Coming later" />
           <Tag>Later</Tag>
@@ -138,8 +100,8 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
         <form onSubmit={submit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-2">
             <span className="text-xs text-muted">GitLab instance URL</span>
-            <input
-              className="h-9 rounded-xl border border-outline bg-bg px-3 text-sm text-ink outline-none focus:border-muted"
+            <TextField
+              size="sm"
               value={instance}
               onChange={(e) => setInstance(e.target.value)}
               required

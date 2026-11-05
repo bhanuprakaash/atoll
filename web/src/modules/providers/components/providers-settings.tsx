@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { BrandLogo } from '@/components/brand-logo';
 import type { CreatureLook } from '@/components/creature';
 import {
   Box,
@@ -46,37 +47,6 @@ function useProviderSignIn(provider: Provider) {
   };
 }
 
-function ProviderIcon({ name, size }: { name: Provider['name']; size: number }) {
-  return name === 'claude' ? (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--color-claude)"
-      strokeWidth="2.4"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4" />
-    </svg>
-  ) : (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--color-ink)"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M5 7l5 5-5 5M12 17h7" />
-    </svg>
-  );
-}
-
 const tileClass = (name: Provider['name']) => (name === 'claude' ? 'bg-claude-bg' : 'bg-tile');
 const tone = (p: Provider) => (!p.found ? 'plain' : p.signed_in ? 'ok' : 'warn');
 const status = (p: Provider) =>
@@ -99,7 +69,7 @@ function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
   return (
     <section role="group" aria-label={provider.label} className={rowClass}>
       <Tile className={tileClass(provider.name)}>
-        <ProviderIcon name={provider.name} size={18} />
+        <BrandLogo brand={provider.name} className="size-[18px]" />
       </Tile>
       <RowText title={provider.label} detail={detail}>
         {provider.found && (
@@ -163,7 +133,7 @@ function ProviderCard({ provider }: { provider: Provider }) {
         aria-hidden="true"
         className={`flex size-11 flex-none items-center justify-center rounded-xl ${tileClass(provider.name)}`}
       >
-        <ProviderIcon name={provider.name} size={22} />
+        <BrandLogo brand={provider.name} className="size-[22px]" />
       </span>
       <span className="min-w-0 flex-1">
         <b className="block text-[15.5px] font-normal">{provider.label}</b>

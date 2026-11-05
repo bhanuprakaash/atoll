@@ -11,12 +11,11 @@ import {
   Tile,
   UsedBy,
 } from '@/components/settings-ui';
+import { TextArea, TextField } from '@/components/text-field';
 import { type Skill, useSaveSkill, useSkills } from '@/modules/skills/api/skills';
 
 type Bot = { id: string; name: string; look: CreatureLook; skills: string[] };
 
-const fieldClass =
-  'h-[42px] rounded-2xl border border-line bg-field px-3.5 text-sm text-ink outline-none focus:border-muted';
 const labelClass = 'text-xs tracking-wide text-muted';
 
 function split(content: string) {
@@ -106,16 +105,17 @@ function SkillEditor({ skill, bots, close }: { skill: Skill; bots: Bot[]; close:
       <div className="flex flex-1 flex-col gap-5 overflow-auto p-5">
         <label className="flex flex-col gap-2">
           <span className={labelClass}>Name</span>
-          <input
-            className={`${fieldClass} font-mono`}
+          <TextField
+            className="font-mono"
+            size="sm"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
         <label className="flex flex-col gap-2">
           <span className={labelClass}>When to use it</span>
-          <input
-            className={fieldClass}
+          <TextField
+            size="sm"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
@@ -145,9 +145,9 @@ function SkillEditor({ skill, bots, close }: { skill: Skill; bots: Bot[]; close:
               <Markdown>{body}</Markdown>
             </div>
           ) : (
-            <textarea
+            <TextArea
               id="skill-instructions"
-              className="min-h-[420px] flex-1 resize-y rounded-2xl border border-line bg-well p-4 font-mono text-[13px] leading-[1.7] text-ink/80 outline-none focus:border-muted"
+              variant="code"
               value={body}
               onChange={(e) => setContent(join(head, e.target.value))}
             />

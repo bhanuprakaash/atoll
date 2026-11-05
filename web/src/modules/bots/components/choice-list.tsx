@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { BrandLogo, type Brand } from '@/components/brand-logo';
+import { TextField } from '@/components/text-field';
 
 export function ChoiceList({
   title,
@@ -9,7 +11,7 @@ export function ChoiceList({
 }: {
   title: string;
   singular: string;
-  choices: { id: string; name: string }[];
+  choices: { id: string; name: string; brand?: Brand }[];
   selected: string[];
   onChange: (ids: string[]) => void;
 }) {
@@ -26,7 +28,10 @@ export function ChoiceList({
               key={c.id}
               className="flex items-center justify-between border-b border-line py-3 text-sm"
             >
-              <span>{c.name}</span>
+              <span className="flex items-center gap-2.5">
+                {c.brand && <BrandLogo brand={c.brand} className="size-4" />}
+                {c.name}
+              </span>
               <button
                 type="button"
                 className="text-muted hover:text-ink"
@@ -46,10 +51,10 @@ export function ChoiceList({
         </button>
         {open && (
           <div role="menu" className="rounded-control border border-line bg-card p-2">
-            <input
+            <TextField
+              size="sm"
               aria-label={`Search ${title}`}
               placeholder={`Search ${title.toLowerCase()}`}
-              className="w-full rounded-control bg-composer px-3 py-2 text-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -63,13 +68,14 @@ export function ChoiceList({
                   type="button"
                   role="menuitem"
                   key={c.id}
-                  className="block w-full px-3 py-2 text-left text-sm hover:bg-composer"
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-composer"
                   onClick={() => {
                     onChange([...selected, c.id]);
                     setOpen(false);
                     setSearch('');
                   }}
                 >
+                  {c.brand && <BrandLogo brand={c.brand} className="size-4" />}
                   {c.name}
                 </button>
               ))}

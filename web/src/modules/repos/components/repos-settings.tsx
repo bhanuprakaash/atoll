@@ -8,10 +8,8 @@ import {
   solidButton,
   Tile,
 } from '@/components/settings-ui';
+import { TextField } from '@/components/text-field';
 import { useRegisterRepo, useRepos } from '@/modules/repos/api/repos';
-
-const inputClass =
-  'h-9 rounded-xl border border-outline bg-bg px-3 text-sm text-ink outline-none focus:border-muted';
 
 export function ReposSettings() {
   const [name, setName] = useState('');
@@ -78,17 +76,13 @@ export function ReposSettings() {
         <form onSubmit={submit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-2">
             <span className="text-xs text-muted">Repo name</span>
-            <input
-              className={inputClass}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+            <TextField size="sm" value={name} onChange={(e) => setName(e.target.value)} required />
           </label>
           <label className="flex flex-col gap-2">
             <span className="text-xs text-muted">Local path</span>
-            <input
-              className={`${inputClass} font-mono text-[13px]`}
+            <TextField
+              size="sm"
+              className="font-mono text-[13px]"
               value={path}
               onChange={(e) => setPath(e.target.value)}
               required

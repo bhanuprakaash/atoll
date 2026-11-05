@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Box, RowText, rowClass, SectionHead, Tag } from '@/components/settings-ui';
+import { TextField } from '@/components/text-field';
 import { type MemoryItem, useMemory, useRetireMemory } from '@/modules/memory/api/memory';
 
 const scopes = [
@@ -101,10 +102,11 @@ export function MemorySettings({
           <circle cx="11" cy="11" r="7" />
           <path d="M20 20l-3.5-3.5" />
         </svg>
-        <input
+        <TextField
+          size="bare"
+          width="flex-1"
           aria-label="Search memory"
           placeholder="Search memory"
-          className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />

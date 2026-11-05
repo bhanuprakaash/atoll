@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Creature } from '@/components/creature';
-import { controlClass, Field } from '@/components/field';
+import { Field } from '@/components/field';
+import { Segmented } from '@/components/segmented';
+import { Switch } from '@/components/switch';
+import { TextArea, TextField } from '@/components/text-field';
 import { useUpdateBot, type Bot, type NewBot } from '@/modules/bots/api/bots';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { CreaturePicker } from '@/modules/bots/components/creature-picker';
-import type { Choices, ModelControl } from '@/modules/bots/components/new-bot-form';
+import {
+  repoAccess as repoAccessChoices,
+  type Choices,
+  type ModelControl,
+} from '@/modules/bots/components/new-bot-form';
 
 export function BotSettings({
   bot,
@@ -70,9 +77,8 @@ export function BotSettings({
           />
           <Field label="Name">
             {(id) => (
-              <input
+              <TextField
                 id={id}
-                className={controlClass}
                 value={name}
                 onChange={(e) => {
                   setName(e.target.value);
@@ -88,9 +94,8 @@ export function BotSettings({
           })}
           <Field label="Persona">
             {(id) => (
-              <textarea
+              <TextArea
                 id={id}
-                className={controlClass}
                 rows={4}
                 value={persona}
                 onChange={(e) => {
@@ -113,23 +118,16 @@ export function BotSettings({
               mutate({ skills: value });
             }}
           />
-          <Field label="Repo access">
-            {(id) => (
-              <select
-                id={id}
-                className={controlClass}
-                value={repoAccess === 'all' ? 'all' : 'only'}
-                onChange={(e) => {
-                  const value = e.target.value === 'all' ? 'all' : [];
-                  setRepoAccess(value);
-                  mutate({ repo_access: value });
-                }}
-              >
-                <option value="all">All</option>
-                <option value="only">Only these</option>
-              </select>
-            )}
-          </Field>
+          <Segmented
+            label="Repo access"
+            value={repoAccess === 'all' ? 'all' : 'only'}
+            onChange={(choice) => {
+              const value = choice === 'all' ? 'all' : [];
+              setRepoAccess(value);
+              mutate({ repo_access: value });
+            }}
+            choices={repoAccessChoices}
+          />
           {repoAccess !== 'all' && (
             <ChoiceList
               title="Repos"
@@ -145,7 +143,11 @@ export function BotSettings({
           <ChoiceList
             title="Connections"
             singular="connection"
-            choices={connections.map((c) => ({ id: c.id, name: `GitLab · ${c.instance_url}` }))}
+            choices={connections.map((c) => ({
+              id: c.id,
+              name: `GitLab · ${c.instance_url}`,
+              brand: 'gitlab' as const,
+            }))}
             selected={connectionIds}
             onChange={(value) => {
               setConnectionIds(value);
@@ -155,12 +157,11 @@ export function BotSettings({
           {bot.can_manage_platform && (
             <label className="flex items-center justify-between border-t border-line pt-4 text-sm">
               Manage platform
-              <input
-                type="checkbox"
+              <Switch
                 checked={platform}
-                onChange={(e) => {
-                  setPlatform(e.target.checked);
-                  mutate({ can_manage_platform: e.target.checked });
+                onChange={(value) => {
+                  setPlatform(value);
+                  mutate({ can_manage_platform: value });
                 }}
               />
             </label>

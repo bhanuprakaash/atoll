@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { Markdown } from '@/components/markdown';
+import { Select } from '@/components/select';
 import {
   useMessages,
   useSendMessage,
@@ -100,22 +101,25 @@ function EmptyThread({
     <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-4">
       <Creature look={look} size={88} />
       <h2 className="text-[28px] tracking-tight">What should {botName} work on?</h2>
-      <label className="text-sm text-muted">
-        Repo{' '}
-        <select
-          aria-label="Repo"
-          value={repoId}
-          onChange={(e) => setRepoId(e.target.value)}
-          className="rounded-card border border-line bg-card p-2"
-        >
-          <option value="">No repo</option>
-          {repos.map((repo) => (
-            <option key={repo.id} value={repo.id}>
-              {repo.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="flex items-center gap-2 text-sm text-muted">
+        Repo
+        <div className="w-56">
+          <Select
+            ariaLabel="Repo"
+            value={repoId}
+            onChange={setRepoId}
+            groups={[
+              {
+                options: [
+                  { value: '', label: 'No repo' },
+                  ...repos.map((repo) => ({ value: repo.id, label: repo.name })),
+                ],
+              },
+            ]}
+            className="h-9 rounded-xl border border-outline bg-box px-3 text-sm"
+          />
+        </div>
+      </div>
       <div className="w-full">
         <Composer
           threadId={threadId}
