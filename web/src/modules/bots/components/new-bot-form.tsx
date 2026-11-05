@@ -1,8 +1,11 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
+import { BrandLogo } from '@/components/brand-logo';
 import { Button } from '@/components/button';
 import { Creature, type CreatureLook } from '@/components/creature';
-import { controlClass, Field } from '@/components/field';
+import { Field } from '@/components/field';
+import { Segmented } from '@/components/segmented';
+import { TextArea, TextField } from '@/components/text-field';
 import { useCreateBot, type Bot, type Provider } from '@/modules/bots/api/bots';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { CreaturePicker } from '@/modules/bots/components/creature-picker';
@@ -17,6 +20,11 @@ export type Choices = {
   skills: { id: string; name: string }[];
   connections: { id: string; instance_url: string }[];
 };
+
+export const repoAccess = [
+  { value: 'all', label: 'All repos' },
+  { value: 'only', label: 'Only these' },
+];
 
 export function NewBotForm({
   repos,
@@ -81,9 +89,9 @@ export function NewBotForm({
           )}
           <Field label="Name">
             {(id) => (
-              <input
+              <TextField
                 id={id}
-                className={controlClass}
+                placeholder="Name your Bot"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -97,9 +105,8 @@ export function NewBotForm({
           })}
           <Field label="Persona">
             {(id) => (
-              <textarea
+              <TextArea
                 id={id}
-                className={controlClass}
                 rows={4}
                 value={persona}
                 onChange={(e) => setPersona(e.target.value)}
@@ -116,19 +123,12 @@ export function NewBotForm({
             selected={skillIds}
             onChange={setSkillIds}
           />
-          <Field label="Repo access">
-            {(id) => (
-              <select
-                id={id}
-                className={controlClass}
-                value={onlyThese ? 'only' : 'all'}
-                onChange={(e) => setOnlyThese(e.target.value === 'only')}
-              >
-                <option value="all">All</option>
-                <option value="only">Only these</option>
-              </select>
-            )}
-          </Field>
+          <Segmented
+            label="Repo access"
+            value={onlyThese ? 'only' : 'all'}
+            onChange={(value) => setOnlyThese(value === 'only')}
+            choices={repoAccess}
+          />
           {onlyThese && (
             <ChoiceList
               title="Repos"
@@ -141,7 +141,11 @@ export function NewBotForm({
           <ChoiceList
             title="Connections"
             singular="connection"
-            choices={connections.map((c) => ({ id: c.id, name: `GitLab · ${c.instance_url}` }))}
+            choices={connections.map((c) => ({
+              id: c.id,
+              name: `GitLab · ${c.instance_url}`,
+              brand: 'gitlab' as const,
+            }))}
             selected={connectionIds}
             onChange={setConnectionIds}
           />
@@ -153,7 +157,8 @@ export function NewBotForm({
             <Creature look={look} size={112} />
             <h3 className="text-2xl">{name || 'Your Bot'}</h3>
             {model && (
-              <p className="rounded-full bg-composer px-3 py-1 text-xs">
+              <p className="flex items-center gap-1.5 rounded-full bg-composer px-3 py-1 text-xs">
+                <BrandLogo brand={provider} className="size-3.5" />
                 {provider === 'claude' ? 'Claude Code' : 'Codex'} · {model}
               </p>
             )}

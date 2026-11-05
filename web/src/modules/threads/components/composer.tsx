@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Button } from '@/components/button';
+import { TextArea } from '@/components/text-field';
 import { useSendMessage, type Run } from '@/modules/threads/api/messages';
 import { useStopRun } from '@/modules/threads/api/runs';
 
@@ -43,10 +44,10 @@ export function Composer({
       onSubmit={submit}
       className="flex flex-col gap-2 rounded-3xl border border-line bg-composer p-4"
     >
-      <textarea
+      <TextArea
+        variant="bare"
         aria-label="Message"
         placeholder={`Message ${botName}${runId ? ', run in progress' : ''}`}
-        className="w-full resize-none bg-transparent outline-none"
         rows={3}
         value={text}
         onChange={(e) => setText(e.target.value)}

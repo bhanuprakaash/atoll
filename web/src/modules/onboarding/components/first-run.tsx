@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { solidButton } from '@/components/settings-ui';
+import { TextField } from '@/components/text-field';
 
 const floaters: { look: CreatureLook; size: number; place: string; drift: string }[] = [
   {
@@ -103,8 +104,8 @@ export function FirstRun({
             </div>
             <label className="flex w-full max-w-100 flex-col gap-2 text-left">
               <span className="text-[13px] text-muted">What should your Bots call you?</span>
-              <input
-                className="h-13 rounded-[18px] border border-outline bg-box px-4.5 text-[17px] text-ink outline-none focus:border-muted"
+              <TextField
+                size="lg"
                 placeholder="Your name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}

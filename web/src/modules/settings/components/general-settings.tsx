@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { Box, RowText, rowClass, SectionHead } from '@/components/settings-ui';
+import { TextField } from '@/components/text-field';
 import { type Settings, useSaveSettings, useSettings } from '@/modules/settings/api/settings';
-
-const inputClass =
-  'h-9 rounded-xl border border-outline bg-bg px-3 text-sm text-ink outline-none focus:border-muted';
 
 function GeneralForm({ settings }: { settings: Settings }) {
   const [name, setName] = useState(settings.user_name);
@@ -19,8 +17,9 @@ function GeneralForm({ settings }: { settings: Settings }) {
       <Box>
         <label className={rowClass}>
           <RowText title="Your name" detail="Bots use it when they talk to you" />
-          <input
-            className={`${inputClass} w-55`}
+          <TextField
+            size="sm"
+            width="w-55"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onBlur={persist}
@@ -28,8 +27,10 @@ function GeneralForm({ settings }: { settings: Settings }) {
         </label>
         <label className={rowClass}>
           <RowText title="Worktree folder" detail="Where Bots make a worktree for each edit" />
-          <input
-            className={`${inputClass} w-80 font-mono text-[13px]`}
+          <TextField
+            size="sm"
+            width="w-80"
+            className="font-mono text-[13px]"
             value={root}
             onChange={(e) => setRoot(e.target.value)}
             onBlur={persist}

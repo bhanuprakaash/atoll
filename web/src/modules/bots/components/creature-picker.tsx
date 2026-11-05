@@ -1,4 +1,5 @@
 import { Creature, creatureLooks, type CreatureLook } from '@/components/creature';
+import { Segmented } from '@/components/segmented';
 
 export function CreaturePicker({
   value,
@@ -10,40 +11,40 @@ export function CreaturePicker({
   shuffle?: boolean;
 }) {
   return (
-    <fieldset role="radiogroup" aria-label="Creature">
-      <legend className="mb-2 text-sm">Look</legend>
-      {shuffle && (
-        <button
-          type="button"
-          className="mb-2 text-sm text-muted"
-          onClick={() =>
-            onChange(creatureLooks[Math.floor(Math.random() * creatureLooks.length)].look)
-          }
-        >
-          Shuffle
-        </button>
-      )}
-      <div className="grid grid-cols-5 gap-2">
-        {creatureLooks.map(({ look, name }) => (
-          <label
-            key={look}
-            className="relative flex cursor-pointer flex-col items-center gap-1 rounded-control border border-transparent bg-card p-2 has-checked:border-accent"
+    <div>
+      <div className="mb-2 flex items-center text-xs tracking-wide text-muted">
+        Look
+        {shuffle && (
+          <button
+            type="button"
+            className="ml-auto h-7 rounded-full border border-outline px-2.5 text-xs text-ink"
+            onClick={() =>
+              onChange(creatureLooks[Math.floor(Math.random() * creatureLooks.length)].look)
+            }
           >
-            <input
-              className="absolute inset-0 cursor-pointer opacity-0"
-              type="radio"
-              name="creature"
-              value={look}
-              checked={value === look}
-              onChange={() => onChange(look)}
-            />
-            <span aria-hidden="true">
-              <Creature look={look} size={36} />
-            </span>
-            <span className="text-xs">{name}</span>
-          </label>
-        ))}
+            Shuffle
+          </button>
+        )}
       </div>
-    </fieldset>
+      <Segmented
+        label="Creature"
+        value={value}
+        onChange={(look) => onChange(look as CreatureLook)}
+        className="grid grid-cols-5 gap-2"
+        choiceClass={(on) =>
+          `flex flex-col items-center gap-1 rounded-2xl border bg-box p-2 text-xs ${on ? 'border-ink' : 'border-transparent'}`
+        }
+        choices={creatureLooks.map(({ look, name }) => ({
+          value: look,
+          label: name,
+          content: (
+            <>
+              <Creature look={look} size={36} />
+              {name}
+            </>
+          ),
+        }))}
+      />
+    </div>
   );
 }
