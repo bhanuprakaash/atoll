@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"atoll/provider"
 	"atoll/repo"
+	"atoll/run"
 	"atoll/store"
 )
 
@@ -51,10 +53,28 @@ func (a *api) botSummary(r *http.Request, b store.Bot) (store.Bot, error) {
 			latest = summary.RunStatus
 			at := t.LastActivity
 			b.LastActivity = &at
-			b.Activity = "Run " + latest
+			switch latest {
+			case "running", "waiting":
+				b.Activity = "Working"
+			case "done":
+				b.Activity = "Done"
+			case "failed":
+				b.Activity = "Run failed"
+			case "stopped":
+				b.Activity = "Stopped"
+			}
 		}
 		if summary.Approval != nil {
 			b.State = "needs_you"
+			kind, target := run.ToolKind(summary.Approval.Tool, summary.Approval.Input)
+			verb := "use"
+			switch kind {
+			case "search", "read", "edit":
+				verb = kind
+			case "command":
+				verb = "run"
+			}
+			b.Activity = strings.TrimSpace("Needs you: " + verb + " " + target)
 			return b, nil
 		}
 		if summary.RunStatus == "running" || summary.RunStatus == "waiting" {

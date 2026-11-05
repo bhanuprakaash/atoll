@@ -8,16 +8,16 @@ export function CreaturePicker({
   onChange: (look: CreatureLook) => void;
 }) {
   return (
-    <fieldset role="radiogroup">
+    <fieldset role="radiogroup" aria-label="Creature">
       <legend className="mb-2 text-sm font-medium">Creature</legend>
       <div className="grid grid-cols-5 gap-2">
         {creatureLooks.map(({ look, name }) => (
           <label
             key={look}
-            className="flex cursor-pointer flex-col items-center gap-1 rounded-control border border-line p-2 has-checked:border-accent"
+            className="relative flex cursor-pointer flex-col items-center gap-1 rounded-control border border-line p-2 has-checked:border-accent"
           >
             <input
-              className="sr-only"
+              className="absolute inset-0 cursor-pointer opacity-0"
               type="radio"
               name="creature"
               value={look}

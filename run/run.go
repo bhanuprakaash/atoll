@@ -601,7 +601,7 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 					return "", fmt.Errorf("save session: %w", err)
 				}
 			case provider.KindToolCall:
-				kind, target := toolKind(ev.Name, ev.Input)
+				kind, target := ToolKind(ev.Name, ev.Input)
 				if !strings.HasSuffix(ev.Name, "finish_run") {
 					if err := m.cfg.Store.CountTool(a.ctx, a.run.ID, kind); err != nil {
 						m.cfg.Log.Warn("count tool", "error", err)
@@ -765,7 +765,8 @@ func isClosed(ch chan struct{}) bool {
 	}
 }
 
-func toolKind(name string, input json.RawMessage) (string, string) {
+// ToolKind classifies a provider tool and extracts its target.
+func ToolKind(name string, input json.RawMessage) (kind, target string) {
 	var v struct {
 		Pattern  string `json:"pattern"`
 		FilePath string `json:"file_path"`

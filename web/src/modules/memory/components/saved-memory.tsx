@@ -7,7 +7,7 @@ function SavedItem({ item, botName }: { item: MemoryItem; botName?: string }) {
     <li className="flex items-center gap-3 rounded-full border border-line px-3 py-2 text-sm">
       <div className="flex flex-1 flex-col gap-0.5">
         <p className="font-medium">
-          {item.kind} · {item.body}
+          <span>{item.kind}</span> · <span>{item.body}</span>
         </p>
         <p className="text-muted">{item.why}</p>
         <p className="text-xs text-muted">{botName}</p>

@@ -32,7 +32,7 @@ export function ThreadsPanel({
               className="w-full rounded-card p-2 text-left hover:bg-card"
               onClick={() => onSelect(t.id)}
             >
-              <span>{t.title || 'New thread'}</span>
+              <span>{t.title || 'Empty thread'}</span>
               {t.approval && (
                 <span className="block text-xs text-muted">
                   Waiting for {approvalTarget(t.approval.input)}

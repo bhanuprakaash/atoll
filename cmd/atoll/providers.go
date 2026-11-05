@@ -36,18 +36,19 @@ type loginState struct {
 	Error  string `json:"error"`
 }
 type providers struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	mu     sync.Mutex
-	states map[string]loginState
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+	mu       sync.Mutex
+	states   map[string]loginState
+	signedIn map[string]bool
 }
 
 var _loginURL = regexp.MustCompile(`https://[^\s"'<>]+`)
 
 func newProviders(parent context.Context) *providers {
 	ctx, cancel := context.WithCancel(parent)
-	return &providers{ctx: ctx, cancel: cancel, states: map[string]loginState{}}
+	return &providers{ctx: ctx, cancel: cancel, states: map[string]loginState{}, signedIn: map[string]bool{}}
 }
 func (p *providers) Close() { p.cancel(); p.wg.Wait() }
 func (p *providers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -101,6 +102,7 @@ func (p *providers) info(ctx context.Context, a adapter) providerInfo {
 		label = "Codex"
 	}
 	info := providerInfo{Name: a.name, Label: label, Models: []providerModel{}}
+	defer func() { p.setAvailable(a.name, info.SignedIn) }()
 	bin := a.find(pathDirs(ctx))
 	if bin == "" {
 		return info
@@ -230,4 +232,29 @@ func (p *providers) finish(name string, err error) {
 		st.Status, st.Error = "failed", err.Error()
 	}
 	p.states[name] = st
+	if err == nil {
+		p.signedIn[name] = true
+	}
+}
+
+func (p *providers) setAvailable(name string, signed bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.signedIn[name] = signed
+}
+
+func (p *providers) available(ctx context.Context, name string) bool {
+	p.mu.Lock()
+	signed, ok := p.signedIn[name]
+	p.mu.Unlock()
+	if ok {
+		return signed
+	}
+	return p.checkAvailable(ctx, name)
+}
+
+func (p *providers) checkAvailable(ctx context.Context, name string) bool {
+	signed := available(ctx, name)
+	p.setAvailable(name, signed)
+	return signed
 }

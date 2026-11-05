@@ -82,11 +82,16 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	providers := newProviders(ctx)
+	defer providers.Close()
 	runs := threadrun.New(threadrun.Config{
-		Store:        st,
-		Memory:       mem,
-		Launch:       launch,
-		Available:    available,
+		Store:  st,
+		Memory: mem,
+		Launch: func(ctx context.Context, name string) (provider.Session, provider.Config, error) {
+			providers.checkAvailable(ctx, name)
+			return launch(ctx, name)
+		},
+		Available:    providers.available,
 		MCPURL:       url + server.MCPPath,
 		DataDir:      data,
 		WorktreeRoot: filepath.Join(home, "Reef", "worktrees"),
@@ -95,8 +100,6 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	})
 	pathDirs(ctx) // glab is found on the provider folders' PATH
 	runs.Start()
-	providers := newProviders(ctx)
-	defer providers.Close()
 	srv := &http.Server{Handler: server.New(st, mem, runs, log, providers), ReadHeaderTimeout: 10 * time.Second}
 	var serveErr error
 	served := make(chan struct{})

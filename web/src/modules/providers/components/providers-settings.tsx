@@ -10,29 +10,20 @@ import {
 
 function ProviderCard({ provider }: { provider: Provider }) {
   const [active, setActive] = useState(false);
-  const popup = useRef<Window | null>(null);
   const opened = useRef(false);
   const signIn = useSignIn();
   const state = useSignInState(provider.name, active);
   useEffect(() => {
-    if (state.data?.url && !opened.current) {
+    if (state.data?.status === 'waiting' && state.data.url && !opened.current) {
       opened.current = true;
-      if (popup.current) popup.current.location.href = state.data.url;
+      window.open(state.data.url, '_blank');
     }
     if (state.data?.status === 'failed' || state.data?.status === 'signed_in') setActive(false);
   }, [state.data]);
   function start() {
-    popup.current = window.open('', '_blank');
     opened.current = false;
     signIn.mutate(provider.name, {
-      onSuccess: (result) => {
-        if (result.url && popup.current) {
-          popup.current.location.href = result.url;
-          opened.current = true;
-        }
-        setActive(true);
-      },
-      onError: () => popup.current?.close(),
+      onSuccess: () => setActive(true),
     });
   }
   return (

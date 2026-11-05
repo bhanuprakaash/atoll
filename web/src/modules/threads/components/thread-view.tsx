@@ -27,17 +27,21 @@ function RunResult({ id, retry }: { id: string; retry: () => void }) {
   const { data: run } = useRun(id);
   if (!run || run.status === 'running' || run.status === 'waiting') return null;
   const tools = run.tools ?? {};
-  const blocked = run.report?.blocked;
+  const blocked = run.report?.blocked?.trim();
+  const parts = [
+    tools.read ? `read ${tools.read} ${tools.read === 1 ? 'file' : 'files'}` : '',
+    tools.edit ? `edited ${tools.edit}` : '',
+    tools.command ? `ran ${tools.command} ${tools.command === 1 ? 'command' : 'commands'}` : '',
+  ].filter(Boolean);
   return (
     <div className="text-sm text-muted">
       {run.status === 'done' && (
         <p>
-          Worked {duration(run)} · read {tools.read ?? 0}{' '}
-          {(tools.read ?? 0) === 1 ? 'file' : 'files'}, edited {tools.edit ?? 0}, ran{' '}
-          {tools.command ?? 0} {(tools.command ?? 0) === 1 ? 'command' : 'commands'}
+          Worked {duration(run)}
+          {parts.length > 0 && ` · ${parts.join(', ')}`}
         </p>
       )}
-      {blocked && <p>Blocked: {blocked}</p>}
+      {blocked && blocked.toLowerCase() !== 'none' && <p>Blocked: {blocked}</p>}
       {run.status === 'stopped' && <p>Stopped by you after {duration(run)}</p>}
       {run.status === 'failed' && (
         <p>

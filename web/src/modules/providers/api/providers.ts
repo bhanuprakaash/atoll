@@ -25,7 +25,11 @@ export function useRefreshProviders() {
 }
 
 export function useSignIn() {
+  const client = useQueryClient();
   return useMutation({
+    onMutate: (name: Provider['name']) => {
+      client.removeQueries({ queryKey: ['providers', name, 'sign-in'] });
+    },
     mutationFn: (name: Provider['name']) =>
       api<SignInState>(`/providers/${name}/sign-in`, { method: 'POST' }),
   });
@@ -43,6 +47,6 @@ export function useSignInState(name: Provider['name'], enabled = true) {
     },
     enabled,
     refetchInterval: (query) =>
-      ['starting', 'waiting'].includes(query.state.data?.status ?? '') ? 1000 : false,
+      ['starting', 'waiting'].includes(query.state.data?.status ?? '') ? 250 : false,
   });
 }
