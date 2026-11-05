@@ -276,8 +276,11 @@ Finish
   to ask Chief instead. Wide windows show a live card and sidebar row preview on the right. Create
   opens the new Bot's empty thread.
 - Settings: General (name, worktree folder), Providers, Connections, Skills, Repos, Memory, one
-  list each. A skill opens in a wide right panel: name, when to use it, the `SKILL.md` text and the
-  Bots that use it. Providers show where each CLI was found, its version, models and sign-in state.
+  list each. Content to the right of the section navigation is centred, with a maximum width of
+  720px. The native repo folder picker is invoked by the Go sidecar using `osascript` over HTTP.
+  A skill opens in a wide right panel: name, when to use it, the `SKILL.md` text and the Bots that
+  use it. Provider cards show version, models, Bots using them and the CLI path as labelled facts,
+  along with sign-in state.
   Sign in runs the provider's own login (`claude auth login`, `codex login`) in Reef's folder for
   it, opens the URL it prints in the browser and updates when it finishes; no Terminal.
 - First run is three steps over drifting creatures: the user's name; the providers found, with Sign

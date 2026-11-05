@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"atoll/connection"
 	"atoll/store"
@@ -46,6 +48,27 @@ func (a *api) putSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *api) pickRepoFolder(w http.ResponseWriter, r *http.Request) {
+	cmd := exec.CommandContext(r.Context(), "osascript", "-e", `POSIX path of (choose folder with prompt "Choose a repo folder")`)
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && strings.Contains(string(exitErr.Stderr), "User canceled") && strings.Contains(string(exitErr.Stderr), "-128") {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		a.fail(w, r, err)
+		return
+	}
+	path := strings.TrimSuffix(strings.TrimRight(string(out), "\r\n"), "/")
+	if path == "" {
+		path = "/"
+	}
+	write(w, http.StatusOK, struct {
+		Path string `json:"path"`
+	}{Path: path})
 }
 
 func (a *api) createRepo(w http.ResponseWriter, r *http.Request) {

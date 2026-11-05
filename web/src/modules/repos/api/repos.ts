@@ -14,3 +14,9 @@ export function useRegisterRepo() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repos'] }),
   });
 }
+
+export function usePickRepoFolder() {
+  return useMutation({
+    mutationFn: () => api<{ path: string } | undefined>('/repos/pick-folder', { method: 'POST' }),
+  });
+}

@@ -74,7 +74,7 @@ export function SettingsPage() {
         ))}
       </nav>
       <div className="min-w-0 flex-1 overflow-auto px-10 pb-12 pt-8">
-        <div className="flex max-w-180 flex-col gap-4.5">
+        <div className="mx-auto flex max-w-180 flex-col gap-4.5">
           <Outlet />
         </div>
       </div>

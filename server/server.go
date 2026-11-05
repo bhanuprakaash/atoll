@@ -64,6 +64,7 @@ func New(
 	mux.HandleFunc("GET /api/settings", a.getSettings)
 	mux.HandleFunc("PUT /api/settings", a.putSettings)
 	mux.HandleFunc("POST /api/repos", a.createRepo)
+	mux.HandleFunc("POST /api/repos/pick-folder", a.pickRepoFolder)
 	mux.HandleFunc("GET /api/repos", a.listRepos)
 	mux.HandleFunc("POST /api/memory", a.createMemory)
 	mux.HandleFunc("GET /api/memory", a.listMemory)
