@@ -405,7 +405,7 @@ export function ThreadView({
             return (
               <Fragment key={m.id}>
                 {showDay && (
-                  <div className="flex items-center gap-3 text-xs text-muted">
+                  <div className="flex items-center gap-3 text-xs text-label">
                     <span className="h-px flex-1 bg-line" />
                     {day.toDateString() === new Date().toDateString()
                       ? 'Today'
@@ -471,7 +471,7 @@ export function ThreadView({
         </div>
       </div>
       {!empty && (
-        <div className="mx-auto w-full max-w-190 px-7 pb-4.5 box-content">
+        <div className="mx-auto w-full max-w-204 px-7 pb-4.5">
           {thread?.closed ? (
             <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
               <div className="flex-1">

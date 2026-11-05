@@ -20,7 +20,7 @@ export function ChoiceList({
   const [search, setSearch] = useState('');
   return (
     <section>
-      <h3 className="mb-2 text-sm">{title}</h3>
+      <h3 className="mb-2 text-xs tracking-wide text-label">{title}</h3>
       <div className="border-t border-line">
         {choices
           .filter((c) => selected.includes(c.id))

@@ -34,7 +34,7 @@ export function ModelSelect({
     }));
   return (
     <div className="flex flex-col gap-2">
-      <label id={id} className="text-xs tracking-wide text-muted">
+      <label id={id} className="text-xs tracking-wide text-label">
         Model
       </label>
       <Select

@@ -12,7 +12,7 @@ export function CreaturePicker({
 }) {
   return (
     <div>
-      <div className="mb-2 flex items-center text-xs tracking-wide text-muted">
+      <div className="mb-2 flex items-center text-xs tracking-wide text-label">
         Look
         {shuffle && (
           <button

@@ -110,20 +110,31 @@ export function Composer({
     <div className="flex flex-col gap-2">
       <form
         onSubmit={submit}
-        className={`flex flex-col gap-1.5 rounded-[28px] border border-composer-line bg-composer p-2 ${onFirstSend ? 'min-h-15' : 'min-h-14'}`}
+        className={
+          context
+            ? 'flex flex-col gap-1.5 rounded-[26px] border border-composer-line bg-composer pt-1.5 pr-2.5 pb-2.5 pl-4.5'
+            : `flex items-end gap-2.5 rounded-[28px] border border-composer-line bg-composer py-2 pr-2 pl-4.5 ${onFirstSend ? 'min-h-15' : 'min-h-14'}`
+        }
       >
-        <div className="flex min-w-0 items-end gap-2.5">
-          <div className="min-w-0 flex-1 pl-2.5">{input}</div>
-          {action}
-        </div>
-        {context && (
-          <div
-            role="group"
-            aria-label="Thread context"
-            className="flex min-w-0 flex-wrap items-center gap-1.5 pl-2.5 text-[12.5px] text-ink/80"
-          >
-            {context}
-          </div>
+        {context ? (
+          <>
+            <div className="pr-2">{input}</div>
+            <div className="flex items-center gap-1.5">
+              <div
+                role="group"
+                aria-label="Thread context"
+                className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-[12.5px] text-ink/80"
+              >
+                {context}
+              </div>
+              {action}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="min-w-0 flex-1 self-center">{input}</div>
+            {action}
+          </>
         )}
       </form>
       {(send.isError || stop.isError) && (

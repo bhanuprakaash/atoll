@@ -64,7 +64,7 @@ export function NewBotForm({
   return (
     <div className="h-full overflow-auto">
       <div className="flex items-center justify-between border-b border-line px-8 py-5">
-        <h1 className="text-lg">New Bot</h1>
+        <h1 className="text-base">New Bot</h1>
         <div className="flex items-center gap-4">
           <Link to={chiefId ? `/bots/${chiefId}` : '/'} className="text-sm text-muted">
             Cancel
@@ -86,7 +86,7 @@ export function NewBotForm({
             </Link>
           )}
           <section className="flex flex-col gap-5">
-            <h2 className="text-xs tracking-wide text-muted">Basics</h2>
+            <h2 className="text-xs tracking-wide text-label">Basics</h2>
             <Field label="Name">
               {(id) => (
                 <TextField
@@ -101,7 +101,7 @@ export function NewBotForm({
             <CreaturePicker value={look} onChange={setLook} shuffle />
           </section>
           <section className="flex flex-col gap-5 border-t border-line pt-7">
-            <h2 className="text-xs tracking-wide text-muted">Brain</h2>
+            <h2 className="text-xs tracking-wide text-label">Brain</h2>
             {modelControl(provider, model, (p, m) => {
               setProvider(p);
               setModel(m);
@@ -121,7 +121,7 @@ export function NewBotForm({
             </p>
           </section>
           <section className="flex flex-col gap-5 border-t border-line pt-7">
-            <h2 className="text-xs tracking-wide text-muted">Access</h2>
+            <h2 className="text-xs tracking-wide text-label">Access</h2>
             <ChoiceList
               title="Skills"
               singular="skill"
@@ -156,7 +156,7 @@ export function NewBotForm({
           aria-label="Preview"
           className="sticky top-6 hidden h-fit w-80 flex-none min-[1200px]:block"
         >
-          <h2 className="mb-4 text-xs tracking-wide text-muted">Preview</h2>
+          <h2 className="mb-4 text-xs tracking-wide text-label">Preview</h2>
           <BotPreview
             name={name}
             persona={persona}
@@ -167,7 +167,7 @@ export function NewBotForm({
             connections={connections.filter((connection) => connectionIds.includes(connection.id))}
             repos={onlyThese ? repos.filter((repo) => repoIds.includes(repo.id)) : 'all'}
           />
-          <h2 className="mt-6 mb-3 text-xs tracking-wide text-muted">In the sidebar</h2>
+          <h2 className="mt-6 mb-3 text-xs tracking-wide text-label">In the sidebar</h2>
           <div className="flex items-center gap-3 rounded-card border border-line bg-card p-2.5">
             <CreatureSidebar look={look} name={name} />
           </div>

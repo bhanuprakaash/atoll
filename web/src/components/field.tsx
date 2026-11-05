@@ -4,7 +4,7 @@ export function Field({ label, children }: { label: string; children: (id: strin
   const id = useId();
   return (
     <div className="flex flex-col gap-2">
-      <label htmlFor={id} className="text-xs tracking-wide text-muted">
+      <label htmlFor={id} className="text-xs tracking-wide text-label">
         {label}
       </label>
       {children(id)}

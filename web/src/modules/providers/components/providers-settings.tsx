@@ -67,7 +67,7 @@ function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
         )}
       </div>
       {provider.found && (
-        <dl className="mt-4 grid grid-cols-[76px_minmax(0,1fr)] items-start gap-x-3 gap-y-2 text-[13px]">
+        <dl className="mt-4 grid grid-cols-[76px_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-[13px]">
           <dt className="text-xs text-muted">Version</dt>
           <dd>{provider.version}</dd>
           <dt className="text-xs text-muted">Models</dt>
@@ -78,19 +78,23 @@ function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
               </span>
             ))}
           </dd>
-          <dt className="text-xs text-muted">Used by</dt>
-          <dd className="flex flex-wrap gap-1">
-            {users.map((bot) => (
-              <Link
-                key={bot.id}
-                to={`/bots/${bot.id}`}
-                className="flex items-center gap-1 rounded-full bg-tile px-2 py-0.5"
-              >
-                <Creature look={bot.look} size={20} />
-                {bot.name}
-              </Link>
-            ))}
-          </dd>
+          {users.length > 0 && (
+            <>
+              <dt className="text-xs text-muted">Used by</dt>
+              <dd className="flex flex-wrap gap-1">
+                {users.map((bot) => (
+                  <Link
+                    key={bot.id}
+                    to={`/bots/${bot.id}`}
+                    className="flex items-center gap-1 rounded-full bg-tile px-2 py-0.5"
+                  >
+                    <Creature look={bot.look} size={20} />
+                    {bot.name}
+                  </Link>
+                ))}
+              </dd>
+            </>
+          )}
           <dt className="text-xs text-muted">Path</dt>
           <dd className="flex min-w-0 items-center gap-2">
             <span title={provider.path} className="flex min-w-0 flex-1 font-mono">

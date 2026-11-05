@@ -17,7 +17,7 @@ import { type Skill, useSaveSkill, useSkills } from '@/modules/skills/api/skills
 
 type Bot = { id: string; name: string; look: CreatureLook; skills: string[] };
 
-const labelClass = 'text-xs tracking-wide text-muted';
+const labelClass = 'text-xs tracking-wide text-label';
 
 function split(content: string) {
   const m = content.match(/^---\n([\s\S]*?)\n?---\n?([\s\S]*)$/);

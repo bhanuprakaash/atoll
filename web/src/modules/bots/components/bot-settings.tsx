@@ -105,7 +105,7 @@ export function BotSettings({
               />
             )}
           </Field>
-          <p className="-mt-4 text-xs text-muted">
+          <p className="-mt-4 text-xs text-label">
             Describe how this Bot should work and what it should know.
           </p>
           <ChoiceList

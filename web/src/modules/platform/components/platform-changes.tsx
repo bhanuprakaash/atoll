@@ -107,7 +107,7 @@ function Change({ change, botName }: { change: PlatformChange; botName?: string 
         <div className="flex items-center gap-4">
           <Creature look={after.look} size={56} />
           <div className="min-w-0">
-            <div className="text-xs tracking-wide text-muted">NEW BOT</div>
+            <div className="text-xs tracking-wide text-label">NEW BOT</div>
             <div className={`text-[22px] tracking-tight ${change.undone ? 'line-through' : ''}`}>
               {after.name}
             </div>

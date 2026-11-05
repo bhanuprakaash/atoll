@@ -30,7 +30,7 @@ export function ThreadsPanel({
     <section key={label}>
       {label !== 'Closed' && (
         <h3
-          className={`px-2.5 pt-2.5 pb-0.5 text-[11.5px] tracking-[.06em] uppercase ${label === 'Needs you' ? 'text-danger' : 'text-muted'}`}
+          className={`px-2.5 pt-2.5 pb-0.5 text-[11.5px] tracking-[.06em] uppercase ${label === 'Needs you' ? 'text-danger' : 'text-label'}`}
         >
           {label}
         </h3>

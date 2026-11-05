@@ -27,7 +27,7 @@ function SavedItem({ item, botName }: { item: MemoryItem; botName?: string }) {
         <span className={`min-w-0 ${expanded ? '' : 'truncate'} ${retired ? 'line-through' : ''}`}>
           {item.body}
         </span>
-        <span className="flex-none rounded-full bg-selected px-2.5 py-0.5 text-xs text-muted">
+        <span className="flex-none rounded-full bg-kind-bg px-2 py-px text-[11.5px] text-kind">
           {item.kind}
         </span>
         <button
@@ -39,7 +39,7 @@ function SavedItem({ item, botName }: { item: MemoryItem; botName?: string }) {
           Details
         </button>
         {retired ? (
-          <span className="flex-none rounded-full bg-selected px-2.5 py-0.5 text-xs text-muted">
+          <span className="flex-none rounded-full bg-kind-bg px-2 py-px text-[11.5px] text-kind">
             Retired
           </span>
         ) : (
