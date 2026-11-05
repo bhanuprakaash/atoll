@@ -75,9 +75,10 @@ type (
 
 	// Config is what a Manager needs.
 	Config struct {
-		Store  *store.Store
-		Memory *memory.Store
-		Launch Launch
+		Store     *store.Store
+		Memory    *memory.Store
+		Launch    Launch
+		Available func(context.Context, string) bool
 		// MCPURL is the base of Atoll's MCP endpoint; a run's server is MCPURL + its token.
 		MCPURL string
 		// DataDir holds runs/<run id>.jsonl, each run's event stream, and threads/<thread id>,
@@ -113,6 +114,11 @@ type (
 	// active is a run in progress. The Manager's mu guards log and open.
 	active struct {
 		threadID string
+		ctx      context.Context
+		cancel   context.CancelFunc
+		done     chan struct{}
+		stopped  bool
+		ending   bool
 		token    string
 		run      store.Run
 		bot      store.Bot // settings as the run started
@@ -136,10 +142,12 @@ type (
 
 	// ToolCall is a tool call the provider started, Atoll's own included.
 	ToolCall struct {
-		RunID string          `json:"run_id"`
-		ID    string          `json:"id"`
-		Name  string          `json:"name"`
-		Input json.RawMessage `json:"input"`
+		RunID  string          `json:"run_id"`
+		ID     string          `json:"id"`
+		Name   string          `json:"name"`
+		Kind   string          `json:"kind"`
+		Target string          `json:"target"`
+		Input  json.RawMessage `json:"input"`
 	}
 
 	// Approval is a step that waits for the user; ID is what Answer takes.
@@ -188,13 +196,16 @@ func New(cfg Config) *Manager {
 // Send stores text as the user's message and starts a run for it. It returns ErrBusy when the
 // thread has a run going and wraps store.ErrNotFound for an unknown thread.
 func (m *Manager) Send(ctx context.Context, threadID, text string) (store.Message, store.Run, error) {
-	a := &active{threadID: threadID, token: randHex(16)}
+	runCtx, cancel := context.WithCancel(m.ctx)
+	a := &active{threadID: threadID, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
+		cancel()
 		m.mu.Unlock()
 		return store.Message{}, store.Run{}, errors.New("atoll is stopping")
 	}
 	if _, busy := m.runs[threadID]; busy {
+		cancel()
 		m.mu.Unlock()
 		return store.Message{}, store.Run{}, ErrBusy
 	}
@@ -205,6 +216,7 @@ func (m *Manager) Send(ctx context.Context, threadID, text string) (store.Messag
 	msg, run, err := m.start(ctx, threadID, text)
 	if err != nil {
 		m.drop(a)
+		cancel()
 		m.wg.Done()
 		return store.Message{}, store.Run{}, err
 	}
@@ -230,6 +242,33 @@ func (m *Manager) start(ctx context.Context, threadID, text string) (store.Messa
 		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
 	}
 	return msg, run, nil
+}
+
+// Available reports whether the provider is installed and signed in.
+func (m *Manager) Available(ctx context.Context, name string) bool {
+	if m.cfg.Available == nil {
+		return true
+	}
+	return m.cfg.Available(ctx, name)
+}
+
+// Stop ends an active run and waits for its provider to exit.
+func (m *Manager) Stop(ctx context.Context, id string) error {
+	ru, err := m.cfg.Store.Run(ctx, id)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	a := m.runs[ru.ThreadID]
+	if a == nil || a.run.ID != id || a.stopped || a.ending {
+		m.mu.Unlock()
+		return ErrBusy
+	}
+	a.stopped = true
+	a.cancel()
+	m.mu.Unlock()
+	<-a.done
+	return nil
 }
 
 // Subscribe streams the thread's events from now on, until cancel is called.
@@ -355,6 +394,7 @@ func (m *Manager) Close() error {
 // execute is the goroutine of one run.
 func (m *Manager) execute(a *active, text string) {
 	defer m.wg.Done()
+	defer close(a.done)
 	start := time.Now()
 	var reply string
 	f, err := m.openLog(a.run.ID)
@@ -372,6 +412,12 @@ func (m *Manager) execute(a *active, text string) {
 			errText = _stopReason
 		}
 	}
+	m.mu.Lock()
+	a.ending = true
+	if a.stopped {
+		status, reply, errText = "stopped", "", ""
+	}
+	m.mu.Unlock()
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
 		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, status, strings.TrimSpace(reply), errText)
@@ -392,11 +438,11 @@ func (m *Manager) execute(a *active, text string) {
 
 // drive runs the provider session for one prompt and returns its reply.
 func (m *Manager) drive(a *active, text string) (string, error) {
-	thread, err := m.cfg.Store.Thread(m.ctx, a.threadID)
+	thread, err := m.cfg.Store.Thread(a.ctx, a.threadID)
 	if err != nil {
 		return "", fmt.Errorf("load thread: %w", err)
 	}
-	bot, err := m.cfg.Store.Bot(m.ctx, thread.BotID)
+	bot, err := m.cfg.Store.Bot(a.ctx, thread.BotID)
 	if err != nil {
 		return "", fmt.Errorf("load bot: %w", err)
 	}
@@ -405,7 +451,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	m.mu.Unlock()
 	m.cfg.Log.Info("run started", "run_id", a.run.ID, "thread_id", a.threadID,
 		"provider", bot.Provider)
-	sess, cfg, err := m.cfg.Launch(m.ctx, bot.Provider)
+	sess, cfg, err := m.cfg.Launch(a.ctx, bot.Provider)
 	if err != nil {
 		return "", fmt.Errorf("launch %s: %w", bot.Provider, err)
 	}
@@ -422,21 +468,22 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	}()
 	var rp store.Repo
 	if thread.RepoID != "" {
-		if rp, err = m.cfg.Store.Repo(m.ctx, thread.RepoID); err != nil {
+		if rp, err = m.cfg.Store.Repo(a.ctx, thread.RepoID); err != nil {
 			return "", fmt.Errorf("load repo: %w", err)
 		}
 	}
 	if cfg.Cwd, err = m.workdir(thread, rp); err != nil {
 		return "", err
 	}
-	user, err := m.cfg.Store.Setting(m.ctx, "user_name")
+	user, err := m.cfg.Store.Setting(a.ctx, "user_name")
 	if err != nil {
 		return "", fmt.Errorf("load user name: %w", err)
 	}
+	cfg.Model = bot.Model
 	cfg.SystemPrompt = systemPrompt(bot, user)
 	skills := make([]store.Skill, 0, len(bot.Skills))
 	for _, id := range bot.Skills {
-		sk, err := m.cfg.Store.Skill(m.ctx, id)
+		sk, err := m.cfg.Store.Skill(a.ctx, id)
 		if errors.Is(err, store.ErrNotFound) {
 			continue
 		}
@@ -454,17 +501,17 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		shelf := memory.Shelf{RepoID: thread.RepoID, BotID: thread.BotID}
 		var seen map[string]bool
 		if thread.Session != "" {
-			seen, err = m.cfg.Memory.Seen(m.ctx, thread.Session)
+			seen, err = m.cfg.Memory.Seen(a.ctx, thread.Session)
 			if err != nil {
 				return "", fmt.Errorf("load seen memory: %w", err)
 			}
 		} else {
-			counts, err = m.cfg.Memory.Count(m.ctx, shelf)
+			counts, err = m.cfg.Memory.Count(a.ctx, shelf)
 			if err != nil {
 				return "", fmt.Errorf("count memory: %w", err)
 			}
 		}
-		items, err = m.cfg.Memory.Relevant(m.ctx, shelf, text, _promptItems, seen)
+		items, err = m.cfg.Memory.Relevant(a.ctx, shelf, text, _promptItems, seen)
 		if err != nil {
 			return "", fmt.Errorf("select memory: %w", err)
 		}
@@ -473,15 +520,15 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	cfg.Env = m.gitlabEnv(bot)
 	cfg.MCPURL = m.cfg.MCPURL + a.token
 	if thread.Session != "" {
-		err = sess.Resume(m.ctx, cfg, thread.Session)
+		err = sess.Resume(a.ctx, cfg, thread.Session)
 	} else {
-		err = sess.Start(m.ctx, cfg)
+		err = sess.Start(a.ctx, cfg)
 	}
 	if err != nil {
 		return "", fmt.Errorf("start %s: %w", bot.Provider, err)
 	}
 	m.publish(a, EventPrompt, Prompt{RunID: a.run.ID, System: cfg.SystemPrompt, Message: prompt})
-	if err := sess.Send(m.ctx, prompt); err != nil {
+	if err := sess.Send(a.ctx, prompt); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
 	reply, err := m.stream(a, sess, _showText)
@@ -496,15 +543,15 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	}
 	if m.cfg.Memory != nil && len(ids) > 0 {
 		// A resume may report a new session id, so the marks follow the reloaded thread.
-		if updated, err := m.cfg.Store.Thread(m.ctx, a.threadID); err != nil {
+		if updated, err := m.cfg.Store.Thread(a.ctx, a.threadID); err != nil {
 			m.cfg.Log.Warn("reload thread", "run_id", a.run.ID, "error", err)
 		} else if updated.Session != "" {
-			if err := m.cfg.Memory.MarkSeen(m.ctx, updated.Session, ids); err != nil {
+			if err := m.cfg.Memory.MarkSeen(a.ctx, updated.Session, ids); err != nil {
 				m.cfg.Log.Warn("mark memory seen", "run_id", a.run.ID, "error", err)
 			}
 		}
 	}
-	run, err := m.cfg.Store.Run(m.ctx, a.run.ID)
+	run, err := m.cfg.Store.Run(a.ctx, a.run.ID)
 	if err != nil {
 		return "", fmt.Errorf("load run: %w", err)
 	}
@@ -512,17 +559,17 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		return reply, nil
 	}
 	// The nudge only asks for the report: its failure keeps the first turn's reply.
-	nerr := sess.Send(m.ctx, _nudge)
+	nerr := sess.Send(a.ctx, _nudge)
 	if nerr == nil {
 		_, nerr = m.stream(a, sess, _hideText)
 	}
-	if m.ctx.Err() != nil {
-		return "", m.ctx.Err()
+	if a.ctx.Err() != nil {
+		return "", a.ctx.Err()
 	}
 	if nerr != nil {
 		m.cfg.Log.Warn("finish_run nudge failed", "run_id", a.run.ID, "error", nerr)
 	}
-	if run, err = m.cfg.Store.Run(m.ctx, a.run.ID); err != nil {
+	if run, err = m.cfg.Store.Run(a.ctx, a.run.ID); err != nil {
 		return "", fmt.Errorf("load run: %w", err)
 	}
 	if run.Report == nil {
@@ -537,8 +584,8 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 	var reply strings.Builder
 	for {
 		select {
-		case <-m.ctx.Done():
-			return "", m.ctx.Err()
+		case <-a.ctx.Done():
+			return "", a.ctx.Err()
 		case ev, ok := <-sess.Events():
 			if !ok {
 				return "", errors.New("provider exited before the turn ended")
@@ -550,17 +597,23 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 					m.publish(a, EventText, Text{RunID: a.run.ID, Text: ev.Text})
 				}
 			case provider.KindSession:
-				if err := m.cfg.Store.SetSession(m.ctx, a.threadID, ev.SessionID); err != nil {
+				if err := m.cfg.Store.SetSession(a.ctx, a.threadID, ev.SessionID); err != nil {
 					return "", fmt.Errorf("save session: %w", err)
 				}
 			case provider.KindToolCall:
+				kind, target := toolKind(ev.Name, ev.Input)
+				if !strings.HasSuffix(ev.Name, "finish_run") {
+					if err := m.cfg.Store.CountTool(a.ctx, a.run.ID, kind); err != nil {
+						m.cfg.Log.Warn("count tool", "error", err)
+					}
+				}
 				m.publish(a, EventToolCall,
-					ToolCall{RunID: a.run.ID, ID: ev.ID, Name: ev.Name, Input: ev.Input})
+					ToolCall{RunID: a.run.ID, ID: ev.ID, Name: ev.Name, Input: ev.Input, Kind: kind, Target: target})
 				if ch := m.called(a, ev.ID); !isClosed(ch) {
 					close(ch)
 				}
 			case provider.KindApproval:
-				allow, err := m.approve(m.ctx, a, ev.Name, ev.Input)
+				allow, err := m.approve(a.ctx, a, ev.Name, ev.Input)
 				if err != nil {
 					return "", err
 				}
@@ -597,8 +650,8 @@ func (m *Manager) approve(
 		return allow, nil
 	case <-ctx.Done():
 		return false, fmt.Errorf("approval %s: %w", id, ctx.Err())
-	case <-m.ctx.Done():
-		return false, fmt.Errorf("approval %s: %w", id, m.ctx.Err())
+	case <-a.ctx.Done():
+		return false, fmt.Errorf("approval %s: %w", id, a.ctx.Err())
 	}
 }
 
@@ -620,6 +673,9 @@ func (m *Manager) resume(ctx context.Context, a *active, id string) {
 
 // publish sends an event to the thread's subscribers and appends it to the run's event file.
 func (m *Manager) publish(a *active, typ string, data any) {
+	if err := m.cfg.Store.TouchThread(context.Background(), a.threadID); err != nil {
+		m.cfg.Log.Warn("update thread activity", "error", err)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.deliver(a.threadID, a.run.ID, a.log, typ, data)
@@ -707,4 +763,63 @@ func isClosed(ch chan struct{}) bool {
 	default:
 		return false
 	}
+}
+
+func toolKind(name string, input json.RawMessage) (string, string) {
+	var v struct {
+		Pattern  string `json:"pattern"`
+		FilePath string `json:"file_path"`
+		Command  string `json:"command"`
+		Actions  []struct {
+			Type    string `json:"type"`
+			Query   string `json:"query"`
+			Path    string `json:"path"`
+			Command string `json:"command"`
+		} `json:"commandActions"`
+		Changes []struct {
+			Path string `json:"path"`
+		} `json:"changes"`
+	}
+	_ = json.Unmarshal(input, &v)
+	switch name {
+	case "Grep", "Glob":
+		return "search", v.Pattern
+	case "Read":
+		return "read", filepath.Base(v.FilePath)
+	case "Edit", "Write":
+		return "edit", filepath.Base(v.FilePath)
+	case "Bash":
+		return "command", v.Command
+	case "fileChange":
+		if len(v.Changes) > 0 {
+			return "edit", filepath.Base(v.Changes[0].Path)
+		}
+		return "edit", ""
+	case "commandExecution":
+		if len(v.Actions) > 0 {
+			a := v.Actions[0]
+			switch a.Type {
+			case "search":
+				return "search", a.Query
+			case "read":
+				return "read", filepath.Base(a.Path)
+			default:
+				return "command", a.Command
+			}
+		}
+		return "command", v.Command
+	}
+	if strings.Contains(name, "memory") || strings.Contains(name, "remember") || strings.Contains(name, "recall") {
+		return "memory", ""
+	}
+	if strings.Contains(name, "start_work") || strings.Contains(name, "track_mr") {
+		return "work", ""
+	}
+	if strings.HasPrefix(name, "mcp__atoll__") || name == provider.ToolCreateBot ||
+		name == provider.ToolEditBot || name == provider.ToolCreateSkill ||
+		name == provider.ToolEditSkill || name == provider.ToolRegisterRepo ||
+		name == provider.ToolAttachConnection {
+		return "platform", ""
+	}
+	return "other", ""
 }

@@ -289,6 +289,9 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 		"--strict-mcp-config",
 		"--settings", `{"disableAllHooks":true}`,
 	}
+	if cfg.Model != "" {
+		args = append(args, "--model", cfg.Model)
+	}
 	if cfg.SystemPrompt != "" {
 		args = append(args, "--append-system-prompt", cfg.SystemPrompt)
 	}

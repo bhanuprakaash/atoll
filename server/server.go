@@ -3,6 +3,7 @@
 package server
 
 import (
+	"crypto/rand"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
@@ -44,14 +46,21 @@ type api struct {
 	devices map[string]string // device code of each pending sign-in, by connection id
 }
 
-// New returns the handler for the API, the MCP tools and the UI.
-func New(st *store.Store, mem *memory.Store, runs *run.Manager, log *slog.Logger) http.Handler {
+// New returns the handler for the API, the MCP tools and the UI. providers, when not nil, serves
+// /api/providers.
+func New(
+	st *store.Store, mem *memory.Store, runs *run.Manager, log *slog.Logger, providers http.Handler,
+) http.Handler {
 	a := &api{
 		st: st, mem: mem, runs: runs, log: log,
 		http:    &http.Client{Timeout: _signInTimeout},
 		devices: map[string]string{},
 	}
 	mux := http.NewServeMux()
+	if providers != nil {
+		mux.Handle("/api/providers", providers)
+		mux.Handle("/api/providers/", providers)
+	}
 	mux.HandleFunc("GET /api/settings", a.getSettings)
 	mux.HandleFunc("PUT /api/settings", a.putSettings)
 	mux.HandleFunc("POST /api/repos", a.createRepo)
@@ -81,6 +90,7 @@ func New(st *store.Store, mem *memory.Store, runs *run.Manager, log *slog.Logger
 	mux.HandleFunc("GET /api/threads/{id}/messages", a.listMessages)
 	mux.HandleFunc("GET /api/threads/{id}/events", a.events)
 	mux.HandleFunc("GET /api/runs/{id}", a.getRun)
+	mux.HandleFunc("POST /api/runs/{id}/stop", a.stopRun)
 	mux.HandleFunc("POST /api/approvals/{id}", a.answer)
 	mux.HandleFunc(MCPPath+"{token}", a.mcp)
 	// fs.Sub fails only for an invalid dir name.
@@ -129,16 +139,24 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if b.Name == "" || (b.Provider != "claude" && b.Provider != "codex") {
+	if !validBot(b) {
 		fail(w, http.StatusBadRequest, "name is required and provider must be claude or codex")
 		return
+	}
+	if b.Look == "" {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(_looks))))
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		b.Look = _looks[n.Int64()]
 	}
 	b, err := a.st.CreateBot(r.Context(), b)
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusCreated, b)
+	write(w, http.StatusCreated, responseBot(b))
 }
 
 func (a *api) listBots(w http.ResponseWriter, r *http.Request) {
@@ -147,12 +165,24 @@ func (a *api) listBots(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusOK, orEmpty(bots))
+	for i, b := range bots {
+		bots[i], err = a.botSummary(r, b)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+	}
+	responses := make([]botResponse, 0, len(bots))
+	for _, b := range bots {
+		responses = append(responses, responseBot(b))
+	}
+	write(w, http.StatusOK, responses)
 }
 
 func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		RepoID string `json:"repo_id"`
+		Text   string `json:"text"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		fail(w, http.StatusBadRequest, "invalid JSON body")
@@ -183,7 +213,68 @@ func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	if body.Text != "" {
+		m, ru, err := a.runs.Send(r.Context(), t.ID, body.Text)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		summary, err := a.threadSummary(r, t)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		write(w, http.StatusCreated, struct {
+			threadSummary
+			Message store.Message `json:"message"`
+			Run     store.Run     `json:"run"`
+		}{summary, m, ru})
+		return
+	}
 	write(w, http.StatusCreated, t)
+}
+
+type threadSummary struct {
+	store.Thread
+	Title     string        `json:"title"`
+	RunID     string        `json:"run_id"`
+	RunStatus string        `json:"run_status"`
+	Approval  *run.Approval `json:"approval"`
+}
+
+func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, error) {
+	t, err := a.st.Thread(r.Context(), t.ID)
+	if err != nil {
+		return threadSummary{}, err
+	}
+	out := threadSummary{Thread: t}
+	msgs, err := a.st.Messages(r.Context(), t.ID)
+	if err != nil {
+		return out, err
+	}
+	for _, msg := range msgs {
+		if msg.Role == store.RoleUser {
+			chars := []rune(msg.Text)
+			out.Title = string(chars[:min(40, len(chars))])
+			break
+		}
+	}
+	out.RunID, err = a.st.LatestRun(r.Context(), t.ID)
+	if err != nil {
+		return out, err
+	}
+	if out.RunID != "" {
+		ru, err := a.st.Run(r.Context(), out.RunID)
+		if err != nil {
+			return out, err
+		}
+		out.RunStatus = ru.Status
+	}
+	_, approvals, _ := a.runs.Active(t.ID)
+	if len(approvals) > 0 {
+		out.Approval = &approvals[0]
+	}
+	return out, nil
 }
 
 func (a *api) listThreads(w http.ResponseWriter, r *http.Request) {
@@ -192,7 +283,16 @@ func (a *api) listThreads(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusOK, orEmpty(threads))
+	summaries := make([]threadSummary, 0, len(threads))
+	for _, t := range threads {
+		summary, err := a.threadSummary(r, t)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		summaries = append(summaries, summary)
+	}
+	write(w, http.StatusOK, summaries)
 }
 
 func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
@@ -211,11 +311,16 @@ func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
 		}
 		active = &ru
 	}
+	summary, err := a.threadSummary(r, t)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
 	write(w, http.StatusOK, struct {
-		store.Thread
+		threadSummary
 		ActiveRun *store.Run     `json:"active_run"`
 		Approvals []run.Approval `json:"approvals"`
-	}{Thread: t, ActiveRun: active, Approvals: orEmpty(approvals)})
+	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals)})
 }
 
 func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
@@ -244,6 +349,14 @@ func (a *api) listMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, http.StatusOK, orEmpty(msgs))
+}
+
+func (a *api) stopRun(w http.ResponseWriter, r *http.Request) {
+	if err := a.runs.Stop(r.Context(), r.PathValue("id")); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *api) getRun(w http.ResponseWriter, r *http.Request) {

@@ -522,6 +522,9 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 		return nil, err
 	}
 	params := map[string]any{"cwd": cfg.Cwd, "approvalPolicy": "never", "config": config}
+	if cfg.Model != "" {
+		params["model"] = cfg.Model
+	}
 	if cfg.SystemPrompt != "" {
 		params["developerInstructions"] = cfg.SystemPrompt
 	}

@@ -20,7 +20,7 @@ func newHandler(t *testing.T) http.Handler {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return New(st, nil, run.New(run.Config{Store: st, Log: log}), log)
+	return New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil)
 }
 
 func TestAnswer_RequiresApprove(t *testing.T) {

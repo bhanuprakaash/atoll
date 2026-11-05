@@ -75,6 +75,11 @@ type (
 		Name              string     `json:"name"`
 		Persona           string     `json:"persona"`
 		Provider          string     `json:"provider"`
+		Look              string     `json:"look,omitempty"`
+		Model             string     `json:"model,omitempty"`
+		State             string     `json:"state,omitempty"`
+		Activity          string     `json:"activity,omitempty"`
+		LastActivity      *time.Time `json:"last_activity,omitempty"`
 		RepoAccess        RepoAccess `json:"repo_access"`
 		Connections       []string   `json:"connections"`
 		Skills            []string   `json:"skills"`
@@ -104,16 +109,17 @@ type (
 	// until the first run starts one. The repo, branch, worktree and MR fields are empty until
 	// set.
 	Thread struct {
-		ID       string    `json:"id"`
-		BotID    string    `json:"bot_id"`
-		Session  string    `json:"-"`
-		RepoID   string    `json:"repo_id"`
-		Branch   string    `json:"branch"`
-		Worktree string    `json:"worktree"`
-		MRURL    string    `json:"mr_url"`
-		MRState  string    `json:"mr_state"`
-		Closed   bool      `json:"closed"`
-		Created  time.Time `json:"created_at"`
+		ID           string    `json:"id"`
+		BotID        string    `json:"bot_id"`
+		Session      string    `json:"-"`
+		RepoID       string    `json:"repo_id"`
+		Branch       string    `json:"branch"`
+		Worktree     string    `json:"worktree"`
+		MRURL        string    `json:"mr_url"`
+		MRState      string    `json:"mr_state"`
+		Closed       bool      `json:"closed"`
+		Created      time.Time `json:"created_at"`
+		LastActivity time.Time `json:"last_activity"`
 	}
 
 	// Message is one chat line. A bot message holds a run's reply.
@@ -127,12 +133,15 @@ type (
 
 	// Run is one message handled.
 	Run struct {
-		ID       string  `json:"id"`
-		ThreadID string  `json:"thread_id"`
-		Status   string  `json:"status"`
-		Reply    string  `json:"reply"`
-		Error    string  `json:"error"`
-		Report   *Report `json:"report"`
+		ID         string         `json:"id"`
+		ThreadID   string         `json:"thread_id"`
+		Status     string         `json:"status"`
+		Reply      string         `json:"reply"`
+		Error      string         `json:"error"`
+		Report     *Report        `json:"report"`
+		StartedAt  time.Time      `json:"started_at"`
+		FinishedAt time.Time      `json:"finished_at"`
+		Tools      map[string]int `json:"tools"`
 	}
 
 	// Report is what the provider passed to finish_run, exactly.
@@ -146,8 +155,8 @@ type (
 
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
-		"can_manage_platform"
-	_threadColumns = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created"
+		"can_manage_platform, look, model"
+	_threadColumns = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity"
 )
 
 // Open opens dir/atoll.db, creating dir and the file if needed, and applies any migration the
@@ -221,7 +230,7 @@ func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 		return Bot{}, err
 	}
 	_, err = s.db.ExecContext(ctx,
-		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?)", args...)
+		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", args...)
 	if err != nil {
 		return Bot{}, fmt.Errorf("insert bot: %w", err)
 	}
@@ -346,15 +355,16 @@ func (s *Store) CreateThread(ctx context.Context, botID, repoID string) (Thread,
 		Created: time.Now().UTC().Truncate(time.Microsecond),
 	}
 	res, err := s.db.ExecContext(ctx,
-		"INSERT INTO threads (id, bot_id, repo_id, created) "+
-			"SELECT ?, id, ?, ? FROM bots WHERE id = ? AND removed = 0",
-		t.ID, t.RepoID, t.Created.UnixMicro(), botID)
+		"INSERT INTO threads (id, bot_id, repo_id, created, last_activity) "+
+			"SELECT ?, id, ?, ?, ? FROM bots WHERE id = ? AND removed = 0",
+		t.ID, t.RepoID, t.Created.UnixMicro(), t.Created.UnixMicro(), botID)
 	if err != nil {
 		return Thread{}, fmt.Errorf("insert thread: %w", err)
 	}
 	if err := found(res, "bot", botID); err != nil {
 		return Thread{}, err
 	}
+	t.LastActivity = t.Created
 	return t, nil
 }
 
@@ -374,7 +384,7 @@ func (s *Store) Thread(ctx context.Context, id string) (Thread, error) {
 // Threads lists the threads of the Bot botID, newest first.
 func (s *Store) Threads(ctx context.Context, botID string) ([]Thread, error) {
 	return query(ctx, s.db,
-		"SELECT "+_threadColumns+" FROM threads WHERE bot_id = ? ORDER BY rowid DESC",
+		"SELECT "+_threadColumns+" FROM threads WHERE bot_id = ? ORDER BY last_activity DESC, rowid DESC",
 		scanThread, botID)
 }
 
@@ -383,6 +393,12 @@ func (s *Store) Watched(ctx context.Context) ([]Thread, error) {
 	return query(ctx, s.db,
 		"SELECT "+_threadColumns+" FROM threads WHERE mr_url != '' AND worktree != '' ORDER BY rowid",
 		scanThread)
+}
+
+// TouchThread updates the time of the thread's latest activity.
+func (s *Store) TouchThread(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE threads SET last_activity = ? WHERE id = ?", time.Now().UTC().UnixMicro(), id)
+	return err
 }
 
 // SetWorktree records the thread's branch and worktree; an empty worktree clears it.
@@ -437,16 +453,19 @@ func (s *Store) SetSession(ctx context.Context, threadID, session string) error 
 
 // StartRun stores the user's message and a running run for it, in one transaction.
 func (s *Store) StartRun(ctx context.Context, threadID, text string) (Message, Run, error) {
-	r := Run{ID: newID(), ThreadID: threadID, Status: StatusRunning}
+	r := Run{ID: newID(), ThreadID: threadID, Status: StatusRunning, StartedAt: time.Now().UTC(), Tools: map[string]int{}}
 	m := Message{ID: newID(), ThreadID: threadID, Role: RoleUser, Text: text, RunID: r.ID}
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx,
-			"INSERT INTO runs (id, thread_id, status) SELECT ?, id, ? FROM threads WHERE id = ?",
-			r.ID, r.Status, threadID)
+			"INSERT INTO runs (id, thread_id, status, started_at) SELECT ?, id, ?, ? FROM threads WHERE id = ?",
+			r.ID, r.Status, r.StartedAt.UnixMicro(), threadID)
 		if err != nil {
 			return fmt.Errorf("insert run: %w", err)
 		}
 		if err := found(res, "thread", threadID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE threads SET last_activity = ? WHERE id = ?", time.Now().UTC().UnixMicro(), threadID); err != nil {
 			return err
 		}
 		return insertMessage(ctx, tx, m)
@@ -461,14 +480,25 @@ func (s *Store) StartRun(ctx context.Context, threadID, text string) (Message, R
 func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 	var r Run
 	var report sql.NullString
+	var started, finished int64
+	var tools string
 	err := s.db.QueryRowContext(ctx,
-		"SELECT id, thread_id, status, reply, error, report FROM runs WHERE id = ?", id).
-		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &report)
+		"SELECT id, thread_id, status, reply, error, report, started_at, finished_at, tools FROM runs WHERE id = ?", id).
+		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &report, &started, &finished, &tools)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("run %s: %w", id, ErrNotFound)
 	}
 	if err != nil {
 		return Run{}, fmt.Errorf("read run %s: %w", id, err)
+	}
+	if started != 0 {
+		r.StartedAt = time.UnixMicro(started).UTC()
+	}
+	if finished != 0 {
+		r.FinishedAt = time.UnixMicro(finished).UTC()
+	}
+	if err := json.Unmarshal([]byte(tools), &r.Tools); err != nil {
+		return Run{}, err
 	}
 	if report.Valid {
 		if err := json.Unmarshal([]byte(report.String), &r.Report); err != nil {
@@ -476,6 +506,12 @@ func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 		}
 	}
 	return r, nil
+}
+
+// CountTool increments a run's count for a tool kind.
+func (s *Store) CountTool(ctx context.Context, runID, kind string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE runs SET tools = json_set(tools, ?, coalesce(json_extract(tools, ?), 0) + 1) WHERE id = ?`, "$."+kind, "$."+kind, runID)
+	return err
 }
 
 // SetStatus sets the status of a run that is running or waiting; a finished run keeps its status.
@@ -516,8 +552,8 @@ func (s *Store) FinishRun(ctx context.Context, runID, status, reply, errText str
 			return fmt.Errorf("read run %s: %w", runID, err)
 		}
 		_, err = tx.ExecContext(ctx,
-			"UPDATE runs SET status = ?, reply = ?, error = ? WHERE id = ?",
-			status, reply, errText, runID)
+			"UPDATE runs SET status = ?, reply = ?, error = ?, finished_at = ? WHERE id = ?",
+			status, reply, errText, time.Now().UTC().UnixMicro(), runID)
 		if err != nil {
 			return fmt.Errorf("finish run: %w", err)
 		}
@@ -597,14 +633,15 @@ func found(res sql.Result, kind, id string) error {
 func scanThread(r *sql.Rows) (Thread, error) {
 	var t Thread
 	var closed int
-	var created int64
+	var created, lastActivity int64
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
-		&t.MRState, &closed, &created)
+		&t.MRState, &closed, &created, &lastActivity)
 	if err != nil {
 		return Thread{}, err
 	}
 	t.Closed = closed != 0
 	t.Created = time.UnixMicro(created).UTC()
+	t.LastActivity = time.UnixMicro(lastActivity).UTC()
 	return t, nil
 }
 
@@ -613,7 +650,7 @@ func scanBot(r *sql.Rows) (Bot, error) {
 	var access sql.NullString
 	var conns, skills string
 	err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills,
-		&b.CanManagePlatform)
+		&b.CanManagePlatform, &b.Look, &b.Model)
 	if err != nil {
 		return Bot{}, err
 	}

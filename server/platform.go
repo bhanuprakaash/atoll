@@ -7,14 +7,71 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"atoll/provider"
 	"atoll/repo"
 	"atoll/store"
 )
 
+var _looks = []string{"jellyfish", "whale", "penguin", "shark", "octopus", "turtle", "seahorse", "otter", "clownfish", "manta"}
+
 func validBot(b store.Bot) bool {
-	return b.Name != "" && (b.Provider == "claude" || b.Provider == "codex")
+	return b.Name != "" && (b.Provider == "claude" || b.Provider == "codex") &&
+		(b.Look == "" || slices.Contains(_looks, b.Look))
+}
+
+type botResponse struct {
+	store.Bot
+	Look         string     `json:"look"`
+	Model        string     `json:"model"`
+	Activity     string     `json:"activity"`
+	LastActivity *time.Time `json:"last_activity"`
+}
+
+func responseBot(b store.Bot) botResponse {
+	return botResponse{Bot: b, Look: b.Look, Model: b.Model, Activity: b.Activity, LastActivity: b.LastActivity}
+}
+
+func (a *api) botSummary(r *http.Request, b store.Bot) (store.Bot, error) {
+	threads, err := a.st.Threads(r.Context(), b.ID)
+	if err != nil {
+		return b, err
+	}
+	latest := ""
+	for _, t := range threads {
+		summary, err := a.threadSummary(r, t)
+		if err != nil {
+			return b, err
+		}
+		if summary.RunID == "" {
+			continue
+		}
+		if latest == "" {
+			latest = summary.RunStatus
+			at := t.LastActivity
+			b.LastActivity = &at
+			b.Activity = "Run " + latest
+		}
+		if summary.Approval != nil {
+			b.State = "needs_you"
+			return b, nil
+		}
+		if summary.RunStatus == "running" || summary.RunStatus == "waiting" {
+			b.State = "working"
+		}
+	}
+	if b.State != "" {
+		return b, nil
+	}
+	if latest == "failed" {
+		b.State = "failed"
+	} else if !a.runs.Available(r.Context(), b.Provider) {
+		b.State = "asleep"
+	} else {
+		b.State = "idle"
+	}
+	return b, nil
 }
 
 func (a *api) getBot(w http.ResponseWriter, r *http.Request) {
@@ -23,7 +80,12 @@ func (a *api) getBot(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusOK, b)
+	b, err = a.botSummary(r, b)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusOK, responseBot(b))
 }
 
 func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +104,7 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusOK, b)
+	write(w, http.StatusOK, responseBot(b))
 }
 
 func (a *api) createSkill(w http.ResponseWriter, r *http.Request) {
