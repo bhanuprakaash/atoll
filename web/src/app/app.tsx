@@ -175,7 +175,7 @@ function AppRoutes() {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter useTransitions={false}>
         <AppRoutes />
       </BrowserRouter>
     </QueryClientProvider>
