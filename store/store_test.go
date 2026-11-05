@@ -249,3 +249,59 @@ func TestStore_MessageTimestamps(t *testing.T) {
 		})
 	}
 }
+
+func TestStore_ThreadDetails(t *testing.T) {
+	ctx := t.Context()
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetMR(ctx, thread.ID, "https://gitlab.example/p/-/merge_requests/43", "merged", "Fix the wizard"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RemoveWorktree(ctx, thread.ID, "refs/atoll/unfinished/test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetClosed(ctx, thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	got, err := st.Thread(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		got, want any
+	}{
+		{"title", got.MRTitle, "Fix the wizard"},
+		{"state", got.MRState, "merged"},
+		{"removed", got.WorktreeRemoved, true},
+		{"snapshot", got.SnapshotRef, "refs/atoll/unfinished/test"},
+		{"closed", got.Closed, true},
+		{"closed time", got.ClosedAt != nil && !got.ClosedAt.IsZero(), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("got %v, want %v", tt.got, tt.want)
+			}
+		})
+	}
+}

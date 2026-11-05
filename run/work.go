@@ -40,6 +40,7 @@ type (
 		RunID string `json:"run_id"`
 		URL   string `json:"url"`
 		State string `json:"state"`
+		Title string `json:"title"`
 	}
 
 	// WorktreeRemoved is sent once the worktree folder is gone. Reason is merged or closed;
@@ -122,15 +123,15 @@ func (m *Manager) StartWork(
 }
 
 // TrackMR records url as the MR of the thread of the run with token, opened.
-func (m *Manager) TrackMR(ctx context.Context, token, url string) error {
+func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 	a, err := m.byToken(token)
 	if err != nil {
 		return err
 	}
-	if err := m.cfg.Store.SetMR(ctx, a.threadID, url, _mrOpened); err != nil {
+	if err := m.cfg.Store.SetMR(ctx, a.threadID, url, _mrOpened, title); err != nil {
 		return err
 	}
-	m.publish(a, EventMRUpdated, MRUpdated{RunID: a.run.ID, URL: url, State: _mrOpened})
+	m.publish(a, EventMRUpdated, MRUpdated{RunID: a.run.ID, URL: url, State: _mrOpened, Title: title})
 	return nil
 }
 
@@ -185,7 +186,7 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	if err := repo.Remove(ctx, rp.Path, t.Worktree); err != nil {
 		return err
 	}
-	if err := m.cfg.Store.SetWorktree(ctx, t.ID, t.Branch, ""); err != nil {
+	if err := m.cfg.Store.RemoveWorktree(ctx, t.ID, ref); err != nil {
 		return err
 	}
 	m.announce(t.ID, runID, EventWorktreeRemoved,
@@ -336,10 +337,10 @@ func (m *Manager) check(t store.Thread) error {
 		if err != nil {
 			return err
 		}
-		if err := m.cfg.Store.SetMR(m.ctx, t.ID, t.MRURL, state); err != nil {
+		if err := m.cfg.Store.SetMR(m.ctx, t.ID, t.MRURL, state, t.MRTitle); err != nil {
 			return err
 		}
-		m.announce(t.ID, runID, EventMRUpdated, MRUpdated{RunID: runID, URL: t.MRURL, State: state})
+		m.announce(t.ID, runID, EventMRUpdated, MRUpdated{RunID: runID, URL: t.MRURL, State: state, Title: t.MRTitle})
 	}
 	if state != _mrMerged {
 		return nil

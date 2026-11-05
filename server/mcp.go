@@ -32,7 +32,7 @@ const _tools = `{"tools":[
 "required":["type","slug"]}},
 {"name":"track_mr",
 "description":"When the change is ready, commit, push, open a merge request, call this tool with its URL, and include the URL in your reply. Never merge.",
-"inputSchema":{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}},
+"inputSchema":{"type":"object","properties":{"url":{"type":"string"},"title":{"type":"string"}},"required":["url","title"]}},
 {"name":"approve",
 "description":"Permission prompt: asks the user whether a tool call may go ahead.",
 "inputSchema":{"type":"object",
@@ -183,12 +183,13 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		return text(string(body)), nil
 	case provider.ToolTrackMR:
 		var in struct {
-			URL string `json:"url"`
+			URL   string `json:"url"`
+			Title string `json:"title"`
 		}
 		if err := json.Unmarshal(call.Arguments, &in); err != nil || in.URL == "" {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		if err := a.runs.TrackMR(r.Context(), token, in.URL); err != nil {
+		if err := a.runs.TrackMR(r.Context(), token, in.URL, in.Title); err != nil {
 			return nil, a.toolError(err)
 		}
 		return text("MR tracked."), nil

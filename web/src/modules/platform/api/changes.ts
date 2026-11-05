@@ -4,6 +4,8 @@ import { api } from '@/lib/api-client';
 
 type ChangeSnapshot = {
   name?: string;
+  path?: string;
+  content?: string;
   look?: CreatureLook;
   provider?: 'claude' | 'codex';
   model?: string;
@@ -46,4 +48,24 @@ export function useUndoChange(id: string) {
       );
     },
   });
+}
+
+export function useChangeNames() {
+  const skills = useQuery({
+    queryKey: ['skills'],
+    queryFn: () => api<{ id: string; name: string }[]>('/skills'),
+  });
+  const repos = useQuery({
+    queryKey: ['repos'],
+    queryFn: () => api<{ id: string; name: string }[]>('/repos'),
+  });
+  const connections = useQuery({
+    queryKey: ['connections'],
+    queryFn: () => api<{ id: string; kind: string }[]>('/connections'),
+  });
+  return {
+    skills: skills.data ?? [],
+    repos: repos.data ?? [],
+    connections: connections.data ?? [],
+  };
 }

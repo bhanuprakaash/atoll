@@ -10,6 +10,12 @@ export type Thread = {
   worktree: string;
   mr_url: string;
   mr_state: string;
+  mr_title: string;
+  worktree_removed: boolean;
+  snapshot_ref: string;
+  closed_at: string | null;
+  updated_at: string;
+  verb: string;
   closed: boolean;
   created_at: string;
   title: string;

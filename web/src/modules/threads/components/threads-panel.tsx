@@ -36,9 +36,9 @@ export function ThreadsPanel({
             >
               <span className="flex justify-between gap-3">
                 <span className="truncate">{t.title || 'Empty thread'}</span>
-                {t.last_activity && (
-                  <time className="shrink-0 text-xs text-muted" dateTime={t.last_activity}>
-                    {new Date(t.last_activity).toLocaleDateString(undefined, {
+                {t.updated_at && (
+                  <time className="shrink-0 text-xs text-muted" dateTime={t.updated_at}>
+                    {new Date(t.updated_at).toLocaleDateString(undefined, {
                       month: 'short',
                       day: 'numeric',
                     })}
@@ -47,7 +47,13 @@ export function ThreadsPanel({
               </span>
               {t.approval && (
                 <span className="block text-xs text-muted">
-                  Waiting for {approvalTarget(t.approval.input)}
+                  Wants to{' '}
+                  {/edit|write|filechange/i.test(t.approval.tool)
+                    ? 'edit'
+                    : /bash|command/i.test(t.approval.tool)
+                      ? 'run'
+                      : 'use'}{' '}
+                  {approvalTarget(t.approval.input)}
                 </span>
               )}
               {label === 'Recent' && (
@@ -59,7 +65,14 @@ export function ThreadsPanel({
               )}
               {label === 'Running' && (
                 <span className="block text-xs text-muted">
-                  Working {t.branch} {t.mr_url && '· MR'}
+                  {[
+                    t.verb,
+                    t.branch,
+                    t.mr_url &&
+                      `!${t.mr_url.match(/(?:merge_requests|merge-requests)\/(\d+)/)?.[1] ?? 'MR'}`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </span>
               )}
             </button>

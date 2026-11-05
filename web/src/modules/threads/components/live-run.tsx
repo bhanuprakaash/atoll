@@ -27,14 +27,7 @@ export function LiveRun({ id, run, look }: { id: string; run: Live; look?: Creat
     ? Math.max(0, Math.floor((now - Date.parse(data.started_at)) / 1000))
     : 0;
   const kind = run.tool?.kind ?? 'none';
-  const name = run.tool?.name ?? '';
-  const verb = /start_work/.test(name)
-    ? 'Starting a branch'
-    : /track_mr/.test(name)
-      ? 'Opening the MR'
-      : /save_memory|remember/.test(name)
-        ? 'Taking a note'
-        : (verbs[kind] ?? 'Working');
+  const verb = run.tool?.verb || verbs[kind] || 'Thinking';
   return (
     <div className="flex flex-col gap-2">
       {!run.finished && (

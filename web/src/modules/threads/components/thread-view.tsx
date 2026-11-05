@@ -269,7 +269,8 @@ export function ThreadView({
       rel="noreferrer"
       className="self-start rounded-full border border-line px-2 py-1"
     >
-      !{iid ?? 'MR'} · {{ merged: 'Merged', closed: 'Closed' }[mrState ?? ''] ?? 'Open'}
+      !{iid ?? 'MR'} {mr?.title ?? thread?.mr_title} ·{' '}
+      {{ merged: 'Merged', closed: 'Closed' }[mrState ?? ''] ?? 'Open'}
     </a>
   );
   const context = (
@@ -358,14 +359,24 @@ export function ThreadView({
           <RunResult id={thread.run_id} retry={retry} />
         )}
         {mrChip}
-        {worktreeRemoved && (
+        {(worktreeRemoved || thread?.worktree_removed) && (
           <p className="text-sm text-muted">
             {iid && mrState === 'merged' ? `!${iid} merged · ` : ''}worktree cleaned up
           </p>
         )}
         {thread?.closed && (
           <p className="self-center rounded-full border border-line px-4 py-2 text-sm text-muted">
-            Closed
+            Closed{' '}
+            {thread.closed_at &&
+              (new Date(thread.closed_at).toDateString() === new Date().toDateString()
+                ? 'today'
+                : new Date(thread.closed_at).toLocaleDateString())}{' '}
+            {thread.closed_at &&
+              new Date(thread.closed_at).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}{' '}
+            {thread.snapshot_ref && ' · unfinished work saved'}
           </p>
         )}
         {!connected && <p className="text-sm text-muted">Reconnecting</p>}
@@ -382,7 +393,7 @@ export function ThreadView({
                     {[
                       thread.branch,
                       iid && `!${iid} ${mrState || 'open'}`,
-                      worktreeRemoved && 'worktree cleaned up',
+                      (worktreeRemoved || thread.worktree_removed) && 'worktree cleaned up',
                     ]
                       .filter(Boolean)
                       .join(' · ')}

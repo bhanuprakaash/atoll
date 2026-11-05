@@ -47,6 +47,9 @@ Undo of a repo registration is refused while a thread uses the repo.
 
 ## Threads and runs
 
+- Thread records retain the tracked MR title and state, close time, and worktree cleanup and snapshot
+  status so the chat and thread list can show them after a restart. `track_mr` accepts the MR title
+  with its URL. The thread list includes the current work verb and pending approval.
 - A thread is a chat with one Bot. Each message starts a run that resumes the Bot's session and
   exits after replying. No agent process lives between messages.
 - Resume by default. A fresh session only comes from starting a new thread or delegation.

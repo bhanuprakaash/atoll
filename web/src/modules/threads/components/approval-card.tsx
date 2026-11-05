@@ -4,7 +4,10 @@ import { useAnswerApproval } from '@/modules/threads/api/approvals';
 export function approvalTarget(input: unknown): string {
   if (!input || typeof input !== 'object') return '';
   const value = input as Record<string, unknown>;
-  const target = value.command ?? value.file_path ?? value.path ?? value.file ?? value.target;
+  const changes = Array.isArray(value.changes) ? value.changes : [];
+  const first = changes[0] as Record<string, unknown> | undefined;
+  const target =
+    value.command ?? value.file_path ?? value.path ?? value.file ?? value.target ?? first?.path;
   return typeof target === 'string' ? target : '';
 }
 
@@ -16,17 +19,28 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
   const edit = /edit|write|filechange/i.test(tool);
   const command = /bash|command/i.test(tool);
   const details = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-  const diff = [details.old_string, details.new_string, details.content]
+  const changes = Array.isArray(details.changes)
+    ? (details.changes as Record<string, unknown>[])
+    : [];
+  const patches = changes
+    .map((change) => change.diff)
+    .filter((value): value is string => typeof value === 'string');
+  const diff = [details.old_string, details.new_string, details.content, ...patches]
     .filter((value): value is string => typeof value === 'string')
     .join('\n');
-  const added =
-    typeof details.new_string === 'string'
+  const patchLines = patches.flatMap((patch) => patch.split('\n'));
+  const added = patches.length
+    ? patchLines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).length
+    : typeof details.new_string === 'string'
       ? details.new_string.split('\n').length
       : typeof details.content === 'string'
         ? details.content.split('\n').length
         : 0;
-  const removed =
-    typeof details.old_string === 'string' ? details.old_string.split('\n').length : 0;
+  const removed = patches.length
+    ? patchLines.filter((line) => line.startsWith('-') && !line.startsWith('---')).length
+    : typeof details.old_string === 'string'
+      ? details.old_string.split('\n').length
+      : 0;
   const respond = (approve: boolean) =>
     answer.mutate(approve, { onSuccess: () => setAnswered(approve) });
   return (

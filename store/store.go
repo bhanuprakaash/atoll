@@ -109,17 +109,21 @@ type (
 	// until the first run starts one. The repo, branch, worktree and MR fields are empty until
 	// set.
 	Thread struct {
-		ID           string    `json:"id"`
-		BotID        string    `json:"bot_id"`
-		Session      string    `json:"-"`
-		RepoID       string    `json:"repo_id"`
-		Branch       string    `json:"branch"`
-		Worktree     string    `json:"worktree"`
-		MRURL        string    `json:"mr_url"`
-		MRState      string    `json:"mr_state"`
-		Closed       bool      `json:"closed"`
-		Created      time.Time `json:"created_at"`
-		LastActivity time.Time `json:"last_activity"`
+		ID              string     `json:"id"`
+		BotID           string     `json:"bot_id"`
+		Session         string     `json:"-"`
+		RepoID          string     `json:"repo_id"`
+		Branch          string     `json:"branch"`
+		Worktree        string     `json:"worktree"`
+		MRURL           string     `json:"mr_url"`
+		MRState         string     `json:"mr_state"`
+		MRTitle         string     `json:"mr_title"`
+		WorktreeRemoved bool       `json:"worktree_removed"`
+		SnapshotRef     string     `json:"snapshot_ref"`
+		ClosedAt        *time.Time `json:"closed_at"`
+		Closed          bool       `json:"closed"`
+		Created         time.Time  `json:"created_at"`
+		LastActivity    time.Time  `json:"last_activity"`
 	}
 
 	// Message is one chat line. A bot message holds a run's reply.
@@ -157,7 +161,7 @@ type (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model"
-	_threadColumns = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity"
+	_threadColumns = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref"
 )
 
 // Open opens dir/atoll.db, creating dir and the file if needed, and applies any migration the
@@ -404,7 +408,7 @@ func (s *Store) TouchThread(ctx context.Context, id string) error {
 
 // SetWorktree records the thread's branch and worktree; an empty worktree clears it.
 func (s *Store) SetWorktree(ctx context.Context, threadID, branch, worktree string) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE threads SET branch = ?, worktree = ? WHERE id = ?",
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET branch = ?, worktree = ?, worktree_removed = 0, snapshot_ref = '' WHERE id = ?",
 		branch, worktree, threadID)
 	if err != nil {
 		return fmt.Errorf("set worktree: %w", err)
@@ -412,10 +416,19 @@ func (s *Store) SetWorktree(ctx context.Context, threadID, branch, worktree stri
 	return found(res, "thread", threadID)
 }
 
+// RemoveWorktree records a completed worktree cleanup.
+func (s *Store) RemoveWorktree(ctx context.Context, threadID, ref string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET worktree = '', worktree_removed = 1, snapshot_ref = ? WHERE id = ?", ref, threadID)
+	if err != nil {
+		return fmt.Errorf("remove worktree: %w", err)
+	}
+	return found(res, "thread", threadID)
+}
+
 // SetMR records the thread's MR and its state.
-func (s *Store) SetMR(ctx context.Context, threadID, url, state string) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE threads SET mr_url = ?, mr_state = ? WHERE id = ?",
-		url, state, threadID)
+func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET mr_url = ?, mr_state = ?, mr_title = ? WHERE id = ?",
+		url, state, title, threadID)
 	if err != nil {
 		return fmt.Errorf("set MR: %w", err)
 	}
@@ -424,7 +437,7 @@ func (s *Store) SetMR(ctx context.Context, threadID, url, state string) error {
 
 // SetClosed closes the thread: it takes no more messages.
 func (s *Store) SetClosed(ctx context.Context, threadID string) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE threads SET closed = 1 WHERE id = ?", threadID)
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET closed = 1, closed_at = ? WHERE id = ?", time.Now().UTC().UnixMicro(), threadID)
 	if err != nil {
 		return fmt.Errorf("close thread: %w", err)
 	}
@@ -642,12 +655,19 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	var t Thread
 	var closed int
 	var created, lastActivity int64
+	var removed int
+	var closedAt sql.NullInt64
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
-		&t.MRState, &closed, &created, &lastActivity)
+		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef)
 	if err != nil {
 		return Thread{}, err
 	}
 	t.Closed = closed != 0
+	t.WorktreeRemoved = removed != 0
+	if closedAt.Valid {
+		when := time.UnixMicro(closedAt.Int64).UTC()
+		t.ClosedAt = &when
+	}
 	t.Created = time.UnixMicro(created).UTC()
 	t.LastActivity = time.UnixMicro(lastActivity).UTC()
 	return t, nil
