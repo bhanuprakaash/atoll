@@ -40,6 +40,9 @@ never a dependency.
 **Chief.** Created on first launch. It has the "Can manage the platform" switch on: tools to create
 and edit Bots, skills and repos, and to attach connections, served as Reef's own MCP tools. Sign-ins
 stay with the user. Every change shows in the thread with undo. Other Bots can get the switch later.
+Undo: each change stores the entity before and after; Undo writes `before` back, or removes an entity
+the change created, and keeps the record marked undone. *Records survive restart; no undo of undo.*
+Undo of a repo registration is refused while a thread uses the repo.
 
 ## Threads and runs
 
@@ -82,6 +85,7 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
 ## Repos and worktrees
 
 - Repos are registered once. A thread works in one repo.
+- A repo registers without a commit; a thread on it is refused until it has one.
 - A thread gets a worktree on its first edit, at `~/Reef/worktrees/<repo>/<branch-folder>` (root is
   a setting). Read-only threads use a clean checkout.
 - The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs) at first edit; the app makes it
@@ -150,10 +154,13 @@ stay with the user. Every change shows in the thread with undo. Other Bots can g
   token is never written to a file or log.
 - Tokens live in the OS secret store through one cross-platform library. Targets: macOS and desktop
   Linux; headless Linux is out.
-- Skills: one library in standard `SKILL.md`, created in the app; each Bot picks its skills. A
-  per-provider adapter places them in the provider's folder (`<config dir>/skills`, `$CODEX_HOME/skills`)
-  and strips provider-only fields; a provider without skills gets a list in the prompt and reads the
-  file on demand. Never written into the repo. Skills the repo commits itself (`.claude/skills`,
+- Skills: one library in standard `SKILL.md`, created in the app; each Bot picks its skills. Each run
+  gets read-only copies of its Bot's skills in its own folder under the provider's Atoll folder
+  (`runs/<run id>`), removed when the run ends: Claude through `--add-dir` (copies in
+  `.claude/skills`), Codex through `skills/extraRoots/set` before the thread starts, with
+  `allowed-tools` and `context` stripped. *Shared `<config dir>/skills` would leak one Bot's skills into
+  an overlapping run and change files a live run reads.* A provider without skills gets a list in the
+  prompt and reads the file on demand. Never written into the repo. Skills the repo commits itself (`.claude/skills`,
   `.agents/skills`) still load, like its CLAUDE.md.
 
 ## Memory

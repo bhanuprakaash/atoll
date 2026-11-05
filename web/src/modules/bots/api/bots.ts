@@ -3,9 +3,19 @@ import { api } from '@/lib/api-client';
 
 export type Provider = 'claude' | 'codex';
 
-export type Bot = { id: string; name: string; persona: string; provider: Provider };
+export type Bot = {
+  id: string;
+  name: string;
+  persona: string;
+  provider: Provider;
+  skills: string[];
+  can_manage_platform: boolean;
+};
 
-export type NewBot = Omit<Bot, 'id'> & { repo_access: 'all' | string[]; connections: string[] };
+export type NewBot = Omit<Bot, 'id' | 'can_manage_platform'> & {
+  repo_access: 'all' | string[];
+  connections: string[];
+};
 
 export function useBots() {
   return useQuery({ queryKey: ['bots'], queryFn: () => api<Bot[]>('/bots') });

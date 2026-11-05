@@ -8,8 +8,11 @@ import { NewBotForm } from '@/modules/bots/components/new-bot-form';
 import { useConnections } from '@/modules/connections/api/connections';
 import { ConnectionsSettings } from '@/modules/connections/components/connections-settings';
 import { SavedMemory } from '@/modules/memory/components/saved-memory';
+import { PlatformChanges } from '@/modules/platform/components/platform-changes';
 import { useRepos } from '@/modules/repos/api/repos';
 import { ReposSettings } from '@/modules/repos/components/repos-settings';
+import { useSkills } from '@/modules/skills/api/skills';
+import { SkillsSettings } from '@/modules/skills/components/skills-settings';
 import { useThread } from '@/modules/threads/api/threads';
 import { ThreadView } from '@/modules/threads/components/thread-view';
 
@@ -19,9 +22,11 @@ function NewBotPage() {
   const navigate = useNavigate();
   const { data: repos = [] } = useRepos();
   const { data: connections = [] } = useConnections();
+  const { data: skills = [] } = useSkills();
   return (
     <NewBotForm
       repos={repos}
+      skills={skills}
       connections={connections.filter((c) => c.status === 'connected')}
       onCreated={(bot) => navigate(`/bots/${bot.id}`)}
     />
@@ -40,7 +45,12 @@ function ThreadPage() {
       key={threadId}
       threadId={threadId}
       repoName={repoName}
-      memory={<SavedMemory threadId={threadId} botNames={botNames} />}
+      memory={
+        <>
+          <SavedMemory threadId={threadId} botNames={botNames} />
+          <PlatformChanges threadId={threadId} botNames={botNames} />
+        </>
+      }
     />
   );
 }
@@ -55,6 +65,7 @@ export function App() {
             <Route path="settings" element={<SettingsPage />}>
               <Route path="repos" element={<ReposSettings />} />
               <Route path="connections" element={<ConnectionsSettings />} />
+              <Route path="skills" element={<SkillsSettings />} />
             </Route>
             <Route path="bots/new" element={<NewBotPage />} />
             <Route path="bots/:botId" element={<BotPage />}>

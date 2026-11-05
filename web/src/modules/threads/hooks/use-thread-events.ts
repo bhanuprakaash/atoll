@@ -80,6 +80,13 @@ export function useThreadEvents(threadId: string) {
       void queryClient.invalidateQueries({ queryKey: ['messages', threadId] });
       void queryClient.invalidateQueries({ queryKey: ['memory'] });
     });
+    for (const type of ['platform_changed', 'run_finished']) {
+      source.addEventListener(type, () => {
+        for (const queryKey of [['changes', threadId], ['bots'], ['skills'], ['repos']]) {
+          void queryClient.invalidateQueries({ queryKey });
+        }
+      });
+    }
     source.addEventListener('memory_saved', () => {
       void queryClient.invalidateQueries({ queryKey: ['memory'] });
     });

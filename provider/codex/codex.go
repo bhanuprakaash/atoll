@@ -247,15 +247,17 @@ func (s *Session) spawn(
 	}
 	s.cmd, s.stdin, s.stdout = cmd, stdin, bufio.NewReader(stdout)
 	ready := make(chan error, 1)
-	go s.run(method, params, ready)
+	go s.run(method, params, cfg.SkillDir, ready)
 	return ready, nil
 }
 
 // run owns stdout: it does the handshake, streams events, then reaps the process.
-func (s *Session) run(method string, params map[string]any, ready chan<- error) {
+func (s *Session) run(
+	method string, params map[string]any, skillDir string, ready chan<- error,
+) {
 	defer close(s.exited)
 	defer close(s.events)
-	err := s.handshake(method, params)
+	err := s.handshake(method, params, skillDir)
 	ready <- err
 	if err != nil {
 		_ = s.cmd.Wait()
@@ -273,13 +275,19 @@ func (s *Session) run(method string, params map[string]any, ready chan<- error) 
 	})
 }
 
-func (s *Session) handshake(method string, params map[string]any) error {
+func (s *Session) handshake(method string, params map[string]any, skillDir string) error {
 	clientInfo := map[string]any{"name": "atoll", "title": nil, "version": "0"}
 	if _, err := s.call("initialize", map[string]any{"clientInfo": clientInfo}); err != nil {
 		return fmt.Errorf("initialize: %w", err)
 	}
 	if err := s.write(map[string]any{"method": "initialized"}); err != nil {
 		return err
+	}
+	if skillDir != "" {
+		roots := map[string]any{"extraRoots": []string{skillDir}}
+		if _, err := s.call("skills/extraRoots/set", roots); err != nil {
+			return fmt.Errorf("skills/extraRoots/set: %w", err)
+		}
 	}
 	res, err := s.call(method, params)
 	if err != nil {

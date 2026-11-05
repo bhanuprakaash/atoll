@@ -25,6 +25,7 @@ type MCP struct {
 	url     string
 	headers map[string]string
 	session string
+	Tools   map[string]bool
 	next    int
 }
 
@@ -41,8 +42,21 @@ func Dial(url string, headers map[string]string) (*MCP, error) {
 	if err := c.notify("notifications/initialized"); err != nil {
 		return nil, err
 	}
-	if _, err := c.request("tools/list", map[string]any{}); err != nil {
+	listed, err := c.request("tools/list", map[string]any{})
+	if err != nil {
 		return nil, fmt.Errorf("mcp tools/list %s: %w", url, err)
+	}
+	var listing struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(listed, &listing); err != nil {
+		return nil, err
+	}
+	c.Tools = map[string]bool{}
+	for _, tool := range listing.Tools {
+		c.Tools[tool.Name] = true
 	}
 	return c, nil
 }

@@ -20,6 +20,7 @@ import (
 
 	"atoll/memory"
 	"atoll/provider"
+	"atoll/skill"
 	"atoll/store"
 )
 
@@ -114,6 +115,7 @@ type (
 		threadID string
 		token    string
 		run      store.Run
+		bot      store.Bot // settings as the run started
 		log      *os.File
 		open     int                      // approvals open
 		calls    map[string]chan struct{} // closed once the tool call with that id is published
@@ -398,12 +400,21 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("load bot: %w", err)
 	}
+	m.mu.Lock()
+	a.bot = bot
+	m.mu.Unlock()
 	m.cfg.Log.Info("run started", "run_id", a.run.ID, "thread_id", a.threadID,
 		"provider", bot.Provider)
 	sess, cfg, err := m.cfg.Launch(m.ctx, bot.Provider)
 	if err != nil {
 		return "", fmt.Errorf("launch %s: %w", bot.Provider, err)
 	}
+	skillDir := filepath.Join(cfg.Dir, "runs", a.run.ID)
+	defer func() {
+		if err := os.RemoveAll(skillDir); err != nil {
+			m.cfg.Log.Warn("remove skill dir", "run_id", a.run.ID, "error", err)
+		}
+	}()
 	defer func() {
 		if err := sess.Interrupt(); err != nil {
 			m.cfg.Log.Warn("interrupt provider", "run_id", a.run.ID, "error", err)
@@ -423,6 +434,20 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		return "", fmt.Errorf("load user name: %w", err)
 	}
 	cfg.SystemPrompt = systemPrompt(bot, user)
+	skills := make([]store.Skill, 0, len(bot.Skills))
+	for _, id := range bot.Skills {
+		sk, err := m.cfg.Store.Skill(m.ctx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("load skill: %w", err)
+		}
+		skills = append(skills, sk)
+	}
+	if cfg.SkillDir, err = skill.Place(skillDir, bot.Provider, skills); err != nil {
+		return "", fmt.Errorf("place skills: %w", err)
+	}
 	var items []memory.Item
 	var counts memory.Counts
 	if m.cfg.Memory != nil {

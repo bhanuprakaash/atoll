@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"atoll/connection"
-	"atoll/repo"
 	"atoll/store"
 )
 
@@ -54,8 +53,8 @@ func (a *api) createRepo(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "name and path are required")
 		return
 	}
-	if !filepath.IsAbs(body.Path) || !repo.IsRepo(r.Context(), body.Path) {
-		fail(w, http.StatusBadRequest, "path must be the top level of a git repo with a commit")
+	if err := validateRepo(r.Context(), body); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	rp, err := a.st.CreateRepo(r.Context(), body.Name, body.Path)

@@ -7,6 +7,7 @@ export function SettingsPage() {
         {[
           ['repos', 'Repos'],
           ['connections', 'Connections'],
+          ['skills', 'Skills'],
         ].map(([path, label]) => (
           <NavLink
             key={path}

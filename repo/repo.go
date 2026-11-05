@@ -151,7 +151,7 @@ func Remove(ctx context.Context, repoPath, dir string) error {
 	return nil
 }
 
-// IsRepo reports whether path is the top level of a git work tree with a commit.
+// IsRepo reports whether path is the top level of a git work tree.
 func IsRepo(ctx context.Context, path string) bool {
 	top, err := git(ctx, path, nil, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -162,10 +162,12 @@ func IsRepo(ctx context.Context, path string) bool {
 		return false
 	}
 	got, err := filepath.EvalSymlinks(top)
-	if err != nil || got != want {
-		return false
-	}
-	_, err = git(ctx, path, nil, "rev-parse", "--verify", "--quiet", "HEAD")
+	return err == nil && got == want
+}
+
+// HasCommit reports whether the repo at path has a commit to branch from.
+func HasCommit(ctx context.Context, path string) bool {
+	_, err := git(ctx, path, nil, "rev-parse", "--verify", "--quiet", "HEAD")
 	return err == nil
 }
 

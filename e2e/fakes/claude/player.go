@@ -15,6 +15,7 @@ type (
 	// player prints a recording the way claude would have produced it in this process: MCP tool
 	// calls really go to the configured servers and permission asks to the prompt tool.
 	player struct {
+		skills      []fake.SkillCopy
 		servers     map[string]*fake.MCP // connected, by name
 		failed      []string             // configured servers that did not connect
 		prompt      string               // --permission-prompt-tool
@@ -88,6 +89,15 @@ func newPlayer(args []string) (*player, error) {
 			p.servers[name] = c
 		}
 	}
+	cwd, _ := os.Getwd()
+	var err error
+	p.skills, err = fake.DiscoverSkills("claude", cwd, values(args, "--add-dir"), nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := fake.LogSkills(p.skills); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
@@ -97,6 +107,41 @@ func (p *player) play(lines []string) error {
 	repoReply := ""
 	for _, s := range lines {
 		switch directive := fake.Directive([]byte(s)); directive {
+		case "platform-create", "platform-edit", "platform-denied", "platform-configure":
+			var err error
+			repoReply, err = fake.PlatformStep(p.servers["atoll"], strings.TrimPrefix(directive, "platform-"), p.userMessage, func(name string, args json.RawMessage) error {
+				answer, err := p.ask(&toolUse{ID: "platform-" + name, Name: "mcp__atoll__" + name, Input: args})
+				if err != nil {
+					return err
+				}
+				if answer != "allow" {
+					return fmt.Errorf("platform tool denied: %s", name)
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			continue
+		case "skills-use", "skills-hold", "skills-worktree":
+			if directive == "skills-worktree" {
+				var err error
+				p.skills, err = fake.WorktreeSkills(p.servers["atoll"], "claude", p.skills)
+				if err != nil {
+					return err
+				}
+			}
+			if directive == "skills-hold" {
+				if err := fake.HoldSkills(); err != nil {
+					return err
+				}
+			}
+			var err error
+			repoReply, err = fake.SkillsReply(p.skills)
+			if err != nil {
+				return err
+			}
+			continue
 		case "memory-save", "memory-save-user", "memory-recall", "memory-resume", "memory-retire":
 			var err error
 			repoReply, err = fake.MemoryStep(p.servers["atoll"], strings.TrimPrefix(directive, "memory-"), p.userMessage, func(name string, args json.RawMessage) error {
@@ -313,6 +358,10 @@ func str(raw json.RawMessage) string {
 func values(args []string, name string) []string {
 	var out []string
 	for i := 0; i < len(args); i++ {
+		if value, ok := strings.CutPrefix(args[i], name+"="); ok {
+			out = append(out, value)
+			continue
+		}
 		if args[i] != name {
 			continue
 		}

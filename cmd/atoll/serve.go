@@ -43,6 +43,24 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
+	for _, adapter := range _adapters {
+		dir, err := adapter.dir()
+		if err != nil {
+			return err
+		}
+		if err := os.RemoveAll(filepath.Join(dir, "runs")); err != nil {
+			return err
+		}
+	}
+	if _, err := st.Bot(ctx, "chief"); err != nil {
+		chief := store.Bot{
+			ID: "chief", Name: "Chief", Persona: "I help configure Reef.",
+			Provider: chiefProvider(ctx), CanManagePlatform: true,
+		}
+		if _, err := st.EnsureBot(ctx, chief); err != nil {
+			return err
+		}
+	}
 	mem, err := memory.Open(st.DB(), nil)
 	if err != nil {
 		return err
@@ -102,6 +120,26 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		serveErr = nil
 	}
 	return errors.Join(err, serveErr, closeErr)
+}
+
+// chiefProvider is the first installed and signed-in provider, else claude.
+func chiefProvider(ctx context.Context) string {
+	dirs := pathDirs(ctx)
+	for _, adapter := range _adapters {
+		bin := adapter.find(dirs)
+		if bin == "" {
+			continue
+		}
+		dir, err := adapter.dir()
+		if err != nil {
+			continue
+		}
+		signed, err := adapter.signedIn(ctx, bin, dir)
+		if err == nil && signed {
+			return adapter.name
+		}
+	}
+	return "claude"
 }
 
 // pollInterval is ATOLL_REPO_POLL_INTERVAL, a Go duration, or a minute when it is unset, invalid

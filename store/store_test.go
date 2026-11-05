@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -124,6 +125,77 @@ func TestStore_FailUnfinished(t *testing.T) {
 				if err != nil || r.Status != store.StatusFailed || r.Error != "restart" {
 					t.Fatalf("run %s = %+v, %v", id, r, err)
 				}
+			}
+		})
+	}
+}
+
+func TestStore_UndoChange(t *testing.T) {
+	tests := []struct {
+		name, entity, action, setup, before, want string
+	}{
+		{"bot create", store.EntityBot, store.ActionCreate, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'p', 'claude')`, `null`, `missing`},
+		{"bot edit", store.EntityBot, store.ActionEdit, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"can_manage_platform":true}`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"can_manage_platform":true}`},
+		{"skill create", store.EntitySkill, store.ActionCreate, `INSERT INTO skills VALUES ('item', 'new', 'text')`, `null`, `missing`},
+		{"skill edit", store.EntitySkill, store.ActionEdit, `INSERT INTO skills VALUES ('item', 'new', 'text')`, `{"id":"item","name":"old","content":"original"}`, `{"id":"item","name":"old","content":"original"}`},
+		{"repo create", store.EntityRepo, store.ActionCreate, `INSERT INTO repos VALUES ('item', 'new', '/repo')`, `null`, `missing`},
+		{"repo create in use", store.EntityRepo, store.ActionCreate, `INSERT INTO repos VALUES ('item', 'new', '/repo'); INSERT INTO bots (id, name, persona, provider) VALUES ('bot', 'b', 'p', 'claude'); INSERT INTO threads (id, bot_id, created, repo_id) VALUES ('thread', 'bot', 1, 'item')`, `null`, `in use`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = st.Close() })
+			if _, err := st.DB().ExecContext(ctx, tt.setup); err != nil {
+				t.Fatal(err)
+			}
+			c, err := st.RecordChange(ctx, store.Change{Entity: tt.entity, EntityID: "item", Action: tt.action, Before: json.RawMessage(tt.before), After: json.RawMessage(`{}`), SourceThreadID: "thread"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			undone, err := st.UndoChange(ctx, c.ID)
+			if tt.want == "in use" {
+				if !errors.Is(err, store.ErrInUse) {
+					t.Fatalf("undo = %v, want ErrInUse", err)
+				}
+				if _, err := st.Repo(ctx, "item"); err != nil {
+					t.Fatalf("repo after refused undo: %v", err)
+				}
+				if _, err := st.UndoChange(ctx, c.ID); !errors.Is(err, store.ErrInUse) {
+					t.Fatalf("second undo = %v, want ErrInUse", err)
+				}
+				return
+			}
+			if err != nil || !undone.Undone {
+				t.Fatalf("undo = %+v, %v", undone, err)
+			}
+			var value any
+			switch tt.entity {
+			case store.EntityBot:
+				value, err = st.Bot(ctx, "item")
+			case store.EntitySkill:
+				value, err = st.Skill(ctx, "item")
+			case store.EntityRepo:
+				value, err = st.Repo(ctx, "item")
+			}
+			if tt.want == "missing" {
+				if !errors.Is(err, store.ErrNotFound) {
+					t.Fatalf("read = %v, %v; want missing", value, err)
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				data, err := json.Marshal(value)
+				if err != nil || string(data) != tt.want {
+					t.Fatalf("read = %s, %v; want %s", data, err, tt.want)
+				}
+			}
+			if _, err := st.UndoChange(ctx, c.ID); !errors.Is(err, store.ErrUndone) {
+				t.Fatalf("second undo = %v", err)
 			}
 		})
 	}

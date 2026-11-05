@@ -306,6 +306,9 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 			"--allowedTools", mcp,
 		)
 	}
+	if cfg.SkillDir != "" {
+		args = append(args, "--add-dir", cfg.SkillDir)
+	}
 	return append(args, extra...), nil
 }
 
@@ -390,10 +393,14 @@ func parse(line []byte, st *state) []provider.Event {
 			return []provider.Event{{Kind: provider.KindText, Text: text}}
 		}
 	case "result":
+		wrote := st.wrote
 		*st = state{}
 		if l.IsError {
 			text := strings.Join(append([]string{l.Result}, l.Errors...), "\n")
 			return []provider.Event{{Kind: provider.KindError, Text: strings.TrimSpace(text)}}
+		}
+		if !wrote && l.Result != "" {
+			return []provider.Event{{Kind: provider.KindText, Text: l.Result}, {Kind: provider.KindTurnEnd}}
 		}
 		return []provider.Event{{Kind: provider.KindTurnEnd}}
 	}
