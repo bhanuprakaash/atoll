@@ -31,7 +31,7 @@ export function Shell() {
         aria-label="Bots"
         className="flex w-[300px] flex-none flex-col border-r border-sidebar-line bg-card px-2.5 pt-4 pb-3"
       >
-        <div data-tauri-drag-region className="flex h-8 items-center justify-end px-2 pb-0.5">
+        <div data-tauri-drag-region="deep" className="flex h-8 items-center justify-end px-2 pb-0.5">
           <span
             className={`flex items-center gap-2 text-[15px] tracking-tight ${inDesktopApp ? 'ml-[68px]' : ''}`}
           >

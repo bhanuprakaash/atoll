@@ -64,7 +64,7 @@ export function NewBotForm({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
-        data-tauri-drag-region
+        data-tauri-drag-region="deep"
         className="flex flex-none items-center justify-between border-b border-line px-8 py-5"
       >
         <h1 className="text-base">New Bot</h1>

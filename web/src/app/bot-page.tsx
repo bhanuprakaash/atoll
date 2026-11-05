@@ -27,7 +27,7 @@ export function BotHeader({
 }) {
   return (
     <header
-      data-tauri-drag-region
+      data-tauri-drag-region="deep"
       className="flex min-h-16 items-center gap-3 border-b border-line px-5 py-2"
     >
       {bot && <Creature look={bot.look} state={bot.state} size={30} />}
