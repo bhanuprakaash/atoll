@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
+import { Link } from 'react-router';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 
 type Connection = { id: string; instance_url: string; status: 'pending' | 'connected' };
@@ -45,11 +46,19 @@ export function ConnectionList({
         singular="connection"
         choices={connections.map((c) => ({
           id: c.id,
-          name: `GitLab · ${c.instance_url}`,
+          name: `GitLab · ${c.instance_url.replace(/^https?:\/\//, '')}`,
           brand: 'gitlab' as const,
         }))}
         selected={selected}
         onChange={onChange}
+        empty={
+          <>
+            No connections yet.{' '}
+            <Link to="/settings/connections" className="text-ink underline underline-offset-2">
+              Connect GitLab in Settings
+            </Link>
+          </>
+        }
       />
       {connections
         .filter((c) => selected.includes(c.id) && c.status !== 'connected')
@@ -57,7 +66,7 @@ export function ConnectionList({
           <button
             key={c.id}
             type="button"
-            className="self-start text-sm underline"
+            className="self-start rounded-full border border-outline px-3 py-1 text-[13px] hover:bg-tile"
             disabled={start.isPending || !!flow}
             onClick={() => {
               setError('');
@@ -74,7 +83,7 @@ export function ConnectionList({
           </button>
         ))}
       {flow && (
-        <p className="text-sm">
+        <p className="rounded-xl bg-field p-3 text-[13px] text-muted">
           Open{' '}
           <a className="underline" href={flow.verification_uri} target="_blank" rel="noreferrer">
             {flow.verification_uri}

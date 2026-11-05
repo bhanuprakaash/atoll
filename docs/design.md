@@ -269,8 +269,9 @@ Finish
   composer in the middle and starters; a starter sends its text as the first message.
 - Bot settings open as a docked right panel beside the usable thread and save as you change them,
   applying from the next run: creature, name, model, persona, skills, repos, connections, memory (its own lessons and
-  what it saved) and the platform switch. Skills, repos and connections are lists with logos, a
-  remove button and an Add row; a connection that is not signed in offers Connect inline with
+  what it saved) and the platform switch. Skills, repos and connections are lists with icons, a
+  remove button and an Add row that opens a dialog to pick several at once (search, tick to add or
+  remove, Done); a connection that is not signed in offers Connect inline with
   GitLab's device code. The model is a searchable select grouped by provider. *The user preferred
   a docked panel to an overlay.*
 - A Bot's look is picked the same way everywhere: one large creature with previous/next arrows
