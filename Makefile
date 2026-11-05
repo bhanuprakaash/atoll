@@ -35,7 +35,8 @@ run: ui
 app: ui
 	mkdir -p desktop/src-tauri/binaries
 	go build -o desktop/src-tauri/binaries/atoll-$$(rustc -vV | sed -n "s/^host: //p") ./cmd/atoll
-	cd desktop && $(PNPM) install --frozen-lockfile && $(PNPM) tauri build --bundles app,dmg
+	@# actool, which compiles the app icon, fails with "Bad file descriptor" without a terminal (CI).
+	cd desktop && $(PNPM) install --frozen-lockfile && script -q /dev/null $(PNPM) tauri build --bundles app,dmg
 
 # The binary embeds server/ui, built from web/.
 ui: server/ui/index.html
