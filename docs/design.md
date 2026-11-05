@@ -29,7 +29,8 @@ never a dependency.
 
 - Settings: name, persona, Model, skills, connections, repo access, delegate list, look.
 - Persona holds expertise only. Who the Bot talks to comes from the run, not the persona.
-- Model is one field, e.g. `Claude Code · Opus 5.5`, `Codex · GPT-5`, listing only enabled, ready providers.
+- Model is one field, e.g. `Claude Code · Opus 5.5`, `Codex · GPT-5`, listing only enabled, ready
+  providers. The models come from asking each provider.
 - Repo access: All (default) or Only these. *A block list would silently grant new repos.*
 - Codex runs in its auto mode and Claude in default mode with Reef's permission prompt tool, *so
   its approvals reach the thread*. No per-tool lists, no platform hard limits. Approval requests
@@ -226,16 +227,54 @@ Finish
 ## App and UI
 
 - Mac app on Tauri; the Go server is a sidecar inside the bundle; React UI. Mobile later, as a
-  remote control for the Mac.
-- Sidebar: one row per Bot (look, name, latest activity, time), Chief first. Opening a Bot shows its
-  latest thread; the header has a thread picker and New thread. `+` makes a Bot or a thread. The
-  bottom user row opens Settings (Providers, Connections, Skills, Repos, Memory). No group chats.
-- Bot looks: 8 blob shapes (round, drop, bean, squircle, cloud, pill, flower, ghost) with two eye
-  ticks, 8 colours; a free pair by default. States by motion: idle blinks, working scans the eyes
-  side to side, needs-you is a pulsing red dot, asleep fades and drifts, failed is grey with X eyes.
-  The jellyfish stays the logo. Mockup: [design/bots.html](design/bots.html).
+  remote control for the Mac. Mockups: the "Reef Mac app" canvas
+  (https://claude.ai/artifact/Grf7TUVqfAsv4oHU96rWrU); this section is the contract.
+- Look: Geist, regular weight. Main `#171717`, sidebar `#1A1A1A`, composer `#222222`, hairlines
+  `#262626`, text `#ECECEC`, muted `#9B9B9B`. The light pill (`#ECECEC` on `#161616`) is the primary
+  action and the user's own message. Red `#E5484D` means needs you; amber means blocked.
+- Bot looks: old Reef's sea creatures, each with its own colour and two eye ticks: jellyfish (Chief,
+  as the logo), whale, penguin, shark, octopus, turtle, seahorse, otter, clownfish, manta. A Bot
+  stores the creature's name. Idle blinks; needs you is a pulsing red dot; asleep is grey; failed
+  has slanted eyes. *Replaces the eight blob shapes: the user preferred the creatures side by side.*
+- Working shows by tool kind, with old Reef's rising bubbles: no tool yet, the eyes circle up;
+  reading, searching or recalling, the eyes scan; editing, writing, remembering or changing the
+  platform, it bounces; running a command, it breathes.
+- Sidebar: one row per Bot (creature, name, latest activity, time), Chief first. `+` opens New Bot;
+  the bottom user row opens Settings. No group chats.
+- Bot header: creature, Bot name, thread title, a Threads button and a Bot settings icon. The
+  Threads button carries a red count of threads waiting on the user and opens a panel: Needs you
+  (and what it waits for), Running (live verb, branch, MR), Recent, then Closed folded; New thread
+  on top. A thread's title is its first message, cut to 40 characters.
+- The chat has no cards. The user's message is the only bubble; the Bot replies in plain text with
+  markdown. Everything else is one quiet line with its action inline: approvals (Allow, Deny),
+  Chief's changes (Undo, struck through once undone), the branch starting, the worktree cleaned up,
+  a failed run (Retry), a stopped run, blocked (from `finish_run`'s `blocked`), a refused message
+  and reconnecting. Chips are the exception: an MR with its live state, a saved memory with its
+  kind and Retire (tap opens kind, scope, why and what it replaced), a closed thread. A Bot Chief
+  creates gets one card: its creature, name, model, persona, skills, repos, Open and Undo.
+- While a run works, one status line shows the Bot, a verb and its target ("Reading
+  repo-step.tsx") and the time; never raw tool calls. When it ends, a summary line ("Worked 1m 12s
+  · read 4 files, edited 1, ran tests") sits above the reply. Approvals show a short form per tool:
+  a command shows the command, an edit shows the file with its diff behind a toggle, anything else
+  shows the tool and its target.
+- Composer: the message, then the thread's repo, branch and MR as chips, and Send or Stop. A new
+  thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
+  composer in the middle and starters; a starter sends its text as the first message.
+- Bot settings open as a right panel over the thread and save as you change them, applying from the
+  next run: creature, name, model, persona, skills, repos, connections, memory (its own lessons and
+  what it saved) and the platform switch. Skills, repos and connections are lists with logos, a
+  remove button and an Add row; a connection that is not signed in offers Connect inline with
+  GitLab's device code. The model is a searchable select grouped by provider.
+- New Bot is a full page: the form on the left, a live preview (the card and the sidebar row) on
+  the right, and a link to ask Chief instead. Create opens the new Bot's empty thread.
+- Settings: General (name, worktree folder), Providers, Connections, Skills, Repos, Memory, one
+  list each. A skill opens in a wide right panel: name, when to use it, the `SKILL.md` text and the
+  Bots that use it. Providers show version, models and sign-in state; signing in is `atoll provider
+  login <name>` in Terminal, with the command to copy.
+- First run is three steps over drifting creatures: the user's name; the providers found; Meet
+  Chief with example asks, each opening Chief's thread with that message sent.
 - The Go server serves the UI at `/` and the API under `/api/`, one address. Vite builds `web/`
-  into `server/ui`, which the binary embeds (`make ui`); the Tauri shell comes later.
+  into `server/ui`, which the binary embeds (`make ui`).
 - Names: the UI says Reef. Repo, Go module, binary and bundle ID say `atoll`; app data lives in
   `~/Library/Application Support/Atoll`. *Runs beside the old Reef; rename when it retires.*
 
@@ -270,6 +309,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 
 Delegation, GitHub and Slack connections, browser pane, background processes pane, the platform
 switch for Bots other than Chief, importing local skills and MCP servers, desktop Linux, mobile,
-memory pins (up to about 5 items always in the prompt), routines (scheduled, repeating runs).
+memory pins (up to about 5 items always in the prompt), routines (scheduled, repeating runs),
+signing in and adding providers from the app, more provider adapters.
 
 An item moves into the build when its absence hurts in daily use.
