@@ -272,8 +272,9 @@ Finish
   remove button and an Add row; a connection that is not signed in offers Connect inline with
   GitLab's device code. The model is a searchable select grouped by provider. *The user preferred
   a docked panel to an overlay.*
-- New Bot is a full page: the form on the left, a live preview (the card and the sidebar row) on
-  the right, and a link to ask Chief instead. Create opens the new Bot's empty thread.
+- New Bot is a full page with a centred form grouped into Basics, Brain and Access, and a link
+  to ask Chief instead. Wide windows show a live card and sidebar row preview on the right. Create
+  opens the new Bot's empty thread.
 - Settings: General (name, worktree folder), Providers, Connections, Skills, Repos, Memory, one
   list each. A skill opens in a wide right panel: name, when to use it, the `SKILL.md` text and the
   Bots that use it. Providers show where each CLI was found, its version, models and sign-in state.

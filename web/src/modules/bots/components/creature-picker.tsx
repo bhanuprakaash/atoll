@@ -30,16 +30,16 @@ export function CreaturePicker({
         label="Creature"
         value={value}
         onChange={(look) => onChange(look as CreatureLook)}
-        className="grid grid-cols-5 gap-2"
+        className={shuffle ? 'grid max-w-[352px] grid-cols-5 gap-2' : 'grid grid-cols-5 gap-2'}
         choiceClass={(on) =>
-          `flex flex-col items-center gap-1 rounded-2xl border bg-box p-2 text-xs ${on ? 'border-ink' : 'border-transparent'}`
+          `flex flex-col items-center gap-1 rounded-2xl border bg-box text-xs ${shuffle ? 'h-16 justify-center p-1' : 'p-2'} ${on ? 'border-ink' : 'border-transparent'}`
         }
         choices={creatureLooks.map(({ look, name }) => ({
           value: look,
           label: name,
           content: (
             <>
-              <Creature look={look} size={36} />
+              <Creature look={look} size={shuffle ? 32 : 36} />
               {name}
             </>
           ),

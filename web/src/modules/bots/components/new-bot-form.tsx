@@ -1,12 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { BrandLogo } from '@/components/brand-logo';
 import { Button } from '@/components/button';
-import { Creature, type CreatureLook } from '@/components/creature';
+import type { CreatureLook } from '@/components/creature';
 import { Field } from '@/components/field';
 import { Segmented } from '@/components/segmented';
 import { TextArea, TextField } from '@/components/text-field';
 import { useCreateBot, type Bot, type Provider } from '@/modules/bots/api/bots';
+import { BotPreview, CreatureSidebar } from '@/modules/bots/components/bot-preview';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { ConnectionList } from '@/modules/bots/components/connection-list';
 import { CreaturePicker } from '@/modules/bots/components/creature-picker';
@@ -74,107 +74,102 @@ export function NewBotForm({
           </Button>
         </div>
       </div>
-      <div className="flex flex-wrap gap-12 p-6">
+      <div className="flex justify-center gap-12 px-6 py-9">
         <form
           id="new-bot"
           onSubmit={submit}
-          className="flex min-w-72 max-w-xl flex-1 flex-col gap-6"
+          className="flex w-full max-w-[600px] min-w-0 flex-col gap-7"
         >
           {chiefId && (
-            <Link
-              className="rounded-control border border-line p-4 text-sm"
-              to={`/bots/${chiefId}`}
-            >
+            <Link className="text-sm text-muted hover:text-ink" to={`/bots/${chiefId}`}>
               Rather describe it? Ask Chief to set it up.
             </Link>
           )}
-          <Field label="Name">
-            {(id) => (
-              <TextField
-                id={id}
-                placeholder="Name your Bot"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            )}
-          </Field>
-          <CreaturePicker value={look} onChange={setLook} shuffle />
-          {modelControl(provider, model, (p, m) => {
-            setProvider(p);
-            setModel(m);
-          })}
-          <Field label="Persona">
-            {(id) => (
-              <TextArea
-                id={id}
-                rows={4}
-                value={persona}
-                onChange={(e) => setPersona(e.target.value)}
-              />
-            )}
-          </Field>
-          <p className="-mt-4 text-xs text-muted">
-            Describe how this Bot should work and what it should know.
-          </p>
-          <ChoiceList
-            title="Skills"
-            singular="skill"
-            choices={skills}
-            selected={skillIds}
-            onChange={setSkillIds}
-          />
-          <Segmented
-            label="Repo access"
-            value={onlyThese ? 'only' : 'all'}
-            onChange={(value) => setOnlyThese(value === 'only')}
-            choices={repoAccess}
-          />
-          {onlyThese && (
+          <section className="flex flex-col gap-5">
+            <h2 className="text-xs tracking-wide text-muted">Basics</h2>
+            <Field label="Name">
+              {(id) => (
+                <TextField
+                  id={id}
+                  placeholder="Name your Bot"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              )}
+            </Field>
+            <CreaturePicker value={look} onChange={setLook} shuffle />
+          </section>
+          <section className="flex flex-col gap-5 border-t border-line pt-7">
+            <h2 className="text-xs tracking-wide text-muted">Brain</h2>
+            {modelControl(provider, model, (p, m) => {
+              setProvider(p);
+              setModel(m);
+            })}
+            <Field label="Persona">
+              {(id) => (
+                <TextArea
+                  id={id}
+                  rows={4}
+                  value={persona}
+                  onChange={(e) => setPersona(e.target.value)}
+                />
+              )}
+            </Field>
+            <p className="-mt-3 text-xs text-muted">
+              Describe how this Bot should work and what it should know.
+            </p>
+          </section>
+          <section className="flex flex-col gap-5 border-t border-line pt-7">
+            <h2 className="text-xs tracking-wide text-muted">Access</h2>
             <ChoiceList
-              title="Repos"
-              singular="repo"
-              choices={repos}
-              selected={repoIds}
-              onChange={setRepoIds}
+              title="Skills"
+              singular="skill"
+              choices={skills}
+              selected={skillIds}
+              onChange={setSkillIds}
             />
-          )}
-          <ConnectionList
-            connections={connections}
-            selected={connectionIds}
-            onChange={setConnectionIds}
-          />
+            <Segmented
+              label="Repo access"
+              value={onlyThese ? 'only' : 'all'}
+              onChange={(value) => setOnlyThese(value === 'only')}
+              choices={repoAccess}
+            />
+            {onlyThese && (
+              <ChoiceList
+                title="Repos"
+                singular="repo"
+                choices={repos}
+                selected={repoIds}
+                onChange={setRepoIds}
+              />
+            )}
+            <ConnectionList
+              connections={connections}
+              selected={connectionIds}
+              onChange={setConnectionIds}
+            />
+          </section>
           {create.isError && <p className="text-sm text-danger">{create.error.message}</p>}
         </form>
-        <section aria-label="Preview" className="w-80 max-w-full">
-          <h2 className="mb-4 text-sm text-muted">Preview</h2>
-          <div className="flex flex-col items-center gap-3 rounded-card border border-line bg-card p-7 text-center">
-            <Creature look={look} size={112} />
-            <h3 className="text-2xl">{name || 'Your Bot'}</h3>
-            {model && (
-              <p className="flex items-center gap-1.5 rounded-full bg-composer px-3 py-1 text-xs">
-                <BrandLogo brand={provider} className="size-3.5" />
-                {provider === 'claude' ? 'Claude Code' : 'Codex'} · {model}
-              </p>
-            )}
-            <p className="text-sm text-muted">{persona || 'A little about your Bot'}</p>
-            <div className="flex flex-wrap justify-center gap-2 text-xs text-muted">
-              {skills
-                .filter((s) => skillIds.includes(s.id))
-                .map((s) => (
-                  <span key={s.id} className="rounded-full bg-composer px-3 py-1">
-                    {s.name}
-                  </span>
-                ))}
-            </div>
-          </div>
-          <h2 className="mt-6 mb-3 text-sm text-muted">In the sidebar</h2>
-          <div className="flex items-center gap-3 rounded-control border border-line p-3">
-            <Creature look={look} size={36} />
-            <div>
-              <div>{name || 'Your Bot'}</div>
-              <div className="text-sm text-muted">New Bot</div>
-            </div>
+        <section
+          aria-label="Preview"
+          className="sticky top-6 hidden h-fit w-80 flex-none min-[1200px]:block"
+        >
+          <h2 className="mb-4 text-xs tracking-wide text-muted">Preview</h2>
+          <BotPreview
+            name={name}
+            persona={persona}
+            provider={provider}
+            model={model}
+            look={look}
+            skills={skills.filter((skill) => skillIds.includes(skill.id))}
+            connections={connections.filter((connection) => connectionIds.includes(connection.id))}
+            repos={onlyThese ? repos.filter((repo) => repoIds.includes(repo.id)) : 'all'}
+          />
+          <h2 className="mt-6 mb-3 text-xs tracking-wide text-muted">In the sidebar</h2>
+          <div className="flex items-center gap-3 rounded-card border border-line bg-card p-2.5">
+            <CreatureSidebar look={look} name={name} />
           </div>
         </section>
       </div>
