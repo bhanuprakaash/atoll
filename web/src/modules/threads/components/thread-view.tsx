@@ -338,14 +338,31 @@ export function ThreadView({
         {repoName ?? (thread?.repo_id || 'No repo')}
       </span>
       {thread?.branch && (
-        <span className="flex h-7 items-center gap-1.5 rounded-full bg-selected px-2.5 font-mono">
-          {thread.branch}
+        <span className={chip}>
+          <svg
+            aria-hidden="true"
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="6" cy="5" r="2" />
+            <circle cx="6" cy="19" r="2" />
+            <circle cx="18" cy="7" r="2" />
+            <path d="M6 7v10M18 9c0 5-6 4-12 8" />
+          </svg>
+          <span className="font-mono">{thread.branch}</span>
         </span>
       )}
       {mrChip}
     </>
   );
   const empty = messages.length === 0 && !activeId;
+  const firstUserId = messages.find((m) => m.role === 'user')?.id;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {!empty && (
@@ -380,11 +397,6 @@ export function ThreadView({
               onSent={(run) => begin(run.id)}
             />
           )}
-          {thread?.branch && (
-            <p className="text-sm text-muted">
-              Working on <span className="font-mono">{thread.branch}</span>
-            </p>
-          )}
           {messages.map((m, index) => {
             const day = new Date(m.created_at);
             const previous = index > 0 ? new Date(messages[index - 1].created_at) : null;
@@ -406,6 +418,11 @@ export function ThreadView({
                   </div>
                 )}
                 <MessageLine message={m} retry={retry} />
+                {thread?.branch && m.role === 'user' && m.id === firstUserId && (
+                  <p className="text-sm text-muted">
+                    Working on <span className="font-mono text-ink/80">{thread.branch}</span>
+                  </p>
+                )}
                 {m.role === 'bot' &&
                   messages[index + 1]?.run_id !== m.run_id &&
                   afterRun?.(m.run_id)}
@@ -424,7 +441,10 @@ export function ThreadView({
             </div>
           ))}
           {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
-            <RunResult id={thread.run_id} retry={retry} />
+            <>
+              <RunResult id={thread.run_id} retry={retry} />
+              {afterRun?.(thread.run_id)}
+            </>
           )}
           {mrChip}
           {(worktreeRemoved || thread?.worktree_removed) && (
