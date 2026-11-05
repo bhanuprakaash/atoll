@@ -9,7 +9,7 @@ import { useCreateBot, type Bot, type Provider } from '@/modules/bots/api/bots';
 import { BotPreview, CreatureSidebar } from '@/modules/bots/components/bot-preview';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { ConnectionList } from '@/modules/bots/components/connection-list';
-import { CreaturePicker } from '@/modules/bots/components/creature-picker';
+import { CreatureCarousel } from '@/modules/bots/components/creature-picker';
 
 export type ModelControl = (
   provider: Provider,
@@ -101,7 +101,10 @@ export function NewBotForm({
                 />
               )}
             </Field>
-            <CreaturePicker value={look} onChange={setLook} shuffle />
+            <div className="flex flex-col gap-2">
+              <span className="text-xs tracking-wide text-label">Look</span>
+              <CreatureCarousel value={look} onChange={setLook} />
+            </div>
           </section>
           <section className="flex flex-col gap-5 border-t border-line pt-7">
             <h2 className="text-xs tracking-wide text-label">Brain</h2>
