@@ -15,19 +15,21 @@ function GeneralForm({ settings }: { settings: Settings }) {
     <>
       <SectionHead title="General" lead="Who you are to your Bots, and where their work goes." />
       <Box>
-        <label className={rowClass}>
+        <div className={rowClass}>
           <RowText title="Your name" detail="Bots use it when they talk to you" />
           <TextField
+            aria-label="Your name"
             size="sm"
             width="w-55"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onBlur={persist}
           />
-        </label>
-        <label className={rowClass}>
+        </div>
+        <div className={rowClass}>
           <RowText title="Worktree folder" detail="Where Bots make a worktree for each edit" />
           <TextField
+            aria-label="Worktree folder"
             size="sm"
             width="w-80"
             className="font-mono text-[13px]"
@@ -35,7 +37,7 @@ function GeneralForm({ settings }: { settings: Settings }) {
             onChange={(e) => setRoot(e.target.value)}
             onBlur={persist}
           />
-        </label>
+        </div>
         <div className={rowClass}>
           <RowText title="App data" detail={settings.data_dir} mono />
         </div>

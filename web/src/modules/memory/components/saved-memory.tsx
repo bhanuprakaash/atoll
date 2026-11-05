@@ -9,18 +9,18 @@ function SavedItem({ item, botName }: { item: MemoryItem; botName?: string }) {
     <li className="flex items-center gap-3 py-2 text-sm">
       <div className="flex flex-1 flex-col gap-0.5">
         <p>
+          <span className={item.status === 'retired' ? 'line-through' : ''}>{item.body}</span> ·{' '}
+          <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
+            {item.kind}
+          </span>{' '}
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
             aria-expanded={expanded}
-            className={item.status === 'retired' ? 'line-through' : ''}
+            className="text-xs text-muted underline underline-offset-2"
           >
-            {item.body}
-          </button>{' '}
-          ·{' '}
-          <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
-            {item.kind}
-          </span>
+            Details
+          </button>
         </p>
         <p className="text-muted">{item.why}</p>
         {expanded && (

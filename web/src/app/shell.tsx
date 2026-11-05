@@ -25,7 +25,7 @@ export function Shell() {
       {inDesktopApp && <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-10 h-3" />}
       <nav
         aria-label="Bots"
-        className="flex w-72 flex-col border-r border-line bg-card px-2.5 pt-4 pb-3"
+        className="flex w-[300px] flex-none flex-col border-r border-sidebar-line bg-card px-2.5 pt-4 pb-3"
       >
         <div data-tauri-drag-region className="flex h-8 items-center justify-between px-2 pb-0.5">
           {!inDesktopApp && <span>Reef</span>}
