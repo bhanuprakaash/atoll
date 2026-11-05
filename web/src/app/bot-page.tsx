@@ -87,7 +87,7 @@ export function BotPage() {
         onSettings={() => setSettingsOpen(true)}
         onThreads={() => setPanel(true)}
         title={threads.find((thread) => thread.id === threadId)?.title}
-        waiting={threads.filter((thread) => thread.approval).length}
+        waiting={threads.filter((thread) => !thread.closed && thread.approval).length}
       />
       <Outlet />
       {settingsOpen && bot && (
@@ -112,6 +112,7 @@ export function BotPage() {
         <ThreadsPanel
           name={bot?.name ?? ''}
           threads={threads}
+          repos={repos}
           onClose={() => setPanel(false)}
           onSelect={(id) => {
             setPanel(false);

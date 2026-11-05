@@ -5,6 +5,7 @@ import { useStopRun } from '@/modules/threads/api/runs';
 
 export function Composer({
   threadId,
+  botName,
   runId,
   disabled,
   onSent,
@@ -12,6 +13,7 @@ export function Composer({
   onFirstSend,
 }: {
   threadId: string;
+  botName: string;
   runId?: string;
   disabled: boolean;
   onSent: (run: Run) => void;
@@ -39,10 +41,11 @@ export function Composer({
   return (
     <form
       onSubmit={submit}
-      className="flex flex-col gap-2 rounded-card border border-line bg-composer p-4"
+      className="flex flex-col gap-2 rounded-3xl border border-line bg-composer p-4"
     >
       <textarea
         aria-label="Message"
+        placeholder={`Message ${botName}${runId ? ', run in progress' : ''}`}
         className="w-full resize-none bg-transparent outline-none"
         rows={3}
         value={text}
@@ -67,7 +70,7 @@ export function Composer({
         )}
       </div>
       {(send.isError || stop.isError) && (
-        <p className="text-sm text-danger">Could not complete the request</p>
+        <p className="text-sm text-danger">{send.error?.message || stop.error?.message}</p>
       )}
     </form>
   );

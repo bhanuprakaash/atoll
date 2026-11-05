@@ -35,17 +35,19 @@ function RunResult({ id, retry }: { id: string; retry: () => void }) {
   ].filter(Boolean);
   return (
     <div className="text-sm text-muted">
-      {run.status === 'done' && (
+      {run.status === 'done' && (parts.length > 0 || duration(run) !== '0s') && (
         <p>
           Worked {duration(run)}
           {parts.length > 0 && ` · ${parts.join(', ')}`}
         </p>
       )}
-      {blocked && blocked.toLowerCase() !== 'none' && <p>Blocked: {blocked}</p>}
+      {blocked && !['none', 'nothing', 'nothing.'].includes(blocked.toLowerCase()) && (
+        <p>Blocked: {blocked}</p>
+      )}
       {run.status === 'stopped' && <p>Stopped by you after {duration(run)}</p>}
       {run.status === 'failed' && (
         <p>
-          Run failed.{' '}
+          Run failed{run.error ? `: ${run.error}` : '.'}{' '}
           <button type="button" className="underline" onClick={retry}>
             Retry
           </button>
@@ -59,7 +61,7 @@ function MessageLine({ message, retry }: { message: Message; retry: () => void }
     return (
       <article
         aria-label="You"
-        className="max-w-prose self-end whitespace-pre-wrap rounded-card bg-accent px-4 py-2 text-sm text-accent-ink"
+        className="max-w-prose self-end whitespace-pre-wrap rounded-3xl bg-accent px-[18px] py-2.5 text-sm text-accent-ink"
       >
         {message.text}
       </article>
@@ -96,8 +98,8 @@ function EmptyThread({
 }) {
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-4">
-      <Creature look={look} size={70} />
-      <h2 className="text-xl">What should {botName} work on?</h2>
+      <Creature look={look} size={88} />
+      <h2 className="text-[28px] tracking-tight">What should {botName} work on?</h2>
       <label className="text-sm text-muted">
         Repo{' '}
         <select
@@ -117,6 +119,7 @@ function EmptyThread({
       <div className="w-full">
         <Composer
           threadId={threadId}
+          botName={botName}
           disabled={disabled}
           onSent={onSent}
           context={context}
@@ -267,7 +270,6 @@ export function ThreadView({
     <div className="flex min-h-0 flex-1 flex-col">
       {!empty && (
         <div className="flex justify-end px-4 py-2 text-xs text-muted">
-          {worktreeRemoved && <span>Worktree removed </span>}
           {thread?.closed ? (
             'Closed'
           ) : (
@@ -296,12 +298,17 @@ export function ThreadView({
             onSent={(run) => begin(run.id)}
           />
         )}
+        {thread?.branch && (
+          <p className="text-sm text-muted">
+            Working on <span className="font-mono">{thread.branch}</span>
+          </p>
+        )}
         {messages.map((m) => (
           <MessageLine key={m.id} message={m} retry={retry} />
         ))}
         {Object.entries(runs).map(([id, run]) => (
           <div key={id}>
-            <LiveRun run={run} look={look} />
+            <LiveRun id={id} run={run} look={look} />
             {run.finished && !answered.has(id) && <RunResult id={id} retry={retry} />}
           </div>
         ))}
@@ -309,18 +316,47 @@ export function ThreadView({
           <RunResult id={thread.run_id} retry={retry} />
         )}
         {mrChip}
+        {worktreeRemoved && (
+          <p className="text-sm text-muted">
+            {iid && mrState === 'merged' ? `!${iid} merged · ` : ''}worktree cleaned up
+          </p>
+        )}
+        {thread?.closed && (
+          <p className="self-center rounded-full border border-line px-4 py-2 text-sm text-muted">
+            Closed
+          </p>
+        )}
         {!connected && <p className="text-sm text-muted">Reconnecting</p>}
       </div>
       {!empty && (
         <div className="mx-auto w-full max-w-3xl p-4">
           {memory}
-          <Composer
-            threadId={threadId}
-            runId={activeId}
-            disabled={!connected || !!thread?.closed}
-            onSent={(run) => begin(run.id)}
-            context={context}
-          />
+          {thread?.closed ? (
+            <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
+              <div className="flex-1">
+                This thread is closed{' '}
+                {thread.branch && (
+                  <span className="block font-mono text-xs text-muted">{thread.branch}</span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="rounded-full bg-accent px-4 py-2 text-accent-ink"
+                onClick={() => navigate(`/bots/${botId}/new`)}
+              >
+                New thread with {botName}
+              </button>
+            </div>
+          ) : (
+            <Composer
+              threadId={threadId}
+              botName={botName}
+              runId={activeId}
+              disabled={!connected || !!thread?.closed}
+              onSent={(run) => begin(run.id)}
+              context={context}
+            />
+          )}
         </div>
       )}
     </div>

@@ -3,6 +3,12 @@ import { type PlatformChange, useChanges, useUndoChange } from '@/modules/platfo
 
 function Change({ change, botName }: { change: PlatformChange; botName?: string }) {
   const undo = useUndoChange(change.id);
+  const verb =
+    change.action === 'edit'
+      ? 'Edited'
+      : change.entity === 'repo'
+        ? 'Registered repo'
+        : `Created ${change.entity}`;
   return (
     <li
       role="region"
@@ -10,14 +16,20 @@ function Change({ change, botName }: { change: PlatformChange; botName?: string 
       className="flex items-center gap-3 text-sm text-muted"
     >
       <div className="flex flex-1 flex-col gap-0.5">
-        <p className="font-medium">{change.after?.name ?? change.before?.name}</p>
+        <p className={change.undone ? 'line-through' : ''}>
+          {verb} {change.after?.name ?? change.before?.name}
+        </p>
         <p className="text-xs text-muted">{botName}</p>
         {undo.isError && <p className="text-danger">{undo.error.message}</p>}
       </div>
       {change.undone ? (
         <span className="text-muted">Undone</span>
       ) : (
-        <Button disabled={undo.isPending} onClick={() => undo.mutate()}>
+        <Button
+          className="border border-line bg-transparent text-muted"
+          disabled={undo.isPending}
+          onClick={() => undo.mutate()}
+        >
           Undo
         </Button>
       )}
@@ -36,7 +48,7 @@ export function PlatformChanges({
   if (changes.length === 0) return null;
 
   return (
-    <div className="px-4 py-2">
+    <div className="py-2">
       <ul className="flex flex-col gap-2">
         {changes.map((change) => (
           <Change key={change.id} change={change} botName={botNames[change.source_bot_id]} />

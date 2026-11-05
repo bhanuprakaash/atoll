@@ -4,10 +4,13 @@ import { type MemoryItem, useMemory, useRetireMemory } from '@/modules/memory/ap
 function SavedItem({ item, botName }: { item: MemoryItem; botName?: string }) {
   const retire = useRetireMemory(item.id);
   return (
-    <li className="flex items-center gap-3 rounded-full border border-line px-3 py-2 text-sm">
+    <li className="flex items-center gap-3 py-2 text-sm">
       <div className="flex flex-1 flex-col gap-0.5">
-        <p className="font-medium">
-          <span>{item.kind}</span> · <span>{item.body}</span>
+        <p>
+          <span>{item.body}</span> ·{' '}
+          <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
+            {item.kind}
+          </span>
         </p>
         <p className="text-muted">{item.why}</p>
         <p className="text-xs text-muted">{botName}</p>
