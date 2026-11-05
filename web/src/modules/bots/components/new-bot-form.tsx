@@ -162,7 +162,7 @@ export function NewBotForm({
                     }}
                   >
                     {connectionIds.includes(c.id) ? '✓ ' : ''}
-                    {c.instance_url}
+                    GitLab · {c.instance_url}
                   </button>
                 ))}
               </div>
