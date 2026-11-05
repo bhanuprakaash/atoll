@@ -44,21 +44,52 @@ function RunResult({ id, retry }: { id: string; retry: () => void }) {
         </p>
       )}
       {blocked && !['none', 'nothing', 'nothing.'].includes(blocked.toLowerCase()) && (
-        <p>Blocked: {blocked}</p>
+        <p className="flex items-center gap-2.5 text-ink/80">
+          <span aria-hidden="true" className="size-2 flex-none rounded-full bg-blocked" />
+          Blocked: {blocked}
+        </p>
       )}
-      {run.status === 'stopped' && <p>Stopped by you after {duration(run)}</p>}
+      {run.status === 'stopped' && (
+        <p className="text-[13px]">Stopped by you after {duration(run)}</p>
+      )}
       {run.status === 'failed' && (
-        <p>
-          Run failed{run.error ? `: ${run.error}` : '.'}{' '}
-          {/sign.?in|authenticat/i.test(run.error) && (
-            <Link className="underline" to="/settings/providers">
-              Sign in
-            </Link>
-          )}{' '}
-          <button type="button" className="underline" onClick={retry}>
+        <div className="flex flex-wrap items-center gap-3">
+          <svg
+            aria-hidden="true"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            className="flex-none text-danger"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7.5v5M12 16v.5" />
+          </svg>
+          <span className="min-w-60 flex-1 text-ink/80 [overflow-wrap:anywhere]">
+            Run failed{run.error ? `: ${run.error}` : '.'}
+            {/sign.?in|authenticat|not logged in|login/i.test(run.error) && (
+              <>
+                {' '}
+                <Link
+                  className="text-ink underline decoration-outline underline-offset-3"
+                  to="/settings/providers"
+                >
+                  Sign in
+                </Link>
+              </>
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={retry}
+            className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
+          >
             Retry
           </button>
-        </p>
+        </div>
       )}
     </div>
   );
@@ -68,15 +99,17 @@ function MessageLine({ message, retry }: { message: Message; retry: () => void }
     return (
       <article
         aria-label="You"
-        className="max-w-prose self-end whitespace-pre-wrap rounded-3xl bg-accent px-[18px] py-2.5 text-sm text-accent-ink"
+        className="max-w-[75%] self-end rounded-[22px] bg-accent px-[18px] py-2.5 text-[15px] leading-normal whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]"
       >
         {message.text}
       </article>
     );
   return (
-    <div className="flex max-w-prose flex-col gap-2">
+    <div className="flex max-w-[85%] flex-col gap-2">
       <RunResult id={message.run_id} retry={retry} />
-      <Markdown>{message.text}</Markdown>
+      <div className="text-[15px] leading-normal">
+        <Markdown>{message.text}</Markdown>
+      </div>
     </div>
   );
 }
@@ -231,7 +264,7 @@ export function ThreadView({
   bot,
   repos,
   repoName,
-  memory,
+  afterRun,
 }: {
   threadId: string;
   botId: string;
@@ -240,7 +273,7 @@ export function ThreadView({
   bot?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
   repoName?: string;
-  memory?: ReactNode;
+  afterRun?: (runId: string) => ReactNode;
 }) {
   const navigate = useNavigate();
   const [repoId, setRepoId] = useState('');
@@ -285,14 +318,25 @@ export function ThreadView({
       </span>
     </a>
   );
-  const hasContext = !!(repoName || thread?.repo_id || thread?.branch || mrChip);
-  const context = hasContext && (
+  const chip = 'flex h-7 items-center gap-1.5 rounded-full bg-selected px-2.5';
+  const context = (
     <>
-      {(repoName || thread?.repo_id) && (
-        <span className="flex h-7 items-center gap-1.5 rounded-full bg-selected px-2.5">
-          {repoName ?? thread?.repo_id}
-        </span>
-      )}
+      <span className={chip}>
+        <svg
+          aria-hidden="true"
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </svg>
+        {repoName ?? (thread?.repo_id || 'No repo')}
+      </span>
       {thread?.branch && (
         <span className="flex h-7 items-center gap-1.5 rounded-full bg-selected px-2.5 font-mono">
           {thread.branch}
@@ -318,87 +362,96 @@ export function ThreadView({
       <div
         role="log"
         aria-label="Messages"
-        className={`flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5 ${empty ? 'justify-center' : ''}`}
+        className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-7 ${empty ? 'justify-center' : ''}`}
       >
-        {empty && (
-          <EmptyThread
-            botName={botName}
-            look={look}
-            setup={bot}
-            repos={repos}
-            repoId={repoId}
-            setRepoId={setRepoId}
-            threadId={threadId}
-            disabled={!connected}
-            context={context}
-            sendFirst={sendFirst}
-            onSent={(run) => begin(run.id)}
-          />
-        )}
-        {thread?.branch && (
-          <p className="text-sm text-muted">
-            Working on <span className="font-mono">{thread.branch}</span>
-          </p>
-        )}
-        {messages.map((m, index) => {
-          const day = new Date(m.created_at);
-          const previous = index > 0 ? new Date(messages[index - 1].created_at) : null;
-          const valid = Number.isFinite(day.getTime()) && day.getFullYear() > 1;
-          const showDay = valid && (!previous || day.toDateString() !== previous.toDateString());
-          return (
-            <Fragment key={m.id}>
-              {showDay && (
-                <div className="flex items-center gap-3 text-xs text-muted">
-                  <span className="h-px flex-1 bg-line" />
-                  {day.toDateString() === new Date().toDateString()
-                    ? 'Today'
-                    : day.toLocaleDateString([], {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                  <span className="h-px flex-1 bg-line" />
-                </div>
+        <div className="mx-auto flex w-full max-w-190 flex-col gap-4.5 pt-6 pb-4">
+          {empty && (
+            <EmptyThread
+              botName={botName}
+              look={look}
+              setup={bot}
+              repos={repos}
+              repoId={repoId}
+              setRepoId={setRepoId}
+              threadId={threadId}
+              disabled={!connected}
+              context={context}
+              sendFirst={sendFirst}
+              onSent={(run) => begin(run.id)}
+            />
+          )}
+          {thread?.branch && (
+            <p className="text-sm text-muted">
+              Working on <span className="font-mono">{thread.branch}</span>
+            </p>
+          )}
+          {messages.map((m, index) => {
+            const day = new Date(m.created_at);
+            const previous = index > 0 ? new Date(messages[index - 1].created_at) : null;
+            const valid = Number.isFinite(day.getTime()) && day.getFullYear() > 1;
+            const showDay = valid && (!previous || day.toDateString() !== previous.toDateString());
+            return (
+              <Fragment key={m.id}>
+                {showDay && (
+                  <div className="flex items-center gap-3 text-xs text-muted">
+                    <span className="h-px flex-1 bg-line" />
+                    {day.toDateString() === new Date().toDateString()
+                      ? 'Today'
+                      : day.toLocaleDateString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                    <span className="h-px flex-1 bg-line" />
+                  </div>
+                )}
+                <MessageLine message={m} retry={retry} />
+                {m.role === 'bot' &&
+                  messages[index + 1]?.run_id !== m.run_id &&
+                  afterRun?.(m.run_id)}
+              </Fragment>
+            );
+          })}
+          {Object.entries(runs).map(([id, run]) => (
+            <div key={id}>
+              <LiveRun id={id} run={run} look={look} />
+              {run.finished && !answered.has(id) && (
+                <>
+                  <RunResult id={id} retry={retry} />
+                  {afterRun?.(id)}
+                </>
               )}
-              <MessageLine message={m} retry={retry} />
-            </Fragment>
-          );
-        })}
-        {Object.entries(runs).map(([id, run]) => (
-          <div key={id}>
-            <LiveRun id={id} run={run} look={look} />
-            {run.finished && !answered.has(id) && <RunResult id={id} retry={retry} />}
-          </div>
-        ))}
-        {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
-          <RunResult id={thread.run_id} retry={retry} />
-        )}
-        {mrChip}
-        {(worktreeRemoved || thread?.worktree_removed) && (
-          <p className="text-sm text-muted">
-            {iid && mrState === 'merged' ? `!${iid} merged · ` : ''}worktree cleaned up
-          </p>
-        )}
-        {thread?.closed && (
-          <p className="self-center rounded-full border border-line px-4 py-2 text-sm text-muted">
-            Closed{' '}
-            {thread.closed_at &&
-              (new Date(thread.closed_at).toDateString() === new Date().toDateString()
-                ? 'today'
-                : new Date(thread.closed_at).toLocaleDateString())}{' '}
-            {thread.closed_at &&
-              new Date(thread.closed_at).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}{' '}
-            {thread.snapshot_ref && ' · unfinished work saved'}
-          </p>
-        )}
-        {!connected && <p className="text-sm text-muted">Reconnecting</p>}
+            </div>
+          ))}
+          {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
+            <RunResult id={thread.run_id} retry={retry} />
+          )}
+          {mrChip}
+          {(worktreeRemoved || thread?.worktree_removed) && (
+            <p className="text-sm text-muted">
+              {iid && mrState === 'merged' ? `!${iid} merged · ` : ''}worktree cleaned up
+            </p>
+          )}
+          {thread?.closed && (
+            <p className="self-center rounded-full border border-line px-4 py-2 text-sm text-muted">
+              Closed{' '}
+              {thread.closed_at &&
+                (new Date(thread.closed_at).toDateString() === new Date().toDateString()
+                  ? 'today'
+                  : new Date(thread.closed_at).toLocaleDateString())}{' '}
+              {thread.closed_at &&
+                new Date(thread.closed_at).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}{' '}
+              {thread.snapshot_ref && ' · unfinished work saved'}
+            </p>
+          )}
+          {!connected && <p className="text-sm text-muted">Reconnecting</p>}
+        </div>
       </div>
       {!empty && (
-        <div className="mx-auto w-full max-w-190 px-4 pb-4.5">
-          {memory}
+        <div className="mx-auto w-full max-w-190 px-7 pb-4.5 box-content">
           {thread?.closed ? (
             <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
               <div className="flex-1">

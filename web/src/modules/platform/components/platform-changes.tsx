@@ -1,6 +1,5 @@
 import { Link } from 'react-router';
 import { Creature } from '@/components/creature';
-import { Button } from '@/components/button';
 import {
   type PlatformChange,
   useChanges,
@@ -69,93 +68,138 @@ function Change({ change, botName }: { change: PlatformChange; botName?: string 
       : change.entity === 'repo'
         ? 'Registered repo'
         : `Created ${change.entity}`;
+  const name = change.after?.name ?? change.before?.name;
+  const by = (
+    <span className="text-xs text-muted">
+      {botName ?? (change.source_bot_id === 'chief' ? 'Chief' : '')}
+    </span>
+  );
+  const undoControl = change.undone ? (
+    <span className="text-[13px] text-muted">Undone</span>
+  ) : (
+    <button
+      type="button"
+      disabled={undo.isPending}
+      onClick={() => undo.mutate()}
+      className="text-[13px] text-muted underline decoration-outline underline-offset-3"
+    >
+      Undo
+    </button>
+  );
+
+  if (change.entity === 'bot' && change.action === 'create' && change.after) {
+    const after = change.after;
+    const chips = [
+      ...(after.skills ?? []).map((id) => nameOf(id, names.skills)),
+      ...(after.connections ?? []).map((id) => nameOf(id, connectionNames)),
+      after.repo_access === 'all' || !after.repo_access
+        ? 'All repos'
+        : after.repo_access.length === 0
+          ? 'No repos'
+          : `${after.repo_access.map((id) => nameOf(id, names.repos)).join(', ')} only`,
+    ];
+    return (
+      <li
+        role="region"
+        aria-label="Platform change"
+        className={`flex w-110 max-w-full flex-col gap-4.5 rounded-[28px] border border-sidebar-line bg-box p-5.5 ${change.undone ? 'opacity-60' : ''}`}
+      >
+        <div className="flex items-center gap-4">
+          <Creature look={after.look} size={56} />
+          <div className="min-w-0">
+            <div className="text-xs tracking-wide text-muted">NEW BOT</div>
+            <div className={`text-[22px] tracking-tight ${change.undone ? 'line-through' : ''}`}>
+              {after.name}
+            </div>
+            <div className="mt-1 inline-block rounded-full bg-selected px-2.5 py-0.5 text-xs text-ink/80">
+              {[
+                ({ claude: 'Claude Code', codex: 'Codex' } as Record<string, string>)[
+                  after.provider ?? ''
+                ] ?? after.provider,
+                after.model,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </div>
+          </div>
+        </div>
+        {after.persona && <p className="text-sm text-ink/80">{after.persona}</p>}
+        <div className="flex flex-wrap gap-1.5 text-[12.5px]">
+          {chips.map((chip) => (
+            <span key={chip} className="rounded-full bg-selected px-2.5 py-1 text-ink/80">
+              {chip}
+            </span>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          {!change.undone && (
+            <Link
+              to={`/bots/${change.entity_id}`}
+              className="flex h-8 items-center rounded-full bg-accent px-4 text-[13.5px] text-accent-ink"
+            >
+              Open {after.name}
+            </Link>
+          )}
+          {change.undone ? (
+            <span className="text-[13px] text-muted">Undone</span>
+          ) : (
+            <button
+              type="button"
+              disabled={undo.isPending}
+              onClick={() => undo.mutate()}
+              className="h-8 rounded-full border border-outline px-4 text-[13.5px]"
+            >
+              Undo
+            </button>
+          )}
+          <span className="ml-auto">{by}</span>
+        </div>
+        {undo.isError && <p className="text-sm text-danger">{undo.error.message}</p>}
+      </li>
+    );
+  }
+
   return (
     <li
       role="region"
       aria-label="Platform change"
-      className={`flex items-center gap-3 text-sm text-muted ${change.entity === 'bot' && change.action === 'create' ? 'rounded-card border border-line bg-card p-4' : ''}`}
+      className={`flex items-center gap-2.5 text-sm ${change.undone ? 'text-muted' : 'text-ink/80'}`}
     >
-      {change.entity === 'bot' && change.action === 'create' && (
-        <Creature look={change.after?.look} size={52} />
-      )}
-      <div className="flex flex-1 flex-col gap-0.5">
-        {change.entity === 'bot' && change.action === 'create' && (
-          <span className="text-xs">NEW BOT</span>
-        )}
-        <p className={change.undone ? 'line-through' : ''}>
-          {attachmentOnly ? (
-            `Attached ${attached.map((id) => nameOf(id, connectionNames)).join(', ')} to ${change.after?.name ?? change.before?.name}`
-          ) : (
-            <>
-              {verb} <span>{change.after?.name ?? change.before?.name}</span>
-            </>
-          )}
-        </p>
-        {change.entity === 'bot' && change.action === 'create' && change.after && (
+      <span className={`flex-1 ${change.undone ? 'line-through' : ''}`}>
+        {attachmentOnly ? (
+          `Attached ${attached.map((id) => nameOf(id, connectionNames)).join(', ')} to ${name}`
+        ) : (
           <>
-            <p>{[change.after.provider, change.after.model].filter(Boolean).join(' · ')}</p>
-            <div className="flex flex-wrap gap-1">
-              {(change.after.skills ?? []).map((id) => (
-                <span key={id} className="rounded-full border border-line px-2">
-                  {nameOf(id, names.skills)}
-                </span>
-              ))}
-              {(change.after.connections ?? []).map((id) => (
-                <span key={id} className="rounded-full border border-line px-2">
-                  {nameOf(id, connectionNames)}
-                </span>
-              ))}
-              <span className="rounded-full border border-line px-2">
-                {change.after.repo_access === 'all' || !change.after.repo_access
-                  ? 'All repos'
-                  : change.after.repo_access.map((id) => nameOf(id, names.repos)).join(', ') ||
-                    'No repos'}
-              </span>
-            </div>
-            {change.after.persona && <p>{change.after.persona}</p>}
-            {!change.undone && (
-              <Link className="underline" to={`/bots/${change.entity_id}`}>
-                Open {change.after.name}
-              </Link>
+            {verb} {name}
+            {change.after?.path && (
+              <span className="font-mono text-muted"> {change.after.path}</span>
             )}
+            {edits.length > 0 && <span className="text-muted"> · {edits.join(' · ')}</span>}
           </>
         )}
-        {change.after?.path && <p>{change.after.path}</p>}
-        {edits.map((edit) => (
-          <p key={edit}>{edit}</p>
-        ))}
-        <p className="text-xs text-muted">
-          {botName ?? (change.source_bot_id === 'chief' ? 'Chief' : '')}
-        </p>
-        {undo.isError && <p className="text-danger">{undo.error.message}</p>}
-      </div>
-      {change.undone ? (
-        <span className="text-muted">Undone</span>
-      ) : (
-        <Button
-          className="border border-line bg-transparent text-muted"
-          disabled={undo.isPending}
-          onClick={() => undo.mutate()}
-        >
-          Undo
-        </Button>
-      )}
+      </span>
+      {by}
+      {undoControl}
+      {undo.isError && <span className="text-danger">{undo.error.message}</span>}
     </li>
   );
 }
 
 export function PlatformChanges({
   threadId,
+  runId,
   botNames,
 }: {
   threadId: string;
+  runId: string;
   botNames: Record<string, string>;
 }) {
-  const { data: changes = [] } = useChanges(threadId);
+  const { data: all = [] } = useChanges(threadId);
+  const changes = all.filter((change) => change.source_run_id === runId);
   if (changes.length === 0) return null;
 
   return (
-    <div className="py-2">
+    <div>
       <ul className="flex flex-col gap-2">
         {changes.map((change) => (
           <Change key={change.id} change={change} botName={botNames[change.source_bot_id]} />

@@ -51,7 +51,7 @@ fn main() {
             .hidden_title(true)
             .traffic_light_position(LogicalPosition::new(18.0, 33.0))
             .theme(Some(Theme::Dark))
-            .background_color(Color(26, 26, 26, 255))
+            .background_color(Color(19, 19, 19, 255))
             .inner_size(1200.0, 800.0)
             .min_inner_size(700.0, 500.0)
             .on_new_window(|url, _| {

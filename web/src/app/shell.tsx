@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { api } from '@/lib/api-client';
 import { BotList } from '@/modules/bots/components/bot-list';
+import { ReefLogo } from '@/components/reef-logo';
 
 const inDesktopApp = '__TAURI_INTERNALS__' in window;
 
@@ -25,10 +26,15 @@ export function Shell() {
       {inDesktopApp && <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-10 h-3" />}
       <nav
         aria-label="Bots"
-        className="flex w-[300px] flex-none flex-col border-r border-sidebar-line bg-card px-2.5 pt-4 pb-3"
+        className="flex w-[300px] flex-none flex-col border-r border-sidebar-line bg-sidebar px-2.5 pt-4 pb-3"
       >
         <div data-tauri-drag-region className="flex h-8 items-center justify-between px-2 pb-0.5">
-          {!inDesktopApp && <span>Reef</span>}
+          <span
+            className={`flex items-center gap-2 text-[15px] tracking-tight ${inDesktopApp ? 'ml-13' : ''}`}
+          >
+            <ReefLogo size={20} />
+            Reef
+          </span>
           <button
             type="button"
             aria-label="New Bot"

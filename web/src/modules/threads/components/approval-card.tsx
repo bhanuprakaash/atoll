@@ -44,57 +44,70 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
   const respond = (approve: boolean) =>
     answer.mutate(approve, { onSuccess: () => setAnswered(approve) });
   return (
-    <div className="text-sm text-muted">
-      <span>
-        {answered === null
-          ? edit
-            ? 'Wants to edit'
-            : command
-              ? 'Wants to run'
-              : `Wants to use ${tool}`
-          : answered
+    <div className="flex flex-col gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="min-w-60 flex-1 text-ink/80">
+          {answered === null
             ? edit
-              ? 'Allowed editing'
-              : 'Allowed'
-            : edit
-              ? 'Denied editing'
-              : 'Denied'}{' '}
-        <span className="font-mono">{target}</span>
-      </span>{' '}
-      {edit && (added > 0 || removed > 0) && (
-        <span>
-          <span className="text-ok">+{added}</span>{' '}
-          <span className="text-danger">−{removed}</span>{' '}
+              ? 'Wants to edit'
+              : command
+                ? 'Wants to run'
+                : `Wants to use ${tool}`
+            : answered
+              ? edit
+                ? 'Allowed editing'
+                : 'Allowed'
+              : edit
+                ? 'Denied editing'
+                : 'Denied'}{' '}
+          <span className="font-mono text-[0.88em] text-ink">{target}</span>
+          {edit && (added > 0 || removed > 0) && (
+            <>
+              {' '}
+              <span className="text-[13px] text-ok">+{added}</span>{' '}
+              <span className="text-[13px] text-danger">−{removed}</span>
+            </>
+          )}
+          {edit && (
+            <>
+              {' '}
+              <button
+                type="button"
+                onClick={() => setShowDiff(!showDiff)}
+                className="text-[13px] text-muted underline decoration-outline underline-offset-3"
+              >
+                {showDiff ? 'Hide diff' : 'Show diff'}
+              </button>
+            </>
+          )}
         </span>
+        {answered === null && (
+          <span className="flex gap-2">
+            <button
+              type="button"
+              disabled={answer.isPending}
+              onClick={() => respond(true)}
+              className="h-8 rounded-full bg-accent px-4 text-[13.5px] text-accent-ink"
+            >
+              Allow
+            </button>
+            <button
+              type="button"
+              disabled={answer.isPending}
+              onClick={() => respond(false)}
+              className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
+            >
+              Deny
+            </button>
+          </span>
+        )}
+      </div>
+      {showDiff && (
+        <pre className="rounded-2xl border border-line bg-well p-3 font-mono text-xs whitespace-pre-wrap text-ink/80">
+          {diff || 'No diff available'}
+        </pre>
       )}
-      {edit && (
-        <button type="button" onClick={() => setShowDiff(!showDiff)} className="underline">
-          {showDiff ? 'Hide diff' : 'Show diff'}
-        </button>
-      )}{' '}
-      {answered === null ? (
-        <>
-          <button
-            type="button"
-            disabled={answer.isPending}
-            onClick={() => respond(true)}
-            className="rounded-full border border-line px-3 py-1"
-          >
-            Allow
-          </button>
-          {' · '}
-          <button
-            type="button"
-            disabled={answer.isPending}
-            onClick={() => respond(false)}
-            className="rounded-full border border-line px-3 py-1"
-          >
-            Deny
-          </button>
-        </>
-      ) : null}
-      {showDiff && <pre className="whitespace-pre-wrap">{diff || 'No diff available'}</pre>}
-      {answer.isError && <span className="text-danger"> Could not answer approval</span>}
+      {answer.isError && <span className="text-danger">Could not answer approval</span>}
     </div>
   );
 }

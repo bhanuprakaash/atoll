@@ -81,6 +81,15 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
             </div>
           );
         })}
+        {connections.length === 0 && (
+          <div className={rowClass}>
+            <Tile className="bg-gitlab-bg">
+              <BrandLogo brand="gitlab" className="size-[22px]" />
+            </Tile>
+            <RowText title="GitLab" detail="Not connected. Sign in below." />
+            <Tag tone="warn">Not connected</Tag>
+          </div>
+        )}
         <div className={`${rowClass} text-muted`}>
           <Tile className="bg-line">
             <BrandLogo brand="github" className="size-5" />

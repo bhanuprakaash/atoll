@@ -6,6 +6,10 @@
   --color-card: #1a1a1a;
   --color-composer: #222222;
   --color-composer-line: #2e2e2e;
+  --color-popover: #1c1c1c;
+  --color-needs: #2a1a1c;
+  --color-needs-badge: #3a1d20;
+  --color-needs-ink: #ffb3b5;
   --color-line: #262626;
   --color-selected: #2a2a2a;
   --color-ink: #ececec;
@@ -57,6 +61,7 @@
   --color-gitlab-light: #fca326;
   --color-gitlab-bg: #2b1a12;
   --color-sidebar-line: #2a2a2a;
+  --color-sidebar: #131313;
   --color-brand-claude: #d97757;
   --color-brand-slack-red: #e3066a;
   --color-brand-slack-blue: #00b3ff;
@@ -106,6 +111,16 @@
       transform: none;
     }
   }
+}
+button:not(:disabled),
+[role='button'],
+[role='option'],
+[role='radio'],
+[role='switch'],
+[role='tab'],
+summary,
+label[for] {
+  cursor: pointer;
 }
 body {
   @apply bg-bg font-sans text-ink;

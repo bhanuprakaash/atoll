@@ -39,11 +39,27 @@ export function BotHeader({
         type="button"
         aria-label={waiting ? `Threads, ${waiting} waiting` : 'Threads'}
         onClick={onThreads}
-        className="flex items-center gap-2 rounded-full border border-line px-3 py-2 text-sm"
+        className="flex h-8.5 items-center gap-2 rounded-full border border-outline pr-3 pl-2.5 text-[13.5px] hover:bg-line"
       >
+        <svg
+          aria-hidden="true"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        >
+          <path d="M4 6h16M4 12h16M4 18h10" />
+        </svg>
         Threads
         {waiting > 0 && (
-          <span aria-hidden="true" className="rounded-full bg-danger px-2 text-xs">
+          <span
+            aria-hidden="true"
+            className="flex items-center gap-1 rounded-full bg-needs-badge px-2 py-px text-xs text-needs-ink"
+          >
+            <span className="size-1.5 rounded-full bg-danger" />
             {waiting}
           </span>
         )}
@@ -118,6 +134,7 @@ export function BotPage() {
           name={bot?.name ?? ''}
           threads={threads}
           repos={repos}
+          currentId={threadId}
           onClose={() => setPanel(false)}
           onSelect={(id) => {
             setPanel(false);

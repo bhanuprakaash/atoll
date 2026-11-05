@@ -67,12 +67,12 @@ function ThreadPage() {
       repos={repos}
       bot={bots.find((b) => b.id === botId)}
       repoName={repoName}
-      memory={
+      afterRun={(runId) => (
         <>
-          <SavedMemory threadId={threadId} botNames={botNames} />
-          <PlatformChanges threadId={threadId} botNames={botNames} />
+          <SavedMemory runId={runId} botNames={botNames} />
+          <PlatformChanges threadId={threadId} runId={runId} botNames={botNames} />
         </>
-      }
+      )}
     />
   );
 }
