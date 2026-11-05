@@ -30,7 +30,7 @@ export function Shell() {
       >
         <div data-tauri-drag-region className="flex h-8 items-center justify-between px-2 pb-0.5">
           <span
-            className={`flex items-center gap-2 text-[15px] tracking-tight ${inDesktopApp ? 'ml-13' : ''}`}
+            className={`flex items-center gap-2 text-[15px] tracking-tight ${inDesktopApp ? 'ml-[68px]' : ''}`}
           >
             <ReefLogo size={20} />
             Reef

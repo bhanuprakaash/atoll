@@ -2,7 +2,7 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-bg: #171717;
+  --color-bg: #131313;
   --color-card: #1a1a1a;
   --color-composer: #222222;
   --color-composer-line: #2e2e2e;
