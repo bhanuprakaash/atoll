@@ -112,6 +112,14 @@
     }
   }
 }
+[role='log'],
+input,
+textarea,
+pre,
+code {
+  -webkit-user-select: text;
+  user-select: text;
+}
 button:not(:disabled),
 [role='button'],
 [role='option'],
@@ -124,6 +132,8 @@ label[for] {
 }
 body {
   @apply bg-bg font-sans text-ink;
+  -webkit-user-select: none;
+  user-select: none;
   font-size: 14.5px;
   line-height: 1.45;
   letter-spacing: -0.005em;
