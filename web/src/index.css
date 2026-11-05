@@ -1,4 +1,5 @@
 @import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
 @import 'tailwindcss';
 
 @theme {
@@ -43,7 +44,7 @@
   --font-sans:
     'Geist Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui,
     sans-serif;
-  --font-mono: 'SF Mono', ui-monospace, Menlo, monospace;
+  --font-mono: 'Geist Mono Variable', 'SF Mono', ui-monospace, Menlo, monospace;
   --color-box: #1f1f1f;
   --color-well: #151515;
   --color-field: #232323;
@@ -134,7 +135,7 @@ body {
   @apply bg-bg font-sans text-ink;
   -webkit-user-select: none;
   user-select: none;
-  font-size: 14.5px;
+  font-size: 14px;
   line-height: 1.45;
   letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
