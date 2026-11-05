@@ -14,6 +14,7 @@ import (
 type settings struct {
 	WorktreeRoot string `json:"worktree_root"`
 	UserName     string `json:"user_name"`
+	DataDir      string `json:"data_dir"`
 }
 
 func (a *api) getSettings(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +28,7 @@ func (a *api) getSettings(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusOK, settings{WorktreeRoot: root, UserName: name})
+	write(w, http.StatusOK, settings{WorktreeRoot: root, UserName: name, DataDir: a.runs.DataDir()})
 }
 
 func (a *api) putSettings(w http.ResponseWriter, r *http.Request) {

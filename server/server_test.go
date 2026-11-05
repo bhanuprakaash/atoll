@@ -84,3 +84,21 @@ func TestLocalOnly(t *testing.T) {
 		})
 	}
 }
+
+func TestGetSettings_DataDir(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := New(st, nil, run.New(run.Config{Store: st, Log: log, DataDir: "/data", WorktreeRoot: "/wt"}), log, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/settings", nil)
+	req.Host = "127.0.0.1:4317"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	want := `{"worktree_root":"/wt","user_name":"","data_dir":"/data"}`
+	if got := strings.TrimSpace(rec.Body.String()); got != want {
+		t.Errorf("body %s, want %s", got, want)
+	}
+}

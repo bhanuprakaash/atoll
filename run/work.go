@@ -71,6 +71,9 @@ func (m *Manager) WorktreeRoot(ctx context.Context) (string, error) {
 	return root, nil
 }
 
+// DataDir returns the folder that holds Atoll's runs, threads and database.
+func (m *Manager) DataDir() string { return m.cfg.DataDir }
+
 // SetWorktreeRoot stores the folder worktrees are made under from now on.
 func (m *Manager) SetWorktreeRoot(ctx context.Context, root string) error {
 	return m.cfg.Store.SetSetting(ctx, _settingWorktreeRoot, root)

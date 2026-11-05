@@ -2,15 +2,19 @@ import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from 'react-router';
 import { BotPage, LatestThread } from '@/app/bot-page';
-import { SettingsPage } from '@/app/settings-page';
+import {
+  ConnectionsPage,
+  MemoryPage,
+  ProvidersPage,
+  SettingsPage,
+  SkillsPage,
+} from '@/app/settings-page';
 import { Shell } from '@/app/shell';
 import { useBots } from '@/modules/bots/api/bots';
 import { NewBotForm } from '@/modules/bots/components/new-bot-form';
 import { useConnections } from '@/modules/connections/api/connections';
-import { ConnectionsSettings } from '@/modules/connections/components/connections-settings';
-import { useMemory } from '@/modules/memory/api/memory';
 import { FirstRun } from '@/modules/onboarding/components/first-run';
-import { ProvidersSettings } from '@/modules/providers/components/providers-settings';
+import { FirstRunProviders } from '@/modules/providers/components/providers-settings';
 import { useSaveSettings, useSettings } from '@/modules/settings/api/settings';
 import { GeneralSettings } from '@/modules/settings/components/general-settings';
 import { SavedMemory } from '@/modules/memory/components/saved-memory';
@@ -20,7 +24,6 @@ import { ModelSelect } from '@/modules/providers/components/model-select';
 import { useRepos } from '@/modules/repos/api/repos';
 import { ReposSettings } from '@/modules/repos/components/repos-settings';
 import { useSkills } from '@/modules/skills/api/skills';
-import { SkillsSettings } from '@/modules/skills/components/skills-settings';
 import { useCreateThread, useThread } from '@/modules/threads/api/threads';
 import { DraftThread, ThreadView } from '@/modules/threads/components/thread-view';
 
@@ -89,28 +92,6 @@ function DraftThreadPage() {
   );
 }
 
-function SkillsPage() {
-  const { data: bots = [] } = useBots();
-  return <SkillsSettings bots={bots} />;
-}
-
-function MemorySettings() {
-  const { data: items = [] } = useMemory();
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl">Memory</h1>
-      {items.map((item) => (
-        <div key={item.id} className="border-b border-line py-4">
-          <p>{item.body}</p>
-          <p className="text-sm text-muted">
-            {item.kind} · {item.scope}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function AppRoutes() {
   const { data: settings, isError } = useSettings();
   const [onboarding, setOnboarding] = useState<boolean | null>(null);
@@ -123,7 +104,7 @@ function AppRoutes() {
     return (
       <FirstRun
         initialName={settings.user_name}
-        providers={<ProvidersSettings />}
+        providers={<FirstRunProviders />}
         onSave={async (name) => {
           setOnboarding(true);
           await save.mutateAsync({ ...settings, user_name: name });
@@ -148,17 +129,10 @@ function AppRoutes() {
         <Route path="settings" element={<SettingsPage />}>
           <Route index element={<Navigate to="general" replace />} />
           <Route path="general" element={<GeneralSettings />} />
-          <Route
-            path="providers"
-            element={
-              <div className="max-w-2xl p-6">
-                <ProvidersSettings />
-              </div>
-            }
-          />
-          <Route path="memory" element={<MemorySettings />} />
+          <Route path="providers" element={<ProvidersPage />} />
+          <Route path="memory" element={<MemoryPage />} />
           <Route path="repos" element={<ReposSettings />} />
-          <Route path="connections" element={<ConnectionsSettings />} />
+          <Route path="connections" element={<ConnectionsPage />} />
           <Route path="skills" element={<SkillsPage />} />
         </Route>
         <Route path="bots/new" element={<NewBotPage />} />
