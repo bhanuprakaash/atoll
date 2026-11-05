@@ -269,10 +269,11 @@ Finish
   the right, and a link to ask Chief instead. Create opens the new Bot's empty thread.
 - Settings: General (name, worktree folder), Providers, Connections, Skills, Repos, Memory, one
   list each. A skill opens in a wide right panel: name, when to use it, the `SKILL.md` text and the
-  Bots that use it. Providers show version, models and sign-in state; signing in is `atoll provider
-  login <name>` in Terminal, with the command to copy.
-- First run is three steps over drifting creatures: the user's name; the providers found; Meet
-  Chief with example asks, each opening Chief's thread with that message sent.
+  Bots that use it. Providers show where each CLI was found, its version, models and sign-in state.
+  Sign in runs the provider's own login (`claude auth login`, `codex login`) in Reef's folder for
+  it, opens the URL it prints in the browser and updates when it finishes; no Terminal.
+- First run is three steps over drifting creatures: the user's name; the providers found, with Sign
+  in; Meet Chief with example asks, each opening Chief's thread with that message sent.
 - The Go server serves the UI at `/` and the API under `/api/`, one address. Vite builds `web/`
   into `server/ui`, which the binary embeds (`make ui`).
 - Names: the UI says Reef. Repo, Go module, binary and bundle ID say `atoll`; app data lives in
@@ -310,6 +311,6 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 Delegation, GitHub and Slack connections, browser pane, background processes pane, the platform
 switch for Bots other than Chief, importing local skills and MCP servers, desktop Linux, mobile,
 memory pins (up to about 5 items always in the prompt), routines (scheduled, repeating runs),
-signing in and adding providers from the app, more provider adapters.
+more provider adapters.
 
 An item moves into the build when its absence hurts in daily use.
