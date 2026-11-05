@@ -1,4 +1,4 @@
-.PHONY: check fmt format lint vet typecheck test run e2e ui verify app
+.PHONY: check fmt format lint vet typecheck test run e2e ui verify app icon
 
 # web/node_modules ships Go files; keep them out of every Go command.
 GO_DIRS = $(shell go list -f '{{.Dir}}' ./... | grep -v /node_modules/)
@@ -36,6 +36,15 @@ app: ui
 	mkdir -p desktop/src-tauri/binaries
 	go build -o desktop/src-tauri/binaries/atoll-$$(rustc -vV | sed -n "s/^host: //p") ./cmd/atoll
 	cd desktop && $(PNPM) install --frozen-lockfile && $(PNPM) tauri build --bundles app,dmg
+
+# Compiles the layered icon (icons/icon.icon, Icon Composer) into the committed Assets.car. Run it
+# after changing the icon: actool fails with "Bad file descriptor" when the bundler runs it in CI.
+icon:
+	@d=$$(mktemp -d) && xcrun actool desktop/src-tauri/icons/icon.icon --compile $$d \
+		--output-partial-info-plist $$d/info.plist --app-icon Icon --include-all-app-icons \
+		--enable-on-demand-resources NO --development-region en --target-device mac \
+		--minimum-deployment-target 10.13 --platform macosx >/dev/null && \
+		cp $$d/Assets.car desktop/src-tauri/icons/Assets.car && rm -rf $$d
 
 # The binary embeds server/ui, built from web/.
 ui: server/ui/index.html
