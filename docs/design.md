@@ -244,8 +244,9 @@ Finish
 - Working shows by tool kind, with old Reef's rising bubbles: no tool yet, the eyes circle up;
   reading, searching or recalling, the eyes scan; editing, writing, remembering or changing the
   platform, it bounces; running a command, it breathes.
-- Sidebar: one row per Bot (creature, name, latest activity, time), Chief first. `+` opens New Bot;
-  the bottom user row opens Settings. No group chats.
+- Sidebar: the logo sits at the right of the top row; a search field below filters Bots by name.
+  One row per Bot (creature, name, latest activity, time), Chief first. `+` opens New Bot; the
+  bottom user row opens Settings. No group chats.
 - Bot header: creature, Bot name, thread title, a Threads button and a Bot settings icon. The
   Threads button carries a red count of threads waiting on the user and opens a panel: Needs you
   (and what it waits for), Running (live verb, branch, MR), Recent, then Closed folded; New thread

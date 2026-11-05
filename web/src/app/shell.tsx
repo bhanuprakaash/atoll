@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { api } from '@/lib/api-client';
 import { BotList } from '@/modules/bots/components/bot-list';
 import { ReefLogo } from '@/components/reef-logo';
+import { TextField } from '@/components/text-field';
 
 const inDesktopApp = '__TAURI_INTERNALS__' in window;
 
@@ -16,6 +18,7 @@ function initials(name: string) {
 
 export function Shell() {
   const navigate = useNavigate();
+  const [search, setSearch] = useState('');
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api<{ user_name: string }>('/settings'),
@@ -26,20 +29,49 @@ export function Shell() {
       {inDesktopApp && <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-10 h-3" />}
       <nav
         aria-label="Bots"
-        className="flex w-[300px] flex-none flex-col border-r border-sidebar-line bg-sidebar px-2.5 pt-4 pb-3"
+        className="flex w-[300px] flex-none flex-col border-r border-sidebar-line bg-card px-2.5 pt-4 pb-3"
       >
-        <div data-tauri-drag-region className="flex h-8 items-center justify-between px-2 pb-0.5">
+        <div data-tauri-drag-region className="flex h-8 items-center justify-end px-2 pb-0.5">
           <span
             className={`flex items-center gap-2 text-[15px] tracking-tight ${inDesktopApp ? 'ml-[68px]' : ''}`}
           >
             <ReefLogo size={20} />
             Reef
           </span>
+        </div>
+        <div className="mt-3.5 flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <svg
+              aria-hidden="true"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-4-4" />
+            </svg>
+            <TextField
+              size="bare"
+              aria-label="Search Bots"
+              placeholder="Search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setSearch('');
+              }}
+              className="h-[34px] rounded-[10px] bg-field pr-3 pl-9"
+            />
+          </div>
           <button
             type="button"
             aria-label="New Bot"
             onClick={() => navigate('/bots/new')}
-            className="ml-auto flex size-8 items-center justify-center rounded-control text-muted"
+            className="flex size-8 flex-none items-center justify-center rounded-control text-muted"
           >
             <svg
               aria-hidden="true"
@@ -56,7 +88,7 @@ export function Shell() {
           </button>
         </div>
         <div className="mt-3.5">
-          <BotList />
+          <BotList search={search} />
         </div>
         <NavLink
           to="/settings"

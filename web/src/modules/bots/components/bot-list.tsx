@@ -3,11 +3,16 @@ import { Creature } from '@/components/creature';
 import { useBots } from '@/modules/bots/api/bots';
 import { relativeTime } from '@/utils/time';
 
-export function BotList() {
+export function BotList({ search }: { search: string }) {
   const { data: bots = [] } = useBots();
-  const ordered = [...bots].sort((a, b) => Number(b.id === 'chief') - Number(a.id === 'chief'));
+  const ordered = bots
+    .filter((bot) => bot.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => Number(b.id === 'chief') - Number(a.id === 'chief'));
   return (
     <ul className="flex flex-col gap-0.5">
+      {search && ordered.length === 0 && (
+        <li className="px-2.5 py-2 text-sm text-muted">No Bots match</li>
+      )}
       {ordered.map((bot) => (
         <li key={bot.id}>
           <NavLink
