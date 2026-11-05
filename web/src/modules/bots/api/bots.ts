@@ -44,7 +44,7 @@ export function useCreateBot() {
 export function useUpdateBot(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (changes: Partial<NewBot>) =>
+    mutationFn: (changes: Partial<NewBot & Pick<Bot, 'can_manage_platform'>>) =>
       api<Bot>(`/bots/${id}`, { method: 'PUT', body: changes }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
   });
