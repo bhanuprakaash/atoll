@@ -65,7 +65,7 @@ export function useCreateThreadWithMessage(botId: string) {
     mutationFn: ({ repoId, text }: { repoId: string; text: string }) =>
       api<Thread & { thread?: Thread; message: Message; run: Run }>(`/bots/${botId}/threads`, {
         method: 'POST',
-        body: { repo_id: repoId, text },
+        body: { text, ...(repoId ? { repo_id: repoId } : {}) },
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['threads', botId] }),
   });

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Navigate, Outlet, useNavigate, useParams } from 'react-router';
 import { Creature } from '@/components/creature';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
@@ -9,7 +9,7 @@ import { ModelSelect } from '@/modules/providers/components/model-select';
 import { useRepos } from '@/modules/repos/api/repos';
 import { useSkills } from '@/modules/skills/api/skills';
 import { ThreadsPanel } from '@/modules/threads/components/threads-panel';
-import { useCreateThread, useThreads } from '@/modules/threads/api/threads';
+import { useThreads } from '@/modules/threads/api/threads';
 
 export function BotHeader({
   bot,
@@ -79,7 +79,6 @@ export function BotPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panel, setPanel] = useState(false);
   const navigate = useNavigate();
-  const create = useCreateThread(botId);
   const bot = bots.find((item) => item.id === botId);
   return (
     <>
@@ -118,14 +117,10 @@ export function BotPage() {
             setPanel(false);
             navigate(`/bots/${botId}/threads/${id}`);
           }}
-          onNew={() =>
-            create.mutate(undefined, {
-              onSuccess: (thread) => {
-                setPanel(false);
-                navigate(`/bots/${botId}/threads/${thread.id}`);
-              },
-            })
-          }
+          onNew={() => {
+            setPanel(false);
+            navigate(`/bots/${botId}/new`);
+          }}
         />
       )}
     </>
@@ -134,24 +129,10 @@ export function BotPage() {
 
 export function LatestThread() {
   const { botId = '' } = useParams();
-  const navigate = useNavigate();
   const { data: threads } = useThreads(botId);
-  const create = useCreateThread(botId);
-  const creatingFor = useRef('');
-  useEffect(() => {
-    if (
-      threads &&
-      threads.length === 0 &&
-      creatingFor.current !== botId &&
-      !create.isPending &&
-      !create.isError
-    ) {
-      creatingFor.current = botId;
-      create.mutate(undefined, {
-        onSuccess: (thread) => navigate(`/bots/${botId}/threads/${thread.id}`, { replace: true }),
-      });
-    }
-  }, [threads, create, botId, navigate]);
-  const latest = threads?.[0];
-  return latest ? <Navigate to={`/bots/${botId}/threads/${latest.id}`} replace /> : null;
+  if (!threads) return null;
+  const latest = threads[0];
+  return (
+    <Navigate to={latest ? `/bots/${botId}/threads/${latest.id}` : `/bots/${botId}/new`} replace />
+  );
 }

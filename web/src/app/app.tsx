@@ -22,7 +22,7 @@ import { ReposSettings } from '@/modules/repos/components/repos-settings';
 import { useSkills } from '@/modules/skills/api/skills';
 import { SkillsSettings } from '@/modules/skills/components/skills-settings';
 import { useCreateThread, useThread } from '@/modules/threads/api/threads';
-import { ThreadView } from '@/modules/threads/components/thread-view';
+import { DraftThread, ThreadView } from '@/modules/threads/components/thread-view';
 
 const queryClient = new QueryClient();
 
@@ -69,6 +69,22 @@ function ThreadPage() {
           <PlatformChanges threadId={threadId} botNames={botNames} />
         </>
       }
+    />
+  );
+}
+
+function DraftThreadPage() {
+  const { botId = '' } = useParams();
+  const { data: repos = [] } = useRepos();
+  const { data: bots = [] } = useBots();
+  const bot = bots.find((b) => b.id === botId);
+  return (
+    <DraftThread
+      key={botId}
+      botId={botId}
+      botName={bot?.name ?? ''}
+      look={bot?.look}
+      repos={repos}
     />
   );
 }
@@ -148,6 +164,7 @@ function AppRoutes() {
         <Route path="bots/new" element={<NewBotPage />} />
         <Route path="bots/:botId" element={<BotPage />}>
           <Route index element={<LatestThread />} />
+          <Route path="new" element={<DraftThreadPage />} />
           <Route path="threads/:threadId" element={<ThreadPage />} />
         </Route>
       </Route>

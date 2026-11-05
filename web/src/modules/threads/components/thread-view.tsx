@@ -71,6 +71,127 @@ function MessageLine({ message, retry }: { message: Message; retry: () => void }
     </div>
   );
 }
+function EmptyThread({
+  botName,
+  look,
+  repos,
+  repoId,
+  setRepoId,
+  threadId,
+  disabled,
+  context,
+  sendFirst,
+  onSent,
+}: {
+  botName: string;
+  look?: CreatureLook;
+  repos: { id: string; name: string }[];
+  repoId: string;
+  setRepoId: (id: string) => void;
+  threadId: string;
+  disabled: boolean;
+  context?: ReactNode;
+  sendFirst: (text: string) => void;
+  onSent: (run: Run) => void;
+}) {
+  return (
+    <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-4">
+      <Creature look={look} size={70} />
+      <h2 className="text-xl">What should {botName} work on?</h2>
+      <label className="text-sm text-muted">
+        Repo{' '}
+        <select
+          aria-label="Repo"
+          value={repoId}
+          onChange={(e) => setRepoId(e.target.value)}
+          className="rounded-card border border-line bg-card p-2"
+        >
+          <option value="">No repo</option>
+          {repos.map((repo) => (
+            <option key={repo.id} value={repo.id}>
+              {repo.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="w-full">
+        <Composer
+          threadId={threadId}
+          disabled={disabled}
+          onSent={onSent}
+          context={context}
+          onFirstSend={sendFirst}
+        />
+      </div>
+      <div role="group" aria-label="Starters" className="flex flex-wrap justify-center gap-2">
+        {['Explore this repo', 'What should we work on next?', 'Help me investigate an issue'].map(
+          (text) => (
+            <button
+              type="button"
+              key={text}
+              disabled={disabled}
+              onClick={() => sendFirst(text)}
+              className="rounded-full border border-line px-3 py-2 text-sm"
+            >
+              {text}
+            </button>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function DraftThread({
+  botId,
+  botName,
+  look,
+  repos,
+}: {
+  botId: string;
+  botName: string;
+  look?: CreatureLook;
+  repos: { id: string; name: string }[];
+}) {
+  const navigate = useNavigate();
+  const [repoId, setRepoId] = useState('');
+  const create = useCreateThreadWithMessage(botId);
+  const sendFirst = (text: string) => {
+    if (create.isPending) return;
+    create.mutate(
+      { repoId, text },
+      {
+        onSuccess: (result) =>
+          navigate(`/bots/${botId}/threads/${result.thread?.id ?? result.id}`, { replace: true }),
+      },
+    );
+  };
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        role="log"
+        aria-label="Messages"
+        className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto p-5"
+      >
+        <EmptyThread
+          botName={botName}
+          look={look}
+          repos={repos}
+          repoId={repoId}
+          setRepoId={setRepoId}
+          threadId=""
+          disabled={create.isPending}
+          sendFirst={sendFirst}
+          onSent={() => {}}
+        />
+        {create.isError && (
+          <p className="text-center text-sm text-danger">Could not complete the request</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ThreadView({
   threadId,
   botId,
@@ -161,51 +282,18 @@ export function ThreadView({
         className={`flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5 ${empty ? 'justify-center' : ''}`}
       >
         {empty && (
-          <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-4">
-            <Creature look={look} size={70} />
-            <h2 className="text-xl">What should {botName} work on?</h2>
-            <label className="text-sm text-muted">
-              Repo{' '}
-              <select
-                aria-label="Repo"
-                value={repoId}
-                onChange={(e) => setRepoId(e.target.value)}
-                className="rounded-card border border-line bg-card p-2"
-              >
-                <option value="">No repo</option>
-                {repos.map((repo) => (
-                  <option key={repo.id} value={repo.id}>
-                    {repo.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="w-full">
-              <Composer
-                threadId={threadId}
-                disabled={!connected}
-                onSent={(run) => begin(run.id)}
-                context={context}
-                onFirstSend={sendFirst}
-              />
-            </div>
-            <div role="group" aria-label="Starters" className="flex flex-wrap justify-center gap-2">
-              {[
-                'Explore this repo',
-                'What should we work on next?',
-                'Help me investigate an issue',
-              ].map((text) => (
-                <button
-                  type="button"
-                  key={text}
-                  onClick={() => sendFirst(text)}
-                  className="rounded-full border border-line px-3 py-2 text-sm"
-                >
-                  {text}
-                </button>
-              ))}
-            </div>
-          </div>
+          <EmptyThread
+            botName={botName}
+            look={look}
+            repos={repos}
+            repoId={repoId}
+            setRepoId={setRepoId}
+            threadId={threadId}
+            disabled={!connected}
+            context={context}
+            sendFirst={sendFirst}
+            onSent={(run) => begin(run.id)}
+          />
         )}
         {messages.map((m) => (
           <MessageLine key={m.id} message={m} retry={retry} />
