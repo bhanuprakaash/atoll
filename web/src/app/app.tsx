@@ -42,7 +42,7 @@ function NewBotPage() {
 }
 
 function ThreadPage() {
-  const { threadId = '' } = useParams();
+  const { threadId = '', botId = '' } = useParams();
   const { data: thread } = useThread(threadId);
   const { data: repos = [] } = useRepos();
   const { data: bots = [] } = useBots();
@@ -52,6 +52,10 @@ function ThreadPage() {
     <ThreadView
       key={threadId}
       threadId={threadId}
+      botId={botId}
+      botName={bots.find((b) => b.id === botId)?.name ?? ''}
+      look={bots.find((b) => b.id === botId)?.look}
+      repos={repos}
       repoName={repoName}
       memory={
         <>

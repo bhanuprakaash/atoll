@@ -8,6 +8,7 @@ import { useProviders } from '@/modules/providers/api/providers';
 import { ModelSelect } from '@/modules/providers/components/model-select';
 import { useRepos } from '@/modules/repos/api/repos';
 import { useSkills } from '@/modules/skills/api/skills';
+import { ThreadsPanel } from '@/modules/threads/components/threads-panel';
 import { useCreateThread, useThreads } from '@/modules/threads/api/threads';
 
 export function BotHeader({
@@ -76,12 +77,16 @@ export function BotPage() {
   const { data: connections = [] } = useConnections();
   const { data: providers = [] } = useProviders();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panel, setPanel] = useState(false);
+  const navigate = useNavigate();
+  const create = useCreateThread(botId);
   const bot = bots.find((item) => item.id === botId);
   return (
     <>
       <BotHeader
         bot={bot}
         onSettings={() => setSettingsOpen(true)}
+        onThreads={() => setPanel(true)}
         title={threads.find((thread) => thread.id === threadId)?.title}
         waiting={threads.filter((thread) => thread.approval).length}
       />
@@ -102,6 +107,25 @@ export function BotPage() {
               onChange={onChange}
             />
           )}
+        />
+      )}
+      {panel && (
+        <ThreadsPanel
+          name={bot?.name ?? ''}
+          threads={threads}
+          onClose={() => setPanel(false)}
+          onSelect={(id) => {
+            setPanel(false);
+            navigate(`/bots/${botId}/threads/${id}`);
+          }}
+          onNew={() =>
+            create.mutate(undefined, {
+              onSuccess: (thread) => {
+                setPanel(false);
+                navigate(`/bots/${botId}/threads/${thread.id}`);
+              },
+            })
+          }
         />
       )}
     </>

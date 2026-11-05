@@ -7,7 +7,7 @@ function Change({ change, botName }: { change: PlatformChange; botName?: string 
     <li
       role="region"
       aria-label="Platform change"
-      className="flex items-start gap-3 rounded-card border border-line bg-card p-3 text-sm"
+      className="flex items-center gap-3 text-sm text-muted"
     >
       <div className="flex flex-1 flex-col gap-0.5">
         <p className="font-medium">{change.after?.name ?? change.before?.name}</p>
@@ -36,7 +36,7 @@ export function PlatformChanges({
   if (changes.length === 0) return null;
 
   return (
-    <div className="border-t border-line p-4">
+    <div className="px-4 py-2">
       <ul className="flex flex-col gap-2">
         {changes.map((change) => (
           <Change key={change.id} change={change} botName={botNames[change.source_bot_id]} />

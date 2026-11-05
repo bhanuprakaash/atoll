@@ -6,7 +6,11 @@ export type Message = { id: string; role: 'user' | 'bot'; text: string; run_id: 
 export type Run = {
   id: string;
   thread_id: string;
-  status: 'running' | 'waiting' | 'done' | 'failed';
+  status: 'running' | 'waiting' | 'done' | 'failed' | 'stopped';
+  started_at: string;
+  finished_at: string;
+  tools: Record<string, number>;
+  report?: { blocked: string } | null;
   error: string;
 };
 

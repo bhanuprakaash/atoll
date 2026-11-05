@@ -4,9 +4,11 @@ import { type MemoryItem, useMemory, useRetireMemory } from '@/modules/memory/ap
 function SavedItem({ item, botName }: { item: MemoryItem; botName?: string }) {
   const retire = useRetireMemory(item.id);
   return (
-    <li className="flex items-start gap-3 rounded-card border border-line bg-card p-3 text-sm">
+    <li className="flex items-center gap-3 rounded-full border border-line px-3 py-2 text-sm">
       <div className="flex flex-1 flex-col gap-0.5">
-        <p className="font-medium">{item.body}</p>
+        <p className="font-medium">
+          {item.kind} · {item.body}
+        </p>
         <p className="text-muted">{item.why}</p>
         <p className="text-xs text-muted">{botName}</p>
         {retire.isError && <p className="text-danger">{retire.error.message}</p>}
@@ -35,7 +37,7 @@ export function SavedMemory({
   if (saved.length === 0) return null;
 
   return (
-    <section aria-label="Saved memory" className="border-t border-line p-4">
+    <section aria-label="Saved memory" className="py-2">
       <ul className="flex flex-col gap-2">
         {saved.map((item) => (
           <SavedItem key={item.id} item={item} botName={botNames[item.source_bot_id]} />
