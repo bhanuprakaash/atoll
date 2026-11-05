@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
@@ -16,17 +17,20 @@ type Bot = { id: string; name: string; look: CreatureLook; provider: Provider['n
 function useProviderSignIn(provider: Provider) {
   const [active, setActive] = useState(false);
   const opened = useRef(false);
+  const client = useQueryClient();
   const signIn = useSignIn();
   const state = useSignInState(provider.name, active);
   useEffect(() => {
+    if (!active) return;
     if (state.data?.status === 'waiting' && state.data.url && !opened.current) {
       opened.current = true;
       window.open(state.data.url, '_blank');
     }
     if (state.data?.status === 'failed' || state.data?.status === 'signed_in') setActive(false);
-  }, [state.data]);
+  }, [active, state.data]);
   function start() {
     opened.current = false;
+    client.removeQueries({ queryKey: ['providers', provider.name, 'sign-in'] });
     signIn.mutate(provider.name, {
       onSuccess: () => setActive(true),
     });
