@@ -3,18 +3,31 @@ import { Creature, creatureLooks, type CreatureLook } from '@/components/creatur
 export function CreaturePicker({
   value,
   onChange,
+  shuffle = false,
 }: {
   value: CreatureLook;
   onChange: (look: CreatureLook) => void;
+  shuffle?: boolean;
 }) {
   return (
     <fieldset role="radiogroup" aria-label="Creature">
-      <legend className="mb-2 text-sm font-medium">Creature</legend>
+      <legend className="mb-2 text-sm">Look</legend>
+      {shuffle && (
+        <button
+          type="button"
+          className="mb-2 text-sm text-muted"
+          onClick={() =>
+            onChange(creatureLooks[Math.floor(Math.random() * creatureLooks.length)].look)
+          }
+        >
+          Shuffle
+        </button>
+      )}
       <div className="grid grid-cols-5 gap-2">
         {creatureLooks.map(({ look, name }) => (
           <label
             key={look}
-            className="relative flex cursor-pointer flex-col items-center gap-1 rounded-control border border-line p-2 has-checked:border-accent"
+            className="relative flex cursor-pointer flex-col items-center gap-1 rounded-control border border-transparent bg-card p-2 has-checked:border-accent"
           >
             <input
               className="absolute inset-0 cursor-pointer opacity-0"

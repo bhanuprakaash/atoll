@@ -1,14 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Button } from '@/components/button';
-import { Checkbox } from '@/components/checkbox';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { controlClass, Field } from '@/components/field';
 import { useCreateBot, type Bot, type Provider } from '@/modules/bots/api/bots';
+import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { CreaturePicker } from '@/modules/bots/components/creature-picker';
 
-const toggle = (list: string[], id: string) =>
-  list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 export type ModelControl = (
   provider: Provider,
   model: string,
@@ -37,7 +35,6 @@ export function NewBotForm({
   const [repoIds, setRepoIds] = useState<string[]>([]);
   const [connectionIds, setConnectionIds] = useState<string[]>([]);
   const [skillIds, setSkillIds] = useState<string[]>([]);
-  const [menu, setMenu] = useState(false);
   const create = useCreateBot();
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -57,11 +54,23 @@ export function NewBotForm({
   };
   return (
     <div className="h-full overflow-auto">
-      <div className="border-b border-line px-6 py-5">
+      <div className="flex items-center justify-between border-b border-line px-8 py-5">
         <h1 className="text-lg">New Bot</h1>
+        <div className="flex items-center gap-4">
+          <Link to={chiefId ? `/bots/${chiefId}` : '/'} className="text-sm text-muted">
+            Cancel
+          </Link>
+          <Button type="submit" form="new-bot" disabled={create.isPending || !model}>
+            Create Bot
+          </Button>
+        </div>
       </div>
       <div className="flex flex-wrap gap-12 p-6">
-        <form onSubmit={submit} className="flex min-w-72 max-w-xl flex-1 flex-col gap-5">
+        <form
+          id="new-bot"
+          onSubmit={submit}
+          className="flex min-w-72 max-w-xl flex-1 flex-col gap-6"
+        >
           {chiefId && (
             <Link
               className="rounded-control border border-line p-4 text-sm"
@@ -81,6 +90,11 @@ export function NewBotForm({
               />
             )}
           </Field>
+          <CreaturePicker value={look} onChange={setLook} shuffle />
+          {modelControl(provider, model, (p, m) => {
+            setProvider(p);
+            setModel(m);
+          })}
           <Field label="Persona">
             {(id) => (
               <textarea
@@ -92,11 +106,16 @@ export function NewBotForm({
               />
             )}
           </Field>
-          <CreaturePicker value={look} onChange={setLook} />
-          {modelControl(provider, model, (p, m) => {
-            setProvider(p);
-            setModel(m);
-          })}
+          <p className="-mt-4 text-xs text-muted">
+            Describe how this Bot should work and what it should know.
+          </p>
+          <ChoiceList
+            title="Skills"
+            singular="skill"
+            choices={skills}
+            selected={skillIds}
+            onChange={setSkillIds}
+          />
           <Field label="Repo access">
             {(id) => (
               <select
@@ -110,77 +129,47 @@ export function NewBotForm({
               </select>
             )}
           </Field>
-          {onlyThese &&
-            repos.map((repo) => (
-              <Checkbox
-                key={repo.id}
-                label={repo.name}
-                checked={repoIds.includes(repo.id)}
-                onChange={() => setRepoIds(toggle(repoIds, repo.id))}
-              />
-            ))}
-          {skills.length > 0 && (
-            <fieldset className="flex flex-col gap-1">
-              <legend className="text-sm font-medium">Skills</legend>
-              {skills.map((s) => (
-                <Checkbox
-                  key={s.id}
-                  label={s.name}
-                  checked={skillIds.includes(s.id)}
-                  onChange={() => setSkillIds(toggle(skillIds, s.id))}
-                />
-              ))}
-            </fieldset>
+          {onlyThese && (
+            <ChoiceList
+              title="Repos"
+              singular="repo"
+              choices={repos}
+              selected={repoIds}
+              onChange={setRepoIds}
+            />
           )}
-          <div>
-            <div className="text-sm font-medium">Connections</div>
-            {connections
-              .filter((c) => connectionIds.includes(c.id))
-              .map((c) => (
-                <div key={c.id} className="text-sm">
-                  {c.instance_url}
-                </div>
-              ))}
-            <button
-              type="button"
-              className="mt-2 rounded-control border border-line px-3 py-2 text-sm"
-              onClick={() => setMenu(!menu)}
-            >
-              Add connection
-            </button>
-            {menu && (
-              <div role="menu" className="rounded-control border border-line bg-card p-2">
-                {connections.map((c) => (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="block p-2 text-sm"
-                    key={c.id}
-                    onClick={() => {
-                      setConnectionIds(toggle(connectionIds, c.id));
-                      setMenu(false);
-                    }}
-                  >
-                    {connectionIds.includes(c.id) ? '✓ ' : ''}
-                    GitLab · {c.instance_url}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <ChoiceList
+            title="Connections"
+            singular="connection"
+            choices={connections.map((c) => ({ id: c.id, name: `GitLab · ${c.instance_url}` }))}
+            selected={connectionIds}
+            onChange={setConnectionIds}
+          />
           {create.isError && <p className="text-sm text-danger">{create.error.message}</p>}
-          <Button type="submit" disabled={create.isPending || !model} className="self-start">
-            Create Bot
-          </Button>
         </form>
         <section aria-label="Preview" className="w-80 max-w-full">
           <h2 className="mb-4 text-sm text-muted">Preview</h2>
-          <div className="rounded-control border border-line bg-card p-6">
-            <Creature look={look} size={64} />
-            <h3 className="mt-3 text-lg">{name || 'Your Bot'}</h3>
+          <div className="flex flex-col items-center gap-3 rounded-card border border-line bg-card p-7 text-center">
+            <Creature look={look} size={112} />
+            <h3 className="text-2xl">{name || 'Your Bot'}</h3>
+            {model && (
+              <p className="rounded-full bg-composer px-3 py-1 text-xs">
+                {provider === 'claude' ? 'Claude Code' : 'Codex'} · {model}
+              </p>
+            )}
             <p className="text-sm text-muted">{persona || 'A little about your Bot'}</p>
+            <div className="flex flex-wrap justify-center gap-2 text-xs text-muted">
+              {skills
+                .filter((s) => skillIds.includes(s.id))
+                .map((s) => (
+                  <span key={s.id} className="rounded-full bg-composer px-3 py-1">
+                    {s.name}
+                  </span>
+                ))}
+            </div>
           </div>
-          <div className="mt-4 flex items-center gap-3 rounded-control border border-line p-3">
+          <h2 className="mt-6 mb-3 text-sm text-muted">In the sidebar</h2>
+          <div className="flex items-center gap-3 rounded-control border border-line p-3">
             <Creature look={look} size={36} />
             <div>
               <div>{name || 'Your Bot'}</div>
