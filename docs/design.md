@@ -265,11 +265,12 @@ Finish
 - Composer: the message, then the thread's repo, branch and MR as chips, and Send or Stop. A new
   thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message.
-- Bot settings open as a right panel over the thread and save as you change them, applying from the
-  next run: creature, name, model, persona, skills, repos, connections, memory (its own lessons and
+- Bot settings open as a docked right panel beside the usable thread and save as you change them,
+  applying from the next run: creature, name, model, persona, skills, repos, connections, memory (its own lessons and
   what it saved) and the platform switch. Skills, repos and connections are lists with logos, a
   remove button and an Add row; a connection that is not signed in offers Connect inline with
-  GitLab's device code. The model is a searchable select grouped by provider.
+  GitLab's device code. The model is a searchable select grouped by provider. *The user preferred
+  a docked panel to an overlay.*
 - New Bot is a full page: the form on the left, a live preview (the card and the sidebar row) on
   the right, and a link to ask Chief instead. Create opens the new Bot's empty thread.
 - Settings: General (name, worktree folder), Providers, Connections, Skills, Repos, Memory, one

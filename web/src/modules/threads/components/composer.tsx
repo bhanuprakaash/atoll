@@ -33,7 +33,7 @@ export function Composer({
     const el = box.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 194)}px`;
   }, [text]);
 
   const submit = (e?: FormEvent) => {
@@ -73,7 +73,7 @@ export function Composer({
           submit();
         }
       }}
-      className="max-h-50 py-2 text-[15px] leading-normal"
+      className="block max-h-[194px] overflow-y-auto py-2.25 text-[15px] leading-[22px]"
     />
   );
   const action = runId ? (
@@ -110,31 +110,20 @@ export function Composer({
     <div className="flex flex-col gap-2">
       <form
         onSubmit={submit}
-        className={
-          context
-            ? 'flex flex-col gap-1.5 rounded-[26px] border border-composer-line bg-composer pt-2 pr-2.5 pb-2.5 pl-4.5'
-            : `flex items-end gap-2.5 border border-composer-line bg-composer py-1.5 pr-2 pl-4.5 ${onFirstSend ? 'min-h-15 rounded-[30px]' : 'min-h-14 rounded-[28px]'}`
-        }
+        className={`flex flex-col gap-1.5 rounded-[28px] border border-composer-line bg-composer p-2 ${onFirstSend ? 'min-h-15' : 'min-h-14'}`}
       >
-        {context ? (
-          <>
-            <div className="pr-2">{input}</div>
-            <div className="flex items-center gap-1.5">
-              <div
-                role="group"
-                aria-label="Thread context"
-                className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-[12.5px] text-ink/80"
-              >
-                {context}
-              </div>
-              {action}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="min-w-0 flex-1 self-center">{input}</div>
-            {action}
-          </>
+        <div className="flex min-w-0 items-end gap-2.5">
+          <div className="min-w-0 flex-1 pl-2.5">{input}</div>
+          {action}
+        </div>
+        {context && (
+          <div
+            role="group"
+            aria-label="Thread context"
+            className="flex min-w-0 flex-wrap items-center gap-1.5 pl-2.5 text-[12.5px] text-ink/80"
+          >
+            {context}
+          </div>
         )}
       </form>
       {(send.isError || stop.isError) && (

@@ -101,15 +101,17 @@ export function BotPage() {
   const navigate = useNavigate();
   const bot = bots.find((item) => item.id === botId);
   return (
-    <>
-      <BotHeader
-        bot={bot}
-        onSettings={() => setSettingsOpen(true)}
-        onThreads={() => setPanel(true)}
-        title={threads.find((thread) => thread.id === threadId)?.title}
-        waiting={threads.filter((thread) => !thread.closed && thread.approval).length}
-      />
-      <Outlet />
+    <div className="flex min-h-0 min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-[999_1_400px] flex-col">
+        <BotHeader
+          bot={bot}
+          onSettings={() => setSettingsOpen(true)}
+          onThreads={() => setPanel(true)}
+          title={threads.find((thread) => thread.id === threadId)?.title}
+          waiting={threads.filter((thread) => !thread.closed && thread.approval).length}
+        />
+        <Outlet />
+      </div>
       {settingsOpen && bot && (
         <BotSettings
           key={bot.id}
@@ -146,7 +148,7 @@ export function BotPage() {
           }}
         />
       )}
-    </>
+    </div>
   );
 }
 

@@ -53,13 +53,11 @@ export function BotSettings({
     };
   }, [mutate]);
   return (
-    <div className="fixed inset-0 z-20 flex justify-end bg-bg/70">
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-label="Bot settings"
-        className="h-full w-full max-w-lg overflow-auto border-l border-line bg-card p-7"
-      >
+    <aside
+      aria-label="Bot settings"
+      className="min-h-0 min-w-0 max-w-105 flex-[1_1_400px] overflow-auto border-l border-line bg-popover"
+    >
+      <section role="dialog" aria-label="Bot settings" className="p-7">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-lg">Bot settings</h2>
           <button type="button" onClick={onClose}>
@@ -170,6 +168,6 @@ export function BotSettings({
           )}
         </div>
       </section>
-    </div>
+    </aside>
   );
 }
