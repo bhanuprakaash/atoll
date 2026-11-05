@@ -65,7 +65,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   approvals come as app-server requests. Claude runs in default mode; approvals come through the
   permission prompt tool.
 - Each run's event stream is saved to `<data>/runs/<id>.jsonl`. A run left `running` or `waiting`
-  when the server starts is marked `failed` with a reason.
+  when the server starts is marked `failed` with a reason. A thread's SSE stream first replays the
+  going run's latest events (text deltas left out), so a page that opens late or reconnects shows
+  the current tool and approvals.
 - Processes a Bot starts (dev server, watcher, browser) belong to the thread and outlive the run.
   When the thread closes or the app quits, the app asks whether to stop them.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed

@@ -4,6 +4,7 @@
 package run
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -279,6 +280,11 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 		close(ch)
 		m.mu.Unlock()
 		return ch, func() {}
+	}
+	if a := m.runs[threadID]; a != nil && a.log != nil {
+		for _, ev := range m.replay(a.run.ID) {
+			ch <- ev
+		}
 	}
 	if m.subs[threadID] == nil {
 		m.subs[threadID] = map[chan Event]struct{}{}
@@ -718,6 +724,29 @@ func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data
 			m.cfg.Log.Warn("subscriber full, stream closed", "run_id", runID, "type", typ)
 		}
 	}
+}
+
+// replay is the running run's events so far, so a subscriber that joins late (a page opened
+// after the first message, or one reconnecting) sees the current tool and approvals. Text deltas
+// are left out and only the latest events are kept, to fit the subscriber's buffer.
+func (m *Manager) replay(runID string) []Event {
+	b, err := os.ReadFile(filepath.Join(m.cfg.DataDir, "runs", runID+".jsonl"))
+	if err != nil {
+		m.cfg.Log.Warn("read event file", "run_id", runID, "error", err)
+		return nil
+	}
+	var evs []Event
+	for line := range bytes.Lines(b) {
+		var ev struct {
+			Type string          `json:"type"`
+			Data json.RawMessage `json:"data"`
+		}
+		if json.Unmarshal(line, &ev) != nil || ev.Type == EventText {
+			continue
+		}
+		evs = append(evs, Event{Type: ev.Type, Data: ev.Data})
+	}
+	return evs[max(0, len(evs)-_subscriberBuffer/2):]
 }
 
 func (m *Manager) openLog(runID string) (*os.File, error) {
