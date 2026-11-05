@@ -55,7 +55,9 @@ export function SettingsPage() {
         aria-label="Settings"
         className="flex w-55 shrink-0 flex-col gap-0.5 border-r border-line px-3 py-6"
       >
-        <h1 className="px-3 pb-3 text-base font-normal">Settings</h1>
+        <h1 data-tauri-drag-region className="px-3 pb-3 text-base font-normal">
+          Settings
+        </h1>
         {sections.map(([path, label, note]) => (
           <NavLink
             key={path}
