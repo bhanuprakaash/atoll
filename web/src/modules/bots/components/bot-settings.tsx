@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Creature } from '@/components/creature';
 import { Field } from '@/components/field';
 import { Segmented } from '@/components/segmented';
 import { Switch } from '@/components/switch';
@@ -7,7 +6,7 @@ import { TextArea, TextField } from '@/components/text-field';
 import { useUpdateBot, type Bot, type NewBot } from '@/modules/bots/api/bots';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { ConnectionList } from '@/modules/bots/components/connection-list';
-import { CreaturePicker } from '@/modules/bots/components/creature-picker';
+import { CreatureCarousel } from '@/modules/bots/components/creature-picker';
 import {
   repoAccess as repoAccessChoices,
   type Choices,
@@ -60,15 +59,28 @@ export function BotSettings({
       <section role="dialog" aria-label="Bot settings" className="p-7">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-lg">Bot settings</h2>
-          <button type="button" onClick={onClose}>
-            Close
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="-mr-2 flex size-9 items-center justify-center rounded-[10px] text-muted hover:bg-tile hover:text-ink"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
           </button>
         </div>
         <div className="flex flex-col gap-6">
-          <div className="flex justify-center py-3">
-            <Creature look={look} size={104} />
-          </div>
-          <CreaturePicker
+          <CreatureCarousel
             value={look}
             onChange={(value) => {
               setLook(value);

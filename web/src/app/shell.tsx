@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { api } from '@/lib/api-client';
 import { BotList } from '@/modules/bots/components/bot-list';
-import { ReefLogo } from '@/components/reef-logo';
 import { TextField } from '@/components/text-field';
 
 const inDesktopApp = '__TAURI_INTERNALS__' in window;
@@ -31,18 +30,8 @@ export function Shell() {
         aria-label="Bots"
         className="flex w-[300px] flex-none flex-col border-r border-sidebar-line bg-card px-2.5 pt-4 pb-3"
       >
-        <div
-          data-tauri-drag-region="deep"
-          className="flex h-8 items-center justify-end px-2 pb-0.5"
-        >
-          <span
-            className={`flex items-center gap-2 text-[15px] tracking-tight ${inDesktopApp ? 'ml-[68px]' : ''}`}
-          >
-            <ReefLogo size={20} />
-            Reef
-          </span>
-        </div>
-        <div className="mt-3.5 flex items-center gap-2">
+        {inDesktopApp && <div data-tauri-drag-region="deep" className="h-8" />}
+        <div className={`flex items-center gap-2 ${inDesktopApp ? 'mt-3.5' : ''}`}>
           <div className="relative min-w-0 flex-1">
             <svg
               aria-hidden="true"

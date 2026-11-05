@@ -50,15 +50,28 @@ function FileIcon({ size }: { size: number }) {
   );
 }
 
-function SkillEditor({ skill, bots, close }: { skill: Skill; bots: Bot[]; close: () => void }) {
+const draft: Skill = { id: '', name: '', content: '---\ndescription: \n---\n' };
+
+function SkillEditor({
+  skill,
+  bots,
+  close,
+  onCreated,
+}: {
+  skill: Skill;
+  bots: Bot[];
+  close: () => void;
+  onCreated: (id: string) => void;
+}) {
+  const isNew = !skill.id;
   const [name, setName] = useState(skill.name);
   const [content, setContent] = useState(skill.content);
   const [preview, setPreview] = useState(false);
-  const save = useSaveSkill(skill.id);
+  const save = useSaveSkill(skill.id || undefined);
   const { head, body } = split(content);
   const description = head.match(/^description:\s*(.*)$/m)?.[1] ?? '';
   const users = bots.filter((b) => b.skills?.includes(skill.id));
-  const dirty = name !== skill.name || content !== skill.content;
+  const dirty = isNew ? name.trim() !== '' : name !== skill.name || content !== skill.content;
   function setDescription(value: string) {
     const line = `description: ${value}`;
     setContent(
@@ -75,14 +88,16 @@ function SkillEditor({ skill, bots, close }: { skill: Skill; bots: Bot[]; close:
   return (
     <aside
       role="dialog"
-      aria-label={`Edit ${skill.name}`}
+      aria-label={isNew ? 'New skill' : `Edit ${skill.name}`}
       className="fixed inset-y-0 right-0 z-10 flex w-140 max-w-full flex-col border-l border-line bg-card"
     >
       <div className="flex h-16 items-center gap-2.5 border-b border-line pl-5 pr-3">
         <Tile className="bg-tile">
           <FileIcon size={16} />
         </Tile>
-        <h2 className="font-mono text-[15px] font-normal">{skill.name}</h2>
+        <h2 className="font-mono text-[15px] font-normal">
+          {isNew ? name || 'New skill' : skill.name}
+        </h2>
         <button
           type="button"
           aria-label="Close"
@@ -109,6 +124,7 @@ function SkillEditor({ skill, bots, close }: { skill: Skill; bots: Bot[]; close:
           <TextField
             className="font-mono"
             size="sm"
+            placeholder="review-mr"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -154,7 +170,7 @@ function SkillEditor({ skill, bots, close }: { skill: Skill; bots: Bot[]; close:
             />
           )}
         </div>
-        <div className="flex flex-col gap-2">
+        <div className={`flex flex-col gap-2 ${isNew ? 'hidden' : ''}`}>
           <span className={labelClass}>Used by</span>
           {users.length > 0 ? (
             <ul className="flex flex-wrap gap-1.5">
@@ -176,6 +192,8 @@ function SkillEditor({ skill, bots, close }: { skill: Skill; bots: Bot[]; close:
       <div className="flex items-center gap-2 border-t border-line px-5 py-3.5 text-[12.5px] text-muted">
         {save.isError ? (
           <span className="text-danger">{save.error.message}</span>
+        ) : isNew ? (
+          'Not created yet'
         ) : dirty ? (
           'Unsaved changes'
         ) : (
@@ -200,9 +218,14 @@ function SkillEditor({ skill, bots, close }: { skill: Skill; bots: Bot[]; close:
           type="button"
           className={`${solidButton} ml-auto`}
           disabled={!dirty || save.isPending}
-          onClick={() => save.mutate({ name, content })}
+          onClick={() =>
+            save.mutate(
+              { name: name.trim(), content },
+              { onSuccess: (s) => isNew && onCreated(s.id) },
+            )
+          }
         >
-          Save skill
+          {isNew ? 'Create skill' : 'Save skill'}
         </button>
       </div>
     </aside>
@@ -212,8 +235,7 @@ function SkillEditor({ skill, bots, close }: { skill: Skill; bots: Bot[]; close:
 export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
   const { data: skills = [] } = useSkills();
   const [selected, setSelected] = useState<string | null>(null);
-  const skill = skills.find((s) => s.id === selected);
-  const create = useSaveSkill();
+  const skill = selected === 'new' ? draft : skills.find((s) => s.id === selected);
   const [params, setParams] = useSearchParams();
   const wantsNew = params.has('new');
   const startedNew = useRef(false);
@@ -221,10 +243,7 @@ export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
     if (!wantsNew || startedNew.current) return;
     startedNew.current = true;
     setParams({}, { replace: true });
-    create.mutate(
-      { name: 'new-skill', content: '---\ndescription: \n---\n' },
-      { onSuccess: (s) => setSelected(s.id) },
-    );
+    setSelected('new');
   }, [wantsNew]);
   return (
     <>
@@ -232,21 +251,10 @@ export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
         title="Skills"
         lead="One library. Each Bot picks its own; runs get read-only copies."
       >
-        <button
-          type="button"
-          className={solidButton}
-          disabled={create.isPending}
-          onClick={() =>
-            create.mutate(
-              { name: 'new-skill', content: '---\ndescription: \n---\n' },
-              { onSuccess: (s) => setSelected(s.id) },
-            )
-          }
-        >
+        <button type="button" className={solidButton} onClick={() => setSelected('new')}>
           New skill
         </button>
       </SectionHead>
-      {create.isError && <p className="text-danger">{create.error.message}</p>}
       {skills.length === 0 ? (
         <div className="rounded-[18px] border border-dashed border-outline px-6 py-10 text-center">
           <p>No skills yet</p>
@@ -296,7 +304,13 @@ export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
         </Box>
       )}
       {skill && (
-        <SkillEditor key={skill.id} skill={skill} bots={bots} close={() => setSelected(null)} />
+        <SkillEditor
+          key={skill.id || 'new'}
+          skill={skill}
+          bots={bots}
+          close={() => setSelected(null)}
+          onCreated={setSelected}
+        />
       )}
     </>
   );

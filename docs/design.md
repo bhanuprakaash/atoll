@@ -244,7 +244,8 @@ Finish
 - Working shows by tool kind, with old Reef's rising bubbles: no tool yet, the eyes circle up;
   reading, searching or recalling, the eyes scan; editing, writing, remembering or changing the
   platform, it bounces; running a command, it breathes.
-- Sidebar: the logo sits at the right of the top row; a search field below filters Bots by name.
+- Sidebar: a search field on top filters Bots by name, `+` beside it; no logo (the user found it
+  redundant).
   One row per Bot (creature, name, latest activity, time), Chief first. `+` opens New Bot; the
   bottom user row opens Settings. No group chats.
 - Bot header: creature, Bot name, thread title, a Threads button and a Bot settings icon. The
@@ -267,7 +268,7 @@ Finish
   thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message.
 - Bot settings open as a docked right panel beside the usable thread and save as you change them,
-  applying from the next run: creature, name, model, persona, skills, repos, connections, memory (its own lessons and
+  applying from the next run: creature (one large creature with previous/next arrows), name, model, persona, skills, repos, connections, memory (its own lessons and
   what it saved) and the platform switch. Skills, repos and connections are lists with logos, a
   remove button and an Add row; a connection that is not signed in offers Connect inline with
   GitLab's device code. The model is a searchable select grouped by provider. *The user preferred
@@ -277,7 +278,9 @@ Finish
   opens the new Bot's empty thread.
 - Settings: General (name, worktree folder), Providers, Connections, Skills, Repos, Memory, one
   list each. Content to the right of the section navigation is centred, with a maximum width of
-  720px. The native repo folder picker is invoked by the Go sidecar using `osascript` over HTTP.
+  720px. Add repo opens a dialog (name, path, Choose… for the native folder picker, which the Go
+  sidecar opens with `osascript`, so the UI still talks to Go over HTTP only); with no repos yet the
+  same form shows inline. New skill opens an empty editor and creates the skill only on Create.
   A skill opens in a wide right panel: name, when to use it, the `SKILL.md` text and the Bots that
   use it. Provider cards show version, models, Bots using them and the CLI path as labelled facts,
   along with sign-in state.
