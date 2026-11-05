@@ -5,12 +5,14 @@ import { approvalTarget } from '@/modules/threads/components/approval-card';
 export function ThreadsPanel({
   name,
   threads,
+  repos,
   onClose,
   onNew,
   onSelect,
 }: {
   name: string;
   threads: Thread[];
+  repos: { id: string; name: string }[];
   onClose: () => void;
   onNew: () => void;
   onSelect: (id: string) => void;
@@ -32,10 +34,27 @@ export function ThreadsPanel({
               className="w-full rounded-card p-2 text-left hover:bg-card"
               onClick={() => onSelect(t.id)}
             >
-              <span>{t.title || 'Empty thread'}</span>
+              <span className="flex justify-between gap-3">
+                <span className="truncate">{t.title || 'Empty thread'}</span>
+                {t.last_activity && (
+                  <time className="shrink-0 text-xs text-muted" dateTime={t.last_activity}>
+                    {new Date(t.last_activity).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </time>
+                )}
+              </span>
               {t.approval && (
                 <span className="block text-xs text-muted">
                   Waiting for {approvalTarget(t.approval.input)}
+                </span>
+              )}
+              {label === 'Recent' && (
+                <span className="block text-xs text-muted">
+                  {[repos.find((repo) => repo.id === t.repo_id)?.name, t.run_status]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </span>
               )}
               {label === 'Running' && (

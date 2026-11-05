@@ -14,6 +14,7 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
   const answer = useAnswerApproval(id);
   const target = approvalTarget(input);
   const edit = /edit|write|filechange/i.test(tool);
+  const command = /bash|command/i.test(tool);
   const details = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   const diff = [details.old_string, details.new_string, details.content]
     .filter((value): value is string => typeof value === 'string')
@@ -23,11 +24,24 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
   return (
     <div className="text-sm text-muted">
       <span>
-        {edit ? 'Change' : 'Run'} {target}
+        {answered === null
+          ? edit
+            ? 'Wants to edit'
+            : command
+              ? 'Wants to run'
+              : `Wants to use ${tool}`
+          : answered
+            ? edit
+              ? 'Allowed editing'
+              : 'Allowed'
+            : edit
+              ? 'Denied editing'
+              : 'Denied'}{' '}
+        <span className="font-mono">{target}</span>
       </span>{' '}
       {edit && (
         <button type="button" onClick={() => setShowDiff(!showDiff)} className="underline">
-          Show diff
+          {showDiff ? 'Hide diff' : 'Show diff'}
         </button>
       )}{' '}
       {answered === null ? (
@@ -36,7 +50,7 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
             type="button"
             disabled={answer.isPending}
             onClick={() => respond(true)}
-            className="underline"
+            className="rounded-full border border-line px-3 py-1"
           >
             Allow
           </button>
@@ -45,16 +59,12 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
             type="button"
             disabled={answer.isPending}
             onClick={() => respond(false)}
-            className="underline"
+            className="rounded-full border border-line px-3 py-1"
           >
             Deny
           </button>
         </>
-      ) : answered ? (
-        'Allowed'
-      ) : (
-        'Denied'
-      )}
+      ) : null}
       {showDiff && <pre className="whitespace-pre-wrap">{diff || 'No diff available'}</pre>}
       {answer.isError && <span className="text-danger"> Could not answer approval</span>}
     </div>
