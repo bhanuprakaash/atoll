@@ -12,7 +12,7 @@ use std::{
     thread::{self, JoinHandle},
     time::Duration,
 };
-use tauri::Manager;
+use tauri::{webview::NewWindowResponse, Manager, WebviewUrl, WebviewWindowBuilder};
 
 struct Supervisor {
     quitting: Arc<AtomicBool>,
@@ -36,7 +36,23 @@ fn main() {
                     exit.exit(0);
                 }
             });
-            let window = app.get_webview_window("main").expect("main window");
+            // The sidecar's URL is known only once it listens; provider sign-in pages open in
+            // the default browser, not in a webview window.
+            let window = WebviewWindowBuilder::new(
+                app,
+                "main",
+                WebviewUrl::External("about:blank".parse().expect("valid URL")),
+            )
+            .title("Reef")
+            .inner_size(1200.0, 800.0)
+            .min_inner_size(700.0, 500.0)
+            .on_new_window(|url, _| {
+                if let Err(err) = Command::new("open").arg(url.as_str()).spawn() {
+                    eprintln!("open {url}: {err}");
+                }
+                NewWindowResponse::Deny
+            })
+            .build()?;
             let binary = std::env::current_exe()?.with_file_name("atoll");
             let handle = thread::spawn(move || {
                 let mut navigated = false;

@@ -4,21 +4,26 @@
   "version": "0.1.0",
   "identifier": "dev.atoll.desktop",
   "app": {
-    "windows": [
-      {
-        "title": "Reef",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 700,
-        "minHeight": 500
-      }
-    ],
-    "security": { "csp": null }
+    "windows": [],
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
-    "externalBin": ["binaries/atoll"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "externalBin": [
+      "binaries/atoll"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }
