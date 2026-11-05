@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { CreatureLook, CreatureState } from '@/components/creature';
 import { api } from '@/lib/api-client';
 
 export type Provider = 'claude' | 'codex';
@@ -7,24 +8,44 @@ export type Bot = {
   id: string;
   name: string;
   persona: string;
+  look: CreatureLook;
+  model: string;
+  state: CreatureState;
+  activity: string;
+  last_activity: string;
+  repo_access: 'all' | string[];
+  connections: string[];
   provider: Provider;
   skills: string[];
   can_manage_platform: boolean;
 };
 
-export type NewBot = Omit<Bot, 'id' | 'can_manage_platform'> & {
-  repo_access: 'all' | string[];
-  connections: string[];
-};
+export type NewBot = Pick<
+  Bot,
+  'name' | 'persona' | 'provider' | 'skills' | 'repo_access' | 'connections' | 'look' | 'model'
+>;
 
 export function useBots() {
-  return useQuery({ queryKey: ['bots'], queryFn: () => api<Bot[]>('/bots') });
+  return useQuery({
+    queryKey: ['bots'],
+    queryFn: () => api<Bot[]>('/bots'),
+    refetchInterval: 2000,
+  });
 }
 
 export function useCreateBot() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (bot: NewBot) => api<Bot>('/bots', { method: 'POST', body: bot }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
+  });
+}
+
+export function useUpdateBot(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (changes: Partial<NewBot>) =>
+      api<Bot>(`/bots/${id}`, { method: 'PUT', body: changes }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
   });
 }

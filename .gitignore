@@ -2,3 +2,7 @@ node_modules/
 server/ui/*
 !server/ui/.keep
 .verify/
+desktop/src-tauri/target/
+desktop/src-tauri/binaries/
+desktop/node_modules/
+desktop/src-tauri/gen/

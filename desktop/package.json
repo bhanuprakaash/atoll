@@ -1,0 +1,8 @@
+{
+  "name": "atoll-desktop",
+  "private": true,
+  "packageManager": "pnpm@12.16.1",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

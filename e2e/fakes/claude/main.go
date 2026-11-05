@@ -19,7 +19,19 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-const _version = "2.1.306 (Claude Code)"
+const (
+	_version  = "2.1.306 (Claude Code)"
+	_loginURL = "https://login.reef.test/claude/oauth?code=true"
+)
+
+// _models is what the initialize control request answers, in the real CLI's shape (verified on
+// Claude Code 2.1.317, signed out and offline). reef-probe proves a list came from the provider.
+var _models = []map[string]string{
+	{"value": "default", "displayName": "Default (recommended)", "description": "Use the default model"},
+	{"value": "opus", "displayName": "Opus", "description": "Opus 5.5"},
+	{"value": "sonnet", "displayName": "Sonnet", "description": "Sonnet 5.5"},
+	{"value": "reef-probe", "displayName": "Reef Probe", "description": "Only the fake lists this"},
+}
 
 type (
 	line struct {
@@ -28,6 +40,10 @@ type (
 		SessionID string  `json:"session_id"`
 		IsReplay  bool    `json:"isReplay"`
 		Message   message `json:"message"`
+		RequestID string  `json:"request_id"`
+		Request   struct {
+			Subtype string `json:"subtype"`
+		} `json:"request"`
 	}
 
 	message struct {
@@ -66,6 +82,10 @@ func run(args []string) error {
 		return nil
 	case len(args) >= 2 && args[0] == "auth" && args[1] == "status":
 		return status()
+	case len(args) >= 2 && args[0] == "auth" && args[1] == "login":
+		return fake.Login(fake.ConfigDir("CLAUDE_CONFIG_DIR", ".claude"), ".credentials.json",
+			"Opening browser to sign in…",
+			"If the browser didn't open, visit: "+_loginURL)
 	case slices.Contains(args, "-p") || slices.Contains(args, "--print"):
 		return stream(log, args)
 	}
@@ -97,9 +117,6 @@ func stream(log *fake.Log, args []string) error {
 	if slices.Contains(args, "--system-prompt") || slices.Contains(args, "--system-prompt-file") {
 		return errors.New("reef must append, not replace the provider prompt")
 	}
-	if err := log.Prompt("system", flag(args, "--append-system-prompt")); err != nil {
-		return err
-	}
 	recs, err := load()
 	if err != nil {
 		return err
@@ -115,8 +132,27 @@ func stream(log *fake.Log, args []string) error {
 			return err
 		}
 		var l line
-		if json.Unmarshal(in.Bytes(), &l) != nil || l.Type != "user" {
+		if json.Unmarshal(in.Bytes(), &l) != nil {
 			continue
+		}
+		if l.Type == "control_request" && l.Request.Subtype == "initialize" {
+			b, _ := json.Marshal(map[string]any{"type": "control_response", "response": map[string]any{
+				"subtype": "success", "request_id": l.RequestID, "response": map[string]any{"models": _models},
+			}})
+			fmt.Println(string(b))
+			continue
+		}
+		if l.Type != "user" {
+			continue
+		}
+		// Logged at the first turn, so a model-list probe leaves no prompt or skill record.
+		if !p.started && p.userMessage == "" {
+			if err := log.Prompt("system", flag(args, "--append-system-prompt")); err != nil {
+				return err
+			}
+			if err := fake.LogSkills(p.skills); err != nil {
+				return err
+			}
 		}
 		prompt, err := text(l.Message.Content)
 		if err != nil {

@@ -55,7 +55,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	if _, err := st.Bot(ctx, "chief"); err != nil {
 		chief := store.Bot{
 			ID: "chief", Name: "Chief", Persona: "I help configure Reef.",
-			Provider: chiefProvider(ctx), CanManagePlatform: true,
+			Provider: chiefProvider(ctx), Look: "jellyfish", CanManagePlatform: true,
 		}
 		if _, err := st.EnsureBot(ctx, chief); err != nil {
 			return err
@@ -82,10 +82,16 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	providers := newProviders(ctx)
+	defer providers.Close()
 	runs := threadrun.New(threadrun.Config{
-		Store:        st,
-		Memory:       mem,
-		Launch:       launch,
+		Store:  st,
+		Memory: mem,
+		Launch: func(ctx context.Context, name string) (provider.Session, provider.Config, error) {
+			providers.checkAvailable(ctx, name)
+			return launch(ctx, name)
+		},
+		Available:    providers.available,
 		MCPURL:       url + server.MCPPath,
 		DataDir:      data,
 		WorktreeRoot: filepath.Join(home, "Reef", "worktrees"),
@@ -94,7 +100,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	})
 	pathDirs(ctx) // glab is found on the provider folders' PATH
 	runs.Start()
-	srv := &http.Server{Handler: server.New(st, mem, runs, log), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: server.New(st, mem, runs, log, providers), ReadHeaderTimeout: 10 * time.Second}
 	var serveErr error
 	served := make(chan struct{})
 	go func() {
@@ -165,4 +171,19 @@ func launch(ctx context.Context, name string) (provider.Session, provider.Config
 		return a.new(), provider.Config{Bin: bin, Dir: dir}, nil
 	}
 	return nil, provider.Config{}, fmt.Errorf("unknown provider %q", name)
+}
+
+func available(ctx context.Context, name string) bool {
+	for _, a := range _adapters {
+		if a.name != name {
+			continue
+		}
+		bin, dir, err := a.prepare(ctx)
+		if err != nil {
+			return false
+		}
+		signed, err := a.signedIn(ctx, bin, dir)
+		return err == nil && signed
+	}
+	return false
 }

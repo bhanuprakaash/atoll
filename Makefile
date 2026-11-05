@@ -1,4 +1,4 @@
-.PHONY: check fmt format lint vet typecheck test run e2e ui verify
+.PHONY: check fmt format lint vet typecheck test run e2e ui verify app
 
 # web/node_modules ships Go files; keep them out of every Go command.
 GO_DIRS = $(shell go list -f '{{.Dir}}' ./... | grep -v /node_modules/)
@@ -31,6 +31,11 @@ test:
 
 run: ui
 	go run ./cmd/atoll serve
+
+app: ui
+	mkdir -p desktop/src-tauri/binaries
+	go build -o desktop/src-tauri/binaries/atoll-$$(rustc -vV | sed -n "s/^host: //p") ./cmd/atoll
+	cd desktop && $(PNPM) install --frozen-lockfile && $(PNPM) tauri build --bundles app,dmg
 
 # The binary embeds server/ui, built from web/.
 ui: server/ui/index.html

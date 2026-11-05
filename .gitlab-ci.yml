@@ -66,3 +66,20 @@ test-guard:
       else
         echo "test-guard: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME has no scripts/check-tests yet, nothing to enforce"
       fi
+
+dmg:
+  # The atoll-mac runner is a shell executor: the Mac's own Go, Node, pnpm and rustup. The app is
+  # ad-hoc signed, not notarized, so first open needs System Settings → Open Anyway.
+  tags: [macos]
+  needs: []
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+  script:
+    - . "$HOME/.cargo/env"
+    - make app
+  artifacts:
+    name: Reef
+    paths: [desktop/src-tauri/target/release/bundle/dmg/]

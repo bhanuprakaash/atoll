@@ -60,7 +60,7 @@ cmd/atoll -> server -> run -> provider | memory | repo | skill | connection -> s
 
 Needs Go 1.27, Node 22 and pnpm (`npm i -g pnpm@<version>`, the version pinned in `packageManager`
 of `web/package.json`). Nothing else: golangci-lint and lefthook are pinned as tool dependencies in
-`go.mod` and run through `go tool`.
+`go.mod` and run through `go tool`. Only `make app` (the Tauri bundle) also needs Rust (rustup).
 
 ```sh
 go tool lefthook install   # once per clone: pre-commit hook (gofmt, prettier on staged files)
@@ -68,6 +68,7 @@ make check                 # format check, lint, vet, type-check, tests (pnpm in
 make format                # gofmt -w and prettier --write
 make run                   # builds the UI, then go run ./cmd/atoll serve
 make e2e                   # e2e/: builds the real binary and drives it
+make app                   # desktop/: Reef.app and an unsigned dmg
 ```
 
 To upgrade a tool: `go get -tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<version>`

@@ -175,6 +175,11 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				fake.Hang()
 			}
 			continue
+		case "pause":
+			if !skip {
+				fake.Pause(e.MS)
+			}
+			continue
 		}
 		if skip {
 			continue

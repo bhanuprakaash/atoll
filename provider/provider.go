@@ -54,6 +54,7 @@ type Session interface {
 // Config is how a session starts.
 type Config struct {
 	SystemPrompt string
+	Model        string
 	Bin          string // provider executable
 	Dir          string // Atoll's settings folder for this provider
 	Cwd          string

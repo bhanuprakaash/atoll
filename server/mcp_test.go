@@ -23,7 +23,7 @@ func TestMCP(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := httptest.NewServer(New(st, nil, run.New(run.Config{Store: st, Log: log}), log))
+	srv := httptest.NewServer(New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil))
 	t.Cleanup(srv.Close)
 
 	tests := []struct {
@@ -133,7 +133,7 @@ func TestPlatform_EditBotUndo(t *testing.T) {
 		},
 	})
 	t.Cleanup(func() { _ = runs.Close() })
-	srv := httptest.NewServer(New(st, nil, runs, log))
+	srv := httptest.NewServer(New(st, nil, runs, log, nil))
 	t.Cleanup(srv.Close)
 	if _, _, err := runs.Send(ctx, thread.ID, "hi"); err != nil {
 		t.Fatal(err)

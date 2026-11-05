@@ -1,20 +1,142 @@
+@import '@fontsource/geist-sans/400.css';
 @import 'tailwindcss';
 
 @theme {
-  --color-bg: #f5f5f7;
-  --color-card: #ffffff;
-  --color-line: #d9d9de;
-  --color-ink: #1d1d1f;
-  --color-muted: #6e6e73;
-  --color-accent: #0a64d8;
-  --color-accent-ink: #ffffff;
-  --color-danger: #c62828;
+  --color-bg: #171717;
+  --color-card: #1a1a1a;
+  --color-composer: #222222;
+  --color-line: #262626;
+  --color-ink: #ececec;
+  --color-muted: #9b9b9b;
+  --color-accent: #ececec;
+  --color-accent-ink: #161616;
+  --color-danger: #e5484d;
+  --color-blocked: #f5a524;
+  --color-eye: #1c1c1e;
+  --color-jellyfish: #f26b2e;
+  --color-whale: #8b5cf6;
+  --color-penguin: #3fbfa0;
+  --color-penguin-light: #eef6f3;
+  --color-penguin-accent: #f2a03a;
+  --color-shark: #3b82f6;
+  --color-shark-light: #dcebff;
+  --color-white: #ffffff;
+  --color-octopus: #ec6fa8;
+  --color-turtle: #8bc34a;
+  --color-turtle-light: #b5db8a;
+  --color-seahorse: #f5c542;
+  --color-otter: #c08a5b;
+  --color-otter-light: #ebd3bb;
+  --color-manta: #38bdf8;
+  --color-sleep-body: #4a4a4e;
+  --color-sleep-light: #6a6a70;
+  --color-sleep-accent: #5c5c61;
+  --color-sleep-white: #8e8e93;
   --radius-card: 0.75rem;
   --radius-control: 0.5rem;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Geist Sans', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }
-
 body {
   @apply bg-bg font-sans text-ink;
+}
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes blink {
+    0%,
+    92%,
+    100% {
+      transform: scaleY(1);
+    }
+    95% {
+      transform: scaleY(0.1);
+    }
+  }
+  @keyframes scan {
+    0%,
+    100% {
+      transform: translateX(-3px);
+    }
+    50% {
+      transform: translateX(3px);
+    }
+  }
+  @keyframes circle {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    25% {
+      transform: translate(2px, -2px);
+    }
+    75% {
+      transform: translate(-2px, -2px);
+    }
+  }
+  @keyframes bounce {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-3px);
+    }
+  }
+  @keyframes breathe {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.06);
+    }
+  }
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+  @keyframes bubble {
+    0% {
+      transform: translateY(3px);
+      opacity: 0;
+    }
+    30% {
+      opacity: 0.8;
+    }
+    100% {
+      transform: translateY(-10px);
+      opacity: 0;
+    }
+  }
+  .creature-blink {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: blink 4s infinite;
+  }
+  .creature-scan {
+    animation: scan 1.2s ease-in-out infinite;
+  }
+  .creature-circle {
+    animation: circle 1.4s ease-in-out infinite;
+  }
+  .creature-bounce {
+    animation: bounce 0.8s ease-in-out infinite;
+  }
+  .creature-breathe {
+    transform-origin: center;
+    animation: breathe 1.5s ease-in-out infinite;
+  }
+  .creature-pulse {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .creature-bubble {
+    animation: bubble 1.8s ease-out infinite;
+  }
+  .creature-bubble-delay {
+    animation-delay: -0.9s;
+  }
 }

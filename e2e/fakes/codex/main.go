@@ -20,11 +20,20 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-const _version = "codex-cli 0.166.0"
+const (
+	_version  = "codex-cli 0.166.0"
+	_loginURL = "https://login.reef.test/codex/oauth?client_id=fake"
+)
+
+// _models answers model/list in the real app-server's shape (verified on codex-cli 0.165,
+// signed out and offline). reef-probe-codex proves a list came from the provider.
+const _models = `{"data":[{"id":"gpt-6.1-sol","model":"gpt-6.1-sol","displayName":"GPT-6.1-Sol","description":"Workhorse","hidden":false,"isDefault":true},` +
+	`{"id":"reef-probe-codex","model":"reef-probe-codex","displayName":"Reef Probe Codex","description":"Only the fake lists this","hidden":false,"isDefault":false}],"nextCursor":null}`
 
 type (
 	entry struct {
 		Fake string          `json:"fake"`
+		MS   int             `json:"ms"`
 		Dir  string          `json:"dir"`
 		Msg  json.RawMessage `json:"msg"`
 	}
@@ -76,6 +85,12 @@ func run(args []string) error {
 		return nil
 	case slices.Contains(args, "login") && slices.Contains(args, "status"):
 		return status()
+	case len(args) == 1 && args[0] == "login":
+		return fake.Login(fake.ConfigDir("CODEX_HOME", ".codex"), "auth.json",
+			"Starting local login server on http://localhost:1455.",
+			"If your browser did not open, navigate to this URL to authenticate:",
+			"",
+			_loginURL)
 	case slices.Contains(args, "app-server"):
 		return serve(log, args)
 	}
@@ -134,6 +149,8 @@ func serve(log *fake.Log, args []string) error {
 			}
 		}
 		switch m.Method {
+		case "model/list":
+			reply(m.ID, json.RawMessage(_models), "")
 		case "skills/extraRoots/set":
 			var roots struct {
 				ExtraRoots []string `json:"extraRoots"`

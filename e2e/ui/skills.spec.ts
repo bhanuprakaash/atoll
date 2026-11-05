@@ -1,14 +1,16 @@
 import { expect, test } from "@playwright/test";
+import { openThreads } from "./atoll";
 
 test("Chief creates a skill and Bot in chat, and Undo removes the Bot", async ({
   page,
 }) => {
   await page.goto("/");
   await page
-    .getByRole("navigation")
+    .getByRole("navigation", { name: "Bots" })
     .getByText("Chief", { exact: true })
     .click();
-  await page.getByRole("button", { name: "New thread" }).click();
+  const threads = await openThreads(page);
+  await threads.getByRole("button", { name: "New thread" }).click();
   await page
     .getByRole("textbox", { name: "Message" })
     .fill("Create reef-greeting and a Lagoon Bot using claude.");
