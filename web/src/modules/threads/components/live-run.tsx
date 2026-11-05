@@ -31,14 +31,19 @@ export function LiveRun({ id, run, look }: { id: string; run: Live; look?: Creat
   return (
     <div className="flex flex-col gap-2">
       {!run.finished && (
-        <div className="flex items-center gap-2 text-sm text-muted">
-          <Creature look={look} state="working" kind={kind} size={24} />
-          <span role="status" className="motion-safe:animate-pulse">
-            {verb}
-            {run.tool?.target ? ` ${run.tool.target}` : ''}
+        <div className="flex items-center gap-3 text-sm">
+          <span className="relative size-8 flex-none">
+            <span aria-hidden="true" className="bubble" />
+            <span aria-hidden="true" className="bubble bubble-1" />
+            <span aria-hidden="true" className="bubble bubble-2" />
+            <Creature look={look} state="working" kind={kind} size={32} />
+          </span>
+          <span role="status" className="min-w-0 truncate">
+            <span className="tide">{verb}</span>
+            {run.tool?.target && <span className="text-muted"> {run.tool.target}</span>}
           </span>
           {data?.started_at && (
-            <span className="text-xs">
+            <span className="flex-none text-xs text-label tabular-nums">
               {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
             </span>
           )}

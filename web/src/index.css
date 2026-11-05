@@ -246,3 +246,72 @@ body {
     animation-delay: -0.9s;
   }
 }
+
+.tide {
+  color: var(--color-muted);
+}
+.bubble {
+  display: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes tide {
+    from {
+      background-position: 140% 0;
+    }
+    to {
+      background-position: -40% 0;
+    }
+  }
+  .tide {
+    background: linear-gradient(
+      100deg,
+      var(--color-muted) 30%,
+      var(--color-ink) 50%,
+      var(--color-muted) 70%
+    );
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: tide 2.6s ease-in-out infinite;
+  }
+  @keyframes bubble-up {
+    0% {
+      transform: translateY(0) scale(0.4);
+      opacity: 0;
+    }
+    20% {
+      opacity: 0.8;
+    }
+    100% {
+      transform: translateY(-26px) scale(1);
+      opacity: 0;
+    }
+  }
+  .bubble {
+    display: block;
+    position: absolute;
+    bottom: 4px;
+    left: 7px;
+    width: 5px;
+    height: 5px;
+    border: 1.5px solid var(--color-label);
+    border-radius: 999px;
+    opacity: 0;
+    animation: bubble-up 2.8s ease-out infinite;
+  }
+  .bubble-1 {
+    left: 15px;
+    width: 4px;
+    height: 4px;
+    animation-duration: 3.2s;
+    animation-delay: 0.9s;
+  }
+  .bubble-2 {
+    left: 3px;
+    width: 6px;
+    height: 6px;
+    animation-duration: 2.4s;
+    animation-delay: 1.6s;
+  }
+}
