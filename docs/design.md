@@ -280,6 +280,11 @@ Finish
   URL it prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
   SIGTERM; the page shows Reconnecting meanwhile. A page's `window.open` (provider sign-in) opens in
   the default browser. *A fixed address lets the open page reconnect to a restarted sidecar.*
+- The dmg is ad-hoc signed (`signingIdentity: "-"`), not notarized, as old Reef was: free, and a
+  web download opens after System Settings → Privacy & Security → Open Anyway once. CI's `dmg` job
+  builds it on the atoll-mac runner for every push to `main` (manual on an MR). *Developer ID and
+  notarization need the paid Apple Developer Program; add them when outside users need a clean
+  first open.*
 - Provider sign-in state is cached: checked on start, before each run, on Refresh and when a
   sign-in finishes, never on the sidebar's poll.
 - Names: the UI says Reef. Repo, Go module, binary and bundle ID (`dev.atoll.desktop`) say
