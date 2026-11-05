@@ -200,6 +200,23 @@ async function pickModel(page, provider) {
       .click();
   }
 }
+// send types text and sends it, typing again if the composer was replaced meanwhile.
+async function send(page, text) {
+  const box = page.getByRole("textbox", { name: "Message" });
+  const button = page.getByRole("button", { name: "Send" });
+  for (const end = Date.now() + limit; Date.now() < end; await sleep(200)) {
+    await box.fill(text);
+    if (
+      (await button.isEnabled()) &&
+      (await button.click({ timeout: 2000 }).then(
+        () => true,
+        () => false,
+      ))
+    )
+      return;
+  }
+  throw new Error("Send stayed disabled");
+}
 async function openThreads(page) {
   await page.getByRole("button", { name: /^Threads/ }).click();
   const panel = page.getByRole("dialog", { name: /^Threads with / });
@@ -213,10 +230,7 @@ async function uiPass(base, provider) {
   });
   page.setDefaultTimeout(limit);
   const shot = (name) => page.screenshot({ path: join(out, `ui-${name}.png`) });
-  const say = async (text) => {
-    await page.getByRole("textbox", { name: "Message" }).fill(text);
-    await page.getByRole("button", { name: "Send" }).click();
-  };
+  const say = (text) => send(page, text);
   const seen = (re) => page.getByText(re).first().waitFor();
   try {
     const name = `Ada ${Date.now()}`;
@@ -304,10 +318,7 @@ async function screensPass(base, provider) {
   page.setDefaultTimeout(limit);
   const shot = (name) =>
     page.screenshot({ path: join(out, `screen-${name}.png`) });
-  const say = async (text) => {
-    await page.getByRole("textbox", { name: "Message" }).fill(text);
-    await page.getByRole("button", { name: "Send" }).click();
-  };
+  const say = (text) => send(page, text);
   try {
     const name = `Screens ${Date.now()}`;
     await page.goto(base);
@@ -421,10 +432,7 @@ async function chiefPass(base, provider, undo) {
   page.setDefaultTimeout(limit);
   const shot = (name) =>
     page.screenshot({ path: join(out, `chief-${provider}-${name}.png`) });
-  const say = async (text) => {
-    await page.getByRole("textbox", { name: "Message" }).fill(text);
-    await page.getByRole("button", { name: "Send" }).click();
-  };
+  const say = (text) => send(page, text);
   const newThread = async () => {
     const panel = await openThreads(page);
     await panel.getByRole("button", { name: "New thread" }).click();
@@ -510,11 +518,10 @@ async function chiefPass(base, provider, undo) {
         path: repoDir,
       }),
     });
-    await page.goto(`${base}/bots/${lagoon.id}`);
+    await page.goto(`${base}/bots/${lagoon.id}/new`);
     await page
       .getByRole("combobox", { name: "Repo" })
       .selectOption({ label: `atoll-fixture-${provider}` });
-    await newThread();
     await say(fake ? useSkill.fake : useSkill.real);
     await answered(page.getByText(/repo-skill/).first(), "4");
     await page
