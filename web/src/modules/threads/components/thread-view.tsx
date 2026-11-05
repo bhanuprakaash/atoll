@@ -106,14 +106,20 @@ function EmptyThread({
   onSent: (run: Run) => void;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-4">
+    <div className="mx-auto flex w-full max-w-160 flex-col items-center gap-4">
       <Creature look={look} size={88} />
       <h2 className="text-[28px] tracking-tight">What should {botName} work on?</h2>
       {setup && (
         <div className="flex items-center gap-2 text-sm text-muted">
           <BrandLogo brand={setup.provider} className="size-4" />
-          {setup.model} · {setup.skills?.length ?? 0} skills
-          {(setup.connections?.length ?? 0) > 0 && ' · GitLab'}
+          {[
+            setup.model || { claude: 'Claude Code', codex: 'Codex' }[setup.provider],
+            (setup.skills?.length ?? 0) > 0 &&
+              `${setup.skills.length} skill${setup.skills.length === 1 ? '' : 's'}`,
+            (setup.connections?.length ?? 0) > 0 && 'GitLab',
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </div>
       )}
       <div className="flex items-center gap-2 text-sm text-muted">
@@ -271,21 +277,26 @@ export function ThreadView({
       href={mrUrl}
       target="_blank"
       rel="noreferrer"
-      className="self-start rounded-full border border-line px-2 py-1"
+      className="flex h-7 items-center gap-1.5 rounded-full bg-selected pr-1 pl-2.5 text-ink"
     >
-      !{iid ?? 'MR'} {mr?.title ?? thread?.mr_title} ·{' '}
-      {{ merged: 'Merged', closed: 'Closed' }[mrState ?? ''] ?? 'Open'}
+      !{iid ?? 'MR'} {mr?.title ?? thread?.mr_title}
+      <span className="rounded-full bg-segment px-2 py-px text-[11.5px]">
+        {{ merged: 'Merged', closed: 'Closed' }[mrState ?? ''] ?? 'Open'}
+      </span>
     </a>
   );
-  const context = (
+  const hasContext = !!(repoName || thread?.repo_id || thread?.branch || mrChip);
+  const context = hasContext && (
     <>
       {(repoName || thread?.repo_id) && (
-        <span className="rounded-full border border-line px-2 py-1">
+        <span className="flex h-7 items-center gap-1.5 rounded-full bg-selected px-2.5">
           {repoName ?? thread?.repo_id}
         </span>
       )}
       {thread?.branch && (
-        <span className="rounded-full border border-line px-2 py-1">{thread.branch}</span>
+        <span className="flex h-7 items-center gap-1.5 rounded-full bg-selected px-2.5 font-mono">
+          {thread.branch}
+        </span>
       )}
       {mrChip}
     </>
@@ -386,7 +397,7 @@ export function ThreadView({
         {!connected && <p className="text-sm text-muted">Reconnecting</p>}
       </div>
       {!empty && (
-        <div className="mx-auto w-full max-w-3xl p-4">
+        <div className="mx-auto w-full max-w-190 px-4 pb-4.5">
           {memory}
           {thread?.closed ? (
             <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">

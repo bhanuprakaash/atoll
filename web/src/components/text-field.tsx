@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import type { ComponentProps, InputHTMLAttributes } from 'react';
 
 const base = 'text-ink outline-none placeholder:text-muted';
 const sizes = {
@@ -29,6 +29,6 @@ export function TextArea({
   variant = 'md',
   className = '',
   ...props
-}: { variant?: keyof typeof areas } & TextareaHTMLAttributes<HTMLTextAreaElement>) {
+}: { variant?: keyof typeof areas } & ComponentProps<'textarea'>) {
   return <textarea className={`${base} w-full ${areas[variant]} ${className}`} {...props} />;
 }
