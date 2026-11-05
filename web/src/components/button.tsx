@@ -4,7 +4,7 @@ export function Button({ className = '', ...props }: ButtonHTMLAttributes<HTMLBu
   return (
     <button
       type="button"
-      className={`rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink disabled:opacity-50 ${className}`}
+      className={`rounded-full bg-accent px-3 py-1.5 text-[13.5px] text-accent-ink disabled:opacity-50 ${className}`}
       {...props}
     />
   );

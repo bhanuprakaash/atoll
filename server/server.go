@@ -64,6 +64,7 @@ func New(
 	mux.HandleFunc("GET /api/settings", a.getSettings)
 	mux.HandleFunc("PUT /api/settings", a.putSettings)
 	mux.HandleFunc("POST /api/repos", a.createRepo)
+	mux.HandleFunc("POST /api/repos/pick-folder", a.pickRepoFolder)
 	mux.HandleFunc("GET /api/repos", a.listRepos)
 	mux.HandleFunc("POST /api/memory", a.createMemory)
 	mux.HandleFunc("GET /api/memory", a.listMemory)
@@ -240,6 +241,8 @@ type threadSummary struct {
 	RunID     string        `json:"run_id"`
 	RunStatus string        `json:"run_status"`
 	Approval  *run.Approval `json:"approval"`
+	Verb      string        `json:"verb"`
+	UpdatedAt time.Time     `json:"updated_at"`
 }
 
 func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, error) {
@@ -247,7 +250,13 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 	if err != nil {
 		return threadSummary{}, err
 	}
-	out := threadSummary{Thread: t}
+	out := threadSummary{Thread: t, UpdatedAt: t.LastActivity}
+	tool := a.runs.ActiveTool(t.ID)
+	if tool.Verb != "" {
+		out.Verb = strings.TrimSpace(tool.Verb + " " + tool.Target)
+	} else {
+		out.Verb = "Thinking"
+	}
 	msgs, err := a.st.Messages(r.Context(), t.ID)
 	if err != nil {
 		return out, err

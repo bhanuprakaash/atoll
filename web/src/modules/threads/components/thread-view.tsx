@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
+import { Fragment, useState, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router';
+import { BrandLogo } from '@/components/brand-logo';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { Markdown } from '@/components/markdown';
+import { Select } from '@/components/select';
 import {
   useMessages,
   useSendMessage,
@@ -35,21 +37,59 @@ function RunResult({ id, retry }: { id: string; retry: () => void }) {
   ].filter(Boolean);
   return (
     <div className="text-sm text-muted">
-      {run.status === 'done' && (
+      {run.status === 'done' && (parts.length > 0 || duration(run) !== '0s') && (
         <p>
           Worked {duration(run)}
           {parts.length > 0 && ` · ${parts.join(', ')}`}
         </p>
       )}
-      {blocked && blocked.toLowerCase() !== 'none' && <p>Blocked: {blocked}</p>}
-      {run.status === 'stopped' && <p>Stopped by you after {duration(run)}</p>}
+      {blocked && !['none', 'nothing', 'nothing.'].includes(blocked.toLowerCase()) && (
+        <p className="flex items-center gap-2.5 text-ink/80">
+          <span aria-hidden="true" className="size-2 flex-none rounded-full bg-blocked" />
+          Blocked: {blocked}
+        </p>
+      )}
+      {run.status === 'stopped' && (
+        <p className="text-[13px]">Stopped by you after {duration(run)}</p>
+      )}
       {run.status === 'failed' && (
-        <p>
-          Run failed.{' '}
-          <button type="button" className="underline" onClick={retry}>
+        <div className="flex flex-wrap items-center gap-3">
+          <svg
+            aria-hidden="true"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            className="flex-none text-danger"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7.5v5M12 16v.5" />
+          </svg>
+          <span className="min-w-60 flex-1 text-ink/80 [overflow-wrap:anywhere]">
+            Run failed{run.error ? `: ${run.error}` : '.'}
+            {/sign.?in|authenticat|not logged in|login/i.test(run.error) && (
+              <>
+                {' '}
+                <Link
+                  className="text-ink underline decoration-outline underline-offset-3"
+                  to="/settings/providers"
+                >
+                  Sign in
+                </Link>
+              </>
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={retry}
+            className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
+          >
             Retry
           </button>
-        </p>
+        </div>
       )}
     </div>
   );
@@ -59,21 +99,24 @@ function MessageLine({ message, retry }: { message: Message; retry: () => void }
     return (
       <article
         aria-label="You"
-        className="max-w-prose self-end whitespace-pre-wrap rounded-card bg-accent px-4 py-2 text-sm text-accent-ink"
+        className="max-w-[75%] self-end rounded-[22px] bg-accent px-[18px] py-2.5 text-[15px] leading-normal whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]"
       >
         {message.text}
       </article>
     );
   return (
-    <div className="flex max-w-prose flex-col gap-2">
+    <div className="flex max-w-[85%] flex-col gap-2">
       <RunResult id={message.run_id} retry={retry} />
-      <Markdown>{message.text}</Markdown>
+      <div className="text-[15px] leading-normal">
+        <Markdown>{message.text}</Markdown>
+      </div>
     </div>
   );
 }
 function EmptyThread({
   botName,
   look,
+  setup,
   repos,
   repoId,
   setRepoId,
@@ -85,6 +128,7 @@ function EmptyThread({
 }: {
   botName: string;
   look?: CreatureLook;
+  setup?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
   repoId: string;
   setRepoId: (id: string) => void;
@@ -95,28 +139,45 @@ function EmptyThread({
   onSent: (run: Run) => void;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-4">
-      <Creature look={look} size={70} />
-      <h2 className="text-xl">What should {botName} work on?</h2>
-      <label className="text-sm text-muted">
-        Repo{' '}
-        <select
-          aria-label="Repo"
-          value={repoId}
-          onChange={(e) => setRepoId(e.target.value)}
-          className="rounded-card border border-line bg-card p-2"
-        >
-          <option value="">No repo</option>
-          {repos.map((repo) => (
-            <option key={repo.id} value={repo.id}>
-              {repo.name}
-            </option>
-          ))}
-        </select>
-      </label>
+    <div className="mx-auto flex w-full max-w-160 flex-col items-center gap-4">
+      <Creature look={look} size={88} />
+      <h2 className="text-[28px] tracking-tight">What should {botName} work on?</h2>
+      {setup && (
+        <div className="flex items-center gap-2 text-sm text-muted">
+          <BrandLogo brand={setup.provider} className="size-4" />
+          {[
+            setup.model || { claude: 'Claude Code', codex: 'Codex' }[setup.provider],
+            (setup.skills?.length ?? 0) > 0 &&
+              `${setup.skills.length} skill${setup.skills.length === 1 ? '' : 's'}`,
+            (setup.connections?.length ?? 0) > 0 && 'GitLab',
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </div>
+      )}
+      <div className="flex items-center gap-2 text-sm text-muted">
+        Repo
+        <div className="w-56">
+          <Select
+            ariaLabel="Repo"
+            value={repoId}
+            onChange={setRepoId}
+            groups={[
+              {
+                options: [
+                  { value: '', label: 'No repo' },
+                  ...repos.map((repo) => ({ value: repo.id, label: repo.name })),
+                ],
+              },
+            ]}
+            className="h-9 rounded-xl border border-outline bg-box px-3 text-sm"
+          />
+        </div>
+      </div>
       <div className="w-full">
         <Composer
           threadId={threadId}
+          botName={botName}
           disabled={disabled}
           onSent={onSent}
           context={context}
@@ -146,11 +207,13 @@ export function DraftThread({
   botId,
   botName,
   look,
+  bot,
   repos,
 }: {
   botId: string;
   botName: string;
   look?: CreatureLook;
+  bot?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
 }) {
   const navigate = useNavigate();
@@ -176,6 +239,7 @@ export function DraftThread({
         <EmptyThread
           botName={botName}
           look={look}
+          setup={bot}
           repos={repos}
           repoId={repoId}
           setRepoId={setRepoId}
@@ -185,7 +249,7 @@ export function DraftThread({
           onSent={() => {}}
         />
         {create.isError && (
-          <p className="text-center text-sm text-danger">Could not complete the request</p>
+          <p className="text-center text-sm text-danger">{create.error.message}</p>
         )}
       </div>
     </div>
@@ -197,17 +261,19 @@ export function ThreadView({
   botId,
   botName,
   look,
+  bot,
   repos,
   repoName,
-  memory,
+  afterRun,
 }: {
   threadId: string;
   botId: string;
   botName: string;
   look?: CreatureLook;
+  bot?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
   repoName?: string;
-  memory?: ReactNode;
+  afterRun?: (runId: string) => ReactNode;
 }) {
   const navigate = useNavigate();
   const [repoId, setRepoId] = useState('');
@@ -244,30 +310,63 @@ export function ThreadView({
       href={mrUrl}
       target="_blank"
       rel="noreferrer"
-      className="self-start rounded-full border border-line px-2 py-1"
+      className="flex h-7 items-center gap-1.5 rounded-full bg-selected pr-1 pl-2.5 text-ink"
     >
-      !{iid ?? 'MR'} · {{ merged: 'Merged', closed: 'Closed' }[mrState ?? ''] ?? 'Open'}
+      !{iid ?? 'MR'} {mr?.title ?? thread?.mr_title}
+      <span className="rounded-full bg-segment px-2 py-px text-[11.5px]">
+        {{ merged: 'Merged', closed: 'Closed' }[mrState ?? ''] ?? 'Open'}
+      </span>
     </a>
   );
+  const chip = 'flex h-7 items-center gap-1.5 rounded-full bg-selected px-2.5';
   const context = (
     <>
-      {(repoName || thread?.repo_id) && (
-        <span className="rounded-full border border-line px-2 py-1">
-          {repoName ?? thread?.repo_id}
-        </span>
-      )}
+      <span className={chip}>
+        <svg
+          aria-hidden="true"
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </svg>
+        {repoName ?? (thread?.repo_id || 'No repo')}
+      </span>
       {thread?.branch && (
-        <span className="rounded-full border border-line px-2 py-1">{thread.branch}</span>
+        <span className={chip}>
+          <svg
+            aria-hidden="true"
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="6" cy="5" r="2" />
+            <circle cx="6" cy="19" r="2" />
+            <circle cx="18" cy="7" r="2" />
+            <path d="M6 7v10M18 9c0 5-6 4-12 8" />
+          </svg>
+          <span className="font-mono">{thread.branch}</span>
+        </span>
       )}
       {mrChip}
     </>
   );
   const empty = messages.length === 0 && !activeId;
+  const firstUserId = messages.find((m) => m.role === 'user')?.id;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {!empty && (
         <div className="flex justify-end px-4 py-2 text-xs text-muted">
-          {worktreeRemoved && <span>Worktree removed </span>}
           {thread?.closed ? (
             'Closed'
           ) : (
@@ -280,47 +379,133 @@ export function ThreadView({
       <div
         role="log"
         aria-label="Messages"
-        className={`flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5 ${empty ? 'justify-center' : ''}`}
+        className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-7 ${empty ? 'justify-center' : ''}`}
       >
-        {empty && (
-          <EmptyThread
-            botName={botName}
-            look={look}
-            repos={repos}
-            repoId={repoId}
-            setRepoId={setRepoId}
-            threadId={threadId}
-            disabled={!connected}
-            context={context}
-            sendFirst={sendFirst}
-            onSent={(run) => begin(run.id)}
-          />
-        )}
-        {messages.map((m) => (
-          <MessageLine key={m.id} message={m} retry={retry} />
-        ))}
-        {Object.entries(runs).map(([id, run]) => (
-          <div key={id}>
-            <LiveRun run={run} look={look} />
-            {run.finished && !answered.has(id) && <RunResult id={id} retry={retry} />}
-          </div>
-        ))}
-        {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
-          <RunResult id={thread.run_id} retry={retry} />
-        )}
-        {mrChip}
-        {!connected && <p className="text-sm text-muted">Reconnecting</p>}
+        <div className="mx-auto flex w-full max-w-190 flex-col gap-4.5 pt-6 pb-4">
+          {empty && (
+            <EmptyThread
+              botName={botName}
+              look={look}
+              setup={bot}
+              repos={repos}
+              repoId={repoId}
+              setRepoId={setRepoId}
+              threadId={threadId}
+              disabled={!connected}
+              context={context}
+              sendFirst={sendFirst}
+              onSent={(run) => begin(run.id)}
+            />
+          )}
+          {messages.map((m, index) => {
+            const day = new Date(m.created_at);
+            const previous = index > 0 ? new Date(messages[index - 1].created_at) : null;
+            const valid = Number.isFinite(day.getTime()) && day.getFullYear() > 1;
+            const showDay = valid && (!previous || day.toDateString() !== previous.toDateString());
+            return (
+              <Fragment key={m.id}>
+                {showDay && (
+                  <div className="flex items-center gap-3 text-xs text-label">
+                    <span className="h-px flex-1 bg-line" />
+                    {day.toDateString() === new Date().toDateString()
+                      ? 'Today'
+                      : day.toLocaleDateString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                    <span className="h-px flex-1 bg-line" />
+                  </div>
+                )}
+                <MessageLine message={m} retry={retry} />
+                {thread?.branch && m.role === 'user' && m.id === firstUserId && (
+                  <p className="text-sm text-muted">
+                    Working on <span className="font-mono text-ink/80">{thread.branch}</span>
+                  </p>
+                )}
+                {m.role === 'bot' &&
+                  messages[index + 1]?.run_id !== m.run_id &&
+                  afterRun?.(m.run_id)}
+              </Fragment>
+            );
+          })}
+          {Object.entries(runs).map(([id, run]) => (
+            <div key={id}>
+              <LiveRun id={id} run={run} look={look} />
+              {run.finished && !answered.has(id) && (
+                <>
+                  <RunResult id={id} retry={retry} />
+                  {afterRun?.(id)}
+                </>
+              )}
+            </div>
+          ))}
+          {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
+            <>
+              <RunResult id={thread.run_id} retry={retry} />
+              {afterRun?.(thread.run_id)}
+            </>
+          )}
+          {mrChip}
+          {(worktreeRemoved || thread?.worktree_removed) && (
+            <p className="text-sm text-muted">
+              {iid && mrState === 'merged' ? `!${iid} merged · ` : ''}worktree cleaned up
+            </p>
+          )}
+          {thread?.closed && (
+            <p className="self-center rounded-full border border-line px-4 py-2 text-sm text-muted">
+              Closed{' '}
+              {thread.closed_at &&
+                (new Date(thread.closed_at).toDateString() === new Date().toDateString()
+                  ? 'today'
+                  : new Date(thread.closed_at).toLocaleDateString())}{' '}
+              {thread.closed_at &&
+                new Date(thread.closed_at).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}{' '}
+              {thread.snapshot_ref && ' · unfinished work saved'}
+            </p>
+          )}
+          {!connected && <p className="text-sm text-muted">Reconnecting</p>}
+        </div>
       </div>
       {!empty && (
-        <div className="mx-auto w-full max-w-3xl p-4">
-          {memory}
-          <Composer
-            threadId={threadId}
-            runId={activeId}
-            disabled={!connected || !!thread?.closed}
-            onSent={(run) => begin(run.id)}
-            context={context}
-          />
+        <div className="mx-auto w-full max-w-204 px-7 pb-4.5">
+          {thread?.closed ? (
+            <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
+              <div className="flex-1">
+                This thread is closed{' '}
+                {thread.branch && (
+                  <span className="block font-mono text-xs text-muted">
+                    {[
+                      thread.branch,
+                      iid && `!${iid} ${mrState || 'open'}`,
+                      (worktreeRemoved || thread.worktree_removed) && 'worktree cleaned up',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="rounded-full bg-accent px-4 py-2 text-accent-ink"
+                onClick={() => navigate(`/bots/${botId}/new`)}
+              >
+                New thread with {botName}
+              </button>
+            </div>
+          ) : (
+            <Composer
+              threadId={threadId}
+              botName={botName}
+              runId={activeId}
+              disabled={!connected || !!thread?.closed}
+              onSent={(run) => begin(run.id)}
+              context={context}
+            />
+          )}
         </div>
       )}
     </div>

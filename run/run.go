@@ -126,7 +126,8 @@ type (
 		log      *os.File
 		open     int                      // approvals open
 		calls    map[string]chan struct{} // closed once the tool call with that id is published
-		shown    []string                 // memory ids the run's memory tools returned
+		tool     ToolCall
+		shown    []string // memory ids the run's memory tools returned
 	}
 
 	// Event is one event on a thread's stream. Data is one of the types below.
@@ -148,6 +149,7 @@ type (
 		Name   string          `json:"name"`
 		Kind   string          `json:"kind"`
 		Target string          `json:"target"`
+		Verb   string          `json:"verb"`
 		Input  json.RawMessage `json:"input"`
 	}
 
@@ -316,6 +318,16 @@ func (m *Manager) Active(threadID string) (runID string, approvals []Approval, o
 		}
 	}
 	return a.run.ID, approvals, true
+}
+
+// ActiveTool returns the latest tool of an active run.
+func (m *Manager) ActiveTool(threadID string) ToolCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if a := m.runs[threadID]; a != nil {
+		return a.tool
+	}
+	return ToolCall{}
 }
 
 // Answer gives the user's answer to the open approval id. It wraps ErrNotFound when none is open.
@@ -608,13 +620,31 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 				}
 			case provider.KindToolCall:
 				kind, target := ToolKind(ev.Name, ev.Input)
+				if strings.Contains(ev.Name, "read_memory") && m.cfg.Memory != nil {
+					var input struct {
+						ID        string `json:"id"`
+						Arguments struct {
+							ID string `json:"id"`
+						} `json:"arguments"`
+					}
+					if json.Unmarshal(ev.Input, &input) == nil {
+						if input.Arguments.ID != "" {
+							input.ID = input.Arguments.ID
+						}
+						item, err := m.cfg.Memory.Read(a.ctx, input.ID)
+						shelf, shelfErr := m.shelf(a.ctx, a.token)
+						if err == nil && shelfErr == nil && shelf.Has(item) {
+							target = shortMemory(item.Body)
+						}
+					}
+				}
 				if !strings.HasSuffix(ev.Name, "finish_run") {
 					if err := m.cfg.Store.CountTool(a.ctx, a.run.ID, kind); err != nil {
 						m.cfg.Log.Warn("count tool", "error", err)
 					}
 				}
 				m.publish(a, EventToolCall,
-					ToolCall{RunID: a.run.ID, ID: ev.ID, Name: ev.Name, Input: ev.Input, Kind: kind, Target: target})
+					ToolCall{RunID: a.run.ID, ID: ev.ID, Name: ev.Name, Input: ev.Input, Kind: kind, Target: target, Verb: ToolVerb(ev.Name, kind)})
 				if ch := m.called(a, ev.ID); !isClosed(ch) {
 					close(ch)
 				}
@@ -684,6 +714,9 @@ func (m *Manager) publish(a *active, typ string, data any) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if call, ok := data.(ToolCall); ok {
+		a.tool = call
+	}
 	m.deliver(a.threadID, a.run.ID, a.log, typ, data)
 }
 
@@ -794,10 +827,43 @@ func isClosed(ch chan struct{}) bool {
 	}
 }
 
+// ToolVerb describes the current work without exposing provider tool names.
+func ToolVerb(name, kind string) string {
+	switch {
+	case strings.Contains(name, "start_work"):
+		return "Starting a branch"
+	case strings.Contains(name, "track_mr"):
+		return "Opening the MR"
+	case strings.Contains(name, "retire_memory"), strings.Contains(name, "remember"):
+		return "Taking a note"
+	case strings.Contains(name, "recall"), strings.Contains(name, "read_memory"):
+		return "Remembering"
+	}
+	switch kind {
+	case "search":
+		return "Searching"
+	case "read":
+		return "Reading"
+	case "edit":
+		return "Editing"
+	case "command":
+		return "Running"
+	case "memory":
+		return "Remembering"
+	case "platform":
+		return "Setting up"
+	default:
+		return "Thinking"
+	}
+}
+
 // ToolKind classifies a provider tool and extracts its target.
 func ToolKind(name string, input json.RawMessage) (kind, target string) {
 	var v struct {
 		Pattern  string `json:"pattern"`
+		Query    string `json:"query"`
+		Topic    string `json:"topic"`
+		Name     string `json:"name"`
 		FilePath string `json:"file_path"`
 		Command  string `json:"command"`
 		Actions  []struct {
@@ -840,7 +906,10 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		return "command", v.Command
 	}
 	if strings.Contains(name, "memory") || strings.Contains(name, "remember") || strings.Contains(name, "recall") {
-		return "memory", ""
+		if v.Query != "" {
+			return "memory", v.Query
+		}
+		return "memory", v.Topic
 	}
 	if strings.Contains(name, "start_work") || strings.Contains(name, "track_mr") {
 		return "work", ""
@@ -849,7 +918,15 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		name == provider.ToolEditBot || name == provider.ToolCreateSkill ||
 		name == provider.ToolEditSkill || name == provider.ToolRegisterRepo ||
 		name == provider.ToolAttachConnection {
-		return "platform", ""
+		return "platform", v.Name
 	}
 	return "other", ""
+}
+
+func shortMemory(body string) string {
+	runes := []rune(strings.Join(strings.Fields(body), " "))
+	if len(runes) > 80 {
+		return string(runes[:80]) + "…"
+	}
+	return string(runes)
 }

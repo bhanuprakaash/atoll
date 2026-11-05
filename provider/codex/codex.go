@@ -47,8 +47,9 @@ type (
 		writeMu  sync.Mutex    // serializes writes to stdin
 		mu       sync.Mutex    // guards used, cmd and Interrupt
 		used     bool
-		msgID    string          // agent message item the last text delta belonged to; owned by run
-		wrote    bool            // the turn in progress has sent text; owned by run
+		msgID    string // agent message item the last text delta belonged to; owned by run
+		wrote    bool   // the turn in progress has sent text; owned by run
+		changes  map[string]json.RawMessage
 		notes    map[string]bool // commentary agent message items of the turn; owned by run
 
 		// asks holds the raw request id of each open approval, by event ID.
@@ -86,11 +87,12 @@ type (
 // New returns a Session that has not started.
 func New() *Session {
 	return &Session{
-		events: make(chan provider.Event, 1),
-		asks:   map[string]json.RawMessage{},
-		notes:  map[string]bool{},
-		done:   make(chan struct{}),
-		exited: make(chan struct{}),
+		events:  make(chan provider.Event, 1),
+		asks:    map[string]json.RawMessage{},
+		notes:   map[string]bool{},
+		changes: map[string]json.RawMessage{},
+		done:    make(chan struct{}),
+		exited:  make(chan struct{}),
 	}
 }
 
@@ -392,7 +394,19 @@ func (s *Session) serverRequest(m message) bool {
 	s.askMu.Lock()
 	s.asks[id] = m.ID
 	s.askMu.Unlock()
-	return s.emit(provider.Event{Kind: provider.KindApproval, ID: id, Name: name, Input: m.Params})
+	input := m.Params
+	if name == "fileChange" {
+		if item, ok := s.changes[m.body().ItemID]; ok {
+			var params, change map[string]json.RawMessage
+			if json.Unmarshal(input, &params) == nil && json.Unmarshal(item, &change) == nil {
+				params["changes"] = change["changes"]
+				if merged, err := json.Marshal(params); err == nil {
+					input = merged
+				}
+			}
+		}
+	}
+	return s.emit(provider.Event{Kind: provider.KindApproval, ID: id, Name: name, Input: input})
 }
 
 // handle emits the event for m and reports whether to keep reading. Text of a commentary agent
@@ -403,13 +417,20 @@ func (s *Session) handle(m message) bool {
 	case "turn/started":
 		s.msgID, s.wrote = "", false
 		clear(s.notes)
+		clear(s.changes)
 	case "item/started":
 		var it struct {
 			ID    string `json:"id"`
 			Phase string `json:"phase"`
+			Type  string `json:"type"`
 		}
-		if json.Unmarshal(m.body().Item, &it) == nil && it.Phase == "commentary" {
-			s.notes[it.ID] = true
+		if json.Unmarshal(m.body().Item, &it) == nil {
+			if it.Phase == "commentary" {
+				s.notes[it.ID] = true
+			}
+			if it.Type == "fileChange" {
+				s.changes[it.ID] = m.body().Item
+			}
 		}
 	case "item/agentMessage/delta":
 		itemID := m.body().ItemID

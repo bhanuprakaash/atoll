@@ -477,3 +477,40 @@ func eventTypes(t *testing.T, e *env, runID string) []string {
 	}
 	return types
 }
+
+func TestToolVerb(t *testing.T) {
+	tests := []struct{ name, tool, kind, want string }{
+		{"search", "Grep", "search", "Searching"},
+		{"recall", "mcp__atoll__recall", "memory", "Remembering"},
+		{"read memory", "read_memory", "memory", "Remembering"},
+		{"retire", "retire_memory", "memory", "Taking a note"},
+		{"remember", "remember", "memory", "Taking a note"},
+		{"branch", "start_work", "work", "Starting a branch"},
+		{"mr", "track_mr", "work", "Opening the MR"},
+		{"platform", "create_bot", "platform", "Setting up"},
+		{"edit", "Edit", "edit", "Editing"},
+		{"command", "Bash", "command", "Running"},
+		{"unknown", "unknown", "other", "Thinking"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ToolVerb(tt.tool, tt.kind); got != tt.want {
+				t.Errorf("ToolVerb(%q, %q) = %q, want %q", tt.tool, tt.kind, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShortMemory(t *testing.T) {
+	tests := []struct{ name, body, want string }{
+		{name: "whitespace", body: "first\n  second", want: "first second"},
+		{name: "rune boundary", body: strings.Repeat("界", 81), want: strings.Repeat("界", 80) + "…"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shortMemory(tt.body); got != tt.want {
+				t.Errorf("shortMemory() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

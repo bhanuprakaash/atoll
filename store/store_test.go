@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"atoll/store"
 )
@@ -196,6 +197,110 @@ func TestStore_UndoChange(t *testing.T) {
 			}
 			if _, err := st.UndoChange(ctx, c.ID); !errors.Is(err, store.ErrUndone) {
 				t.Fatalf("second undo = %v", err)
+			}
+		})
+	}
+}
+
+func TestStore_MessageTimestamps(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, run, err := st.StartRun(ctx, thread.ID, "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishRun(ctx, run.ID, store.StatusDone, "reply", ""); err != nil {
+		t.Fatal(err)
+	}
+	finished, err := st.Run(ctx, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := st.Messages(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		role string
+		want time.Time
+	}{{"user", finished.StartedAt}, {"bot", finished.FinishedAt}} {
+		t.Run(tt.role, func(t *testing.T) {
+			for _, message := range messages {
+				if message.Role == tt.role {
+					if !message.CreatedAt.Equal(tt.want) || message.CreatedAt.IsZero() {
+						t.Fatalf("timestamp = %v, want %v", message.CreatedAt, tt.want)
+					}
+					return
+				}
+			}
+			t.Fatalf("no %s message", tt.role)
+		})
+	}
+}
+
+func TestStore_ThreadDetails(t *testing.T) {
+	ctx := t.Context()
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetMR(ctx, thread.ID, "https://gitlab.example/p/-/merge_requests/43", "merged", "Fix the wizard"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RemoveWorktree(ctx, thread.ID, "refs/atoll/unfinished/test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetClosed(ctx, thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	got, err := st.Thread(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		got, want any
+	}{
+		{"title", got.MRTitle, "Fix the wizard"},
+		{"state", got.MRState, "merged"},
+		{"removed", got.WorktreeRemoved, true},
+		{"snapshot", got.SnapshotRef, "refs/atoll/unfinished/test"},
+		{"closed", got.Closed, true},
+		{"closed time", got.ClosedAt != nil && !got.ClosedAt.IsZero(), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("got %v, want %v", tt.got, tt.want)
 			}
 		})
 	}

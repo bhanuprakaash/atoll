@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Navigate, Outlet, useNavigate, useParams } from 'react-router';
 import { Creature } from '@/components/creature';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
+import { BotMemory } from '@/modules/memory/components/bot-memory';
 import { BotSettings } from '@/modules/bots/components/bot-settings';
 import { useConnections } from '@/modules/connections/api/connections';
 import { useProviders } from '@/modules/providers/api/providers';
@@ -25,21 +26,40 @@ export function BotHeader({
   onSettings?: () => void;
 }) {
   return (
-    <header className="flex min-h-16 items-center gap-3 border-b border-line px-5 py-2">
+    <header
+      data-tauri-drag-region="deep"
+      className="flex min-h-16 items-center gap-3 border-b border-line px-5 py-2"
+    >
       {bot && <Creature look={bot.look} state={bot.state} size={30} />}
       <div className="min-w-0 flex-1">
-        <h1>{bot?.name}</h1>
+        <h1 className="text-base">{bot?.name}</h1>
         <div className="truncate text-xs text-muted">{title}</div>
       </div>
       <button
         type="button"
         aria-label={waiting ? `Threads, ${waiting} waiting` : 'Threads'}
         onClick={onThreads}
-        className="flex items-center gap-2 rounded-full border border-line px-3 py-2 text-sm"
+        className="flex h-8.5 items-center gap-2 rounded-full border border-outline pr-3 pl-2.5 text-[13.5px] hover:bg-line"
       >
+        <svg
+          aria-hidden="true"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        >
+          <path d="M4 6h16M4 12h16M4 18h10" />
+        </svg>
         Threads
         {waiting > 0 && (
-          <span aria-hidden="true" className="rounded-full bg-danger px-2 text-xs">
+          <span
+            aria-hidden="true"
+            className="flex items-center gap-1 rounded-full bg-needs-badge px-2 py-px text-xs text-needs-ink"
+          >
+            <span className="size-1.5 rounded-full bg-danger" />
             {waiting}
           </span>
         )}
@@ -81,23 +101,26 @@ export function BotPage() {
   const navigate = useNavigate();
   const bot = bots.find((item) => item.id === botId);
   return (
-    <>
-      <BotHeader
-        bot={bot}
-        onSettings={() => setSettingsOpen(true)}
-        onThreads={() => setPanel(true)}
-        title={threads.find((thread) => thread.id === threadId)?.title}
-        waiting={threads.filter((thread) => thread.approval).length}
-      />
-      <Outlet />
+    <div className="flex min-h-0 min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-[999_1_400px] flex-col">
+        <BotHeader
+          bot={bot}
+          onSettings={() => setSettingsOpen(true)}
+          onThreads={() => setPanel(true)}
+          title={threads.find((thread) => thread.id === threadId)?.title}
+          waiting={threads.filter((thread) => !thread.closed && thread.approval).length}
+        />
+        <Outlet />
+      </div>
       {settingsOpen && bot && (
         <BotSettings
           key={bot.id}
           bot={bot}
+          memory={<BotMemory botId={bot.id} />}
           onClose={() => setSettingsOpen(false)}
           repos={repos}
           skills={skills}
-          connections={connections.filter((c) => c.status === 'connected')}
+          connections={connections}
           modelControl={(provider, model, onChange) => (
             <ModelSelect
               providers={providers}
@@ -112,6 +135,8 @@ export function BotPage() {
         <ThreadsPanel
           name={bot?.name ?? ''}
           threads={threads}
+          repos={repos}
+          currentId={threadId}
           onClose={() => setPanel(false)}
           onSelect={(id) => {
             setPanel(false);
@@ -123,7 +148,7 @@ export function BotPage() {
           }}
         />
       )}
-    </>
+    </div>
   );
 }
 

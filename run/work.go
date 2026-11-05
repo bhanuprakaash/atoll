@@ -40,6 +40,7 @@ type (
 		RunID string `json:"run_id"`
 		URL   string `json:"url"`
 		State string `json:"state"`
+		Title string `json:"title"`
 	}
 
 	// WorktreeRemoved is sent once the worktree folder is gone. Reason is merged or closed;
@@ -70,6 +71,9 @@ func (m *Manager) WorktreeRoot(ctx context.Context) (string, error) {
 	}
 	return root, nil
 }
+
+// DataDir returns the folder that holds Atoll's runs, threads and database.
+func (m *Manager) DataDir() string { return m.cfg.DataDir }
 
 // SetWorktreeRoot stores the folder worktrees are made under from now on.
 func (m *Manager) SetWorktreeRoot(ctx context.Context, root string) error {
@@ -119,15 +123,23 @@ func (m *Manager) StartWork(
 }
 
 // TrackMR records url as the MR of the thread of the run with token, opened.
-func (m *Manager) TrackMR(ctx context.Context, token, url string) error {
+func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 	a, err := m.byToken(token)
 	if err != nil {
 		return err
 	}
-	if err := m.cfg.Store.SetMR(ctx, a.threadID, url, _mrOpened); err != nil {
+	if title == "" {
+		thread, threadErr := m.cfg.Store.Thread(ctx, a.threadID)
+		if threadErr == nil && thread.RepoID != "" {
+			if rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID); repoErr == nil {
+				_, title, _ = m.mrState(rp.Path, url, m.gitlabEnv(a.bot))
+			}
+		}
+	}
+	if err := m.cfg.Store.SetMR(ctx, a.threadID, url, _mrOpened, title); err != nil {
 		return err
 	}
-	m.publish(a, EventMRUpdated, MRUpdated{RunID: a.run.ID, URL: url, State: _mrOpened})
+	m.publish(a, EventMRUpdated, MRUpdated{RunID: a.run.ID, URL: url, State: _mrOpened, Title: title})
 	return nil
 }
 
@@ -182,7 +194,7 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	if err := repo.Remove(ctx, rp.Path, t.Worktree); err != nil {
 		return err
 	}
-	if err := m.cfg.Store.SetWorktree(ctx, t.ID, t.Branch, ""); err != nil {
+	if err := m.cfg.Store.RemoveWorktree(ctx, t.ID, ref); err != nil {
 		return err
 	}
 	m.announce(t.ID, runID, EventWorktreeRemoved,
@@ -324,19 +336,22 @@ func (m *Manager) check(t store.Thread) error {
 	if err != nil {
 		return err
 	}
-	state, err := m.mrState(rp.Path, t.MRURL, m.gitlabEnv(bot))
+	state, title, err := m.mrState(rp.Path, t.MRURL, m.gitlabEnv(bot))
 	if err != nil {
 		return err
 	}
-	if state != t.MRState {
+	if t.MRTitle != "" {
+		title = t.MRTitle
+	}
+	if state != t.MRState || title != t.MRTitle {
 		runID, err := m.cfg.Store.LatestRun(m.ctx, t.ID)
 		if err != nil {
 			return err
 		}
-		if err := m.cfg.Store.SetMR(m.ctx, t.ID, t.MRURL, state); err != nil {
+		if err := m.cfg.Store.SetMR(m.ctx, t.ID, t.MRURL, state, title); err != nil {
 			return err
 		}
-		m.announce(t.ID, runID, EventMRUpdated, MRUpdated{RunID: runID, URL: t.MRURL, State: state})
+		m.announce(t.ID, runID, EventMRUpdated, MRUpdated{RunID: runID, URL: t.MRURL, State: state, Title: title})
 	}
 	if state != _mrMerged {
 		return nil
@@ -353,7 +368,7 @@ func (m *Manager) check(t store.Thread) error {
 }
 
 // mrState asks glab for the state of the MR at url, from inside the repo at dir.
-func (m *Manager) mrState(dir, url string, env []string) (string, error) {
+func (m *Manager) mrState(dir, url string, env []string) (string, string, error) {
 	cmd := exec.CommandContext(m.ctx, "glab", "mr", "view", url, "--output", "json")
 	cmd.Dir = dir
 	cmd.Env = provider.Env(env...)
@@ -363,13 +378,14 @@ func (m *Manager) mrState(dir, url string, env []string) (string, error) {
 		err = fmt.Errorf("%w: %s", err, bytes.TrimSpace(exit.Stderr))
 	}
 	if err != nil {
-		return "", fmt.Errorf("glab mr view: %w", err)
+		return "", "", fmt.Errorf("glab mr view: %w", err)
 	}
 	var mr struct {
 		State string `json:"state"`
+		Title string `json:"title"`
 	}
 	if err := json.Unmarshal(out, &mr); err != nil || strings.TrimSpace(mr.State) == "" {
-		return "", fmt.Errorf("glab mr view: no state in %q", out)
+		return "", "", fmt.Errorf("glab mr view: no state in %q", out)
 	}
-	return mr.State, nil
+	return mr.State, mr.Title, nil
 }

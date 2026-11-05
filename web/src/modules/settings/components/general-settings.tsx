@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { controlClass, Field } from '@/components/field';
+import { Box, RowText, rowClass, SectionHead } from '@/components/settings-ui';
+import { TextField } from '@/components/text-field';
 import { type Settings, useSaveSettings, useSettings } from '@/modules/settings/api/settings';
 
 function GeneralForm({ settings }: { settings: Settings }) {
@@ -8,35 +9,41 @@ function GeneralForm({ settings }: { settings: Settings }) {
   const save = useSaveSettings();
   function persist() {
     if (name !== settings.user_name || root !== settings.worktree_root)
-      save.mutate({ user_name: name, worktree_root: root });
+      save.mutate({ ...settings, user_name: name, worktree_root: root });
   }
   return (
-    <div className="flex max-w-xl flex-col gap-5 p-6">
-      <h1 className="text-2xl font-medium">General</h1>
-      <Field label="Your name">
-        {(id) => (
-          <input
-            id={id}
-            className={controlClass}
+    <>
+      <SectionHead title="General" lead="Who you are to your Bots, and where their work goes." />
+      <Box>
+        <div className={rowClass}>
+          <RowText title="Your name" detail="Bots use it when they talk to you" />
+          <TextField
+            aria-label="Your name"
+            size="sm"
+            width="w-55"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onBlur={persist}
           />
-        )}
-      </Field>
-      <Field label="Worktree folder">
-        {(id) => (
-          <input
-            id={id}
-            className={controlClass}
+        </div>
+        <div className={rowClass}>
+          <RowText title="Worktree folder" detail="Where Bots make a worktree for each edit" />
+          <TextField
+            aria-label="Worktree folder"
+            size="sm"
+            width="w-80"
+            className="font-mono text-[13px]"
             value={root}
             onChange={(e) => setRoot(e.target.value)}
             onBlur={persist}
           />
-        )}
-      </Field>
+        </div>
+        <div className={rowClass}>
+          <RowText title="App data" detail={settings.data_dir} mono />
+        </div>
+      </Box>
       {save.isError && <p className="text-danger">{save.error.message}</p>}
-    </div>
+    </>
   );
 }
 export function GeneralSettings() {

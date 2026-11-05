@@ -6,7 +6,7 @@ import { getThread } from '@/modules/threads/api/threads';
 
 export type LiveRun = {
   text: string;
-  tool?: { kind: ToolKind; target: string };
+  tool?: { kind: ToolKind; target: string; name: string; verb: string };
   approvals: { id: string; tool: string; input: unknown }[];
   finished?: { status: string; error: string; blocked?: string };
 };
@@ -19,11 +19,14 @@ export function useThreadEvents(threadId: string) {
   const queryClient = useQueryClient();
   const [runs, setRuns] = useState<Record<string, LiveRun>>({});
   const [connected, setConnected] = useState(true);
-  const [mr, setMr] = useState<{ url: string; state: string } | null>(null);
+  const [mr, setMr] = useState<{ url: string; state: string; title: string } | null>(null);
   const [worktreeRemoved, setWorktreeRemoved] = useState(false);
   const runsRef = useRef(runs);
   runsRef.current = runs;
   useEffect(() => {
+    setMr(null);
+    setWorktreeRemoved(false);
+    setRuns({});
     let reconnecting = false;
     const source = new EventSource(`/api/threads/${threadId}/events`);
     const refresh = () => {
@@ -76,9 +79,9 @@ export function useThreadEvents(threadId: string) {
       setConnected(false);
     };
     on<{ text: string }>('text', (d, run) => ({ ...run, text: run.text + d.text }));
-    on<{ kind: ToolKind; target: string }>('tool_call', (d, run) => ({
+    on<{ kind: ToolKind; target: string; name: string; verb: string }>('tool_call', (d, run) => ({
       ...run,
-      tool: { kind: d.kind, target: d.target },
+      tool: { kind: d.kind, target: d.target, name: d.name, verb: d.verb },
     }));
     on<{ id: string; tool: string; input: unknown }>('approval', (d, run) => withApproval(run, d));
     on<{ status: string; error: string; blocked?: string }>('run_finished', (d, run) => ({
@@ -88,10 +91,14 @@ export function useThreadEvents(threadId: string) {
     source.addEventListener('run_finished', refresh);
     for (const type of ['platform_changed', 'memory_saved', 'worktree_created'])
       source.addEventListener(type, refresh);
-    source.addEventListener('mr_updated', (e) =>
-      setMr(JSON.parse((e as MessageEvent<string>).data)),
-    );
-    source.addEventListener('worktree_removed', () => setWorktreeRemoved(true));
+    source.addEventListener('mr_updated', (e) => {
+      setMr(JSON.parse((e as MessageEvent<string>).data));
+      refresh();
+    });
+    source.addEventListener('worktree_removed', () => {
+      setWorktreeRemoved(true);
+      refresh();
+    });
     return () => source.close();
   }, [threadId, queryClient]);
   return {

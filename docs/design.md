@@ -47,6 +47,9 @@ Undo of a repo registration is refused while a thread uses the repo.
 
 ## Threads and runs
 
+- Thread records retain the tracked MR title and state, close time, and worktree cleanup and snapshot
+  status so the chat and thread list can show them after a restart. `track_mr` accepts the MR title
+  with its URL. The thread list includes the current work verb and pending approval.
 - A thread is a chat with one Bot. Each message starts a run that resumes the Bot's session and
   exits after replying. No agent process lives between messages.
 - Resume by default. A fresh session only comes from starting a new thread or delegation.
@@ -241,8 +244,10 @@ Finish
 - Working shows by tool kind, with old Reef's rising bubbles: no tool yet, the eyes circle up;
   reading, searching or recalling, the eyes scan; editing, writing, remembering or changing the
   platform, it bounces; running a command, it breathes.
-- Sidebar: one row per Bot (creature, name, latest activity, time), Chief first. `+` opens New Bot;
-  the bottom user row opens Settings. No group chats.
+- Sidebar: a search field on top filters Bots by name, `+` beside it; no logo (the user found it
+  redundant).
+  One row per Bot (creature, name, latest activity, time), Chief first. `+` opens New Bot; the
+  bottom user row opens Settings. No group chats.
 - Bot header: creature, Bot name, thread title, a Threads button and a Bot settings icon. The
   Threads button carries a red count of threads waiting on the user and opens a panel: Needs you
   (and what it waits for), Running (live verb, branch, MR), Recent, then Closed folded; New thread
@@ -262,22 +267,33 @@ Finish
 - Composer: the message, then the thread's repo, branch and MR as chips, and Send or Stop. A new
   thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message.
-- Bot settings open as a right panel over the thread and save as you change them, applying from the
-  next run: creature, name, model, persona, skills, repos, connections, memory (its own lessons and
-  what it saved) and the platform switch. Skills, repos and connections are lists with logos, a
-  remove button and an Add row; a connection that is not signed in offers Connect inline with
-  GitLab's device code. The model is a searchable select grouped by provider.
-- New Bot is a full page: the form on the left, a live preview (the card and the sidebar row) on
-  the right, and a link to ask Chief instead. Create opens the new Bot's empty thread.
+- Bot settings open as a docked right panel beside the usable thread and save as you change them,
+  applying from the next run: creature, name, model, persona, skills, repos, connections, memory (its own lessons and
+  what it saved) and the platform switch. Skills, repos and connections are lists with icons, a
+  remove button and an Add row that opens a dialog to pick several at once (search, tick to add or
+  remove, Done); a connection that is not signed in offers Connect inline with
+  GitLab's device code. The model is a searchable select grouped by provider. *The user preferred
+  a docked panel to an overlay.*
+- A Bot's look is picked the same way everywhere: one large creature with previous/next arrows
+  and dots (the user preferred it to a grid).
+- New Bot is a full page with a centred form grouped into Basics, Brain and Access, and a link
+  to ask Chief instead. Wide windows show a live card and sidebar row preview on the right. Create
+  opens the new Bot's empty thread.
 - Settings: General (name, worktree folder), Providers, Connections, Skills, Repos, Memory, one
-  list each. A skill opens in a wide right panel: name, when to use it, the `SKILL.md` text and the
-  Bots that use it. Providers show where each CLI was found, its version, models and sign-in state.
+  list each. Content to the right of the section navigation is centred, with a maximum width of
+  720px. Add repo opens a dialog (name, path, Choose… for the native folder picker, which the Go
+  sidecar opens with `osascript`, so the UI still talks to Go over HTTP only); with no repos yet the
+  same form shows inline. New skill opens an empty editor and creates the skill only on Create.
+  A skill opens in a wide right panel: name, when to use it, the `SKILL.md` text and the Bots that
+  use it. Provider cards show version, models, Bots using them and the CLI path as labelled facts,
+  along with sign-in state.
   Sign in runs the provider's own login (`claude auth login`, `codex login`) in Reef's folder for
   it, opens the URL it prints in the browser and updates when it finishes; no Terminal.
 - First run is three steps over drifting creatures: the user's name; the providers found, with Sign
   in; Meet Chief with example asks, each opening Chief's thread with that message sent.
 - The Go server serves the UI at `/` and the API under `/api/`, one address. Vite builds `web/`
   into `server/ui`, which the binary embeds (`make ui`).
+- The desktop shell uses an overlay title bar; the Bot header’s empty space is a window drag region.
 - The Tauri shell (`desktop/`, `make app`) starts `atoll serve --addr 127.0.0.1:4317`, loads the
   URL it prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
   SIGTERM; the page shows Reconnecting meanwhile. A page's `window.open` (provider sign-in) opens in

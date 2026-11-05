@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
-export type Settings = { user_name: string; worktree_root: string };
+export type Settings = { user_name: string; worktree_root: string; data_dir: string };
 export function useSettings() {
   return useQuery({ queryKey: ['settings'], queryFn: () => api<Settings>('/settings') });
 }

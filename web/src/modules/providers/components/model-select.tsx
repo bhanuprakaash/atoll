@@ -1,5 +1,9 @@
-import { controlClass, Field } from '@/components/field';
+import { useId } from 'react';
+import { BrandLogo } from '@/components/brand-logo';
+import { Select } from '@/components/select';
 import type { Provider } from '@/modules/providers/api/providers';
+
+const key = (provider: string, model: string) => `${provider}:${model}`;
 
 export function ModelSelect({
   providers,
@@ -12,36 +16,38 @@ export function ModelSelect({
   model: string;
   onChange: (provider: Provider['name'], model: string) => void;
 }) {
-  return (
-    <Field label="Model">
-      {(id) => (
-        <select
-          id={id}
-          className={controlClass}
-          value={model}
-          onChange={(e) => {
-            const selected = e.currentTarget.selectedOptions[0];
-            const name = selected?.parentElement?.getAttribute('data-provider') as
-              Provider['name'] | null;
-            if (name) onChange(name, e.target.value);
-          }}
+  const id = useId();
+  const groups = providers
+    .filter((p) => p.signed_in)
+    .map((p) => ({
+      label: p.label,
+      meta: 'Ready',
+      logo: (
+        <span
+          aria-hidden="true"
+          className={`flex size-[26px] flex-none items-center justify-center rounded-lg ${p.name === 'claude' ? 'bg-claude-bg' : 'bg-tile'}`}
         >
-          {!providers.some(
-            (p) => p.name === provider && p.signed_in && p.models.some((m) => m.id === model),
-          ) && <option value="">Choose a model</option>}
-          {providers
-            .filter((p) => p.signed_in)
-            .map((p) => (
-              <optgroup key={p.name} label={p.label} data-provider={p.name}>
-                {p.models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-        </select>
-      )}
-    </Field>
+          <BrandLogo brand={p.name} className="size-4" />
+        </span>
+      ),
+      options: p.models.map((m) => ({ value: key(p.name, m.id), label: m.name })),
+    }));
+  return (
+    <div className="flex flex-col gap-2">
+      <label id={id} className="text-xs tracking-wide text-label">
+        Model
+      </label>
+      <Select
+        labelledBy={id}
+        value={key(provider, model)}
+        groups={groups}
+        placeholder="Choose a model"
+        search="Search models"
+        onChange={(value) => {
+          const at = value.indexOf(':');
+          onChange(value.slice(0, at) as Provider['name'], value.slice(at + 1));
+        }}
+      />
+    </div>
   );
 }
