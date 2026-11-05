@@ -239,6 +239,16 @@ export function ThreadView({
   const mrUrl = mr?.url ?? thread?.mr_url;
   const mrState = mr?.state ?? thread?.mr_state;
   const iid = mrUrl?.match(/(?:merge_requests|merge-requests)\/(\d+)/)?.[1];
+  const mrChip = mrUrl && (
+    <a
+      href={mrUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="self-start rounded-full border border-line px-2 py-1"
+    >
+      !{iid ?? 'MR'} · {{ merged: 'Merged', closed: 'Closed' }[mrState ?? ''] ?? 'Open'}
+    </a>
+  );
   const context = (
     <>
       {(repoName || thread?.repo_id) && (
@@ -249,16 +259,7 @@ export function ThreadView({
       {thread?.branch && (
         <span className="rounded-full border border-line px-2 py-1">{thread.branch}</span>
       )}
-      {mrUrl && (
-        <a
-          href={mrUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-full border border-line px-2 py-1"
-        >
-          !{iid ?? 'MR'} · {mrState ? mrState[0].toUpperCase() + mrState.slice(1) : 'Open'}
-        </a>
-      )}
+      {mrChip}
     </>
   );
   const empty = messages.length === 0 && !activeId;
@@ -307,6 +308,7 @@ export function ThreadView({
         {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
           <RunResult id={thread.run_id} retry={retry} />
         )}
+        {mrChip}
         {!connected && <p className="text-sm text-muted">Reconnecting</p>}
       </div>
       {!empty && (
