@@ -44,7 +44,7 @@ function NewBotPage() {
       )}
       repos={repos}
       skills={skills}
-      connections={connections.filter((c) => c.status === 'connected')}
+      connections={connections}
       onCreated={(bot) => navigate(`/bots/${bot.id}`)}
     />
   );

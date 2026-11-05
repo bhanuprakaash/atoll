@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
 import type { CreatureLook } from '@/components/creature';
 import { Creature } from '@/components/creature';
 import { Markdown } from '@/components/markdown';
@@ -213,6 +214,18 @@ export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
   const [selected, setSelected] = useState<string | null>(null);
   const skill = skills.find((s) => s.id === selected);
   const create = useSaveSkill();
+  const [params, setParams] = useSearchParams();
+  const wantsNew = params.has('new');
+  const startedNew = useRef(false);
+  useEffect(() => {
+    if (!wantsNew || startedNew.current) return;
+    startedNew.current = true;
+    setParams({}, { replace: true });
+    create.mutate(
+      { name: 'new-skill', content: '---\ndescription: \n---\n' },
+      { onSuccess: (s) => setSelected(s.id) },
+    );
+  }, [wantsNew]);
   return (
     <>
       <SectionHead

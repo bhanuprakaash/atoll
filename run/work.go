@@ -128,6 +128,14 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 	if err != nil {
 		return err
 	}
+	if title == "" {
+		thread, threadErr := m.cfg.Store.Thread(ctx, a.threadID)
+		if threadErr == nil && thread.RepoID != "" {
+			if rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID); repoErr == nil {
+				_, title, _ = m.mrState(rp.Path, url, m.gitlabEnv(a.bot))
+			}
+		}
+	}
 	if err := m.cfg.Store.SetMR(ctx, a.threadID, url, _mrOpened, title); err != nil {
 		return err
 	}
@@ -328,19 +336,22 @@ func (m *Manager) check(t store.Thread) error {
 	if err != nil {
 		return err
 	}
-	state, err := m.mrState(rp.Path, t.MRURL, m.gitlabEnv(bot))
+	state, title, err := m.mrState(rp.Path, t.MRURL, m.gitlabEnv(bot))
 	if err != nil {
 		return err
 	}
-	if state != t.MRState {
+	if t.MRTitle != "" {
+		title = t.MRTitle
+	}
+	if state != t.MRState || title != t.MRTitle {
 		runID, err := m.cfg.Store.LatestRun(m.ctx, t.ID)
 		if err != nil {
 			return err
 		}
-		if err := m.cfg.Store.SetMR(m.ctx, t.ID, t.MRURL, state, t.MRTitle); err != nil {
+		if err := m.cfg.Store.SetMR(m.ctx, t.ID, t.MRURL, state, title); err != nil {
 			return err
 		}
-		m.announce(t.ID, runID, EventMRUpdated, MRUpdated{RunID: runID, URL: t.MRURL, State: state, Title: t.MRTitle})
+		m.announce(t.ID, runID, EventMRUpdated, MRUpdated{RunID: runID, URL: t.MRURL, State: state, Title: title})
 	}
 	if state != _mrMerged {
 		return nil
@@ -357,7 +368,7 @@ func (m *Manager) check(t store.Thread) error {
 }
 
 // mrState asks glab for the state of the MR at url, from inside the repo at dir.
-func (m *Manager) mrState(dir, url string, env []string) (string, error) {
+func (m *Manager) mrState(dir, url string, env []string) (string, string, error) {
 	cmd := exec.CommandContext(m.ctx, "glab", "mr", "view", url, "--output", "json")
 	cmd.Dir = dir
 	cmd.Env = provider.Env(env...)
@@ -367,13 +378,14 @@ func (m *Manager) mrState(dir, url string, env []string) (string, error) {
 		err = fmt.Errorf("%w: %s", err, bytes.TrimSpace(exit.Stderr))
 	}
 	if err != nil {
-		return "", fmt.Errorf("glab mr view: %w", err)
+		return "", "", fmt.Errorf("glab mr view: %w", err)
 	}
 	var mr struct {
 		State string `json:"state"`
+		Title string `json:"title"`
 	}
 	if err := json.Unmarshal(out, &mr); err != nil || strings.TrimSpace(mr.State) == "" {
-		return "", fmt.Errorf("glab mr view: no state in %q", out)
+		return "", "", fmt.Errorf("glab mr view: no state in %q", out)
 	}
-	return mr.State, nil
+	return mr.State, mr.Title, nil
 }

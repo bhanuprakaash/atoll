@@ -13,7 +13,10 @@ function Change({ change, botName }: { change: PlatformChange; botName?: string 
   const names = useChangeNames();
   const nameOf = (id: string, list: { id: string; name: string }[]) =>
     list.find((item) => item.id === id)?.name ?? id;
-  const connectionNames = names.connections.map((c) => ({ id: c.id, name: c.kind }));
+  const connectionNames = names.connections.map((c) => ({
+    id: c.id,
+    name: c.kind === 'gitlab' ? 'GitLab' : c.kind,
+  }));
   const fields = [
     'name',
     'provider',
@@ -37,8 +40,19 @@ function Change({ change, botName }: { change: PlatformChange; botName?: string 
             : [];
     return value.map((id: string) => nameOf(id, list)).join(', ');
   };
+  const attached =
+    change.entity === 'bot' && change.action === 'edit'
+      ? (change.after?.connections ?? []).filter(
+          (id) => !(change.before?.connections ?? []).includes(id),
+        )
+      : [];
+  const attachmentOnly =
+    attached.length > 0 &&
+    fields
+      .filter((key) => key !== 'connections')
+      .every((key) => JSON.stringify(change.before?.[key]) === JSON.stringify(change.after?.[key]));
   const edits =
-    change.action === 'edit'
+    change.action === 'edit' && !attachmentOnly
       ? fields
           .filter(
             (key) => JSON.stringify(change.before?.[key]) !== JSON.stringify(change.after?.[key]),
@@ -69,7 +83,13 @@ function Change({ change, botName }: { change: PlatformChange; botName?: string 
           <span className="text-xs">NEW BOT</span>
         )}
         <p className={change.undone ? 'line-through' : ''}>
-          {verb} <span>{change.after?.name ?? change.before?.name}</span>
+          {attachmentOnly ? (
+            `Attached ${attached.map((id) => nameOf(id, connectionNames)).join(', ')} to ${change.after?.name ?? change.before?.name}`
+          ) : (
+            <>
+              {verb} <span>{change.after?.name ?? change.before?.name}</span>
+            </>
+          )}
         </p>
         {change.entity === 'bot' && change.action === 'create' && change.after && (
           <>

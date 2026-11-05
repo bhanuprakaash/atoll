@@ -6,6 +6,7 @@ import { Switch } from '@/components/switch';
 import { TextArea, TextField } from '@/components/text-field';
 import { useUpdateBot, type Bot, type NewBot } from '@/modules/bots/api/bots';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
+import { ConnectionList } from '@/modules/bots/components/connection-list';
 import { CreaturePicker } from '@/modules/bots/components/creature-picker';
 import {
   repoAccess as repoAccessChoices,
@@ -141,14 +142,8 @@ export function BotSettings({
               }}
             />
           )}
-          <ChoiceList
-            title="Connections"
-            singular="connection"
-            choices={connections.map((c) => ({
-              id: c.id,
-              name: `GitLab · ${c.instance_url}`,
-              brand: 'gitlab' as const,
-            }))}
+          <ConnectionList
+            connections={connections}
             selected={connectionIds}
             onChange={(value) => {
               setConnectionIds(value);

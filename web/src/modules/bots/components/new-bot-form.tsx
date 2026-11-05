@@ -8,6 +8,7 @@ import { Segmented } from '@/components/segmented';
 import { TextArea, TextField } from '@/components/text-field';
 import { useCreateBot, type Bot, type Provider } from '@/modules/bots/api/bots';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
+import { ConnectionList } from '@/modules/bots/components/connection-list';
 import { CreaturePicker } from '@/modules/bots/components/creature-picker';
 
 export type ModelControl = (
@@ -18,7 +19,7 @@ export type ModelControl = (
 export type Choices = {
   repos: { id: string; name: string }[];
   skills: { id: string; name: string }[];
-  connections: { id: string; instance_url: string }[];
+  connections: { id: string; instance_url: string; status: 'pending' | 'connected' }[];
 };
 
 export const repoAccess = [
@@ -138,14 +139,8 @@ export function NewBotForm({
               onChange={setRepoIds}
             />
           )}
-          <ChoiceList
-            title="Connections"
-            singular="connection"
-            choices={connections.map((c) => ({
-              id: c.id,
-              name: `GitLab · ${c.instance_url}`,
-              brand: 'gitlab' as const,
-            }))}
+          <ConnectionList
+            connections={connections}
             selected={connectionIds}
             onChange={setConnectionIds}
           />

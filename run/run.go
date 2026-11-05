@@ -620,6 +620,24 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 				}
 			case provider.KindToolCall:
 				kind, target := ToolKind(ev.Name, ev.Input)
+				if strings.Contains(ev.Name, "read_memory") && m.cfg.Memory != nil {
+					var input struct {
+						ID        string `json:"id"`
+						Arguments struct {
+							ID string `json:"id"`
+						} `json:"arguments"`
+					}
+					if json.Unmarshal(ev.Input, &input) == nil {
+						if input.Arguments.ID != "" {
+							input.ID = input.Arguments.ID
+						}
+						item, err := m.cfg.Memory.Read(a.ctx, input.ID)
+						shelf, shelfErr := m.shelf(a.ctx, a.token)
+						if err == nil && shelfErr == nil && shelf.Has(item) {
+							target = shortMemory(item.Body)
+						}
+					}
+				}
 				if !strings.HasSuffix(ev.Name, "finish_run") {
 					if err := m.cfg.Store.CountTool(a.ctx, a.run.ID, kind); err != nil {
 						m.cfg.Log.Warn("count tool", "error", err)
@@ -903,4 +921,12 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		return "platform", v.Name
 	}
 	return "other", ""
+}
+
+func shortMemory(body string) string {
+	runes := []rune(strings.Join(strings.Fields(body), " "))
+	if len(runes) > 80 {
+		return string(runes[:80]) + "…"
+	}
+	return string(runes)
 }

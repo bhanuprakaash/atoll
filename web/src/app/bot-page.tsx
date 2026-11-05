@@ -102,7 +102,7 @@ export function BotPage() {
           onClose={() => setSettingsOpen(false)}
           repos={repos}
           skills={skills}
-          connections={connections.filter((c) => c.status === 'connected')}
+          connections={connections}
           modelControl={(provider, model, onChange) => (
             <ModelSelect
               providers={providers}

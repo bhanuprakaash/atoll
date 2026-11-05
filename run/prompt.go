@@ -51,7 +51,7 @@ func systemPrompt(bot store.Bot, user string) string {
 // _repoWork ends the repo block: providers may not load a tool's description until they search
 // for it, so the tools a change needs are named here.
 const _repoWork = "Before your first edit, call start_work and work in the path it returns. " +
-	"After you open the MR, call track_mr with its URL."
+	"After you open the MR, call track_mr with its URL and title."
 
 func cut(s string, limit int) string {
 	if len(s) <= limit {
