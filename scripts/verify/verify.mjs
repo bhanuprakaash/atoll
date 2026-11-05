@@ -93,6 +93,7 @@ async function apiPass(base, provider) {
         );
       return json;
     };
+    await call("GET", "/api/providers");
     const bot = await call("POST", "/api/bots", {
       name: `verify ${provider} ${Date.now()}`,
       persona: "A careful Go engineer.",
@@ -184,6 +185,27 @@ async function apiPass(base, provider) {
     );
   }
 }
+async function pickModel(page, provider) {
+  const box = page.getByRole("combobox", { name: "Model" });
+  const label = provider === "claude" ? "Claude Code" : "Codex";
+  if ((await box.evaluate((el) => el.tagName)) === "SELECT") {
+    const option = box.locator(`optgroup[label="${label}"] option`).first();
+    await box.selectOption({ value: await option.getAttribute("value") });
+  } else {
+    await box.click();
+    await page
+      .getByRole("group", { name: label })
+      .getByRole("option")
+      .first()
+      .click();
+  }
+}
+async function openThreads(page) {
+  await page.getByRole("button", { name: /^Threads/ }).click();
+  const panel = page.getByRole("dialog", { name: /^Threads with / });
+  await panel.waitFor();
+  return panel;
+}
 async function uiPass(base, provider) {
   const browser = await chromium.launch();
   const page = await browser.newPage({
@@ -204,13 +226,12 @@ async function uiPass(base, provider) {
     await page
       .getByRole("textbox", { name: "Persona" })
       .fill("A careful Go engineer.");
-    await page
-      .getByRole("combobox", { name: "Model" })
-      .selectOption(provider === "claude" ? "Claude Code" : "Codex");
+    await pickModel(page, provider);
     await shot("1-bot-form");
-    await page.getByRole("button", { name: "Create" }).click();
-    await page.getByRole("navigation").getByText(name).click();
-    await page.getByRole("button", { name: "New thread" }).click();
+    await page.getByRole("button", { name: "Create Bot" }).click();
+    await page
+      .getByRole("heading", { name: `What should ${name} work on?` })
+      .waitFor();
     await say(keep);
     await seen(/^\W*ok\W*$/i);
     await shot("2-first-reply");
@@ -219,13 +240,16 @@ async function uiPass(base, provider) {
     if (fake) {
       const reply = page.getByText(/notes\.txt has 3 lines/);
       await say(tools);
-      await seen(/\bBash\b/);
+      await page
+        .getByRole("log", { name: "Messages" })
+        .getByRole("status")
+        .waitFor();
       await shot("3-tools");
       await reply.waitFor();
       await say(write);
-      const approve = page.getByRole("button", { name: "Approve" });
+      const approve = page.getByRole("button", { name: "Allow" });
       await approve.waitFor();
-      await page.getByRole("button", { name: "Reject" }).waitFor();
+      await page.getByRole("button", { name: "Deny" }).waitFor();
       await shot("4-approval");
       await approve.click();
       await page.getByText(/Created .*hello\.txt/).waitFor();
@@ -242,6 +266,136 @@ async function uiPass(base, provider) {
   } catch (err) {
     await shot("failed").catch(() => {});
     fail(`ui: ${provider} flow`, err);
+  } finally {
+    await browser.close();
+  }
+}
+async function firstRun(base) {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 800 },
+  });
+  page.setDefaultTimeout(limit);
+  try {
+    const settings = await (await fetch(base + "/api/settings")).json();
+    if (!settings.user_name) {
+      await page.goto(base);
+      await page.getByRole("heading", { name: "Welcome to Reef" }).waitFor();
+      await page.screenshot({ path: join(out, "screen-first-run.png") });
+      const res = await fetch(base + "/api/settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...settings, user_name: "Verifier" }),
+      });
+      if (!res.ok) throw new Error(`setting user name: ${res.status}`);
+      check(true, "screens: first run");
+    } else console.log("  first run omitted: user_name is already set");
+  } catch (err) {
+    fail("screens: first run", err);
+  } finally {
+    await browser.close();
+  }
+}
+async function screensPass(base, provider) {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 800 },
+  });
+  page.setDefaultTimeout(limit);
+  const shot = (name) =>
+    page.screenshot({ path: join(out, `screen-${name}.png`) });
+  const say = async (text) => {
+    await page.getByRole("textbox", { name: "Message" }).fill(text);
+    await page.getByRole("button", { name: "Send" }).click();
+  };
+  try {
+    const name = `Screens ${Date.now()}`;
+    await page.goto(base);
+    await page.getByRole("navigation", { name: "Bots" }).waitFor();
+    await shot("sidebar");
+    await page.getByRole("button", { name: "New Bot" }).click();
+    await page.getByRole("heading", { name: "New Bot" }).waitFor();
+    await shot("new-bot");
+    await page.getByRole("textbox", { name: "Name" }).fill(name);
+    await page
+      .getByRole("textbox", { name: "Persona" })
+      .fill("A careful Go engineer.");
+    await pickModel(page, provider);
+    await page.getByRole("button", { name: "Create Bot" }).click();
+    await page
+      .getByRole("heading", { name: `What should ${name} work on?` })
+      .waitFor();
+    await shot("empty-thread");
+    const panel = await openThreads(page);
+    await shot("threads");
+    await panel.getByRole("button", { name: "New thread" }).click();
+    await page.getByRole("button", { name: "Bot settings" }).click();
+    const settings = page.getByRole("dialog", { name: "Bot settings" });
+    await settings.waitFor();
+    await shot("bot-settings");
+    await settings.getByRole("button", { name: "Close" }).click();
+    await say(fake ? "Fix the wizard repo select and run its tests." : tools);
+    const log = page.getByRole("log", { name: "Messages" });
+    await log.getByRole("status").waitFor();
+    await shot("working");
+    await log
+      .getByText(/^Worked \d+(m \d+)?s · /)
+      .last()
+      .waitFor();
+    await shot("summary");
+    if (fake) {
+      // The fake records write only as a thread's first message.
+      await (
+        await openThreads(page)
+      )
+        .getByRole("button", { name: "New thread" })
+        .click();
+      await page.waitForURL((u) => u.href.endsWith("/new"));
+      await say(write);
+      await log.getByRole("button", { name: "Allow", exact: true }).waitFor();
+      await shot("approval");
+      await shot("sidebar-needs-you");
+      await log.getByRole("button", { name: "Allow", exact: true }).click();
+      await log.getByText(/Created .*hello\.txt/).waitFor();
+    } else
+      console.log(
+        "  approval screen omitted: the real provider may not request approval",
+      );
+    await page
+      .getByRole("navigation", { name: "Bots" })
+      .getByRole("link", { name: /Settings/ })
+      .click();
+    for (const section of [
+      "General",
+      "Providers",
+      "Connections",
+      "Skills",
+      "Repos",
+      "Memory",
+    ]) {
+      await page.getByRole("link", { name: section, exact: true }).click();
+      if (section === "Connections" || section === "Repos") {
+        await page
+          .getByRole("textbox", {
+            name:
+              section === "Connections" ? "GitLab instance URL" : "Repo name",
+          })
+          .waitFor();
+      } else {
+        await page
+          .getByRole("heading", { name: section, exact: true })
+          .waitFor();
+      }
+      if (section === "Skills") {
+        await page.getByRole("button", { name: "New skill" }).click();
+        await page.getByRole("dialog", { name: /^Edit / }).waitFor();
+      }
+      await shot(section.toLowerCase());
+    }
+    check(true, "screens: Mac app pages");
+  } catch (err) {
+    await shot("failed").catch(() => {});
+    fail("screens: Mac app pages", err);
   } finally {
     await browser.close();
   }
@@ -272,16 +426,16 @@ async function chiefPass(base, provider, undo) {
     await page.getByRole("button", { name: "Send" }).click();
   };
   const newThread = async () => {
-    const created = page.waitForResponse(
-      (r) => r.request().method() === "POST" && r.url().endsWith("/threads"),
-    );
-    await page.getByRole("button", { name: "New thread" }).click();
-    const { id } = await (await created).json();
-    await page.waitForURL((u) => u.href.endsWith(`/threads/${id}`));
+    const panel = await openThreads(page);
+    await panel.getByRole("button", { name: "New thread" }).click();
+    await page.waitForURL((u) => u.href.endsWith("/new"));
+    await page
+      .getByRole("heading", { name: /^What should .* work on\?$/ })
+      .waitFor();
   };
   // Claude asks before it uses a skill; the user approves in the thread.
   const answered = async (target, name) => {
-    const approve = page.getByRole("button", { name: "Approve" }).first();
+    const approve = page.getByRole("button", { name: "Allow" }).first();
     let shown = false;
     for (const end = Date.now() + limit; Date.now() < end; await sleep(200)) {
       if (await target.isVisible()) return;
@@ -468,12 +622,16 @@ try {
       `first line ${JSON.stringify(first)}, want "listening on http://127.0.0.1:<port>"`,
     );
   console.log(`  ${base}`);
+  step("First run screen");
+  await firstRun(base);
   for (const p of providers) {
     step(`API pass: ${p}`);
     await apiPass(base, p);
   }
   step(`UI pass: ${providers[0]}`);
   await uiPass(base, providers[0]);
+  step(`Screens pass: ${providers[0]}`);
+  await screensPass(base, providers[0]);
   for (const [i, p] of providers.entries()) {
     step(`Chief pass: ${p}`);
     await chiefPass(base, p, i === providers.length - 1);
