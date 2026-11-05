@@ -112,6 +112,10 @@ func (p *providers) info(ctx context.Context, a adapter) providerInfo {
 	if err != nil {
 		return info
 	}
+	// Codex refuses a CODEX_HOME that does not exist, and a provider not yet signed in has none.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return info
+	}
 	info.Version, _ = provider.Version(ctx, bin)
 	info.SignedIn, _ = a.signedIn(ctx, bin, dir)
 	info.Models = probeModels(ctx, a.name, bin, dir)
