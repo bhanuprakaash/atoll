@@ -306,3 +306,22 @@ func TestThreadParams(t *testing.T) {
 		})
 	}
 }
+
+func TestFileChangeApprovalDetails(t *testing.T) {
+	tests := []struct{ name, itemID, want string }{
+		{name: "matching item", itemID: "edit-1", want: `"changes":[{"path":"a.go","diff":"+line"}]`},
+		{name: "unmatched item", itemID: "other", want: `"itemId":"other"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New()
+			s.handle(message{Method: "item/started", Params: json.RawMessage(`{"item":{"type":"fileChange","id":"edit-1","changes":[{"path":"a.go","diff":"+line"}]}}`)})
+			<-s.Events()
+			s.serverRequest(message{ID: json.RawMessage(`1`), Method: "item/fileChange/requestApproval", Params: json.RawMessage(`{"itemId":"` + tt.itemID + `"}`)})
+			ev := <-s.Events()
+			if !strings.Contains(string(ev.Input), tt.want) {
+				t.Errorf("approval input = %s, want %s", ev.Input, tt.want)
+			}
+		})
+	}
+}

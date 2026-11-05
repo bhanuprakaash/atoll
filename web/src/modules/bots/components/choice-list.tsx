@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { BrandLogo, type Brand } from '@/components/brand-logo';
 import { TextField } from '@/components/text-field';
 
@@ -50,7 +51,11 @@ export function ChoiceList({
           + Add {singular}
         </button>
         {open && (
-          <div role="menu" className="rounded-control border border-line bg-card p-2">
+          <div
+            role={singular === 'skill' ? 'dialog' : 'menu'}
+            aria-label={singular === 'skill' ? 'Add skill' : undefined}
+            className="rounded-control border border-line bg-card p-2"
+          >
             <TextField
               size="sm"
               aria-label={`Search ${title}`}
@@ -77,8 +82,17 @@ export function ChoiceList({
                 >
                   {c.brand && <BrandLogo brand={c.brand} className="size-4" />}
                   {c.name}
+                  {singular === 'skill' && <span className="ml-auto text-muted">Add</span>}
                 </button>
               ))}
+            {singular === 'skill' && (
+              <Link
+                to="/settings/skills?new=1"
+                className="block border-t border-line px-3 py-2 text-sm"
+              >
+                + Write a new skill
+              </Link>
+            )}
           </div>
         )}
       </div>

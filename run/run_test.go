@@ -500,3 +500,17 @@ func TestToolVerb(t *testing.T) {
 		})
 	}
 }
+
+func TestShortMemory(t *testing.T) {
+	tests := []struct{ name, body, want string }{
+		{name: "whitespace", body: "first\n  second", want: "first second"},
+		{name: "rune boundary", body: strings.Repeat("界", 81), want: strings.Repeat("界", 80) + "…"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shortMemory(tt.body); got != tt.want {
+				t.Errorf("shortMemory() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
