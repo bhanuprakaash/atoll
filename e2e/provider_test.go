@@ -156,17 +156,27 @@ func (m *machine) calls(t *testing.T, provider string) []*call {
 	return calls
 }
 
-// sessions returns the runs of the fake that held a session: claude -p, codex app-server.
+// sessions returns the runs of the fake that held a session: claude -p, codex app-server, given
+// a user turn. A model-list probe (Slice 6) starts the same mode without one and is not a session.
 func (m *machine) sessions(t *testing.T, provider string) []*call {
 	t.Helper()
 	mode := map[string]string{"claude": "-p", "codex": "app-server"}[provider]
 	var out []*call
 	for _, c := range m.calls(t, provider) {
-		if slices.Contains(c.argv, mode) {
+		if slices.Contains(c.argv, mode) && slices.ContainsFunc(c.stdin, isTurn) {
 			out = append(out, c)
 		}
 	}
 	return out
+}
+
+// isTurn reports whether a stdin line gives the provider a user turn.
+func isTurn(line string) bool {
+	var l struct {
+		Type   string `json:"type"`
+		Method string `json:"method"`
+	}
+	return json.Unmarshal([]byte(line), &l) == nil && (l.Type == "user" || l.Method == "turn/start")
 }
 
 func TestProviderStatus_ListsBoth(t *testing.T) {

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { pickModel } from "./atoll";
 
 test("a memory save shows its source and Retire keeps it in history", async ({
   page,
@@ -10,12 +11,11 @@ test("a memory save shows its source and Retire keeps it in history", async ({
   await page
     .getByRole("textbox", { name: "Persona" })
     .fill("A careful Go engineer.");
-  await page
-    .getByRole("combobox", { name: "Model" })
-    .selectOption("Claude Code");
-  await page.getByRole("button", { name: "Create" }).click();
-  await page.getByRole("navigation").getByText(name).click();
-  await page.getByRole("button", { name: "New thread" }).click();
+  await pickModel(page, page, "Claude Code");
+  await page.getByRole("button", { name: "Create Bot" }).click();
+  await expect(
+    page.getByRole("heading", { name: `What should ${name} work on?` }),
+  ).toBeVisible();
   await page
     .getByRole("textbox", { name: "Message" })
     .fill("Save the SQLite journal decision in user memory.");
@@ -29,6 +29,7 @@ test("a memory save shows its source and Retire keeps it in history", async ({
     saved.getByText("Readers must not block journal writes.", { exact: true }),
   ).toBeVisible();
   await expect(saved.getByText(name, { exact: true })).toBeVisible();
+  await expect(saved.getByText("decision", { exact: true })).toBeVisible();
   await expect(
     page.getByText("Saved SQLite decision.", { exact: true }),
   ).toBeVisible();

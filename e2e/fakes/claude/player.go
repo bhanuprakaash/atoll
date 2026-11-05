@@ -95,9 +95,6 @@ func newPlayer(args []string) (*player, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := fake.LogSkills(p.skills); err != nil {
-		return nil, err
-	}
 	return p, nil
 }
 
@@ -181,6 +178,11 @@ func (p *player) play(lines []string) error {
 			skip = fake.Directive([]byte(s)) != answer
 			continue
 		case "resumed":
+			continue
+		case "pause":
+			if !skip {
+				fake.Pause(fake.PauseMS([]byte(s)))
+			}
 			continue
 		case "hang":
 			if !skip {

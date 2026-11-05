@@ -212,3 +212,5 @@ Real-model completion, broader field translation, validation errors, conflicting
 Undo after intervening changes, the Skills settings page and optional provider
 features remain implementation/verification follow-ups; no untested behavior is
 blessed as acceptance proof.
+
+Slice 6 extends these contracts in [mac-app-contract.md](mac-app-contract.md).
