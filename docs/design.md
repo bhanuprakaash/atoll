@@ -276,8 +276,15 @@ Finish
   in; Meet Chief with example asks, each opening Chief's thread with that message sent.
 - The Go server serves the UI at `/` and the API under `/api/`, one address. Vite builds `web/`
   into `server/ui`, which the binary embeds (`make ui`).
-- Names: the UI says Reef. Repo, Go module, binary and bundle ID say `atoll`; app data lives in
-  `~/Library/Application Support/Atoll`. *Runs beside the old Reef; rename when it retires.*
+- The Tauri shell (`desktop/`, `make app`) starts `atoll serve --addr 127.0.0.1:4317`, loads the
+  URL it prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
+  SIGTERM; the page shows Reconnecting meanwhile. A page's `window.open` (provider sign-in) opens in
+  the default browser. *A fixed address lets the open page reconnect to a restarted sidecar.*
+- Provider sign-in state is cached: checked on start, before each run, on Refresh and when a
+  sign-in finishes, never on the sidebar's poll.
+- Names: the UI says Reef. Repo, Go module, binary and bundle ID (`dev.atoll.desktop`) say
+  `atoll`; app data lives in `~/Library/Application Support/Atoll`. *Runs beside the old Reef;
+  rename when it retires.*
 
 ## Testing
 
