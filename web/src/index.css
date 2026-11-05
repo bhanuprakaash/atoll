@@ -37,6 +37,65 @@
   --radius-control: 0.5rem;
   --font-sans: 'Geist Sans', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --color-box: #1f1f1f;
+  --color-well: #151515;
+  --color-field: #232323;
+  --color-tile: #2a2a2a;
+  --color-outline: #333333;
+  --color-ok: #7ee0a4;
+  --color-ok-bg: #16321f;
+  --color-warn: #f5c76a;
+  --color-warn-bg: #3a2e12;
+  --color-claude: #e8875f;
+  --color-claude-bg: #3a2418;
+  --color-gitlab: #fc6d26;
+  --color-gitlab-dark: #e24329;
+  --color-gitlab-light: #fca326;
+  --color-gitlab-bg: #2b1a12;
+  --animate-drift-a: drift-a 16s ease-in-out infinite;
+  --animate-drift-b: drift-b 12s ease-in-out infinite;
+  --animate-drift-c: drift-c 9s ease-in-out infinite;
+  --animate-rise: rise 0.35s ease-out;
+  @keyframes drift-a {
+    0%,
+    100% {
+      transform: translate(0, 0) rotate(0);
+    }
+    50% {
+      transform: translate(18px, -26px) rotate(6deg);
+    }
+  }
+  @keyframes drift-b {
+    0%,
+    100% {
+      transform: translate(0, 0) rotate(0);
+    }
+    50% {
+      transform: translate(-22px, 16px) rotate(-8deg);
+    }
+  }
+  @keyframes drift-c {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    33% {
+      transform: translate(14px, 20px);
+    }
+    66% {
+      transform: translate(-12px, 8px);
+    }
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 body {
   @apply bg-bg font-sans text-ink;

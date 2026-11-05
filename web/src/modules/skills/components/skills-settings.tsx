@@ -1,114 +1,290 @@
 import { useState } from 'react';
-import { Button } from '@/components/button';
-import { controlClass, Field } from '@/components/field';
+import type { CreatureLook } from '@/components/creature';
+import { Creature } from '@/components/creature';
+import { Markdown } from '@/components/markdown';
+import {
+  Box,
+  RowText,
+  rowClass,
+  SectionHead,
+  solidButton,
+  Tile,
+  UsedBy,
+} from '@/components/settings-ui';
 import { type Skill, useSaveSkill, useSkills } from '@/modules/skills/api/skills';
 
-type Bot = { name: string; skills: string[] };
+type Bot = { id: string; name: string; look: CreatureLook; skills: string[] };
+
+const fieldClass =
+  'h-[42px] rounded-2xl border border-line bg-field px-3.5 text-sm text-ink outline-none focus:border-muted';
+const labelClass = 'text-xs tracking-wide text-muted';
+
+function split(content: string) {
+  const m = content.match(/^---\n([\s\S]*?)\n?---\n?([\s\S]*)$/);
+  return m ? { head: m[1], body: m[2] } : { head: '', body: content };
+}
+const join = (head: string, body: string) => (head ? `---\n${head}\n---\n${body}` : body);
+const descriptionLine = /^description:.*$/m;
+const modes = [
+  ['Edit', false],
+  ['Preview', true],
+] as const;
+
+function FileIcon({ size }: { size: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="var(--color-ink)"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 4h10l6 6v10H4z" />
+      <path d="M14 4v6h6" />
+      <path d="M8 14h8M8 17h5" />
+    </svg>
+  );
+}
+
 function SkillEditor({ skill, bots, close }: { skill: Skill; bots: Bot[]; close: () => void }) {
   const [name, setName] = useState(skill.name);
   const [content, setContent] = useState(skill.content);
+  const [preview, setPreview] = useState(false);
   const save = useSaveSkill(skill.id);
-  const description = content.match(/^description:\s*(.*)$/m)?.[1] ?? '';
+  const { head, body } = split(content);
+  const description = head.match(/^description:\s*(.*)$/m)?.[1] ?? '';
+  const users = bots.filter((b) => b.skills?.includes(skill.id));
+  const dirty = name !== skill.name || content !== skill.content;
   function setDescription(value: string) {
-    if (/^description:.*$/m.test(content))
-      setContent(content.replace(/^description:.*$/m, `description: ${value}`));
-    else if (content.startsWith('---\n'))
-      setContent(content.replace('---\n', `---\ndescription: ${value}\n`));
-    else setContent(`---\ndescription: ${value}\n---\n${content}`);
+    const line = `description: ${value}`;
+    setContent(
+      join(
+        descriptionLine.test(head)
+          ? head.replace(descriptionLine, line)
+          : head
+            ? `${line}\n${head}`
+            : line,
+        body,
+      ),
+    );
   }
   return (
     <aside
       role="dialog"
       aria-label={`Edit ${skill.name}`}
-      className="flex w-full max-w-3xl flex-col gap-4 border-l border-line bg-card p-6"
+      className="fixed inset-y-0 right-0 z-10 flex w-140 max-w-full flex-col border-l border-line bg-card"
     >
-      <div className="flex justify-between">
-        <h2 className="text-xl">Edit skill</h2>
-        <button onClick={close}>Close</button>
+      <div className="flex h-16 items-center gap-2.5 border-b border-line pl-5 pr-3">
+        <Tile className="bg-tile">
+          <FileIcon size={16} />
+        </Tile>
+        <h2 className="font-mono text-[15px] font-normal">{skill.name}</h2>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={close}
+          className="ml-auto flex size-9 items-center justify-center rounded-[10px] text-muted"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
       </div>
-      <Field label="Name">
-        {(id) => (
+      <div className="flex flex-1 flex-col gap-5 overflow-auto p-5">
+        <label className="flex flex-col gap-2">
+          <span className={labelClass}>Name</span>
           <input
-            id={id}
-            className={controlClass}
+            className={`${fieldClass} font-mono`}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-        )}
-      </Field>
-      <Field label="When to use it">
-        {(id) => (
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className={labelClass}>When to use it</span>
           <input
-            id={id}
-            className={controlClass}
+            className={fieldClass}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
-        )}
-      </Field>
-      <Field label="SKILL.md">
-        {(id) => (
-          <textarea
-            id={id}
-            className={`${controlClass} font-mono`}
-            rows={18}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-          />
-        )}
-      </Field>
-      <div>
-        <h3>Bots that use it</h3>
-        <p className="text-sm text-muted">
-          {bots
-            .filter((b) => b.skills?.includes(skill.id))
-            .map((b) => b.name)
-            .join(', ') || 'No Bots yet'}
-        </p>
+          <span className="text-xs text-muted">
+            The Bot reads this to decide when the skill applies.
+          </span>
+        </label>
+        <div className="flex flex-1 flex-col gap-2">
+          <div className={`flex items-center ${labelClass}`}>
+            <label htmlFor="skill-instructions">Instructions</label>
+            <span className="ml-auto flex gap-1 rounded-full bg-field p-[3px] text-xs tracking-normal">
+              {modes.map(([label, on]) => (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={preview === on}
+                  onClick={() => setPreview(on)}
+                  className={`h-6 rounded-full px-2.5 ${preview === on ? 'bg-outline text-ink' : 'text-muted'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </span>
+          </div>
+          {preview ? (
+            <div className="min-h-[420px] rounded-2xl border border-line bg-well p-4 text-[13px] leading-[1.7] text-ink/80">
+              <Markdown>{body}</Markdown>
+            </div>
+          ) : (
+            <textarea
+              id="skill-instructions"
+              className="min-h-[420px] flex-1 resize-y rounded-2xl border border-line bg-well p-4 font-mono text-[13px] leading-[1.7] text-ink/80 outline-none focus:border-muted"
+              value={body}
+              onChange={(e) => setContent(join(head, e.target.value))}
+            />
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          <span className={labelClass}>Used by</span>
+          {users.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5">
+              {users.map((b) => (
+                <li
+                  key={b.id}
+                  className="flex h-8 items-center gap-1.5 rounded-full border border-outline bg-tile pl-1.5 pr-3 text-[13px]"
+                >
+                  <Creature look={b.look} size={22} />
+                  {b.name}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[13px] text-muted">No Bots yet</p>
+          )}
+        </div>
       </div>
-      {save.isError && <p className="text-danger">{save.error.message}</p>}
-      <Button className="self-start" onClick={() => save.mutate({ name, content })}>
-        Save skill
-      </Button>
+      <div className="flex items-center gap-2 border-t border-line px-5 py-3.5 text-[12.5px] text-muted">
+        {save.isError ? (
+          <span className="text-danger">{save.error.message}</span>
+        ) : dirty ? (
+          'Unsaved changes'
+        ) : (
+          <>
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--color-ok)"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M5 12l5 5 9-10" />
+            </svg>
+            Saved · next runs get this version
+          </>
+        )}
+        <button
+          type="button"
+          className={`${solidButton} ml-auto`}
+          disabled={!dirty || save.isPending}
+          onClick={() => save.mutate({ name, content })}
+        >
+          Save skill
+        </button>
+      </div>
     </aside>
   );
 }
+
 export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
   const { data: skills = [] } = useSkills();
   const [selected, setSelected] = useState<string | null>(null);
   const skill = skills.find((s) => s.id === selected);
   const create = useSaveSkill();
   return (
-    <div className="flex h-full">
-      <div className="min-w-64 flex-1 p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-2xl">Skills</h1>
-          <Button
-            disabled={create.isPending}
-            onClick={() =>
-              create.mutate(
-                { name: 'new-skill', content: '---\ndescription: \n---\n' },
-                { onSuccess: (s) => setSelected(s.id) },
-              )
-            }
-          >
-            New skill
-          </Button>
+    <>
+      <SectionHead
+        title="Skills"
+        lead="One library. Each Bot picks its own; runs get read-only copies."
+      >
+        <button
+          type="button"
+          className={solidButton}
+          disabled={create.isPending}
+          onClick={() =>
+            create.mutate(
+              { name: 'new-skill', content: '---\ndescription: \n---\n' },
+              { onSuccess: (s) => setSelected(s.id) },
+            )
+          }
+        >
+          New skill
+        </button>
+      </SectionHead>
+      {create.isError && <p className="text-danger">{create.error.message}</p>}
+      {skills.length === 0 ? (
+        <div className="rounded-[18px] border border-dashed border-outline px-6 py-10 text-center">
+          <p>No skills yet</p>
+          <p className="mt-1 text-[13px] text-muted">
+            A skill is a SKILL.md your Bots read when it applies. Create one with New skill.
+          </p>
         </div>
-        {create.isError && <p className="text-danger">{create.error.message}</p>}
-        {skills.map((s) => (
-          <button
-            key={s.id}
-            className="block w-full border-b border-line py-3 text-left"
-            onClick={() => setSelected(s.id)}
-          >
-            {s.name}
-          </button>
-        ))}
-      </div>
+      ) : (
+        <Box>
+          {skills.map((s) => {
+            const users = bots.filter((b) => b.skills?.includes(s.id));
+            return (
+              <button
+                key={s.id}
+                type="button"
+                className={`${rowClass} w-full text-left ${s.id === selected ? 'bg-line' : ''}`}
+                onClick={() => setSelected(s.id)}
+              >
+                <Tile>
+                  <FileIcon size={16} />
+                </Tile>
+                <RowText
+                  title={s.name}
+                  monoTitle
+                  detail={split(s.content).head.match(/^description:\s*(.*)$/m)?.[1]}
+                />
+                {users.length > 0 ? (
+                  <UsedBy bots={users} />
+                ) : (
+                  <span className="text-xs text-muted">unused</span>
+                )}
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="var(--color-muted)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+              </button>
+            );
+          })}
+        </Box>
+      )}
       {skill && (
         <SkillEditor key={skill.id} skill={skill} bots={bots} close={() => setSelected(null)} />
       )}
-    </div>
+    </>
   );
 }
