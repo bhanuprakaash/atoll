@@ -1,7 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, Outlet, useNavigate, useParams } from 'react-router';
 import { Creature } from '@/components/creature';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
+import { BotSettings } from '@/modules/bots/components/bot-settings';
+import { useConnections } from '@/modules/connections/api/connections';
+import { useProviders } from '@/modules/providers/api/providers';
+import { ModelSelect } from '@/modules/providers/components/model-select';
+import { useRepos } from '@/modules/repos/api/repos';
+import { useSkills } from '@/modules/skills/api/skills';
 import { useCreateThread, useThreads } from '@/modules/threads/api/threads';
 
 export function BotHeader({
@@ -65,14 +71,39 @@ export function BotPage() {
   const { botId = '', threadId = '' } = useParams();
   const { data: bots = [] } = useBots();
   const { data: threads = [] } = useThreads(botId);
+  const { data: repos = [] } = useRepos();
+  const { data: skills = [] } = useSkills();
+  const { data: connections = [] } = useConnections();
+  const { data: providers = [] } = useProviders();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const bot = bots.find((item) => item.id === botId);
   return (
     <>
       <BotHeader
-        bot={bots.find((bot) => bot.id === botId)}
+        bot={bot}
+        onSettings={() => setSettingsOpen(true)}
         title={threads.find((thread) => thread.id === threadId)?.title}
         waiting={threads.filter((thread) => thread.approval).length}
       />
       <Outlet />
+      {settingsOpen && bot && (
+        <BotSettings
+          key={bot.id}
+          bot={bot}
+          onClose={() => setSettingsOpen(false)}
+          repos={repos}
+          skills={skills}
+          connections={connections.filter((c) => c.status === 'connected')}
+          modelControl={(provider, model, onChange) => (
+            <ModelSelect
+              providers={providers}
+              provider={provider}
+              model={model}
+              onChange={onChange}
+            />
+          )}
+        />
+      )}
     </>
   );
 }

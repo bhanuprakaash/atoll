@@ -9,6 +9,8 @@ import { useConnections } from '@/modules/connections/api/connections';
 import { ConnectionsSettings } from '@/modules/connections/components/connections-settings';
 import { SavedMemory } from '@/modules/memory/components/saved-memory';
 import { PlatformChanges } from '@/modules/platform/components/platform-changes';
+import { useProviders } from '@/modules/providers/api/providers';
+import { ModelSelect } from '@/modules/providers/components/model-select';
 import { useRepos } from '@/modules/repos/api/repos';
 import { ReposSettings } from '@/modules/repos/components/repos-settings';
 import { useSkills } from '@/modules/skills/api/skills';
@@ -23,8 +25,14 @@ function NewBotPage() {
   const { data: repos = [] } = useRepos();
   const { data: connections = [] } = useConnections();
   const { data: skills = [] } = useSkills();
+  const { data: providers = [] } = useProviders();
+  const { data: bots = [] } = useBots();
   return (
     <NewBotForm
+      chiefId={bots.find((b) => b.can_manage_platform)?.id}
+      modelControl={(provider, model, onChange) => (
+        <ModelSelect providers={providers} provider={provider} model={model} onChange={onChange} />
+      )}
       repos={repos}
       skills={skills}
       connections={connections.filter((c) => c.status === 'connected')}

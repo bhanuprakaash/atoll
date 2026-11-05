@@ -22,7 +22,7 @@ export type Bot = {
 
 export type NewBot = Pick<
   Bot,
-  'name' | 'persona' | 'provider' | 'skills' | 'repo_access' | 'connections'
+  'name' | 'persona' | 'provider' | 'skills' | 'repo_access' | 'connections' | 'look' | 'model'
 >;
 
 export function useBots() {
@@ -37,6 +37,15 @@ export function useCreateBot() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (bot: NewBot) => api<Bot>('/bots', { method: 'POST', body: bot }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
+  });
+}
+
+export function useUpdateBot(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (changes: Partial<NewBot>) =>
+      api<Bot>(`/bots/${id}`, { method: 'PUT', body: changes }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
   });
 }
