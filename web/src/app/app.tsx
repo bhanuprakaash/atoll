@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Route, Routes, useNavigate, useParams } from 'react-router';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from 'react-router';
 import { BotPage, LatestThread } from '@/app/bot-page';
 import { SettingsPage } from '@/app/settings-page';
 import { Shell } from '@/app/shell';
@@ -7,6 +8,11 @@ import { useBots } from '@/modules/bots/api/bots';
 import { NewBotForm } from '@/modules/bots/components/new-bot-form';
 import { useConnections } from '@/modules/connections/api/connections';
 import { ConnectionsSettings } from '@/modules/connections/components/connections-settings';
+import { useMemory } from '@/modules/memory/api/memory';
+import { FirstRun } from '@/modules/onboarding/components/first-run';
+import { ProvidersSettings } from '@/modules/providers/components/providers-settings';
+import { useSaveSettings, useSettings } from '@/modules/settings/api/settings';
+import { GeneralSettings } from '@/modules/settings/components/general-settings';
 import { SavedMemory } from '@/modules/memory/components/saved-memory';
 import { PlatformChanges } from '@/modules/platform/components/platform-changes';
 import { useProviders } from '@/modules/providers/api/providers';
@@ -15,7 +21,7 @@ import { useRepos } from '@/modules/repos/api/repos';
 import { ReposSettings } from '@/modules/repos/components/repos-settings';
 import { useSkills } from '@/modules/skills/api/skills';
 import { SkillsSettings } from '@/modules/skills/components/skills-settings';
-import { useThread } from '@/modules/threads/api/threads';
+import { useCreateThread, useThread } from '@/modules/threads/api/threads';
 import { ThreadView } from '@/modules/threads/components/thread-view';
 
 const queryClient = new QueryClient();
@@ -67,25 +73,93 @@ function ThreadPage() {
   );
 }
 
+function SkillsPage() {
+  const { data: bots = [] } = useBots();
+  return <SkillsSettings bots={bots} />;
+}
+
+function MemorySettings() {
+  const { data: items = [] } = useMemory();
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl">Memory</h1>
+      {items.map((item) => (
+        <div key={item.id} className="border-b border-line py-4">
+          <p>{item.body}</p>
+          <p className="text-sm text-muted">
+            {item.kind} · {item.scope}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AppRoutes() {
+  const { data: settings, isError } = useSettings();
+  const [onboarding, setOnboarding] = useState<boolean | null>(null);
+  const save = useSaveSettings();
+  const create = useCreateThread('chief');
+  const navigate = useNavigate();
+  if (!settings && !isError) return null;
+  const show = onboarding ?? (settings ? !settings.user_name : false);
+  if (show && settings)
+    return (
+      <FirstRun
+        initialName={settings.user_name}
+        providers={<ProvidersSettings />}
+        onSave={async (name) => {
+          setOnboarding(true);
+          await save.mutateAsync({ ...settings, user_name: name });
+        }}
+        onOpen={(text) => {
+          if (!text) {
+            setOnboarding(false);
+            navigate('/bots/chief');
+            return;
+          }
+          void create.mutateAsync({ text }).then((thread) => {
+            setOnboarding(false);
+            navigate(`/bots/chief/threads/${thread.id}`);
+          });
+        }}
+      />
+    );
+  return (
+    <Routes>
+      <Route element={<Shell />}>
+        <Route index element={null} />
+        <Route path="settings" element={<SettingsPage />}>
+          <Route index element={<Navigate to="general" replace />} />
+          <Route path="general" element={<GeneralSettings />} />
+          <Route
+            path="providers"
+            element={
+              <div className="max-w-2xl p-6">
+                <ProvidersSettings />
+              </div>
+            }
+          />
+          <Route path="memory" element={<MemorySettings />} />
+          <Route path="repos" element={<ReposSettings />} />
+          <Route path="connections" element={<ConnectionsSettings />} />
+          <Route path="skills" element={<SkillsPage />} />
+        </Route>
+        <Route path="bots/new" element={<NewBotPage />} />
+        <Route path="bots/:botId" element={<BotPage />}>
+          <Route index element={<LatestThread />} />
+          <Route path="threads/:threadId" element={<ThreadPage />} />
+        </Route>
+      </Route>
+    </Routes>
+  );
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Routes>
-          <Route element={<Shell />}>
-            <Route index element={null} />
-            <Route path="settings" element={<SettingsPage />}>
-              <Route path="repos" element={<ReposSettings />} />
-              <Route path="connections" element={<ConnectionsSettings />} />
-              <Route path="skills" element={<SkillsSettings />} />
-            </Route>
-            <Route path="bots/new" element={<NewBotPage />} />
-            <Route path="bots/:botId" element={<BotPage />}>
-              <Route index element={<LatestThread />} />
-              <Route path="threads/:threadId" element={<ThreadPage />} />
-            </Route>
-          </Route>
-        </Routes>
+        <AppRoutes />
       </BrowserRouter>
     </QueryClientProvider>
   );

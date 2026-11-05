@@ -50,10 +50,10 @@ export function useThreads(botId: string) {
 export function useCreateThread(botId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (repoId?: string) =>
+    mutationFn: (input?: string | { text: string }) =>
       api<Thread>(`/bots/${botId}/threads`, {
         method: 'POST',
-        body: repoId ? { repo_id: repoId } : undefined,
+        body: typeof input === 'string' ? { repo_id: input } : input,
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['threads', botId] }),
   });
