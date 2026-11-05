@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { CreatureLook, CreatureState } from '@/components/creature';
 import { api } from '@/lib/api-client';
 
 export type Provider = 'claude' | 'codex';
@@ -7,18 +8,29 @@ export type Bot = {
   id: string;
   name: string;
   persona: string;
+  look: CreatureLook;
+  model: string;
+  state: CreatureState;
+  activity: string;
+  last_activity: string;
+  repo_access: 'all' | string[];
+  connections: string[];
   provider: Provider;
   skills: string[];
   can_manage_platform: boolean;
 };
 
-export type NewBot = Omit<Bot, 'id' | 'can_manage_platform'> & {
-  repo_access: 'all' | string[];
-  connections: string[];
-};
+export type NewBot = Pick<
+  Bot,
+  'name' | 'persona' | 'provider' | 'skills' | 'repo_access' | 'connections'
+>;
 
 export function useBots() {
-  return useQuery({ queryKey: ['bots'], queryFn: () => api<Bot[]>('/bots') });
+  return useQuery({
+    queryKey: ['bots'],
+    queryFn: () => api<Bot[]>('/bots'),
+    refetchInterval: 2000,
+  });
 }
 
 export function useCreateBot() {

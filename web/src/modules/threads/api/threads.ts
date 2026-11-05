@@ -12,6 +12,11 @@ export type Thread = {
   mr_state: string;
   closed: boolean;
   created_at: string;
+  title: string;
+  last_activity: string;
+  run_id: string;
+  run_status: string;
+  approval: { id: string; tool: string; input: unknown } | null;
 };
 
 export const getThread = (threadId: string) =>
@@ -38,6 +43,7 @@ export function useThreads(botId: string) {
   return useQuery({
     queryKey: ['threads', botId],
     queryFn: () => api<Thread[]>(`/bots/${botId}/threads`),
+    refetchInterval: 2000,
   });
 }
 
