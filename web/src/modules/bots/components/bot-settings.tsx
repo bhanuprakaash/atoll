@@ -55,7 +55,7 @@ export function BotSettings({
   return (
     <aside
       aria-label="Bot settings"
-      className="min-h-0 min-w-0 max-w-105 flex-[1_1_400px] overflow-auto border-l border-line bg-popover"
+      className="min-h-0 min-w-0 max-w-105 flex-[1_1_400px] overflow-auto border-l border-line bg-bg"
     >
       <section role="dialog" aria-label="Bot settings" className="p-7">
         <div className="mb-6 flex items-center justify-between">

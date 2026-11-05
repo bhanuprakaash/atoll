@@ -62,8 +62,11 @@ export function NewBotForm({
     );
   };
   return (
-    <div className="h-full overflow-auto">
-      <div className="flex items-center justify-between border-b border-line px-8 py-5">
+    <div className="flex h-full min-h-0 flex-col">
+      <div
+        data-tauri-drag-region
+        className="flex flex-none items-center justify-between border-b border-line px-8 py-5"
+      >
         <h1 className="text-base">New Bot</h1>
         <div className="flex items-center gap-4">
           <Link to={chiefId ? `/bots/${chiefId}` : '/'} className="text-sm text-muted">
@@ -74,7 +77,7 @@ export function NewBotForm({
           </Button>
         </div>
       </div>
-      <div className="flex justify-center gap-12 px-6 py-9">
+      <div className="flex min-h-0 flex-1 items-start justify-center gap-12 overflow-auto px-6 py-9">
         <form
           id="new-bot"
           onSubmit={submit}
@@ -154,7 +157,7 @@ export function NewBotForm({
         </form>
         <section
           aria-label="Preview"
-          className="sticky top-6 hidden h-fit w-80 flex-none min-[1200px]:block"
+          className="sticky top-9 hidden h-fit w-[340px] flex-none min-[1200px]:block"
         >
           <h2 className="mb-4 text-xs tracking-wide text-label">Preview</h2>
           <BotPreview
