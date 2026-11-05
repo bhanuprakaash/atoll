@@ -1,4 +1,4 @@
-@import '@fontsource/geist-sans/400.css';
+@import '@fontsource-variable/geist';
 @import 'tailwindcss';
 
 @theme {
@@ -35,8 +35,10 @@
   --color-sleep-white: #8e8e93;
   --radius-card: 0.75rem;
   --radius-control: 0.5rem;
-  --font-sans: 'Geist Sans', sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-sans:
+    'Geist Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui,
+    sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, Menlo, monospace;
   --color-box: #1f1f1f;
   --color-well: #151515;
   --color-field: #232323;
@@ -52,6 +54,11 @@
   --color-gitlab-dark: #e24329;
   --color-gitlab-light: #fca326;
   --color-gitlab-bg: #2b1a12;
+  --color-brand-claude: #d97757;
+  --color-brand-slack-red: #e3066a;
+  --color-brand-slack-blue: #00b3ff;
+  --color-brand-slack-green: #41b658;
+  --color-brand-slack-yellow: #fcc003;
   --animate-drift-a: drift-a 16s ease-in-out infinite;
   --animate-drift-b: drift-b 12s ease-in-out infinite;
   --animate-drift-c: drift-c 9s ease-in-out infinite;
@@ -99,6 +106,12 @@
 }
 body {
   @apply bg-bg font-sans text-ink;
+  font-size: 14.5px;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 @media (prefers-reduced-motion: no-preference) {
   @keyframes blink {
