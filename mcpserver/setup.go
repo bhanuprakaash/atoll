@@ -25,8 +25,8 @@ func Scopes(ctx context.Context, c *http.Client, s store.MCPServer) ([]string, e
 	return meta.Scopes, nil
 }
 
-// SaveClientID keeps the Client ID of server id in the OS secret store and marks the server not
-// connected.
+// SaveClientID keeps the Client ID of server id in the OS secret store, drops the tokens the old
+// app issued and marks the server not connected.
 func SaveClientID(ctx context.Context, st *store.Store, id, clientID string) error {
 	clientID = strings.TrimSpace(clientID)
 	if clientID == "" {
@@ -34,6 +34,9 @@ func SaveClientID(ctx context.Context, st *store.Store, id, clientID string) err
 	}
 	if err := keyring.Set("atoll", clientIDUser(id), clientID); err != nil {
 		return fmt.Errorf("save Client ID of MCP server %s: %w", id, err)
+	}
+	if err := deleteTokens(id); err != nil {
+		return err
 	}
 	return st.SetMCPSignIn(ctx, id, store.MCPNotConnected)
 }

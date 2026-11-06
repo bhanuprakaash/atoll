@@ -304,7 +304,7 @@ Undo of a repo registration is refused while a thread uses the repo.
   fixed redirect and the scopes, and a Client ID field; no secret field. `GET
   /api/mcp-servers/slack/setup` answers `{redirect_uri, scopes}` (`scopes` is `scopes_supported` of
   Slack's resource metadata); `POST` takes `{client_id}`, saves it as the OS secret store entry
-  `mcp:slack:client_id` and sets `not_connected`. Any other server's `setup` is `404`. Connect from
+  `mcp:slack:client_id`, deletes the stored tokens of the old app and sets `not_connected`. Any other server's `setup` is `404`. Connect from
   `needs_setup` is `409`. Otherwise it is the generic flow with the saved Client ID in place of
   registration and `scope` (the scopes joined by spaces) in the authorize URL: a public client, no
   `client_secret` on the exchange or the refresh.
