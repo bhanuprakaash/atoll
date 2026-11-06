@@ -376,10 +376,10 @@ export function Creature({
             {drawing.eyes.map(([x1, y1, x2, y2], i) => (
               <line
                 key={x1}
-                x1={x1}
-                y1={state === 'failed' ? y1 + (i ? 3 : -3) : y1}
-                x2={x2}
-                y2={state === 'failed' ? y2 + (i ? -3 : 3) : y2}
+                x1={state === 'failed' ? (x1 + x2) / 2 + (i ? -2 : 2) : x1}
+                y1={y1}
+                x2={state === 'failed' ? (x1 + x2) / 2 + (i ? 2 : -2) : x2}
+                y2={y2}
                 stroke="var(--color-eye)"
                 strokeWidth="4"
                 strokeLinecap="round"
