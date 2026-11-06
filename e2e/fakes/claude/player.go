@@ -166,6 +166,12 @@ func (p *player) play(lines []string) error {
 				return err
 			}
 			continue
+		case "logins-probe":
+			var err error
+			if repoReply, err = fake.LoginsProbe(); err != nil {
+				return err
+			}
+			continue
 		case "ask":
 			if skip {
 				continue
