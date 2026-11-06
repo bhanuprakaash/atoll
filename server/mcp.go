@@ -169,14 +169,16 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if err := json.Unmarshal(call.Arguments, &in); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		path, branch, err := a.runs.StartWork(r.Context(), token, in.Type, in.Slug)
+		path, branch, base, err := a.runs.StartWork(r.Context(), token, in.Type, in.Slug)
 		if err != nil {
 			return nil, a.toolError(err)
 		}
 		body, err := json.Marshal(struct {
 			Path   string `json:"path"`
 			Branch string `json:"branch"`
-		}{Path: path, Branch: branch})
+			Base   string `json:"base,omitempty"`
+			Note   string `json:"note,omitempty"`
+		}{Path: path, Branch: branch, Base: base.Name, Note: base.Note})
 		if err != nil {
 			return nil, a.toolError(err)
 		}

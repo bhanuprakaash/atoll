@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router';
 import { Field } from '@/components/field';
 import { Segmented } from '@/components/segmented';
+import { outlineButton, solidButton } from '@/components/settings-ui';
 import { Switch } from '@/components/switch';
 import { TextArea, TextField } from '@/components/text-field';
-import { usePinBot, useUpdateBot, type Bot, type NewBot } from '@/modules/bots/api/bots';
+import {
+  useDeleteBot,
+  usePinBot,
+  useUpdateBot,
+  type Bot,
+  type NewBot,
+} from '@/modules/bots/api/bots';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { ConnectionList } from '@/modules/bots/components/connection-list';
 import { CreatureCarousel } from '@/modules/bots/components/creature-picker';
@@ -31,6 +39,7 @@ export function BotSettings({
   const [skillIds, setSkillIds] = useState(bot.skills ?? []);
   const [platform, setPlatform] = useState(bot.can_manage_platform);
   const [connectionIds, setConnectionIds] = useState(bot.connections ?? []);
+  const [confirming, setConfirming] = useState(false);
   const update = useUpdateBot(bot.id);
   const pin = usePinBot(bot.id);
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -189,8 +198,60 @@ export function BotSettings({
           ) : (
             update.isSuccess && <p className="text-sm text-muted">Saved</p>
           )}
+          {bot.id !== 'chief' && (
+            <button
+              type="button"
+              className={`${outlineButton} self-start text-danger`}
+              onClick={() => setConfirming(true)}
+            >
+              Delete Bot
+            </button>
+          )}
         </div>
       </section>
+      {confirming && <DeleteDialog bot={bot} onClose={() => setConfirming(false)} />}
     </aside>
+  );
+}
+
+function DeleteDialog({ bot, onClose }: { bot: Bot; onClose: () => void }) {
+  const navigate = useNavigate();
+  const remove = useDeleteBot(bot.id);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div
+      className="fixed inset-0 z-30 flex items-center justify-center bg-scrim p-4"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label="Delete Bot"
+        className="w-full max-w-110 rounded-[22px] border border-composer-line bg-popover p-6 shadow-[0_18px_48px_rgba(0,0,0,.55)]"
+      >
+        <h2 className="mb-1 text-base">Delete {bot.name}?</h2>
+        <p className="mb-5 text-[13px] text-muted">
+          Its threads and runs are deleted. Memory it saved stays.
+        </p>
+        {remove.isError && <p className="mb-3 text-sm text-danger">{remove.error.message}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className={outlineButton} onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={solidButton}
+            disabled={remove.isPending}
+            onClick={() => remove.mutate(undefined, { onSuccess: () => navigate('/bots/chief') })}
+          >
+            Delete
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }

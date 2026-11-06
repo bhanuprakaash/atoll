@@ -37,6 +37,10 @@ never a dependency.
   from any run, children included, come to the user in the thread. *The provider already decides
   what needs approval.*
 - Bot settings changed mid-run apply from the next run.
+- Delete Bot (confirmed in the UI; not for Chief) stops its running run, closes its threads (their
+  worktrees are removed, unfinished work saved as for Close) and hard-deletes the Bot, its threads,
+  messages, runs and event files. Memory it saved stays, with its source. *Memory outlives the Bot
+  that wrote it; a Bot's history does not.*
 
 **Chief.** Created on first launch. It has the "Can manage the platform" switch on: tools to create
 and edit Bots, skills and repos, and to attach connections, served as Reef's own MCP tools. Sign-ins
@@ -100,6 +104,10 @@ Undo of a repo registration is refused while a thread uses the repo.
 - The read-only checkout is a detached git worktree of the repo's HEAD at `<data>/threads/<id>`,
   outside the worktree root. It is removed when the thread closes.
 - A new branch starts at `origin/HEAD` when it resolves, else HEAD. The server never fetches.
+- start_work's reply names the base, as the ref and its short commit (`origin/HEAD ee6ad1b`, or
+  `HEAD ee6ad1b` without an origin). When the local default branch (the one origin/HEAD points at)
+  is ahead of origin/HEAD, the reply adds a `note`: `local main is 1 commit ahead (b11bedc); not
+  included`. A thread that already has a worktree gets its path and branch back, with no base.
 - The slug is lowercased, every run of characters outside `[a-z0-9]` becomes `-`, and it is cut to
   40 characters. The worktree folder is the branch with `/` replaced by `-`.
 - Repo names are unique, because the worktree folder uses them.
@@ -305,10 +313,12 @@ Finish
 - The Go server serves the UI at `/` and the API under `/api/`, one address. Vite builds `web/`
   into `server/ui`, which the binary embeds (`make ui`).
 - The desktop shell uses an overlay title bar; the Bot header’s empty space is a window drag region.
-- The Tauri shell (`desktop/`, `make app`) starts `atoll serve --addr 127.0.0.1:4317`, loads the
-  URL it prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
-  SIGTERM; the page shows Reconnecting meanwhile. A page's `window.open` (provider sign-in) opens in
-  the default browser. *A fixed address lets the open page reconnect to a restarted sidecar.*
+- The Tauri shell (`desktop/`, `make app`) starts `atoll serve --addr 127.0.0.1:4317
+  --exit-on-stdin-close`, keeps its stdin pipe open as the sidecar's lifeline, loads the URL it
+  prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
+  SIGTERM; an occupied port stops retries and shows an error. The page shows Reconnecting meanwhile.
+  A page's `window.open` (provider sign-in) opens in the default browser. *A fixed address lets the
+  open page reconnect to a restarted sidecar.*
 - The dmg is ad-hoc signed (`signingIdentity: "-"`), not notarized, as old Reef was: free, and a
   web download opens after System Settings → Privacy & Security → Open Anyway once. CI's `dmg` job
   builds it on the atoll-mac runner for every push to `main` (manual on an MR). *Developer ID and

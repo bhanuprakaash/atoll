@@ -42,14 +42,31 @@ func Branch(typ, slug string) (string, error) {
 	return typ + "/" + s, nil
 }
 
+// Base says where a new branch started. Name is the ref and short commit, such as
+// "origin/HEAD ee6ad1b". Note is set when the local default branch has commits origin/HEAD lacks.
+type Base struct {
+	Name string
+	Note string
+}
+
 // Create makes a new worktree of repoPath on a new branch at <root>/<repoName>/<folder>, where
 // folder is the branch with "/" replaced by "-". When the branch or the folder exists it tries
 // <branch>-2, <branch>-3 and so on. The branch starts at origin/HEAD when that resolves, else at
-// HEAD. It returns the absolute path and the branch used. No fetch, no network.
-func Create(ctx context.Context, repoPath, root, repoName, branch string) (path, used string, err error) {
+// HEAD. It returns the absolute path, the branch used and the base. No fetch, no network.
+func Create(
+	ctx context.Context, repoPath, root, repoName, branch string,
+) (path, used string, base Base, err error) {
 	start := "HEAD"
 	if _, err := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", "origin/HEAD^{commit}"); err == nil {
 		start = "origin/HEAD"
+	}
+	commit, err := git(ctx, repoPath, nil, "rev-parse", "--short=7", start)
+	if err != nil {
+		return "", "", Base{}, fmt.Errorf("read base: %w", err)
+	}
+	base = Base{Name: start + " " + commit}
+	if start == "origin/HEAD" {
+		base.Note = aheadNote(ctx, repoPath)
 	}
 	for n := 1; ; n++ {
 		used = branch
@@ -58,7 +75,7 @@ func Create(ctx context.Context, repoPath, root, repoName, branch string) (path,
 		}
 		path, err = filepath.Abs(filepath.Join(root, repoName, strings.ReplaceAll(used, "/", "-")))
 		if err != nil {
-			return "", "", fmt.Errorf("worktree path: %w", err)
+			return "", "", Base{}, fmt.Errorf("worktree path: %w", err)
 		}
 		if _, err := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", "refs/heads/"+used); err == nil {
 			continue
@@ -69,12 +86,35 @@ func Create(ctx context.Context, repoPath, root, repoName, branch string) (path,
 		break
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", "", fmt.Errorf("make worktree folder: %w", err)
+		return "", "", Base{}, fmt.Errorf("make worktree folder: %w", err)
 	}
 	if _, err := git(ctx, repoPath, nil, "worktree", "add", "--no-track", "-b", used, path, start); err != nil {
-		return "", "", fmt.Errorf("add worktree: %w", err)
+		return "", "", Base{}, fmt.Errorf("add worktree: %w", err)
 	}
-	return path, used, nil
+	return path, used, base, nil
+}
+
+// aheadNote names the local default branch (the one origin/HEAD points at) and how far it is ahead
+// of origin/HEAD. It is empty when it is not ahead or cannot be read.
+func aheadNote(ctx context.Context, repoPath string) string {
+	remote, err := git(ctx, repoPath, nil, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+	if err != nil {
+		return ""
+	}
+	local := strings.TrimPrefix(remote, "origin/")
+	count, err := git(ctx, repoPath, nil, "rev-list", "--count", "origin/HEAD..refs/heads/"+local)
+	if err != nil || count == "0" {
+		return ""
+	}
+	tip, err := git(ctx, repoPath, nil, "rev-parse", "--short=7", "refs/heads/"+local)
+	if err != nil {
+		return ""
+	}
+	noun := "commits"
+	if count == "1" {
+		noun = "commit"
+	}
+	return fmt.Sprintf("local %s is %s %s ahead (%s); not included", local, count, noun, tip)
 }
 
 // Checkout makes dir a detached worktree of repoPath at HEAD. A dir that already is a worktree

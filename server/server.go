@@ -30,6 +30,7 @@ const MCPPath = "/mcp/"
 const (
 	_pingEvery     = 15 * time.Second
 	_signInTimeout = 30 * time.Second
+	_chiefID       = "chief"
 )
 
 //go:embed all:ui
@@ -71,12 +72,14 @@ func New(
 	mux.HandleFunc("POST /api/memory/{id}/retire", a.retireMemory)
 	mux.HandleFunc("GET /api/connections", a.listConnections)
 	mux.HandleFunc("POST /api/connections/gitlab/start", a.startGitLab)
+	mux.HandleFunc("POST /api/connections/gitlab", a.startGitLab)
 	mux.HandleFunc("POST /api/connections/{id}/poll", a.pollConnection)
 	mux.HandleFunc("GET /api/connections/{id}", a.getConnection)
 	mux.HandleFunc("POST /api/bots", a.createBot)
 	mux.HandleFunc("GET /api/bots", a.listBots)
 	mux.HandleFunc("GET /api/bots/{id}", a.getBot)
 	mux.HandleFunc("PUT /api/bots/{id}", a.putBot)
+	mux.HandleFunc("DELETE /api/bots/{id}", a.deleteBot)
 	mux.HandleFunc("POST /api/bots/{id}/pin", a.pinBot)
 	mux.HandleFunc("DELETE /api/bots/{id}/pin", a.unpinBot)
 	mux.HandleFunc("POST /api/skills", a.createSkill)
@@ -284,6 +287,10 @@ func (a *api) liveVerb(threadID string) string {
 }
 
 func (a *api) listThreads(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.st.Bot(r.Context(), r.PathValue("id")); err != nil {
+		a.fail(w, r, err)
+		return
+	}
 	threads, err := a.st.Threads(r.Context(), r.PathValue("id"))
 	if err != nil {
 		a.fail(w, r, err)

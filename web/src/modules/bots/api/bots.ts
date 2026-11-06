@@ -42,6 +42,14 @@ export function useCreateBot() {
   });
 }
 
+export function useDeleteBot(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<void>(`/bots/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
+  });
+}
+
 export function usePinBot(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
