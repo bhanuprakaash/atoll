@@ -431,8 +431,8 @@ func (a *api) platformCall(
 	return a.jsonText(after)
 }
 
-// botChoiceError rejects a look no creature has, and a model no signed-in provider lists unless it
-// is the model the Bot already has.
+// botChoiceError rejects a look no creature has, and a model the Bot's provider does not list while
+// signed in, unless it is the model the Bot already has.
 func (a *api) botChoiceError(ctx context.Context, b store.Bot, current string) *rpcError {
 	if b.Look != "" && !slices.Contains(_looks, b.Look) {
 		return &rpcError{Code: _invalidParams, Message: fmt.Sprintf(
@@ -447,6 +447,9 @@ func (a *api) botChoiceError(ctx context.Context, b store.Bot, current string) *
 	}
 	var models []string
 	for _, p := range providers {
+		if p.Name != b.Provider {
+			continue
+		}
 		for _, m := range p.Models {
 			models = append(models, m.ID)
 		}
