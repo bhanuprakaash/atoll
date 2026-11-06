@@ -78,7 +78,7 @@ function ThreadPage() {
       bot={bot}
       repoName={repoName}
       lostRepo={lostRepo}
-      signedOut={bot && <SignInExpired provider={bot.provider} />}
+      signedOut={(provider) => <SignInExpired provider={provider} />}
       afterRun={(runId) => (
         <>
           <SavedMemory runId={runId} botNames={botNames} />

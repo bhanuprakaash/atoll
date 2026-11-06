@@ -443,6 +443,7 @@ func (m *Manager) execute(a *active, text string) {
 		res = store.RunResult{Status: "stopped"}
 	}
 	m.mu.Unlock()
+	res.Provider = a.bot.Provider
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
 		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, res)

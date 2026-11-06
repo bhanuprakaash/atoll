@@ -41,6 +41,7 @@ type providers struct {
 	codes    map[string]io.Writer
 	signedIn map[string]bool
 	infos    map[string]providerInfo
+	expired  map[string]bool // refused a run: signed out until a sign-in or Refresh
 }
 
 var _loginURL = regexp.MustCompile(`https://[^\s"'<>]+`)
@@ -48,13 +49,18 @@ var _loginURL = regexp.MustCompile(`https://[^\s"'<>]+`)
 func newProviders(parent context.Context) *providers {
 	ctx, cancel := context.WithCancel(parent)
 	return &providers{ctx: ctx, cancel: cancel, states: map[string]loginState{}, codes: map[string]io.Writer{}, signedIn: map[string]bool{},
-		infos: map[string]providerInfo{}}
+		infos: map[string]providerInfo{}, expired: map[string]bool{}}
 }
 func (p *providers) Close() { p.cancel(); p.wg.Wait() }
 func (p *providers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/providers")
 	w.Header().Set("Content-Type", "application/json")
 	if (path == "" && r.Method == http.MethodGet) || (path == "/refresh" && r.Method == http.MethodPost) {
+		if path == "/refresh" {
+			p.mu.Lock()
+			clear(p.expired)
+			p.mu.Unlock()
+		}
 		list := make([]providerInfo, 0, len(_adapters))
 		for _, a := range _adapters {
 			list = append(list, p.info(r.Context(), a))
@@ -124,7 +130,7 @@ func (p *providers) info(ctx context.Context, a adapter) (info providerInfo) {
 	}
 	info = providerInfo{Provider: server.Provider{Name: a.name, Label: label, Models: []server.Model{}}}
 	defer func() {
-		p.setAvailable(a.name, info.SignedIn)
+		info.SignedIn = p.setAvailable(a.name, info.SignedIn)
 		p.mu.Lock()
 		p.infos[a.name] = info
 		p.mu.Unlock()
@@ -293,6 +299,7 @@ func (p *providers) finish(name string, err error) {
 	if err == nil {
 		p.signedIn[name] = true
 		delete(p.infos, name)
+		delete(p.expired, name)
 	}
 }
 
@@ -321,10 +328,21 @@ func (p *providers) submitCode(w http.ResponseWriter, r *http.Request, name stri
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (p *providers) setAvailable(name string, signed bool) {
+// setAvailable caches the result of a status check; a provider that refused a run stays signed out.
+func (p *providers) setAvailable(name string, signed bool) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	signed = signed && !p.expired[name]
 	p.signedIn[name] = signed
+	return signed
+}
+
+// signOut marks a provider that refused a run signed out until a sign-in finishes or Refresh checks it.
+func (p *providers) signOut(name string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.expired[name] = true
+	p.signedIn[name] = false
 }
 
 func (p *providers) available(ctx context.Context, name string) bool {
@@ -338,7 +356,5 @@ func (p *providers) available(ctx context.Context, name string) bool {
 }
 
 func (p *providers) checkAvailable(ctx context.Context, name string) bool {
-	signed := available(ctx, name)
-	p.setAvailable(name, signed)
-	return signed
+	return p.setAvailable(name, available(ctx, name))
 }

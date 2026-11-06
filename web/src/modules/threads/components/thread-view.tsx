@@ -32,7 +32,7 @@ function RunResult({
 }: {
   id: string;
   retry: () => void;
-  signedOut?: ReactNode;
+  signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
   const { data: run } = useRun(id);
   if (!run || run.status === 'running' || run.status === 'waiting') return null;
@@ -77,7 +77,7 @@ function RunResult({
             <path d="M12 7.5v5M12 16v.5" />
           </svg>
           {run.error_kind === 'signed_out' && signedOut ? (
-            signedOut
+            signedOut(run.provider)
           ) : (
             <span className="min-w-60 flex-1 text-ink/80 [overflow-wrap:anywhere]">
               Run failed{run.error ? `: ${run.error}` : '.'}
@@ -126,7 +126,7 @@ function MessageLine({
 }: {
   message: Message;
   retry: () => void;
-  signedOut?: ReactNode;
+  signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
   if (message.role === 'user')
     return (
@@ -323,7 +323,7 @@ export function ThreadView({
   repoName?: string;
   lostRepo?: string;
   afterRun?: (runId: string) => ReactNode;
-  signedOut?: ReactNode;
+  signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
   const navigate = useNavigate();
   const [repoId, setRepoId] = useState('');

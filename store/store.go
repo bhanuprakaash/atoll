@@ -151,6 +151,7 @@ type (
 		Reply      string         `json:"reply"`
 		Error      string         `json:"error"`
 		ErrorKind  string         `json:"error_kind"`
+		Provider   string         `json:"provider"`
 		Report     *Report        `json:"report"`
 		StartedAt  time.Time      `json:"started_at"`
 		FinishedAt time.Time      `json:"finished_at"`
@@ -599,8 +600,8 @@ func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 	var started, finished int64
 	var tools string
 	err := s.db.QueryRowContext(ctx,
-		"SELECT id, thread_id, status, reply, error, error_kind, report, started_at, finished_at, tools FROM runs WHERE id = ?", id).
-		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &r.ErrorKind, &report, &started, &finished, &tools)
+		"SELECT id, thread_id, status, reply, error, error_kind, provider, report, started_at, finished_at, tools FROM runs WHERE id = ?", id).
+		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &r.ErrorKind, &r.Provider, &report, &started, &finished, &tools)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("run %s: %w", id, ErrNotFound)
 	}
@@ -669,6 +670,7 @@ type RunResult struct {
 	Reply     string
 	Error     string
 	ErrorKind string
+	Provider  string // the provider the run used
 }
 
 // FinishRun ends a run with res. A non-empty reply also becomes the thread's bot message, in the
@@ -685,8 +687,8 @@ func (s *Store) FinishRun(ctx context.Context, runID string, res RunResult) erro
 			return fmt.Errorf("read run %s: %w", runID, err)
 		}
 		_, err = tx.ExecContext(ctx,
-			"UPDATE runs SET status = ?, reply = ?, error = ?, error_kind = ?, finished_at = ? WHERE id = ?",
-			res.Status, res.Reply, res.Error, res.ErrorKind, time.Now().UTC().UnixMicro(), runID)
+			"UPDATE runs SET status = ?, reply = ?, error = ?, error_kind = ?, provider = ?, finished_at = ? WHERE id = ?",
+			res.Status, res.Reply, res.Error, res.ErrorKind, res.Provider, time.Now().UTC().UnixMicro(), runID)
 		if err != nil {
 			return fmt.Errorf("finish run: %w", err)
 		}

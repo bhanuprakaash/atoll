@@ -378,9 +378,13 @@ Voice
 - Provider sign-in state is cached: checked on start, before each run, on Refresh and when a
   sign-in finishes, never on the sidebar's poll.
 - A run that fails because its provider refused the sign-in (Claude `authentication_failed`, Codex
-  `unauthorized`) is stored with `error_kind: "signed_out"` and marks the provider signed out. The
-  thread shows "Claude sign-in expired" (or Codex) with Sign in again, which runs the provider's
-  sign-in from the thread; Retry then sends the same message.
+  `unauthorized`) is stored with `error_kind: "signed_out"` and the run's `provider`, and marks that
+  provider signed out. The mark stays, whatever the CLI's status check says (a revoked token may
+  still look signed in locally), until a sign-in of that provider finishes or Refresh runs. The
+  thread shows "Claude sign-in expired" (or Codex) for the run's provider, with Sign in again, which
+  runs the provider's sign-in from the thread; Retry then sends the same message.
+- Chief's `list_models` and the model check of `create_bot` and `edit_bot` read the same cached
+  provider state as `GET /api/providers`; they start no provider process.
 - Names: the UI says Reef. Repo, Go module, binary and bundle ID (`dev.atoll.desktop`) say
   `atoll`; app data lives in `~/Library/Application Support/Atoll`. *Runs beside the old Reef;
   rename when it retires.*
