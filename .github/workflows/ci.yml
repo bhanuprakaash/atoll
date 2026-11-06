@@ -37,6 +37,8 @@ jobs:
       GO_VERSION: "1.27.3"
     steps:
       - uses: actions/checkout@v4
+      # The container user does not own the checkout, so git refuses it and Go's VCS stamping fails.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: apt-get update -qq && apt-get install -y -qq make dbus gnome-keyring libsecret-tools >/dev/null
       - run: curl -fsSL "https://dl.google.com/go/go$GO_VERSION.linux-$(dpkg --print-architecture).tar.gz" | tar -xz -C /usr/local
       - run: echo /usr/local/go/bin >> "$GITHUB_PATH"
