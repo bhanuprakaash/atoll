@@ -4,7 +4,7 @@ import { api } from '@/lib/api-client';
 export type McpServer = {
   id: string;
   name: string;
-  kind: 'catalog' | 'local' | 'remote';
+  kind: 'catalog' | 'connection' | 'local' | 'remote';
   command?: string;
   args?: string[];
   url?: string;

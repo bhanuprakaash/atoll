@@ -48,15 +48,20 @@ function ServerIcon() {
   );
 }
 
+const withoutSlash = (url: string) => url.trim().replace(/\/$/, '');
+
 function ServerDialog({
   kind,
   server,
+  githubURL,
   onClose,
 }: {
   kind: 'local' | 'remote';
   server?: McpServer;
+  githubURL?: string;
   onClose: () => void;
 }) {
+  const [asking, setAsking] = useState(false);
   const [name, setName] = useState(server?.name ?? '');
   const [command, setCommand] = useState(server?.command ?? '');
   const [args, setArgs] = useState((server?.args ?? []).join('\n'));
@@ -71,14 +76,17 @@ function ServerDialog({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
+  const add = () =>
     save.mutate(
       kind === 'local'
         ? { name, command, args: lines(args), env: pairs(env, '=') }
         : { name, url, headers: pairs(headers, ':') },
       { onSuccess: onClose },
     );
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!server && githubURL && withoutSlash(url) === withoutSlash(githubURL)) setAsking(true);
+    else add();
   };
   const title = server ? `Edit ${server.name}` : kind === 'local' ? 'Add local' : 'Add by URL';
   return (
@@ -174,14 +182,30 @@ function ServerDialog({
               </Field>
             </>
           )}
+          {asking && (
+            <p className="text-sm text-muted">
+              GitHub has a connection. Use it instead, or add this server as well.
+            </p>
+          )}
           {save.isError && <p className="text-sm text-danger">{save.error.message}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" className={outlineButton} onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" disabled={save.isPending} className={solidButton}>
-              {server ? 'Save' : 'Add'}
-            </button>
+            {asking ? (
+              <>
+                <button type="button" className={outlineButton} onClick={add}>
+                  Add anyway
+                </button>
+                <button type="button" className={solidButton} onClick={onClose}>
+                  Use connection
+                </button>
+              </>
+            ) : (
+              <button type="submit" disabled={save.isPending} className={solidButton}>
+                {server ? 'Save' : 'Add'}
+              </button>
+            )}
           </div>
         </form>
       </section>
@@ -242,7 +266,8 @@ export function McpServersSettings() {
     });
   };
   const catalog = servers.filter((s) => s.kind === 'catalog');
-  const own = servers.filter((s) => s.kind !== 'catalog');
+  const fromConnections = servers.filter((s) => s.kind === 'connection');
+  const own = servers.filter((s) => s.kind === 'local' || s.kind === 'remote');
   return (
     <>
       <SectionHead
@@ -274,6 +299,25 @@ export function McpServersSettings() {
           </li>
         ))}
       </ul>
+      {fromConnections.length > 0 && (
+        <>
+          <h3 className="-mb-2 text-xs tracking-wide text-label">From connections</h3>
+          <ul aria-label="From connections" className={listClass}>
+            {fromConnections.map((s) => (
+              <li key={s.id} className={rowClass}>
+                <Tile>
+                  <ServerIcon />
+                </Tile>
+                <RowText title={s.name} detail={runs(s)} mono>
+                  <i className="block text-[12.5px] not-italic text-muted">
+                    from GitHub connection
+                  </i>
+                </RowText>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <h3 className="-mb-2 text-xs tracking-wide text-label">Your servers</h3>
       {own.length > 0 ? (
         <ul aria-label="Your servers" className={listClass}>
@@ -324,6 +368,7 @@ export function McpServersSettings() {
           key={dialog.server?.id ?? dialog.kind}
           kind={dialog.kind}
           server={dialog.server}
+          githubURL={fromConnections[0]?.url}
           onClose={() => setDialog(undefined)}
         />
       )}
