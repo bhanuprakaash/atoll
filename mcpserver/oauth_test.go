@@ -231,8 +231,8 @@ func TestRemoveCatalogSignsOut(t *testing.T) {
 	if _, tokenErr := keyring.Get("atoll", tokensUser("notion")); err != nil || tokenErr == nil || signIns["notion"] != store.MCPNotConnected {
 		t.Errorf("after sign out: token error %v, status %q (%v), want no tokens and not_connected", tokenErr, signIns["notion"], err)
 	}
-	if err := Remove(ctx, st, "context7"); !errors.Is(err, ErrInvalid) {
-		t.Errorf("Remove(context7) = %v, want ErrInvalid", err)
+	if err := Remove(ctx, st, "context7"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Remove(context7) = %v, want ErrNotFound", err)
 	}
 }
 

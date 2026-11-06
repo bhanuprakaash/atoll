@@ -148,7 +148,7 @@ func Replace(ctx context.Context, st *store.Store, c *http.Client, id string, in
 func Remove(ctx context.Context, st *store.Store, id string) error {
 	if i := slices.IndexFunc(_catalog, func(c store.MCPServer) bool { return c.ID == id }); i >= 0 {
 		if _catalog[i].Status == "" {
-			return invalid(_catalog[i].Name + " has no sign-in to remove")
+			return fmt.Errorf("MCP server %s: %w", id, store.ErrNotFound)
 		}
 		return errors.Join(deleteTokens(id), st.SetMCPSignIn(ctx, id, store.MCPNotConnected))
 	}
