@@ -93,6 +93,9 @@ func systemPrompt(bot store.Bot, user string) string {
 const _repoWork = "Before your first edit, call start_work and work in the path it returns. " +
 	"After you open the MR, call track_mr with its URL."
 
+const _repoWorkGitHub = "Before your first edit, call start_work and work in the path it returns. " +
+	"Open the pull request with gh pr create, then call track_mr with its URL."
+
 func cut(s string, limit int) string {
 	if len(s) <= limit {
 		return s
@@ -131,8 +134,12 @@ func messagePrompt(
 			if branch == "" {
 				branch = "detached"
 			}
+			work := _repoWork
+			if repo.Host == _hostGitHub {
+				work = _repoWorkGitHub
+			}
 			blocks = append(blocks, fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s\n%s",
-				repo.Name, repo.ID, path, branch, _repoWork))
+				repo.Name, repo.ID, path, branch, work))
 		}
 	}
 	blocks = append(blocks, "Message:\n"+text)

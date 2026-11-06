@@ -170,6 +170,9 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
 		path, branch, base, err := a.runs.StartWork(r.Context(), token, in.Type, in.Slug)
+		if errors.Is(err, run.ErrNoGitHubConnection) {
+			return failure(err.Error()), nil
+		}
 		if err != nil {
 			return nil, a.toolError(err)
 		}
@@ -290,12 +293,18 @@ func (a *api) jsonText(v any) (any, *rpcError) {
 	return text(string(body)), nil
 }
 
-func text(s string) any {
+func text(s string) any { return result(s, false) }
+
+// failure is a tool result that tells the model the call failed, so it can say why to the user.
+func failure(s string) any { return result(s, true) }
+
+func result(s string, isError bool) any {
 	type part struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	}
 	return struct {
 		Content []part `json:"content"`
-	}{Content: []part{{Type: "text", Text: s}}}
+		IsError bool   `json:"isError,omitempty"`
+	}{Content: []part{{Type: "text", Text: s}}, IsError: isError}
 }

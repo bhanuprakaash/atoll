@@ -19,6 +19,7 @@ import {
 import { Composer } from '@/modules/threads/components/composer';
 import { LiveRun } from '@/modules/threads/components/live-run';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
+import { mrRef } from '@/modules/threads/utils/mr-ref';
 
 function duration(run: Run) {
   const seconds =
@@ -382,7 +383,7 @@ export function ThreadView({
   };
   const mrUrl = mr?.url ?? thread?.mr_url;
   const mrState = mr?.state ?? thread?.mr_state;
-  const iid = mrUrl?.match(/(?:merge_requests|merge-requests)\/(\d+)/)?.[1];
+  const ref = mrRef(mrUrl);
   const mrChip = mrUrl && (
     <a
       href={mrUrl}
@@ -390,7 +391,7 @@ export function ThreadView({
       rel="noreferrer"
       className="flex h-7 items-center gap-1.5 rounded-full bg-selected pr-1 pl-2.5 text-ink"
     >
-      !{iid ?? 'MR'} {mr?.title ?? thread?.mr_title}
+      {ref ?? '!MR'} {mr?.title ?? thread?.mr_title}
       <span className="rounded-full bg-segment px-2 py-px text-[11.5px]">
         {{ merged: 'Merged', closed: 'Closed' }[mrState ?? ''] ?? 'Open'}
       </span>
@@ -559,7 +560,7 @@ export function ThreadView({
           )}
           {(worktreeRemoved || thread?.worktree_removed) && (
             <p className="text-sm text-muted">
-              {iid && mrState === 'merged' ? `!${iid} merged · ` : ''}worktree cleaned up
+              {ref && mrState === 'merged' ? `${ref} merged · ` : ''}worktree cleaned up
             </p>
           )}
           {thread?.closed && (
@@ -615,7 +616,7 @@ export function ThreadView({
                   <span className="block font-mono text-xs text-muted">
                     {[
                       thread.branch,
-                      iid && `!${iid} ${mrState || 'open'}`,
+                      ref && `${ref} ${mrState || 'open'}`,
                       (worktreeRemoved || thread.worktree_removed) && 'worktree cleaned up',
                     ]
                       .filter(Boolean)

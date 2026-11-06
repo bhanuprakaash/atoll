@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
-export type Repo = { id: string; name: string; path: string };
+export type Repo = { id: string; name: string; path: string; host?: 'github' | 'gitlab' };
 
 export function useRepos() {
   return useQuery({ queryKey: ['repos'], queryFn: () => api<Repo[]>('/repos') });
