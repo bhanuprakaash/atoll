@@ -250,6 +250,63 @@ func TestStore_MessageTimestamps(t *testing.T) {
 	}
 }
 
+func TestStore_MessagePage(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 26 {
+		_, run, err := st.StartRun(ctx, thread.ID, "message")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.FinishRun(ctx, run.ID, store.StatusDone, "reply", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	latest, err := st.MessagePage(ctx, thread.ID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	older, err := st.MessagePage(ctx, thread.ID, latest[0].ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name          string
+		before, after string
+		want          []store.Message
+	}{
+		{"after returns the newer page", "", older[len(older)-1].ID, latest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := st.MessagePage(ctx, thread.ID, tt.before, tt.after)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("messages = %d, want %d", len(got), len(tt.want))
+			}
+			for i := range got {
+				if got[i].ID != tt.want[i].ID {
+					t.Fatalf("message %d = %s, want %s", i, got[i].ID, tt.want[i].ID)
+				}
+			}
+		})
+	}
+}
+
 func TestStore_ThreadDetails(t *testing.T) {
 	ctx := t.Context()
 	dir := t.TempDir()

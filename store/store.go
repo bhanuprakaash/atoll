@@ -162,7 +162,8 @@ type (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model"
-	_threadColumns = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref"
+	_messagePageSize = 50
 )
 
 // Open opens dir/atoll.db, creating dir and the file if needed, and applies any migration the
@@ -649,9 +650,18 @@ func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error
 		threadID)
 }
 
-// MessagePage lists up to 50 messages ending before before, oldest first. An empty before returns
-// the newest page.
-func (s *Store) MessagePage(ctx context.Context, threadID, before string) ([]Message, error) {
+// MessagePage lists a page of messages, oldest first. An empty cursor returns the newest page.
+func (s *Store) MessagePage(ctx context.Context, threadID, before, after string) ([]Message, error) {
+	if after != "" {
+		return s.messages(ctx,
+			`SELECT m.id, m.thread_id, m.role, m.text, m.run_id,
+                CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END
+             FROM messages m JOIN runs r ON r.id = m.run_id
+             WHERE m.thread_id = ? AND m.rowid > (
+                 SELECT rowid FROM messages WHERE id = ? AND thread_id = ?
+             ) ORDER BY m.rowid LIMIT `+strconv.Itoa(_messagePageSize),
+			threadID, after, threadID)
+	}
 	return s.messages(ctx,
 		`SELECT id, thread_id, role, text, run_id, at FROM (
             SELECT m.id, m.thread_id, m.role, m.text, m.run_id,
@@ -662,7 +672,7 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before string) ([]Mes
               AND (CASE WHEN ? = '' THEN 1 ELSE m.rowid < (
                   SELECT rowid FROM messages WHERE id = ? AND thread_id = ?
               ) END)
-            ORDER BY m.rowid DESC LIMIT 50
+            ORDER BY m.rowid DESC LIMIT `+strconv.Itoa(_messagePageSize)+`
          ) ORDER BY rowid`,
 		threadID, before, before, threadID)
 }

@@ -1,4 +1,4 @@
-import { Fragment, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
 import { Creature, type CreatureLook } from '@/components/creature';
@@ -303,6 +303,7 @@ export function ThreadView({
   const [repoId, setRepoId] = useState('');
   const messageQuery = useMessages(threadId);
   const messages = messageQuery.data?.pages.flat() ?? [];
+  const { fetchNextPage, hasNextPage, isFetching } = messageQuery;
   const { data: thread } = useThread(threadId);
   const close = useCloseThread(threadId);
   const create = useCreateThreadWithMessage(botId);
@@ -334,6 +335,9 @@ export function ThreadView({
     wasAtLatest.current = atLatest;
     setAwayFromLatest(!atLatest);
   }, [messages, threadId]);
+  useEffect(() => {
+    if (messages.length > 50 && hasNextPage && !isFetching) void fetchNextPage();
+  }, [fetchNextPage, hasNextPage, isFetching, messages.length]);
   const answered = new Set(messages.filter((m) => m.role === 'bot').map((m) => m.run_id));
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
   const retry = () => {
@@ -421,7 +425,9 @@ export function ThreadView({
     )
       return;
     previousHeight.current = element.scrollHeight;
-    void messageQuery.fetchPreviousPage();
+    void messageQuery.fetchOlder().then((loaded) => {
+      if (!loaded) previousHeight.current = null;
+    });
   };
   const scrollToLatest = () => {
     log.current?.scrollTo({ top: log.current.scrollHeight });
