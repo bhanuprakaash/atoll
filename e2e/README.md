@@ -139,3 +139,5 @@ Skills keeping their scripts, playbooks and references extends these contracts i
 The skill editor for every file of a skill extends these contracts in [skill-editor-contract.md](skill-editor-contract.md).
 
 MCP servers (a library, a pick per Bot, secrets in the OS store) extend these contracts in [mcp-servers-contract.md](mcp-servers-contract.md).
+
+MCP sign-in for hosted servers (Connect, tokens in the OS secret store, refresh) extends these contracts in [mcp-oauth-contract.md](mcp-oauth-contract.md).
