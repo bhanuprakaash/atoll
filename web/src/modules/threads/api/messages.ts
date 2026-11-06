@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
 export type Message = {
@@ -20,11 +25,47 @@ export type Run = {
   error: string;
 };
 
+type MessagePageParam = { before?: string; after?: string };
+
 export function useMessages(threadId: string) {
-  return useQuery({
+  const queryClient = useQueryClient();
+  const query = useInfiniteQuery<
+    Message[],
+    Error,
+    InfiniteData<Message[], MessagePageParam>,
+    [string, string],
+    MessagePageParam
+  >({
     queryKey: ['messages', threadId],
-    queryFn: () => api<Message[]>(`/threads/${threadId}/messages`),
+    initialPageParam: {},
+    queryFn: ({ pageParam }) =>
+      api<Message[]>(
+        `/threads/${threadId}/messages${
+          pageParam.before
+            ? `?before=${encodeURIComponent(pageParam.before)}`
+            : pageParam.after
+              ? `?after=${encodeURIComponent(pageParam.after)}`
+              : ''
+        }`,
+      ),
+    getPreviousPageParam: (page) =>
+      page.length === 50 && page[0] ? { before: page[0].id } : undefined,
+    getNextPageParam: (page, _pages, pageParam) => {
+      const last = page.at(-1);
+      return last && (page.length === 50 || pageParam.before) ? { after: last.id } : undefined;
+    },
   });
+  // An empty older page would start every refetch and cut off the pages after it.
+  const fetchOlder = async () => {
+    const { data } = await query.fetchPreviousPage();
+    if (data?.pages[0]?.length !== 0) return true;
+    queryClient.setQueryData<InfiniteData<Message[], MessagePageParam>>(
+      ['messages', threadId],
+      (d) => d && { pages: d.pages.slice(1), pageParams: d.pageParams.slice(1) },
+    );
+    return false;
+  };
+  return { ...query, fetchOlder };
 }
 
 export function useSendMessage(threadId: string) {

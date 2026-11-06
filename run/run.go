@@ -709,9 +709,6 @@ func (m *Manager) resume(ctx context.Context, a *active, id string) {
 
 // publish sends an event to the thread's subscribers and appends it to the run's event file.
 func (m *Manager) publish(a *active, typ string, data any) {
-	if err := m.cfg.Store.TouchThread(context.Background(), a.threadID); err != nil {
-		m.cfg.Log.Warn("update thread activity", "error", err)
-	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if call, ok := data.(ToolCall); ok {

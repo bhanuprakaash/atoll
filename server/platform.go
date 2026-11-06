@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"atoll/provider"
 	"atoll/repo"
@@ -27,46 +28,39 @@ type botResponse struct {
 	store.Bot
 	Look         string     `json:"look"`
 	Model        string     `json:"model"`
+	Pinned       bool       `json:"pinned"`
 	Activity     string     `json:"activity"`
 	LastActivity *time.Time `json:"last_activity"`
 }
 
 func responseBot(b store.Bot) botResponse {
-	return botResponse{Bot: b, Look: b.Look, Model: b.Model, Activity: b.Activity, LastActivity: b.LastActivity}
+	return botResponse{Bot: b, Look: b.Look, Model: b.Model, Pinned: b.Pinned, Activity: b.Activity, LastActivity: b.LastActivity}
 }
 
-func (a *api) botSummary(r *http.Request, b store.Bot) (store.Bot, error) {
-	threads, err := a.st.Threads(r.Context(), b.ID)
-	if err != nil {
-		return b, err
-	}
+func (a *api) botSummary(r *http.Request, b store.Bot, threads []store.ThreadRun) store.Bot {
 	latest := ""
 	for _, t := range threads {
-		summary, err := a.threadSummary(r, t)
-		if err != nil {
-			return b, err
-		}
-		if summary.RunID == "" {
-			continue
-		}
 		if latest == "" {
-			latest = summary.RunStatus
+			latest = t.Status
 			at := t.LastActivity
 			b.LastActivity = &at
 			switch latest {
 			case "running", "waiting":
-				b.Activity = "Working"
+				b.Activity = a.liveVerb(t.ThreadID)
 			case "done":
-				b.Activity = "Done"
+				b.Activity = preview(t.Reply)
 			case "failed":
 				b.Activity = "Run failed"
 			case "stopped":
 				b.Activity = "Stopped"
 			}
 		}
-		if summary.Approval != nil {
+		if t.Status != "running" && t.Status != "waiting" {
+			continue
+		}
+		if _, approvals, _ := a.runs.Active(t.ThreadID); len(approvals) > 0 {
 			b.State = "needs_you"
-			kind, target := run.ToolKind(summary.Approval.Tool, summary.Approval.Input)
+			kind, target := run.ToolKind(approvals[0].Tool, approvals[0].Input)
 			verb := "use"
 			switch kind {
 			case "search", "read", "edit":
@@ -74,15 +68,16 @@ func (a *api) botSummary(r *http.Request, b store.Bot) (store.Bot, error) {
 			case "command":
 				verb = "run"
 			}
+			if tool := approvals[0].Tool; tool != "" && unicode.IsUpper([]rune(tool)[0]) {
+				verb = tool
+			}
 			b.Activity = strings.TrimSpace("Needs you: " + verb + " " + target)
-			return b, nil
+			return b
 		}
-		if summary.RunStatus == "running" || summary.RunStatus == "waiting" {
-			b.State = "working"
-		}
+		b.State = "working"
 	}
 	if b.State != "" {
-		return b, nil
+		return b
 	}
 	if latest == "failed" {
 		b.State = "failed"
@@ -91,7 +86,29 @@ func (a *api) botSummary(r *http.Request, b store.Bot) (store.Bot, error) {
 	} else {
 		b.State = "idle"
 	}
-	return b, nil
+	return b
+}
+
+const _previewLen = 60
+
+// preview is the first line of a reply, at most _previewLen characters cut at a word boundary,
+// with an ellipsis when cut.
+func preview(reply string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(reply), "\n")
+	runes := []rune(strings.TrimSpace(line))
+	if len(runes) <= _previewLen {
+		return string(runes)
+	}
+	cut := runes[:_previewLen]
+	if runes[_previewLen] != ' ' {
+		for i := len(cut) - 1; i > 0; i-- {
+			if cut[i] == ' ' {
+				cut = cut[:i]
+				break
+			}
+		}
+	}
+	return strings.TrimSpace(string(cut)) + "…"
 }
 
 func (a *api) getBot(w http.ResponseWriter, r *http.Request) {
@@ -100,12 +117,33 @@ func (a *api) getBot(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	b, err = a.botSummary(r, b)
+	threads, err := a.st.ThreadRuns(r.Context(), b.ID)
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusOK, responseBot(b))
+	write(w, http.StatusOK, responseBot(a.botSummary(r, b, threads)))
+}
+
+func (a *api) pinBot(w http.ResponseWriter, r *http.Request) {
+	a.setPinned(w, r, true)
+}
+
+func (a *api) unpinBot(w http.ResponseWriter, r *http.Request) {
+	a.setPinned(w, r, false)
+}
+
+func (a *api) setPinned(w http.ResponseWriter, r *http.Request, pinned bool) {
+	id := r.PathValue("id")
+	if id == "chief" {
+		fail(w, http.StatusConflict, "Chief is always first")
+		return
+	}
+	if err := a.st.SetPinned(r.Context(), id, pinned); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
