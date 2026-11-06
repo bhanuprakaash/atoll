@@ -26,6 +26,7 @@ type MCP struct {
 	headers map[string]string
 	session string
 	Tools   map[string]bool
+	Params  map[string][]string // each tool's inputSchema property names
 	next    int
 }
 
@@ -48,15 +49,21 @@ func Dial(url string, headers map[string]string) (*MCP, error) {
 	}
 	var listing struct {
 		Tools []struct {
-			Name string `json:"name"`
+			Name        string `json:"name"`
+			InputSchema struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+			} `json:"inputSchema"`
 		} `json:"tools"`
 	}
 	if err := json.Unmarshal(listed, &listing); err != nil {
 		return nil, err
 	}
-	c.Tools = map[string]bool{}
+	c.Tools, c.Params = map[string]bool{}, map[string][]string{}
 	for _, tool := range listing.Tools {
 		c.Tools[tool.Name] = true
+		for name := range tool.InputSchema.Properties {
+			c.Params[tool.Name] = append(c.Params[tool.Name], name)
+		}
 	}
 	return c, nil
 }
