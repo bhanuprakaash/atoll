@@ -122,7 +122,7 @@ func serveCommand(t *testing.T, m *machine, addr string, extra ...string) (*exec
 	t.Cleanup(func() {
 		if cmd.ProcessState == nil {
 			_ = cmd.Process.Signal(syscall.SIGKILL)
-			_ = <-done
+			t.Log("atoll serve stopped:", <-done)
 		}
 	})
 	return cmd, stdin, done, stderr
