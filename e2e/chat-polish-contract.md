@@ -35,7 +35,7 @@ chronological order. A message has its stable `id`, role, text and created time.
 - A sidebar Bot row's second line exactly matches its API `activity`: the live run verb while it
   works, `Needs you: …` for an approval, otherwise the latest reply's first line, at most 60
   characters at a word boundary, followed by `…` only when cut. It never says `Done`.
-- Each user message and reply has a `data-testid="message-time"` beneath it. It displays `H:MM`
+- Each user message and reply has a `data-testid="message-time"` beneath it. It displays the message's `created_at` as `H:MM`
   today, `Yesterday H:MM` yesterday, `Mon H:MM` within the last seven days, otherwise
   `6 Nov H:MM`. It is 12px and has the same computed color as an existing muted element.
 - Each message's outer visual block has `data-testid="message"`; the user block retains its
