@@ -181,6 +181,15 @@ The design overturns three things the Slice 2/4/5 UI specs asserted. They change
 - `provider_test.go`: `sessions()` counts only processes that got a user turn, so a model probe
   is not a session.
 
+## Sidecar lifecycle contract
+
+Reef starts its sidecar as `atoll serve --addr 127.0.0.1:4317 --exit-on-stdin-close` and keeps
+the write end of its stdin pipe open. If Reef is force-quit, closing that pipe makes the sidecar
+exit within 3 seconds. Without the flag, stdin EOF does not stop `atoll serve`. A non-Atoll
+listener on the requested address makes `atoll serve` exit non-zero within 3 seconds and write
+`<addr> is in use by another program` to stderr. SIGTERM stops the sidecar cleanly; after restart,
+no interrupted run remains running.
+
 ## Acceptance mapping
 
 | Acceptance (issue #7) | Tests |
@@ -195,6 +204,7 @@ The design overturns three things the Slice 2/4/5 UI specs asserted. They change
 | Scope: Bot look and model, repos and connections returned, models per provider | `TestBots_LookAndModel/{claude,codex}`, `TestProviders_List`, `ui/new-bot.spec.ts` |
 | Scope: Bot settings panel, New Bot, Settings | `ui/new-bot.spec.ts`, `ui/settings.spec.ts` |
 | Fakes work before the product | `TestMacAppFixtures_Models`, `TestMacAppFixtures_Login`, `TestMacAppFixtures_Working` (each `{claude,codex}`) |
+| Sidecar exits with its force-quit parent and reports an occupied port | `TestServe_ExitsWhenStdinCloses`, `TestServe_ReportsAddressAlreadyInUse`, `TestServe_SIGTERMLeavesNoRunningRunAfterRestart` |
 
 ## Only you can check
 
@@ -218,6 +228,10 @@ The design overturns three things the Slice 2/4/5 UI specs asserted. They change
    step, and open the MR link it posts. The MR exists on gitlab.com.
 6. **Real models**. The Model select lists the models `claude` and `codex` report (not the fake
    `Reef Probe`), grouped by provider.
+7. **Force-quit and relaunch**. Open Reef.app, run `kill -9 <Reef.app PID>`, then relaunch it.
+   The app appears within 5 seconds.
+8. **Occupied sidecar port**. Start another program listening on `127.0.0.1:4317`, launch
+   Reef.app, and confirm its window shows the port error.
 
 ## Known limits
 
