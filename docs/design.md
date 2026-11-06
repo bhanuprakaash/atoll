@@ -44,7 +44,9 @@ never a dependency.
 
 **Chief.** Created on first launch. It has no repo access (every launch sets it to none) and does
 no code work. It has the "Can manage the platform" switch on: tools to create and edit Bots, skills
-and repos, and to attach connections, served as Reef's own MCP tools. Sign-ins stay with the user. Every change shows in the thread with undo. Other Bots can get the switch later.
+and repos, and to attach connections, served as Reef's own MCP tools; read tools list Bots, skills,
+connections, repos and signed-in models and record no change. Sign-ins stay with the user. Every
+change shows in the thread with undo. Other Bots can get the switch later.
 Undo: each change stores the entity before and after; Undo writes `before` back, or removes an entity
 the change created, and keeps the record marked undone. *Records survive restart; no undo of undo.*
 Undo of a repo registration is refused while a thread uses the repo.

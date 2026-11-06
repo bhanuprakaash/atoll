@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -17,13 +18,18 @@ func PlatformTools() []string {
 	return []string{"create_bot", "edit_bot", "create_skill", "edit_skill", "register_repo", "attach_connection"}
 }
 
+// ReadTools are the platform tools that only read; non-platform runs must never receive them either.
+func ReadTools() []string {
+	return []string{"list_bots", "list_skills", "list_connections", "list_repos", "list_models"}
+}
+
 // PlatformStep uses ids from actual MCP results rather than assumed product state.
 func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessage) error) (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("atoll MCP server absent")
 	}
 	if mode == "denied" {
-		for _, name := range PlatformTools() {
+		for _, name := range append(PlatformTools(), ReadTools()...) {
 			if c.Tools[name] {
 				return "", fmt.Errorf("non-platform Bot received %s", name)
 			}
@@ -33,28 +39,74 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 		}
 		return "No platform tools available.", nil
 	}
-	for _, name := range PlatformTools() {
+	want := PlatformTools()
+	if mode == "read" || mode == "bots" {
+		want = append(want, ReadTools()...)
+	}
+	for _, name := range want {
 		if !c.Tools[name] {
 			return "", fmt.Errorf("platform tool missing: %s", name)
 		}
 	}
-	call := func(name string, args any) (map[string]any, error) {
+	raw := func(name string, args any) (string, error) {
 		b, _ := json.Marshal(args)
 		if before != nil {
 			if err := before(name, b); err != nil {
-				return nil, err
+				return "", err
 			}
 		}
 		text, bad, err := c.Call(name, b)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		if bad {
-			return nil, fmt.Errorf("%s: %s", name, text)
+			return "", fmt.Errorf("%s: %s", name, text)
+		}
+		return text, nil
+	}
+	call := func(name string, args any) (map[string]any, error) {
+		text, err := raw(name, args)
+		if err != nil {
+			return nil, err
 		}
 		var out map[string]any
 		err = json.Unmarshal([]byte(text), &out)
 		return out, err
+	}
+
+	// The reply is every read tool's result by tool name, so a test can compare them with REST.
+	if mode == "read" {
+		results := map[string]json.RawMessage{}
+		for _, name := range ReadTools() {
+			text, err := raw(name, map[string]any{})
+			if err != nil {
+				return "", err
+			}
+			if !json.Valid([]byte(text)) {
+				return "", fmt.Errorf("%s result is not JSON: %s", name, text)
+			}
+			results[name] = json.RawMessage(text)
+		}
+		b, err := json.Marshal(results)
+		return string(b), err
+	}
+	if mode == "bots" {
+		text, err := raw("list_bots", map[string]any{})
+		if err != nil {
+			return "", err
+		}
+		var bots []struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal([]byte(text), &bots); err != nil {
+			return "", fmt.Errorf("list_bots result %s: %w", text, err)
+		}
+		names := make([]string, 0, len(bots))
+		for _, b := range bots {
+			names = append(names, b.Name)
+		}
+		slices.Sort(names)
+		return "Bots: " + strings.Join(names, ", ") + ".", nil
 	}
 
 	if mode == "configure" {

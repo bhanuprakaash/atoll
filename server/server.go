@@ -3,6 +3,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"embed"
 	"encoding/json"
@@ -43,6 +44,8 @@ type api struct {
 	log  *slog.Logger
 	http *http.Client // for GitLab sign-in
 
+	providers http.Handler // serves /api/providers; nil when there is none
+
 	mu      sync.Mutex
 	devices map[string]string // device code of each pending sign-in, by connection id
 }
@@ -53,7 +56,7 @@ func New(
 	st *store.Store, mem *memory.Store, runs *run.Manager, log *slog.Logger, providers http.Handler,
 ) http.Handler {
 	a := &api{
-		st: st, mem: mem, runs: runs, log: log,
+		st: st, mem: mem, runs: runs, log: log, providers: providers,
 		http:    &http.Client{Timeout: _signInTimeout},
 		devices: map[string]string{},
 	}
@@ -167,15 +170,22 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) listBots(w http.ResponseWriter, r *http.Request) {
-	bots, err := a.st.Bots(r.Context())
+	responses, err := a.botList(r.Context())
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	runs, err := a.st.ThreadRuns(r.Context(), "")
+	write(w, http.StatusOK, responses)
+}
+
+func (a *api) botList(ctx context.Context) ([]botResponse, error) {
+	bots, err := a.st.Bots(ctx)
 	if err != nil {
-		a.fail(w, r, err)
-		return
+		return nil, err
+	}
+	runs, err := a.st.ThreadRuns(ctx, "")
+	if err != nil {
+		return nil, err
 	}
 	threads := map[string][]store.ThreadRun{}
 	for _, tr := range runs {
@@ -183,9 +193,9 @@ func (a *api) listBots(w http.ResponseWriter, r *http.Request) {
 	}
 	responses := make([]botResponse, 0, len(bots))
 	for _, b := range bots {
-		responses = append(responses, responseBot(a.botSummary(r, b, threads[b.ID])))
+		responses = append(responses, responseBot(a.botSummary(ctx, b, threads[b.ID])))
 	}
-	write(w, http.StatusOK, responses)
+	return responses, nil
 }
 
 func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
