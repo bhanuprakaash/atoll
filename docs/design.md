@@ -206,7 +206,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   `ATOLL_GITHUB_MCP_URL` replace the real URLs for tests.
 - Settings > Connections has a GitHub card ("Bots get gh, git and GitHub tools."). Connect GitHub
   starts the device flow, opens `github.com/login/device` and shows the code; a connection that
-  needs sign-in offers Sign in again.
+  needs sign-in, or is still pending with no sign-in running in the page (abandoned, denied,
+  expired, app restarted), offers Sign in again. A failed GitHub sign-in shows its error on the
+  GitHub card.
 - A GitHub token has no refresh and no expiry. Before a run uses one, `GET /user` must accept it;
   a 401 marks that connection `needs_sign_in`, the run stops before the provider starts with
   "GitHub needs sign-in", and signing in again keeps the connection and its Bots. The OS secret
