@@ -535,7 +535,10 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		}
 	}
 	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
-	cfg.Env = m.gitlabEnv(bot)
+	cfg.Env, err = m.gitlabEnv(a.ctx, bot)
+	if err != nil {
+		return "", err
+	}
 	cfg.MCPURL = m.cfg.MCPURL + a.token
 	if thread.Session != "" {
 		err = sess.Resume(a.ctx, cfg, thread.Session)

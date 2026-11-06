@@ -5,7 +5,7 @@ export type Connection = {
   id: string;
   kind: 'gitlab';
   instance_url: string;
-  status: 'pending' | 'connected';
+  status: 'pending' | 'connected' | 'needs_sign_in';
 };
 
 export type DeviceFlow = {
@@ -28,6 +28,16 @@ export function useStartGitlab() {
       api<DeviceFlow>('/connections/gitlab/start', {
         method: 'POST',
         body: { instance_url: instanceUrl },
+      }),
+  });
+}
+
+export function useSignInAgain() {
+  return useMutation({
+    mutationFn: (connectionId: string) =>
+      api<DeviceFlow>('/connections/gitlab', {
+        method: 'POST',
+        body: { connection_id: connectionId },
       }),
   });
 }

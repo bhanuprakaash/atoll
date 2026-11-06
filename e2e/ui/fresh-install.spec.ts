@@ -58,8 +58,10 @@ test.beforeAll(async () => {
         res.end(
           JSON.stringify({
             access_token: 'glpat-ui-fresh',
+            refresh_token: 'glrt-ui-fresh',
             token_type: 'Bearer',
             scope: 'api',
+            expires_in: 7200,
           }),
         );
       } else {

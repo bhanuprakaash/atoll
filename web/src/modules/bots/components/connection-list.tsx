@@ -4,7 +4,11 @@ import { api } from '@/lib/api-client';
 import { Link } from 'react-router';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 
-type Connection = { id: string; instance_url: string; status: 'pending' | 'connected' };
+type Connection = {
+  id: string;
+  instance_url: string;
+  status: 'pending' | 'connected' | 'needs_sign_in';
+};
 type Flow = { id: string; user_code: string; verification_uri: string; interval_ms: number };
 
 export function ConnectionList({

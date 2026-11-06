@@ -166,6 +166,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   (`GIT_CONFIG_*`), which clears the user's own helpers. Never `GITLAB_TOKEN`: glab sends it as a
   personal access token, which an OAuth token is not; the user's own is dropped from the env. The
   token is never written to a file or log.
+- GitLab OAuth records include the refresh token and expiry in the secret store. Before a run uses
+  one, it refreshes a token that expires within ten minutes. A rejected refresh marks that connection
+  `needs_sign_in`; the run stops before the provider starts, and signing in again keeps the connection.
 - Tokens live in the OS secret store through one cross-platform library. Targets: macOS and desktop
   Linux; headless Linux is out.
 - Skills: one library in standard `SKILL.md`, created in the app; each Bot picks its skills. Each run

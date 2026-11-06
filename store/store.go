@@ -55,8 +55,9 @@ const KindGitLab = "gitlab"
 
 // Connection statuses.
 const (
-	ConnectionPending   = "pending"
-	ConnectionConnected = "connected"
+	ConnectionPending     = "pending"
+	ConnectionConnected   = "connected"
+	ConnectionNeedsSignIn = "needs_sign_in"
 )
 
 // Message roles.
@@ -99,7 +100,7 @@ type (
 		Path string `json:"path"`
 	}
 
-	// Connection is a sign-in to an external service. Status is pending or connected.
+	// Connection is a sign-in to an external service.
 	Connection struct {
 		ID          string `json:"id"`
 		Kind        string `json:"kind"`

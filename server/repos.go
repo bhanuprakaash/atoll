@@ -128,11 +128,26 @@ func (a *api) getConnection(w http.ResponseWriter, r *http.Request) {
 // pending when Atoll stops has to be started again.
 func (a *api) startGitLab(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		InstanceURL string `json:"instance_url"`
+		InstanceURL  string `json:"instance_url"`
+		ConnectionID string `json:"connection_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		fail(w, http.StatusBadRequest, "invalid JSON body")
 		return
+	}
+	var existing store.Connection
+	var err error
+	if body.ConnectionID != "" {
+		existing, err = a.st.Connection(r.Context(), body.ConnectionID)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		if existing.Kind != store.KindGitLab {
+			fail(w, http.StatusBadRequest, "connection is not GitLab")
+			return
+		}
+		body.InstanceURL = existing.InstanceURL
 	}
 	if body.InstanceURL == "" {
 		body.InstanceURL = connection.DefaultInstance
@@ -143,8 +158,14 @@ func (a *api) startGitLab(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	c, err := a.st.CreateConnection(r.Context(), store.KindGitLab, body.InstanceURL)
-	if err != nil {
+	c := existing
+	if body.ConnectionID == "" {
+		c, err = a.st.CreateConnection(r.Context(), store.KindGitLab, body.InstanceURL)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+	} else if err := a.st.SetConnectionStatus(r.Context(), c.ID, store.ConnectionPending); err != nil {
 		a.fail(w, r, err)
 		return
 	}
@@ -188,7 +209,7 @@ func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	if err := connection.SaveToken(c.ID, token); err != nil {
+	if err := connection.SaveTokens(c.ID, token); err != nil {
 		a.fail(w, r, err)
 		return
 	}
