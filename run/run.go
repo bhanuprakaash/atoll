@@ -877,6 +877,7 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		Name     string `json:"name"`
 		FilePath string `json:"file_path"`
 		Command  string `json:"command"`
+		Desc     string `json:"description"`
 		Actions  []struct {
 			Type    string `json:"type"`
 			Query   string `json:"query"`
@@ -890,13 +891,16 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 	_ = json.Unmarshal(input, &v)
 	switch name {
 	case "Grep", "Glob":
-		return "search", v.Pattern
+		return "search", lastPart(v.Pattern)
 	case "Read":
 		return "read", filepath.Base(v.FilePath)
 	case "Edit", "Write":
 		return "edit", filepath.Base(v.FilePath)
 	case "Bash":
-		return "command", v.Command
+		if v.Desc != "" {
+			return "command", v.Desc
+		}
+		return "command", program(v.Command)
 	case "fileChange":
 		if len(v.Changes) > 0 {
 			return "edit", filepath.Base(v.Changes[0].Path)
@@ -907,14 +911,14 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 			a := v.Actions[0]
 			switch a.Type {
 			case "search":
-				return "search", a.Query
+				return "search", lastPart(a.Query)
 			case "read":
 				return "read", filepath.Base(a.Path)
 			default:
-				return "command", a.Command
+				return "command", program(a.Command)
 			}
 		}
-		return "command", v.Command
+		return "command", program(v.Command)
 	}
 	if strings.Contains(name, "memory") || strings.Contains(name, "remember") || strings.Contains(name, "recall") {
 		if v.Query != "" {
@@ -934,6 +938,21 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		return "platform", v.Name
 	}
 	return "other", ""
+}
+
+func lastPart(s string) string {
+	if s == "" {
+		return ""
+	}
+	return filepath.Base(s)
+}
+
+func program(command string) string {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return ""
+	}
+	return filepath.Base(fields[0])
 }
 
 func shortMemory(body string) string {

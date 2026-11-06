@@ -569,6 +569,24 @@ func TestToolVerb(t *testing.T) {
 	}
 }
 
+func TestToolKind(t *testing.T) {
+	tests := []struct{ name, tool, input, kind, target string }{
+		{"bash description", "Bash", `{"command":"ls ~/.claude/agents/ 2>/dev/null","description":"List agent files"}`, "command", "List agent files"},
+		{"bash program", "Bash", `{"command":"/usr/bin/grep -rn agent ~/.claude"}`, "command", "grep"},
+		{"glob", "Glob", `{"pattern":"web/src/**/*.tsx"}`, "search", "*.tsx"},
+		{"codex command", "commandExecution", `{"commandActions":[{"type":"unknown","command":"pnpm test"}]}`, "command", "pnpm"},
+		{"codex search", "commandExecution", `{"commandActions":[{"type":"search","query":"web/src/app"}]}`, "search", "app"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			kind, target := ToolKind(tt.tool, json.RawMessage(tt.input))
+			if kind != tt.kind || target != tt.target {
+				t.Errorf("ToolKind(%q, %s) = %q, %q, want %q, %q", tt.tool, tt.input, kind, target, tt.kind, tt.target)
+			}
+		})
+	}
+}
+
 func TestShortMemory(t *testing.T) {
 	tests := []struct{ name, body, want string }{
 		{name: "whitespace", body: "first\n  second", want: "first second"},
