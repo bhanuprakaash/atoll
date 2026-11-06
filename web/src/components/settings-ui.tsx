@@ -58,7 +58,7 @@ export function RowText({
   monoTitle,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   detail?: ReactNode;
   mono?: boolean;
   monoTitle?: boolean;

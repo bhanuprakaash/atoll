@@ -335,9 +335,13 @@ Voice
   markdown. Everything else is one quiet line with its action inline: approvals (Allow, Deny; the
   line leaves once answered), Chief's changes (Undo, struck through once undone), the branch
   starting, the worktree cleaned up, a failed run (Retry), a stopped run, blocked (from
-  `finish_run`'s `blocked`), a refused message and reconnecting. Chips are the exception: an MR with its live state, a saved memory with its
-  kind and Retire (tap opens kind, scope, why and what it replaced), a closed thread. A Bot Chief
-  creates gets one card: its creature, name, model, persona, skills, repos, Open and Undo.
+  `finish_run`'s `blocked`), a refused message and reconnecting. Chips are the exception: an MR
+  with its live state, a saved memory with its kind and Retire (tap opens kind, scope, why and what
+  it replaced), a closed thread. A Bot Chief creates gets one card: its creature, name, model,
+  persona, skills, repos, Open and Undo.
+  One run's changes are grouped by kind and action: one change shows as above; two or more show as
+  one line ("Created 5 skills teach, tdd, …") or, for new Bots, one compact list with Open per row,
+  and one Undo all.
 - Messages show their local send time beneath them. The log opens on its newest 50 messages and
   loads older pages at its top without shifting what the user was reading; a round jump control
   returns to the latest message when the user has scrolled away.

@@ -36,10 +36,12 @@ export function useChanges(threadId: string) {
   });
 }
 
-export function useUndoChange(id: string) {
+export function useUndoChange(ids: string[]) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => api<void>(`/platform/changes/${id}/undo`, { method: 'POST' }),
+    mutationFn: async () => {
+      for (const id of ids) await api<void>(`/platform/changes/${id}/undo`, { method: 'POST' });
+    },
     onSuccess: async () => {
       await Promise.all(
         ['changes', 'bots', 'skills', 'repos'].map((key) =>

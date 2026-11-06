@@ -63,6 +63,7 @@ function ThreadPage() {
   const { data: bots = [] } = useBots();
   const repoName = repos.find((r) => r.id === thread?.repo_id)?.name;
   const botNames = Object.fromEntries(bots.map((b) => [b.id, b.name]));
+  const botLooks = Object.fromEntries(bots.map((b) => [b.id, b.look]));
   const bot = bots.find((b) => b.id === botId);
   const allowed = allowedRepos(bot, repos);
   const lostRepo =
@@ -82,7 +83,7 @@ function ThreadPage() {
       afterRun={(runId) => (
         <>
           <SavedMemory runId={runId} botNames={botNames} />
-          <PlatformChanges threadId={threadId} runId={runId} botNames={botNames} />
+          <PlatformChanges threadId={threadId} runId={runId} botNames={botNames} looks={botLooks} />
         </>
       )}
     />

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Box, RowText, rowClass, SectionHead, Tag } from '@/components/settings-ui';
 import { TextField } from '@/components/text-field';
 import { type MemoryItem, useMemory, useRetireMemory } from '@/modules/memory/api/memory';
@@ -17,6 +17,28 @@ function day(iso: string) {
   return d.toDateString() === new Date().toDateString()
     ? 'today'
     : d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
+}
+
+function MemoryBody({ body }: { body: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && !open) setCut(el.scrollHeight > el.clientHeight);
+  }, [body, open]);
+  return (
+    <>
+      <span ref={ref} className={open ? 'block' : 'line-clamp-2'}>
+        {body}
+      </span>
+      {(cut || open) && (
+        <button type="button" className="text-[12.5px] text-muted" onClick={() => setOpen(!open)}>
+          {open ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </>
+  );
 }
 
 function MemoryRow({
@@ -38,7 +60,7 @@ function MemoryRow({
   return (
     <div className={rowClass}>
       <RowText
-        title={item.body}
+        title={<MemoryBody body={item.body} />}
         detail={[scope, botNames[item.source_bot_id], day(item.created_at)]
           .filter(Boolean)
           .join(' · ')}

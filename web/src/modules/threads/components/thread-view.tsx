@@ -583,7 +583,7 @@ export function ThreadView({
       {!empty && (
         <div className="mx-auto w-full max-w-204 px-7 pb-4.5">
           {awayFromLatest && (
-            <div className="mb-2 flex justify-end">
+            <div className="mb-2 flex justify-center">
               <button
                 type="button"
                 aria-label="Jump to latest"
