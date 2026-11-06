@@ -128,7 +128,20 @@ Undo of a repo registration is refused while a thread uses the repo.
   failed save removes nothing and leaves the thread open.
 - A thread's cwd moves from the checkout to its worktree. Claude resumes only the sessions of its own
   cwd, so the Claude adapter copies the session file into the new cwd's project folder first.
-- Atoll checks each MR with `glab mr view` every minute (`ATOLL_REPO_POLL_INTERVAL`, a Go duration).
+- A repo is on GitHub when the host (with port) of its `origin` URL, in any form git takes, equals
+  the host of the GitHub base URL (`github.com`, or `ATOLL_GITHUB_URL`); anything else, including no
+  origin, is handled as GitLab. `GET` and `POST /api/repos` give each repo `host`: `github` or
+  `gitlab`, read with `git remote get-url origin` and not stored; Settings > Repos tags a GitHub
+  repo `GitHub`. The first message's repo block tells the Bot of a GitHub repo to open the pull
+  request with `gh pr create`.
+- A Bot with a connected GitHub connection pushes and runs `gh pr create` in its worktree with the
+  connection's env. `start_work` on a GitHub repo for a Bot without one is a tool error, "give this
+  Bot the GitHub connection", with no worktree made, so the Bot says what to do and the user never
+  meets a git auth error. A question in the repo needs no connection.
+- `track_mr` takes the PR URL (`<github>/<owner>/<repo>/pull/<n>`) like an MR URL; the thread shows
+  it as `#<n>` where an MR shows `!<iid>`. PR state is not polled: the watcher never runs `glab`
+  for a GitHub repo's thread, the state stays `opened`, and the worktree goes when the thread closes.
+- Atoll checks each GitLab MR with `glab mr view` every minute (`ATOLL_REPO_POLL_INTERVAL`, a Go duration).
   A merged MR with a worktree is cleaned up like a closed thread, but only while no run is going in
   the thread. One watcher runs inside the server and resumes after a restart.
 
