@@ -294,10 +294,12 @@ Finish
 - The Go server serves the UI at `/` and the API under `/api/`, one address. Vite builds `web/`
   into `server/ui`, which the binary embeds (`make ui`).
 - The desktop shell uses an overlay title bar; the Bot header’s empty space is a window drag region.
-- The Tauri shell (`desktop/`, `make app`) starts `atoll serve --addr 127.0.0.1:4317`, loads the
-  URL it prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
-  SIGTERM; the page shows Reconnecting meanwhile. A page's `window.open` (provider sign-in) opens in
-  the default browser. *A fixed address lets the open page reconnect to a restarted sidecar.*
+- The Tauri shell (`desktop/`, `make app`) starts `atoll serve --addr 127.0.0.1:4317
+  --exit-on-stdin-close`, keeps its stdin pipe open as the sidecar's lifeline, loads the URL it
+  prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
+  SIGTERM; an occupied port stops retries and shows an error. The page shows Reconnecting meanwhile.
+  A page's `window.open` (provider sign-in) opens in the default browser. *A fixed address lets the
+  open page reconnect to a restarted sidecar.*
 - The dmg is ad-hoc signed (`signingIdentity: "-"`), not notarized, as old Reef was: free, and a
   web download opens after System Settings → Privacy & Security → Open Anyway once. CI's `dmg` job
   builds it on the atoll-mac runner for every push to `main` (manual on an MR). *Developer ID and
