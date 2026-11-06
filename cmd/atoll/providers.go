@@ -17,20 +17,14 @@ import (
 	"time"
 
 	"atoll/provider"
+	"atoll/server"
 )
 
-type providerModel struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
 type providerInfo struct {
-	Name     string          `json:"name"`
-	Label    string          `json:"label"`
-	Found    bool            `json:"found"`
-	Path     string          `json:"path"`
-	Version  string          `json:"version"`
-	SignedIn bool            `json:"signed_in"`
-	Models   []providerModel `json:"models"`
+	server.Provider
+	Found   bool   `json:"found"`
+	Path    string `json:"path"`
+	Version string `json:"version"`
 }
 type loginState struct {
 	Status    string `json:"status"`
@@ -46,13 +40,15 @@ type providers struct {
 	states   map[string]loginState
 	codes    map[string]io.Writer
 	signedIn map[string]bool
+	infos    map[string]providerInfo
 }
 
 var _loginURL = regexp.MustCompile(`https://[^\s"'<>]+`)
 
 func newProviders(parent context.Context) *providers {
 	ctx, cancel := context.WithCancel(parent)
-	return &providers{ctx: ctx, cancel: cancel, states: map[string]loginState{}, codes: map[string]io.Writer{}, signedIn: map[string]bool{}}
+	return &providers{ctx: ctx, cancel: cancel, states: map[string]loginState{}, codes: map[string]io.Writer{}, signedIn: map[string]bool{},
+		infos: map[string]providerInfo{}}
 }
 func (p *providers) Close() { p.cancel(); p.wg.Wait() }
 func (p *providers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -104,13 +100,35 @@ func (p *providers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewEncoder(w).Encode(state)
 }
-func (p *providers) info(ctx context.Context, a adapter) providerInfo {
+
+// Cached lists every provider as GET /api/providers last found it, probing one that has not been
+// looked at yet.
+func (p *providers) Cached(ctx context.Context) []server.Provider {
+	list := make([]server.Provider, 0, len(_adapters))
+	for _, a := range _adapters {
+		p.mu.Lock()
+		info, ok := p.infos[a.name]
+		info.SignedIn = p.signedIn[a.name]
+		p.mu.Unlock()
+		if !ok {
+			info = p.info(ctx, a)
+		}
+		list = append(list, info.Provider)
+	}
+	return list
+}
+func (p *providers) info(ctx context.Context, a adapter) (info providerInfo) {
 	label := "Claude Code"
 	if a.name == "codex" {
 		label = "Codex"
 	}
-	info := providerInfo{Name: a.name, Label: label, Models: []providerModel{}}
-	defer func() { p.setAvailable(a.name, info.SignedIn) }()
+	info = providerInfo{Provider: server.Provider{Name: a.name, Label: label, Models: []server.Model{}}}
+	defer func() {
+		p.setAvailable(a.name, info.SignedIn)
+		p.mu.Lock()
+		p.infos[a.name] = info
+		p.mu.Unlock()
+	}()
 	bin := a.find(pathDirs(ctx))
 	if bin == "" {
 		return info
@@ -129,7 +147,7 @@ func (p *providers) info(ctx context.Context, a adapter) providerInfo {
 	info.Models = probeModels(ctx, a.name, bin, dir)
 	return info
 }
-func probeModels(parent context.Context, name, bin, dir string) []providerModel {
+func probeModels(parent context.Context, name, bin, dir string) []server.Model {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"}
@@ -142,14 +160,14 @@ func probeModels(parent context.Context, name, bin, dir string) []providerModel 
 	cmd.Env = provider.Env(env)
 	in, err := cmd.StdinPipe()
 	if err != nil {
-		return []providerModel{}
+		return []server.Model{}
 	}
 	out, err := cmd.StdoutPipe()
 	if err != nil {
-		return []providerModel{}
+		return []server.Model{}
 	}
 	if err = cmd.Start(); err != nil {
-		return []providerModel{}
+		return []server.Model{}
 	}
 	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
 	if name == "claude" {
@@ -179,18 +197,18 @@ func probeModels(parent context.Context, name, bin, dir string) []providerModel 
 		if json.Unmarshal(scanner.Bytes(), &msg) != nil {
 			continue
 		}
-		models := []providerModel{}
+		models := []server.Model{}
 		for _, m := range msg.Response.Response.Models {
-			models = append(models, providerModel{ID: m.Value, Name: m.Name})
+			models = append(models, server.Model{ID: m.Value, Name: m.Name})
 		}
 		for _, m := range msg.Result.Data {
-			models = append(models, providerModel{ID: m.ID, Name: m.Name})
+			models = append(models, server.Model{ID: m.ID, Name: m.Name})
 		}
 		if len(models) > 0 {
 			return models
 		}
 	}
-	return []providerModel{}
+	return []server.Model{}
 }
 func (p *providers) login(a adapter) {
 	defer p.wg.Done()
@@ -274,6 +292,7 @@ func (p *providers) finish(name string, err error) {
 	p.states[name] = st
 	if err == nil {
 		p.signedIn[name] = true
+		delete(p.infos, name)
 	}
 }
 

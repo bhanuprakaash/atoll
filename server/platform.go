@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -272,14 +271,24 @@ const _platformTools = `[
 {"name":"list_models","description":"List the signed-in providers and their models.","inputSchema":{"type":"object","properties":{}}}
 ]`
 
-type providerResponse struct {
-	Name     string `json:"name"`
-	Label    string `json:"label"`
-	SignedIn bool   `json:"signed_in"`
-	Models   []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	} `json:"models"`
+// Providers serves /api/providers and tells Chief's tools the state it caches for it.
+type Providers interface {
+	http.Handler
+	Cached(ctx context.Context) []Provider
+}
+
+// Provider is what GET /api/providers lists for a provider that Chief's tools need.
+type Provider struct {
+	Name     string  `json:"name"`
+	Label    string  `json:"label"`
+	SignedIn bool    `json:"signed_in"`
+	Models   []Model `json:"models"`
+}
+
+// Model is one entry of a provider's model list.
+type Model struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 var _readTools = []string{
@@ -320,7 +329,7 @@ func (a *api) readCall(ctx context.Context, name string) (any, *rpcError) {
 		repos, err = a.st.Repos(ctx)
 		v = orEmpty(repos)
 	default:
-		v, err = a.signedInProviders(ctx)
+		v = a.signedInProviders(ctx)
 	}
 	if err != nil {
 		return nil, a.toolError(err)
@@ -328,24 +337,23 @@ func (a *api) readCall(ctx context.Context, name string) (any, *rpcError) {
 	return a.jsonText(v)
 }
 
-// signedInProviders reads what GET /api/providers answers, so Chief sees the New Bot model picker.
-func (a *api) signedInProviders(ctx context.Context) ([]providerResponse, error) {
-	signedIn := []providerResponse{}
-	if a.providers == nil {
-		return signedIn, nil
-	}
-	rec := httptest.NewRecorder()
-	a.providers.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/providers", nil))
-	var all []providerResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &all); err != nil {
-		return nil, err
-	}
-	for _, p := range all {
+// signedInProviders is what GET /api/providers answers for the signed-in providers, so Chief sees
+// the New Bot model picker.
+func (a *api) signedInProviders(ctx context.Context) []Provider {
+	signedIn := []Provider{}
+	for _, p := range a.cachedProviders(ctx) {
 		if p.SignedIn {
 			signedIn = append(signedIn, p)
 		}
 	}
-	return signedIn, nil
+	return signedIn
+}
+
+func (a *api) cachedProviders(ctx context.Context) []Provider {
+	if a.providers == nil {
+		return nil
+	}
+	return a.providers.Cached(ctx)
 }
 
 func (a *api) platformCall(
@@ -501,12 +509,8 @@ func (a *api) botChoiceError(ctx context.Context, b store.Bot, current string) *
 	if b.Model == "" || b.Model == current {
 		return nil
 	}
-	providers, err := a.signedInProviders(ctx)
-	if err != nil {
-		return a.toolError(err)
-	}
 	var models []string
-	for _, p := range providers {
+	for _, p := range a.signedInProviders(ctx) {
 		if p.Name != b.Provider {
 			continue
 		}
