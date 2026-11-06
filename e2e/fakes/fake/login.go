@@ -6,13 +6,34 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
+)
+
+const (
+	// CodePrompt is what the real claude prints after its URL lines, with no newline.
+	CodePrompt = "Paste code here if prompted > "
+	// CodeOK is the one code LoginWithCode accepts.
+	CodeOK = "reef-test-code"
+	// CodeInvalid is what claude prints for any other code, before it exits 1.
+	CodeInvalid = "Invalid code. Please make sure the full code was copied."
 )
 
 // Login plays a provider's own sign-in: it prints lines (one of them the sign-in URL), waits
 // until <executable>.login.release exists (the user finishing in the browser), then writes file
 // into dir as the login and exits 0.
 func Login(dir, file string, lines ...string) error {
+	return login(dir, file, false, lines)
+}
+
+// LoginWithCode is Login for a provider that also asks for the code its page shows: after lines
+// it prints CodePrompt and finishes on the release file or on a stdin line. The line CodeOK signs
+// in; any other prints CodeInvalid and exits 1. End of stdin does not end the login.
+func LoginWithCode(dir, file string, lines ...string) error {
+	return login(dir, file, true, lines)
+}
+
+func login(dir, file string, withCode bool, lines []string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -20,11 +41,28 @@ func Login(dir, file string, lines ...string) error {
 	for _, l := range lines {
 		fmt.Println(l)
 	}
-	for {
-		if _, err := os.Stat(exe + ".login.release"); err == nil {
-			break
+	typed := make(chan string)
+	if withCode {
+		fmt.Print(CodePrompt)
+		go func() {
+			in := Lines()
+			for in.Scan() {
+				typed <- in.Text()
+			}
+		}()
+	}
+	for done := false; !done; {
+		select {
+		case l := <-typed:
+			if strings.TrimSpace(l) != CodeOK {
+				fmt.Println(CodeInvalid)
+				os.Exit(1)
+			}
+			done = true
+		case <-time.After(50 * time.Millisecond):
+			_, err := os.Stat(exe + ".login.release")
+			done = err == nil
 		}
-		time.Sleep(50 * time.Millisecond)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
