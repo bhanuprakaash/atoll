@@ -301,13 +301,11 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 			provider.MCPServer: map[string]string{"type": "http", "url": cfg.MCPURL},
 		}
 		mcp := "mcp__" + provider.MCPServer
-		allowed := mcp
 		if cfg.GitHubMCPURL != "" {
 			servers[provider.GitHubMCPServer] = map[string]any{
 				"type": "http", "url": cfg.GitHubMCPURL,
 				"headers": map[string]string{"Authorization": "Bearer " + cfg.GitHubToken},
 			}
-			allowed += ",mcp__" + provider.GitHubMCPServer
 		}
 		config, err := json.Marshal(map[string]any{"mcpServers": servers})
 		if err != nil {
@@ -316,7 +314,7 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 		args = append(args,
 			"--mcp-config", string(config),
 			"--permission-prompt-tool", mcp+"__"+provider.ToolApprove,
-			"--allowedTools", allowed,
+			"--allowedTools", mcp,
 		)
 	}
 	if cfg.SkillDir != "" {

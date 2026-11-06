@@ -55,6 +55,8 @@ type (
 		// asks holds the raw request id of each open approval, by event ID.
 		askMu sync.Mutex
 		asks  map[string]json.RawMessage
+		// elicits marks the asks that are MCP tool calls, which take {action} not {decision}.
+		elicits map[string]bool
 	}
 
 	message struct {
@@ -90,6 +92,7 @@ func New() *Session {
 	return &Session{
 		events:  make(chan provider.Event, 1),
 		asks:    map[string]json.RawMessage{},
+		elicits: map[string]bool{},
 		notes:   map[string]bool{},
 		changes: map[string]json.RawMessage{},
 		done:    make(chan struct{}),
@@ -157,7 +160,9 @@ func (s *Session) Events() <-chan provider.Event { return s.events }
 func (s *Session) Answer(id string, allow bool) error {
 	s.askMu.Lock()
 	raw, ok := s.asks[id]
+	elicit := s.elicits[id]
 	delete(s.asks, id)
+	delete(s.elicits, id)
 	s.askMu.Unlock()
 	if !ok {
 		return fmt.Errorf("no open approval request %s", id)
@@ -165,6 +170,9 @@ func (s *Session) Answer(id string, allow bool) error {
 	decision := "decline"
 	if allow {
 		decision = "accept"
+	}
+	if elicit {
+		return s.write(map[string]any{"id": raw, "result": map[string]string{"action": decision}})
 	}
 	return s.write(map[string]any{"id": raw, "result": map[string]string{"decision": decision}})
 }
@@ -377,14 +385,26 @@ func (s *Session) serverRequest(m message) bool {
 	case "item/fileChange/requestApproval":
 		name = "fileChange"
 	case "mcpServer/elicitation/request":
-		// Codex asks before every MCP tool call; Atoll's own tools and the GitHub tools of a
-		// connection the user gave the Bot never reach the user.
-		action := "decline"
-		if name := m.body().ServerName; name == provider.MCPServer || name == provider.GitHubMCPServer {
-			action = "accept"
+		// Codex asks before every MCP tool call; Atoll's own tools never reach the user.
+		server := m.body().ServerName
+		if server == provider.MCPServer {
+			_ = s.write(map[string]any{"id": m.ID, "result": map[string]any{"action": "accept"}})
+			return true
 		}
-		_ = s.write(map[string]any{"id": m.ID, "result": map[string]any{"action": action}})
-		return true
+		var meta struct {
+			Meta struct {
+				ToolTitle string `json:"tool_title"`
+			} `json:"_meta"`
+		}
+		_ = json.Unmarshal(m.Params, &meta)
+		id := string(m.ID)
+		s.askMu.Lock()
+		s.asks[id] = m.ID
+		s.elicits[id] = true
+		s.askMu.Unlock()
+		return s.emit(provider.Event{
+			Kind: provider.KindApproval, ID: id, Name: "mcp__" + server + "__" + meta.Meta.ToolTitle, Input: m.Params,
+		})
 	default:
 		_ = s.write(map[string]any{
 			"id":    m.ID,
