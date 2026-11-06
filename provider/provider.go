@@ -5,6 +5,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 )
@@ -38,6 +39,9 @@ const (
 	ToolListRepos        = "list_repos"
 	ToolListModels       = "list_models"
 )
+
+// ErrSignedOut is the error of a run that failed because the provider refused its sign-in.
+var ErrSignedOut = errors.New("provider is signed out")
 
 // Session drives one provider process holding one session. Call Start or Resume once; Send one
 // prompt per turn; read Events until it closes. Interrupt is the only way to stop it.
@@ -80,7 +84,7 @@ const (
 	KindText    Kind = iota + 1 // Text is a piece of the reply
 	KindSession                 // SessionID is the id Resume takes
 	KindTurnEnd
-	KindError    // Text is the error
+	KindError    // Text is the error; SignedOut when the provider refused its sign-in
 	KindToolCall // ID, Name and Input: a tool call started
 	KindApproval // ID, Name and Input: the provider waits for Answer(ID, ...)
 )
@@ -93,6 +97,7 @@ type Event struct {
 	ID        string
 	Name      string
 	Input     json.RawMessage
+	SignedOut bool
 }
 
 // Env returns the parent environment without the variables that carry a provider's credentials or

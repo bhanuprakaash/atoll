@@ -14,7 +14,10 @@ import { useBots } from '@/modules/bots/api/bots';
 import { NewBotForm } from '@/modules/bots/components/new-bot-form';
 import { useConnections } from '@/modules/connections/api/connections';
 import { FirstRun } from '@/modules/onboarding/components/first-run';
-import { FirstRunProviders } from '@/modules/providers/components/providers-settings';
+import {
+  FirstRunProviders,
+  SignInExpired,
+} from '@/modules/providers/components/providers-settings';
 import { useSaveSettings, useSettings } from '@/modules/settings/api/settings';
 import { GeneralSettings } from '@/modules/settings/components/general-settings';
 import { SavedMemory } from '@/modules/memory/components/saved-memory';
@@ -57,6 +60,7 @@ function ThreadPage() {
   const { data: bots = [] } = useBots();
   const repoName = repos.find((r) => r.id === thread?.repo_id)?.name;
   const botNames = Object.fromEntries(bots.map((b) => [b.id, b.name]));
+  const bot = bots.find((b) => b.id === botId);
   return (
     <ThreadView
       key={threadId}
@@ -65,8 +69,9 @@ function ThreadPage() {
       botName={bots.find((b) => b.id === botId)?.name ?? ''}
       look={bots.find((b) => b.id === botId)?.look}
       repos={repos}
-      bot={bots.find((b) => b.id === botId)}
+      bot={bot}
       repoName={repoName}
+      signedOut={bot && <SignInExpired provider={bot.provider} />}
       afterRun={(runId) => (
         <>
           <SavedMemory runId={runId} botNames={botNames} />

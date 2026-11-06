@@ -121,8 +121,9 @@ test('a failed run shows a line with Retry', async ({ page }) => {
   await emptyThread(page, 'Moss');
   const log = page.getByRole('log', { name: 'Messages' });
   await send(page, prompts.none);
-  await expect(log.getByText(/^Run failed/)).toBeVisible();
+  await expect(log.getByText(/^Run failed: .*no recording for prompt/)).toBeVisible();
   await expect(log.getByRole('button', { name: 'Retry' })).toBeVisible();
+  await expect(log.getByRole('button', { name: 'Sign in again' })).toHaveCount(0);
   await expect(sidebarRow(page, 'Moss').getByRole('img', { name: /, failed$/ })).toBeVisible();
   const panel = await openThreads(page);
   await expect(panel.getByRole('button', { name: 'New thread' })).toBeVisible();

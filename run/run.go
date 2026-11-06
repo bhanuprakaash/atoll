@@ -80,6 +80,8 @@ type (
 		Memory    *memory.Store
 		Launch    Launch
 		Available func(context.Context, string) bool
+		// SignedOut is told the provider name of a run that failed because it is signed out.
+		SignedOut func(string)
 		// MCPURL is the base of Atoll's MCP endpoint; a run's server is MCPURL + its token.
 		MCPURL string
 		// DataDir holds runs/<run id>.jsonl, each run's event stream, and threads/<thread id>,
@@ -423,11 +425,16 @@ func (m *Manager) execute(a *active, text string) {
 		m.mu.Unlock()
 		reply, err = m.drive(a, text)
 	}
-	status, errText := store.StatusDone, ""
+	status, errText, errKind := store.StatusDone, "", ""
 	if err != nil {
 		status, reply, errText = store.StatusFailed, "", err.Error()
 		if m.ctx.Err() != nil {
 			errText = _stopReason
+		} else if errors.Is(err, provider.ErrSignedOut) {
+			errKind = store.ErrorSignedOut
+			if m.cfg.SignedOut != nil {
+				m.cfg.SignedOut(a.bot.Provider)
+			}
 		}
 	}
 	m.mu.Lock()
@@ -438,7 +445,7 @@ func (m *Manager) execute(a *active, text string) {
 	m.mu.Unlock()
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
-		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, status, strings.TrimSpace(reply), errText)
+		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, status, strings.TrimSpace(reply), errText, errKind)
 		if err == nil {
 			break
 		}
@@ -662,6 +669,9 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 			case provider.KindTurnEnd:
 				return reply.String(), nil
 			case provider.KindError:
+				if ev.SignedOut {
+					return "", fmt.Errorf("%w: %s", provider.ErrSignedOut, ev.Text)
+				}
 				return "", errors.New(ev.Text)
 			}
 		}

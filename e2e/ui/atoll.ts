@@ -42,6 +42,9 @@ export type Machine = {
   stop: () => void;
   // release finishes the browser step of a provider's sign-in.
   release: (fake: 'claude' | 'codex') => void;
+  // revoke marks a provider's login as revoked by its server: the fake fails the next turn with
+  // the real CLI's auth error and is signed out from then on.
+  revoke: (fake: 'claude' | 'codex') => void;
   calls: (fake: Fake) => { pid: number; argv?: string[] }[];
 };
 
@@ -134,6 +137,8 @@ export async function startAtoll(opts: Options = {}): Promise<Machine> {
     restart: serve,
     calls,
     release: (fake) => writeFileSync(join(bin, `${fake}.login.release`), ''),
+    revoke: (fake) =>
+      writeFileSync(join(data, 'providers', fake, credentials[fake]), '{"fake":"revoked"}'),
     stop: () => {
       kill();
       // A fake provider is not killed with the server; its log names every process it ran.
@@ -186,6 +191,7 @@ export const prompts = {
   freshFix: 'Fix the seeded bug in answer.txt and open an MR.',
   saveMemory: 'Save the SQLite journal decision in user memory.',
   none: 'This message has no recording, so the provider fails.',
+  pong: 'Reply with exactly: pong',
 };
 
 export const loginURL = {

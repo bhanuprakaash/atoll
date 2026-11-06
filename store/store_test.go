@@ -100,7 +100,7 @@ func TestStore_FailUnfinished(t *testing.T) {
 				case "waiting":
 					err = st.SetStatus(ctx, r.ID, store.StatusWaiting)
 				case "done", "failed":
-					err = st.FinishRun(ctx, r.ID, status, "", "")
+					err = st.FinishRun(ctx, r.ID, status, "", "", "")
 				}
 				if err != nil {
 					t.Fatal(err)
@@ -221,7 +221,7 @@ func TestStore_MessageTimestamps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.FinishRun(ctx, run.ID, store.StatusDone, "reply", ""); err != nil {
+	if err := st.FinishRun(ctx, run.ID, store.StatusDone, "reply", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	finished, err := st.Run(ctx, run.ID)
@@ -270,7 +270,7 @@ func TestStore_MessagePage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := st.FinishRun(ctx, run.ID, store.StatusDone, "reply", ""); err != nil {
+		if err := st.FinishRun(ctx, run.ID, store.StatusDone, "reply", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
