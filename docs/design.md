@@ -316,12 +316,19 @@ Voice
   bottom user row opens Settings. No group chats. A thread's activity time moves when a run
   starts, an approval opens or closes, and a run ends, not on every event. *The sidebar polls
   every 2 s; a write per text delta would cost more than the time is worth.*
-- Bot header: creature, Bot name, thread title, a Threads button and a Bot settings icon. The
-  Threads button carries a red count of threads waiting on the user and opens a panel: Needs you
-  (and what it waits for), Running (live verb, branch, MR), Recent, then Closed folded; New thread
-  on top. A thread's title is the first six words of its first message, set when that message is sent
-  and stored, with trailing `.,;:!?` removed from the last word. The user can set a title
-  (`PATCH /api/threads/{id}`), and a user title is never replaced.
+- Bot header: a centred island with no border; messages fade out as they scroll up to it. The pill
+  holds the creature, the Bot name, the thread title (cut with "…"), the open thread's run state and, when
+  any thread waits on the user, a red count. Run state is three wave dots (text "Thinking") while
+  the thread's run works, "Needs you" while an approval waits, "Run failed" after a failed run,
+  nothing otherwise. Clicking the pill grows it down into the thread list: New thread on top
+  (with a search field once more than 8 threads are open), then Needs you (and what it waits for),
+  Running (live verb, branch, MR), Recent, and Closed folded at the bottom. The island stops at
+  about 60% of the window height; only the groups scroll, and each group's title stays while it
+  scrolls. A click outside closes it; hover does not open it. Bot settings is an icon at the right.
+  *The user saw a centred island in a reference app and preferred it; the run state sits where the
+  eye already is.* A thread's title is the first six words of its first message, set when that
+  message is sent and stored, with trailing `.,;:!?` removed from the last word. The user can set a
+  title (`PATCH /api/threads/{id}`), and a user title is never replaced.
 - The chat has no cards. The user's message is the only bubble; the Bot replies in plain text with
   markdown. Everything else is one quiet line with its action inline: approvals (Allow, Deny),
   Chief's changes (Undo, struck through once undone), the branch starting, the worktree cleaned up,
