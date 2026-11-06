@@ -39,7 +39,7 @@ func run(m *testing.M) int {
 		return 1
 	}
 	_fakes = filepath.Join(dir, "fakes")
-	for _, name := range []string{"claude", "codex", "glab"} {
+	for _, name := range []string{"claude", "codex", "glab", "mcpstdio"} {
 		build := exec.Command("go", "build", "-o", filepath.Join(_fakes, name),
 			"-ldflags", "-X atoll/e2e/fakes/fake._testdata="+testdata, "atoll/e2e/fakes/"+name)
 		build.Stdout, build.Stderr = os.Stderr, os.Stderr

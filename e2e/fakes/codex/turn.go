@@ -54,22 +54,42 @@ func newTurn(cfg map[string]string, p threadParams, resumed bool, extra []string
 		policy = all["approval_policy"]
 	}
 	t := &turn{cwd: p.Cwd, servers: map[string]*fake.MCP{}, never: policy == "never", resumed: resumed}
-	for k, url := range all {
+	for k, value := range all {
 		rest, ok := strings.CutPrefix(k, "mcp_servers.")
 		name, ok2 := strings.CutSuffix(rest, ".url")
+		if !ok2 {
+			name, ok2 = strings.CutSuffix(rest, ".command")
+		}
 		if !ok || !ok2 || strings.Contains(name, ".") {
 			continue
 		}
-		headers := map[string]string{}
-		for hk, hv := range all {
-			if h, ok := strings.CutPrefix(hk, "mcp_servers."+name+".http_headers."); ok {
-				headers[h] = hv
+		var c *fake.MCP
+		var err error
+		if strings.HasSuffix(k, ".command") {
+			var args []string
+			if raw := all["mcp_servers."+name+".args"]; raw != "" && json.Unmarshal([]byte(raw), &args) != nil {
+				fmt.Fprintln(os.Stderr, "fake codex: mcp_servers."+name+".args is not a JSON array:", raw)
+				continue
 			}
+			env := map[string]string{}
+			for ek, ev := range all {
+				if e, ok := strings.CutPrefix(ek, "mcp_servers."+name+".env."); ok {
+					env[e] = ev
+				}
+			}
+			c, err = fake.DialStdio(value, args, env)
+		} else {
+			headers := map[string]string{}
+			for hk, hv := range all {
+				if h, ok := strings.CutPrefix(hk, "mcp_servers."+name+".http_headers."); ok {
+					headers[h] = hv
+				}
+			}
+			if env := all["mcp_servers."+name+".bearer_token_env_var"]; env != "" {
+				headers["Authorization"] = "Bearer " + os.Getenv(env)
+			}
+			c, err = fake.Dial(value, headers)
 		}
-		if env := all["mcp_servers."+name+".bearer_token_env_var"]; env != "" {
-			headers["Authorization"] = "Bearer " + os.Getenv(env)
-		}
-		c, err := fake.Dial(url, headers)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "fake codex:", err)
 			continue
@@ -132,6 +152,12 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 			}
 			repoReply, err = fake.PlatformStep(t.servers["atoll"], strings.TrimPrefix(e.Fake, "platform-"), t.userMessage, announce)
 			if err != nil {
+				return err
+			}
+			continue
+		case "mcp-use":
+			var err error
+			if repoReply, err = t.mcpUse(in, log); err != nil {
 				return err
 			}
 			continue
@@ -241,12 +267,15 @@ func (t *turn) ask(req json.RawMessage, in *bufio.Scanner, log *fake.Log) (strin
 		}
 		var res struct {
 			Decision json.RawMessage `json:"decision"`
+			Action   string          `json:"action"` // an elicitation answers accept, decline or cancel
 		}
-		if err := json.Unmarshal(m.Result, &res); err != nil || res.Decision == nil {
+		if err := json.Unmarshal(m.Result, &res); err != nil || res.Decision == nil && res.Action == "" {
 			return "", fmt.Errorf("answer to %s has no decision: %s", r.Method, in.Text())
 		}
 		var d string
-		if json.Unmarshal(res.Decision, &d) != nil {
+		if res.Decision == nil {
+			d = res.Action
+		} else if json.Unmarshal(res.Decision, &d) != nil {
 			return "allow", nil // {"acceptWithExecpolicyAmendment": ...} and the like
 		}
 		switch d {
@@ -261,6 +290,58 @@ func (t *turn) ask(req json.RawMessage, in *bufio.Scanner, log *fake.Log) (strin
 		return "", err
 	}
 	return "", fmt.Errorf("stdin closed while %s waited for an answer", r.Method)
+}
+
+// mcpUse calls each tool the prompt names on the configured server, as app-server would: an
+// mcpToolCall item starts, Codex asks the client through an elicitation before a server that is not
+// Atoll's runs a tool, then the item completes with the server's answer. A server the config does
+// not hold is not called.
+func (t *turn) mcpUse(in *bufio.Scanner, log *fake.Log) (string, error) {
+	calls, err := fake.MCPCalls(t.userMessage)
+	if err != nil {
+		return "", err
+	}
+	var lines []string
+	for i, call := range calls {
+		c := t.servers[call.Server]
+		if c == nil {
+			lines = append(lines, fake.MCPLine(call, "unavailable"))
+			continue
+		}
+		it := map[string]any{"type": "mcpToolCall", "id": fmt.Sprintf("mcp-use-%d", i+1), "server": call.Server, "tool": call.Tool,
+			"status": "inProgress", "arguments": call.Args, "result": nil, "error": nil, "durationMs": nil}
+		emit := func(method string) {
+			b, _ := json.Marshal(map[string]any{"method": method, "params": map[string]any{"item": it}})
+			fmt.Println(string(b))
+		}
+		emit("item/started")
+		req, _ := json.Marshal(map[string]any{"id": 9000 + i + 1, "method": "mcpServer/elicitation/request", "params": map[string]any{
+			"serverName": call.Server, "mode": "form",
+			"message":         fmt.Sprintf("Allow the %s MCP server to run tool %q?", call.Server, call.Tool),
+			"requestedSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+			"_meta":           map[string]any{"codex_approval_kind": "mcp_tool_call", "tool_title": call.Tool, "tool_params": call.Args},
+		}})
+		answer, err := t.ask(req, in, log)
+		if err != nil {
+			return "", err
+		}
+		time.Sleep(fake.Pace)
+		text, isErr := "denied", true
+		if answer == "allow" {
+			if text, isErr, err = c.Call(call.Tool, call.Args); err != nil {
+				return "", err
+			}
+		}
+		it["status"], it["durationMs"] = "completed", 12
+		if isErr {
+			it["status"], it["error"] = "failed", map[string]string{"message": text}
+		} else {
+			it["result"] = map[string]any{"content": []map[string]string{{"type": "text", "text": text}}, "structuredContent": nil}
+		}
+		emit("item/completed")
+		lines = append(lines, fake.MCPLine(call, text))
+	}
+	return strings.Join(lines, "\n"), nil
 }
 
 // call makes the MCP call of a completed mcpToolCall item and puts the real result in it.
