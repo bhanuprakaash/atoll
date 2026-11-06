@@ -543,7 +543,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		}
 	}
 	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
-	cfg.Env, err = m.gitlabEnv(a.ctx, bot)
+	cfg.Env, err = m.runEnv(a.ctx, bot)
 	if err != nil {
 		return "", err
 	}

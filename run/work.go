@@ -137,7 +137,7 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 		thread, threadErr := m.cfg.Store.Thread(ctx, a.threadID)
 		if threadErr == nil && thread.RepoID != "" {
 			if rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID); repoErr == nil {
-				env, _ := m.gitlabEnv(ctx, a.bot)
+				env, _ := m.runEnv(ctx, a.bot)
 				_, title, _ = m.mrState(rp.Path, url, env)
 			}
 		}
@@ -282,6 +282,25 @@ func (m *Manager) threadDir(threadID string) string {
 	return filepath.Join(m.cfg.DataDir, "threads", threadID)
 }
 
+// runEnv is the environment of every run and of the CLIs Reef starts for a Bot: empty glab and gh
+// config folders, so neither CLI finds the user's own login, and a cleared git credential helper
+// list, followed by what the Bot's connections add. Only a connection fills these.
+func (m *Manager) runEnv(ctx context.Context, b store.Bot) ([]string, error) {
+	env := []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0="}
+	for _, cli := range []struct{ name, file string }{{"glab", "config.yml"}, {"gh", "hosts.yml"}} {
+		dir := filepath.Join(m.cfg.DataDir, "empty", cli.name)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, fmt.Errorf("create empty %s config folder: %w", cli.name, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, cli.file), nil, 0o600); err != nil {
+			return nil, fmt.Errorf("write empty %s config: %w", cli.name, err)
+		}
+		env = append(env, strings.ToUpper(cli.name)+"_CONFIG_DIR="+dir)
+	}
+	conn, err := m.gitlabEnv(ctx, b)
+	return append(env, conn...), err
+}
+
 // gitlabEnv is the environment that lets git and glab act as the Bot's first connected GitLab
 // connection: the token as OAUTH_TOKEN with a glab config marking the host OAuth, and a git
 // credential helper that passes it. It is empty when the
@@ -390,7 +409,7 @@ func (m *Manager) check(t store.Thread) error {
 	if err != nil {
 		return err
 	}
-	env, err := m.gitlabEnv(m.ctx, bot)
+	env, err := m.runEnv(m.ctx, bot)
 	if err != nil {
 		return err
 	}
