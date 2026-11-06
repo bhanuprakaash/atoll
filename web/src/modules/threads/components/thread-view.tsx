@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
 import { Creature, type CreatureLook } from '@/components/creature';
@@ -94,22 +94,48 @@ function RunResult({ id, retry }: { id: string; retry: () => void }) {
     </div>
   );
 }
+function messageTime(createdAt: string) {
+  const date = new Date(createdAt);
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfMessage = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const daysAgo = Math.round((startOfToday.getTime() - startOfMessage.getTime()) / 86_400_000);
+  const time = `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+  if (daysAgo === 0) return time;
+  if (daysAgo === 1) return `Yesterday ${time}`;
+  if (daysAgo < 7) return `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+  return `${date.getDate()} ${date.toLocaleDateString([], { month: 'short' })} ${time}`;
+}
+
 function MessageLine({ message, retry }: { message: Message; retry: () => void }) {
   if (message.role === 'user')
     return (
       <article
         aria-label="You"
-        className="max-w-[75%] self-end rounded-[22px] bg-accent px-[18px] py-2.5 text-[15px] leading-normal whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]"
+        data-testid="message"
+        className="flex max-w-[75%] self-end flex-col items-end gap-1"
       >
-        {message.text}
+        <div className="rounded-[22px] bg-accent px-[18px] py-2.5 text-[15px] leading-normal whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]">
+          {message.text}
+        </div>
+        <time
+          className="text-xs text-muted"
+          dateTime={message.created_at}
+          data-testid="message-time"
+        >
+          {messageTime(message.created_at)}
+        </time>
       </article>
     );
   return (
-    <div className="flex max-w-[85%] flex-col gap-2">
+    <div data-testid="message" className="flex max-w-[85%] flex-col gap-2">
       <RunResult id={message.run_id} retry={retry} />
       <div className="text-[15px] leading-normal">
         <Markdown>{message.text}</Markdown>
       </div>
+      <time className="text-xs text-muted" dateTime={message.created_at} data-testid="message-time">
+        {messageTime(message.created_at)}
+      </time>
     </div>
   );
 }
@@ -277,7 +303,8 @@ export function ThreadView({
 }) {
   const navigate = useNavigate();
   const [repoId, setRepoId] = useState('');
-  const { data: messages = [] } = useMessages(threadId);
+  const messageQuery = useMessages(threadId);
+  const messages = messageQuery.data?.pages.flat() ?? [];
   const { data: thread } = useThread(threadId);
   const close = useCloseThread(threadId);
   const create = useCreateThreadWithMessage(botId);
@@ -286,6 +313,18 @@ export function ThreadView({
   const activeId =
     Object.entries(runs).find(([, run]) => !run.finished)?.[0] ??
     (['running', 'waiting'].includes(thread?.run_status ?? '') ? thread?.run_id : undefined);
+  const log = useRef<HTMLDivElement>(null);
+  const previousHeight = useRef<number | null>(null);
+  const [awayFromLatest, setAwayFromLatest] = useState(false);
+  useLayoutEffect(() => {
+    const element = log.current;
+    if (!element) return;
+    if (previousHeight.current !== null) {
+      element.scrollTop += element.scrollHeight - previousHeight.current;
+      previousHeight.current = null;
+    }
+    setAwayFromLatest(element.scrollTop + element.clientHeight < element.scrollHeight - 1);
+  }, [messages]);
   const answered = new Set(messages.filter((m) => m.role === 'bot').map((m) => m.run_id));
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
   const retry = () => {
@@ -363,6 +402,22 @@ export function ThreadView({
   );
   const empty = messages.length === 0 && !activeId;
   const firstUserId = messages.find((m) => m.role === 'user')?.id;
+  const loadOlder = () => {
+    const element = log.current;
+    if (
+      !element ||
+      element.scrollTop > 0 ||
+      !messageQuery.hasPreviousPage ||
+      messageQuery.isFetchingPreviousPage
+    )
+      return;
+    previousHeight.current = element.scrollHeight;
+    void messageQuery.fetchPreviousPage();
+  };
+  const scrollToLatest = () => {
+    log.current?.scrollTo({ top: log.current.scrollHeight });
+    setAwayFromLatest(false);
+  };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {!empty && (
@@ -377,8 +432,15 @@ export function ThreadView({
         </div>
       )}
       <div
+        ref={log}
         role="log"
         aria-label="Messages"
+        onScroll={() => {
+          const element = log.current;
+          if (!element) return;
+          setAwayFromLatest(element.scrollTop + element.clientHeight < element.scrollHeight - 1);
+          loadOlder();
+        }}
         className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-7 ${empty ? 'justify-center' : ''}`}
       >
         <div className="mx-auto flex w-full max-w-190 flex-col gap-4.5 pt-6 pb-4">
@@ -472,6 +534,31 @@ export function ThreadView({
       </div>
       {!empty && (
         <div className="mx-auto w-full max-w-204 px-7 pb-4.5">
+          {awayFromLatest && (
+            <div className="mb-2 flex justify-end">
+              <button
+                type="button"
+                aria-label="Jump to latest"
+                data-working={activeId ? 'true' : undefined}
+                onClick={scrollToLatest}
+                className="flex size-10 items-center justify-center rounded-full border border-outline bg-card shadow-sm"
+              >
+                {activeId ? (
+                  <Creature look={look} state="working" size={28} />
+                ) : (
+                  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="m7 10 5 5 5-5"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
+              </button>
+            </div>
+          )}
           {thread?.closed ? (
             <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
               <div className="flex-1">
