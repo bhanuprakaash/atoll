@@ -16,9 +16,7 @@ const (
 	MCPRemote     = "remote"
 )
 
-// MCPServer is an MCP server of the library. A local one starts Command with Args; a remote one
-// is at URL. EnvNames and HeaderNames are the names of its secrets, which live in the OS secret
-// store.
+// MCPServer keeps EnvNames and HeaderNames as names only: the values live in the OS secret store.
 type MCPServer struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
@@ -59,7 +57,6 @@ func scanMCPServer(r *sql.Rows) (MCPServer, error) {
 	return s, nil
 }
 
-// mcpLists encodes the args, env names and header names of s as JSON arrays.
 func mcpLists(s MCPServer) (lists [3]string, err error) {
 	for i, list := range [][]string{s.Args, s.EnvNames, s.HeaderNames} {
 		if list == nil {
@@ -120,7 +117,7 @@ func (s *Store) MCPServer(ctx context.Context, id string) (MCPServer, error) {
 	return rows[0], nil
 }
 
-// CreateMCPServer stores m with a new id. It wraps ErrExists when the name is taken.
+// CreateMCPServer wraps ErrExists when the name is taken.
 func (s *Store) CreateMCPServer(ctx context.Context, m MCPServer) (MCPServer, error) {
 	m.ID = newID()
 	lists, err := mcpLists(m)
@@ -133,7 +130,7 @@ func (s *Store) CreateMCPServer(ctx context.Context, m MCPServer) (MCPServer, er
 	return m, mcpWriteError(err, m.Name)
 }
 
-// UpdateMCPServer replaces the server with m.ID. It wraps ErrExists when the name is taken.
+// UpdateMCPServer wraps ErrExists when the name is taken.
 func (s *Store) UpdateMCPServer(ctx context.Context, m MCPServer) (MCPServer, error) {
 	lists, err := mcpLists(m)
 	if err != nil {
@@ -149,7 +146,7 @@ func (s *Store) UpdateMCPServer(ctx context.Context, m MCPServer) (MCPServer, er
 	return m, found(res, "MCP server", m.ID)
 }
 
-// DeleteMCPServer removes the server and drops it from every Bot's picks.
+// DeleteMCPServer also drops it from every Bot's picks.
 func (s *Store) DeleteMCPServer(ctx context.Context, id string) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, "DELETE FROM mcp_servers WHERE id = ?", id)

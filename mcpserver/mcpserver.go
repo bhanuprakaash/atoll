@@ -156,13 +156,12 @@ func Secrets(s store.MCPServer) (map[string]string, error) {
 	return values, nil
 }
 
-// plan checks in and returns the server it makes next to prev, and the secret values to write.
 func (in Input) plan(prev store.MCPServer) (s store.MCPServer, write map[string]string, err error) {
 	s = store.MCPServer{ID: prev.ID, Name: in.Name, Command: in.Command, Args: in.Args, URL: in.URL}
 	given := in.Headers
 	switch {
-	case !_name.MatchString(in.Name):
-		return s, nil, invalid("name must be letters, digits, - or _")
+	case !_name.MatchString(in.Name) || strings.Contains(in.Name, "__"):
+		return s, nil, invalid("name must be letters, digits, - or _, and not contain __")
 	case slices.ContainsFunc(_catalog, func(c store.MCPServer) bool { return strings.EqualFold(in.Name, c.Name) }):
 		return s, nil, fmt.Errorf("MCP server name %q: %w", in.Name, store.ErrExists)
 	case (in.Command == "") == (in.URL == ""):
@@ -224,7 +223,6 @@ func setNames(s *store.MCPServer, names []string) {
 	}
 }
 
-// secretUser is the OS secret store entry of one secret of s.
 func secretUser(s store.MCPServer, name string) string {
 	kind := "header"
 	if s.Kind == store.MCPLocal {
@@ -242,7 +240,6 @@ func saveSecrets(s store.MCPServer, values map[string]string) error {
 	return nil
 }
 
-// deleteSecrets removes the secrets of s whose names are not in keep.
 func deleteSecrets(s store.MCPServer, keep []string) error {
 	var errs []error
 	for _, name := range secretNames(s) {

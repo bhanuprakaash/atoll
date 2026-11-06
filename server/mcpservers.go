@@ -201,7 +201,6 @@ func readMCPServer(w http.ResponseWriter, r *http.Request) (mcpserver.Input, boo
 	return in, true
 }
 
-// unknownMCPServers is the message for MCP server ids the library lacks, or "" when there are none.
 func (a *api) unknownMCPServers(ctx context.Context, picks []string) (string, error) {
 	if len(picks) == 0 {
 		return "", nil

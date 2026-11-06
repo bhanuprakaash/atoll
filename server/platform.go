@@ -623,7 +623,6 @@ func (a *api) botChoiceError(ctx context.Context, b, current store.Bot) *rpcErro
 	return nil
 }
 
-// unknownPicks is the message for the repo and MCP server ids of b that nothing has, or "".
 func (a *api) unknownPicks(ctx context.Context, b store.Bot) (string, error) {
 	msg, err := a.unknownRepos(ctx, b.RepoAccess)
 	if err != nil || msg != "" {
