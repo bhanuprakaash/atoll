@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
@@ -23,6 +24,18 @@ var _name = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 var _catalog = []store.MCPServer{
 	{ID: "context7", Name: "Context7", Kind: store.MCPCatalog, URL: "https://mcp.context7.com/mcp"},
+	{
+		ID: "notion", Name: "Notion", Kind: store.MCPCatalog, URL: "https://mcp.notion.com/mcp",
+		Status: store.MCPNotConnected,
+	},
+	{
+		ID: "figma", Name: "Figma", Kind: store.MCPCatalog, URL: "https://mcp.figma.com/mcp",
+		Status: store.MCPNotConnected,
+	},
+	{
+		ID: "cloudflare", Name: "Cloudflare", Kind: store.MCPCatalog,
+		URL: "https://observability.mcp.cloudflare.com/mcp", Status: store.MCPNotConnected,
+	},
 }
 
 // Input is a server as the user gives it: local with Command, remote with URL. A nil Env or
@@ -43,22 +56,40 @@ func List(ctx context.Context, st *store.Store) ([]store.MCPServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(slices.Clone(_catalog), own...), nil
+	signIns, err := st.MCPSignIns(ctx)
+	if err != nil {
+		return nil, err
+	}
+	servers := append(slices.Clone(_catalog), own...)
+	for i, s := range servers {
+		if status, ok := signIns[s.ID]; ok {
+			servers[i].Status = status
+		}
+	}
+	return servers, nil
 }
 
 // Get returns the server with id from the catalog or the user's servers.
 func Get(ctx context.Context, st *store.Store, id string) (store.MCPServer, error) {
-	if i := slices.IndexFunc(_catalog, func(s store.MCPServer) bool { return s.ID == id }); i >= 0 {
-		return _catalog[i], nil
+	servers, err := List(ctx, st)
+	if err != nil {
+		return store.MCPServer{}, err
 	}
-	return st.MCPServer(ctx, id)
+	if i := slices.IndexFunc(servers, func(s store.MCPServer) bool { return s.ID == id }); i >= 0 {
+		return servers[i], nil
+	}
+	return store.MCPServer{}, fmt.Errorf("MCP server %s: %w", id, store.ErrNotFound)
 }
 
-// Add stores a new server and its secrets.
-func Add(ctx context.Context, st *store.Store, in Input) (store.MCPServer, error) {
+// Add stores a new server and its secrets. A remote server given with no headers is asked once
+// whether it needs sign-in.
+func Add(ctx context.Context, st *store.Store, c *http.Client, in Input) (store.MCPServer, error) {
 	s, write, err := in.plan(store.MCPServer{})
 	if err != nil {
 		return store.MCPServer{}, err
+	}
+	if s.Kind == store.MCPRemote && len(in.Headers) == 0 {
+		s.Status = probe(ctx, c, s.URL)
 	}
 	if s, err = st.CreateMCPServer(ctx, s); err != nil {
 		return store.MCPServer{}, err
@@ -67,6 +98,12 @@ func Add(ctx context.Context, st *store.Store, in Input) (store.MCPServer, error
 		_ = st.DeleteMCPServer(ctx, s.ID)
 		_ = deleteSecrets(s, nil)
 		return store.MCPServer{}, err
+	}
+	if s.Status != "" {
+		if err := st.SetMCPSignIn(ctx, s.ID, s.Status); err != nil {
+			_ = st.DeleteMCPServer(ctx, s.ID)
+			return store.MCPServer{}, err
+		}
 	}
 	return s, nil
 }
@@ -103,7 +140,7 @@ func Remove(ctx context.Context, st *store.Store, id string) error {
 	if err := st.DeleteMCPServer(ctx, id); err != nil {
 		return err
 	}
-	return deleteSecrets(s, nil)
+	return errors.Join(deleteSecrets(s, nil), deleteTokens(id))
 }
 
 // Secrets returns the stored env values of a local server, or the header values of a remote one.
@@ -126,7 +163,7 @@ func (in Input) plan(prev store.MCPServer) (s store.MCPServer, write map[string]
 	switch {
 	case !_name.MatchString(in.Name):
 		return s, nil, invalid("name must be letters, digits, - or _")
-	case strings.EqualFold(in.Name, _catalog[0].Name):
+	case slices.ContainsFunc(_catalog, func(c store.MCPServer) bool { return strings.EqualFold(in.Name, c.Name) }):
 		return s, nil, fmt.Errorf("MCP server name %q: %w", in.Name, store.ErrExists)
 	case (in.Command == "") == (in.URL == ""):
 		return s, nil, invalid("give a command or a URL, not both or neither")

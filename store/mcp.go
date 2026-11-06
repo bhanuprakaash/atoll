@@ -27,7 +27,17 @@ type MCPServer struct {
 	URL         string   `json:"url,omitempty"`
 	EnvNames    []string `json:"env_names,omitempty"`
 	HeaderNames []string `json:"header_names,omitempty"`
+	// Status is the sign-in state of a server that needs one; the tokens are in the OS secret store.
+	Status string `json:"status,omitempty"`
 }
+
+// MCP sign-in statuses.
+const (
+	MCPNotConnected = "not_connected"
+	MCPConnected    = "connected"
+	MCPNeedsSignIn  = "needs_sign_in"
+	MCPNeedsApp     = "needs_app"
+)
 
 const _mcpColumns = "id, name, kind, command, args, url, env_names, header_names"
 
@@ -66,6 +76,34 @@ func mcpLists(s MCPServer) (lists [3]string, err error) {
 // MCPServers lists the user's MCP servers in the order added.
 func (s *Store) MCPServers(ctx context.Context) ([]MCPServer, error) {
 	return query(ctx, s.db, "SELECT "+_mcpColumns+" FROM mcp_servers ORDER BY rowid", scanMCPServer)
+}
+
+// MCPSignIns returns the sign-in status of each server that has one, by server id.
+func (s *Store) MCPSignIns(ctx context.Context) (map[string]string, error) {
+	rows, err := query(ctx, s.db, "SELECT server_id, status FROM mcp_sign_ins",
+		func(r *sql.Rows) ([2]string, error) {
+			var v [2]string
+			return v, r.Scan(&v[0], &v[1])
+		})
+	if err != nil {
+		return nil, fmt.Errorf("list MCP sign-ins: %w", err)
+	}
+	out := make(map[string]string, len(rows))
+	for _, v := range rows {
+		out[v[0]] = v[1]
+	}
+	return out, nil
+}
+
+// SetMCPSignIn sets the sign-in status of the server with id, a catalog entry or the user's own.
+func (s *Store) SetMCPSignIn(ctx context.Context, id, status string) error {
+	_, err := s.db.ExecContext(ctx,
+		"INSERT INTO mcp_sign_ins (server_id, status) VALUES (?1, ?2) "+
+			"ON CONFLICT (server_id) DO UPDATE SET status = ?2", id, status)
+	if err != nil {
+		return fmt.Errorf("set MCP sign-in: %w", err)
+	}
+	return nil
 }
 
 // MCPServer returns the user's MCP server with id.
@@ -119,6 +157,9 @@ func (s *Store) DeleteMCPServer(ctx context.Context, id string) error {
 		}
 		if err := found(res, "MCP server", id); err != nil {
 			return err
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM mcp_sign_ins WHERE server_id = ?", id); err != nil {
+			return fmt.Errorf("delete MCP sign-in: %w", err)
 		}
 		_, err = tx.ExecContext(ctx,
 			"UPDATE bots SET mcp_servers = (SELECT json_group_array(value) FROM json_each(mcp_servers) "+

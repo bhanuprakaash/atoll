@@ -3,7 +3,10 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"html"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -11,6 +14,7 @@ import (
 
 	"atoll/mcpserver"
 	"atoll/provider"
+	"atoll/store"
 )
 
 func (a *api) listMCPServers(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +31,7 @@ func (a *api) createMCPServer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s, err := mcpserver.Add(r.Context(), a.st, in)
+	s, err := mcpserver.Add(r.Context(), a.st, a.http, in)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -54,6 +58,76 @@ func (a *api) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// connectMCPServer starts the sign-in of a server and answers the URL the user opens to allow it.
+func (a *api) connectMCPServer(w http.ResponseWriter, r *http.Request) {
+	s, err := mcpserver.Get(r.Context(), a.st, r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	redirect := "http://127.0.0.1:" + localPort(r) + "/oauth/callback"
+	p, err := mcpserver.Begin(r.Context(), a.http, s, redirect)
+	if errors.Is(err, mcpserver.ErrNeedsApp) {
+		if s.Status != store.MCPNeedsApp {
+			if err := a.st.SetMCPSignIn(r.Context(), s.ID, store.MCPNeedsApp); err != nil {
+				a.fail(w, r, err)
+				return
+			}
+		}
+		fail(w, http.StatusConflict, err.Error())
+		return
+	}
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	a.mu.Lock()
+	a.signIns[p.State] = p
+	a.mu.Unlock()
+	write(w, http.StatusOK, struct {
+		AuthorizeURL string `json:"authorize_url"`
+	}{AuthorizeURL: p.AuthorizeURL})
+}
+
+// oauthCallback is where an authorization server sends the browser after the user allows a sign-in.
+func (a *api) oauthCallback(w http.ResponseWriter, r *http.Request) {
+	state := r.URL.Query().Get("state")
+	a.mu.Lock()
+	p, ok := a.signIns[state]
+	delete(a.signIns, state)
+	a.mu.Unlock()
+	code := r.URL.Query().Get("code")
+	switch {
+	case !ok:
+		callbackPage(w, http.StatusBadRequest, "This sign-in link is not valid or was already used.")
+	case code == "":
+		callbackPage(w, http.StatusBadRequest, p.Server.Name+" was not allowed. Close this window and try again.")
+	default:
+		if err := mcpserver.Finish(r.Context(), a.http, a.st, p, code); err != nil {
+			a.log.Error("MCP sign-in failed", "server", p.Server.Name, "err", err)
+			callbackPage(w, http.StatusBadGateway, "Sign-in to "+p.Server.Name+" failed. Close this window and try again.")
+			return
+		}
+		callbackPage(w, http.StatusOK, "Signed in to "+p.Server.Name+". You can close this window.")
+	}
+}
+
+func callbackPage(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = fmt.Fprintf(w, "<!doctype html><title>Reef</title><p>%s</p>", html.EscapeString(msg))
+}
+
+// localPort is the port Reef accepted r on.
+func localPort(r *http.Request) string {
+	addr, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+	if !ok {
+		return ""
+	}
+	_, port, _ := net.SplitHostPort(addr.String())
+	return port
 }
 
 // readMCPServer decodes a server request body. The name is the key in a provider's config, where

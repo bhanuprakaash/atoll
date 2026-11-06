@@ -46,7 +46,8 @@ type api struct {
 	providers Providers // serves /api/providers; nil when there is none
 
 	mu      sync.Mutex
-	devices map[string]string // device code of each pending sign-in, by connection id
+	devices map[string]string            // device code of each pending sign-in, by connection id
+	signIns map[string]mcpserver.Pending // MCP sign-ins waiting for Allow, by state
 }
 
 // New returns the handler for the API, the MCP tools and the UI. providers, when not nil, serves
@@ -58,6 +59,7 @@ func New(
 		st: st, mem: mem, runs: runs, log: log, providers: providers,
 		http:    &http.Client{Timeout: _signInTimeout},
 		devices: map[string]string{},
+		signIns: map[string]mcpserver.Pending{},
 	}
 	mux := http.NewServeMux()
 	if providers != nil {
@@ -93,6 +95,8 @@ func New(
 	mux.HandleFunc("POST /api/mcp-servers", a.createMCPServer)
 	mux.HandleFunc("PUT /api/mcp-servers/{id}", a.putMCPServer)
 	mux.HandleFunc("DELETE /api/mcp-servers/{id}", a.deleteMCPServer)
+	mux.HandleFunc("POST /api/mcp-servers/{id}/connect", a.connectMCPServer)
+	mux.HandleFunc("GET /oauth/callback", a.oauthCallback)
 	mux.HandleFunc("POST /api/platform/changes/{id}/undo", a.undoChange)
 	mux.HandleFunc("GET /api/threads/{id}/changes", a.listChanges)
 	mux.HandleFunc("POST /api/bots/{id}/threads", a.createThread)

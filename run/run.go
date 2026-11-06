@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -632,6 +633,13 @@ func (m *Manager) mcpServers(ctx context.Context, bot store.Bot) ([]provider.Use
 			u.Env = secrets
 		} else {
 			u.Headers = secrets
+		}
+		if s.Status == store.MCPConnected || s.Status == store.MCPNeedsSignIn {
+			token, err := mcpserver.Token(ctx, &http.Client{Timeout: 30 * time.Second}, m.cfg.Store, s)
+			if err != nil {
+				return nil, err
+			}
+			u.Headers["Authorization"] = "Bearer " + token
 		}
 		out = append(out, u)
 	}
