@@ -378,7 +378,7 @@ func (a *api) platformCall(
 		if json.Unmarshal(args, &b) != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
 		}
-		if rerr := a.botChoiceError(ctx, b, ""); rerr != nil {
+		if rerr := a.botChoiceError(ctx, b, store.Bot{}); rerr != nil {
 			return nil, rerr
 		}
 		if !validBot(b) {
@@ -409,7 +409,7 @@ func (a *api) platformCall(
 			if chiefHasRepos(b) {
 				return nil, &rpcError{Code: _invalidParams, Message: _chiefRepoRefusal}
 			}
-			if rerr := a.botChoiceError(ctx, b, prev.Model); rerr != nil {
+			if rerr := a.botChoiceError(ctx, b, prev); rerr != nil {
 				return nil, rerr
 			}
 			if !validBot(b) {
@@ -500,13 +500,13 @@ func (a *api) platformCall(
 }
 
 // botChoiceError rejects a look no creature has, and a model the Bot's provider does not list while
-// signed in, unless it is the model the Bot already has.
-func (a *api) botChoiceError(ctx context.Context, b store.Bot, current string) *rpcError {
+// signed in, unless the Bot keeps the provider and model it has.
+func (a *api) botChoiceError(ctx context.Context, b, current store.Bot) *rpcError {
 	if b.Look != "" && !slices.Contains(_looks, b.Look) {
 		return &rpcError{Code: _invalidParams, Message: fmt.Sprintf(
 			"unknown look %q; looks: %s", b.Look, strings.Join(_looks, ", "))}
 	}
-	if b.Model == "" || b.Model == current {
+	if b.Model == "" || (b.Model == current.Model && b.Provider == current.Provider) {
 		return nil
 	}
 	var models []string
