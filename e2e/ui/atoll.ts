@@ -181,6 +181,7 @@ export const prompts = {
   keep: 'Remember this fact: the codeword is kestrel. Reply with just: ok',
   write: 'Use the Write tool to create hello.txt containing the word hi.',
   hang: 'Wait for the build to finish.',
+  chatPolishHang: 'Continue waiting for the build to finish.',
   working: 'Fix the wizard repo select and run its tests.',
   freshFix: 'Fix the seeded bug in answer.txt and open an MR.',
   saveMemory: 'Save the SQLite journal decision in user memory.',
@@ -192,8 +193,11 @@ export const loginURL = {
   codex: 'https://login.reef.test/codex/oauth?client_id=fake',
 };
 
-// cut40 is a thread title: the first 40 characters of its first message.
-export const cut40 = (s: string) => [...s].slice(0, 40).join('');
+export const threadTitle = (s: string) => {
+  const words = s.trim().split(/\s+/).slice(0, 6);
+  if (words.length) words[words.length - 1] = words[words.length - 1].replace(/[.,;:!?]+$/, '');
+  return words.join(' ');
+};
 
 // newBotAPI creates a Bot through the API.
 export async function newBotAPI(
@@ -213,6 +217,22 @@ export async function newBotAPI(
 // openThreadAPI creates a thread with its first message.
 export async function openThreadAPI(m: Machine, botID: string, text: string) {
   return api(m, 'POST', `/api/bots/${botID}/threads`, { text });
+}
+
+// sendMessageAPI sends a turn to an existing thread and waits for its run to reach status.
+export async function sendMessageAPI(
+  m: Machine,
+  threadID: string,
+  text: string,
+  status: 'done' | 'running' = 'done',
+) {
+  const result = await api(m, 'POST', `/api/threads/${threadID}/messages`, { text });
+  await expect
+    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
+      timeout: 15_000,
+    })
+    .toBe(status);
+  return result;
 }
 
 // choose picks an option of a combobox: a native select, or a searchable listbox.

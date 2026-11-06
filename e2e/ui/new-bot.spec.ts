@@ -3,13 +3,13 @@
 import { expect, test } from '@playwright/test';
 import {
   api,
-  cut40,
   type Machine,
   newBotAPI,
   pickModel,
   prompts,
   sidebarRow,
   startAtoll,
+  threadTitle,
 } from './atoll';
 
 let m: Machine;
@@ -51,7 +51,7 @@ test('New Bot creates the Bot and opens its empty thread; a starter sends', asyn
     page.getByRole('log', { name: 'Messages' }).getByRole('article', { name: 'You' }),
   ).toHaveText(text);
   const [thread] = await api(m, 'GET', `/api/bots/${coral.id}/threads`);
-  expect(thread.title).toBe(cut40(text));
+  expect(thread.title).toBe(threadTitle(text));
 });
 
 test('Bot settings save as you change them and apply from the next run', async ({ page }) => {

@@ -2,7 +2,7 @@
 // with Sign in running the provider's own login; Meet Chief, whose example asks open Chief's
 // thread with that message sent.
 import { expect, test } from '@playwright/test';
-import { api, cut40, loginURL, type Machine, running, startAtoll } from './atoll';
+import { api, loginURL, type Machine, running, startAtoll, threadTitle } from './atoll';
 
 let m: Machine;
 test.beforeAll(async () => {
@@ -53,7 +53,7 @@ test('name, sign in a provider, meet Chief and send an example ask', async ({ pa
   await expect(log.getByRole('article', { name: 'You' })).toHaveText(ask);
   expect((await api(m, 'GET', '/api/settings')).user_name).toBe('Ada');
   const [thread] = await api(m, 'GET', '/api/bots/chief/threads');
-  expect(thread.title).toBe(cut40(ask));
+  expect(thread.title).toBe(threadTitle(ask));
   expect((await api(m, 'GET', '/api/providers'))[0].signed_in).toBe(true);
 });
 

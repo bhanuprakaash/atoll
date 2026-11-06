@@ -3,7 +3,6 @@
 import { expect, test } from '@playwright/test';
 import {
   api,
-  cut40,
   type Machine,
   newBotAPI,
   openThreadAPI,
@@ -11,6 +10,7 @@ import {
   prompts,
   sidebarRow,
   startAtoll,
+  threadTitle,
 } from './atoll';
 
 let m: Machine;
@@ -48,12 +48,12 @@ test('Needs you lists the waiting thread and what it waits for; the Threads butt
   await expect(panel.getByRole('button', { name: 'New thread' })).toBeVisible();
   const needs = panel.getByRole('list', { name: 'Needs you' }).getByRole('listitem');
   await expect(needs).toHaveCount(1);
-  await expect(needs).toContainText(cut40(prompts.write));
+  await expect(needs).toContainText(threadTitle(prompts.write));
   await expect(needs).toContainText('hello.txt');
   const recentList = panel.getByRole('list', { name: 'Recent' });
   await expect(recentList.getByRole('listitem')).toHaveCount(1);
-  await expect(recentList).toContainText(cut40(prompts.keep));
-  await expect(recentList).not.toContainText(cut40(prompts.write));
+  await expect(recentList).toContainText(threadTitle(prompts.keep));
+  await expect(recentList).not.toContainText(threadTitle(prompts.write));
 
   const closedList = panel.getByRole('list', { name: 'Closed' });
   await expect(closedList).toHaveCount(0);
@@ -75,6 +75,8 @@ test('a running thread shows under Running', async ({ page }) => {
   await page.goto(m.url);
   await sidebarRow(page, 'Reed').click();
   const panel = await openThreads(page);
-  await expect(panel.getByRole('list', { name: 'Running' })).toContainText(cut40(prompts.hang));
+  await expect(panel.getByRole('list', { name: 'Running' })).toContainText(
+    threadTitle(prompts.hang),
+  );
   await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
 });

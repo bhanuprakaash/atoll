@@ -76,8 +76,8 @@ their `config`). `state` is the first that holds:
 `activity` is the Bot's latest activity line for the sidebar. It is non-empty once the Bot has
 run. `last_activity` is when that happened.
 
-**Threads.** `title` is the first 40 characters (Unicode code points) of the thread's first
-message, with no ellipsis, or empty before one. `last_activity` is set from creation on.
+**Threads.** `title` is the first six whitespace-separated words of the thread's first message,
+with trailing punctuation removed from the last word, or empty before one. `last_activity` is set from creation on.
 `run_id` and `run_status` belong to the thread's latest run (empty with no run). `approval` is the
 open approval `{id, tool, input}` the thread waits on, else `null`. The Bot's thread list is
 newest `last_activity` first.
