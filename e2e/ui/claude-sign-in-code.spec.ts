@@ -37,6 +37,7 @@ test('Settings: the right code signs Claude in', async ({ page }) => {
   await claude.getByRole('button', { name: 'Submit' }).click();
 
   await expect(claude).toContainText('Signed in');
+  await expect(claude).not.toContainText(/JSON|pattern|error/i);
   await expect(field).toHaveCount(0);
   await expect(claude.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
   expect((await api(m, 'GET', '/api/providers'))[0].signed_in).toBe(true);
@@ -83,6 +84,7 @@ test('first run: the provider card takes the code', async ({ page }) => {
   await claude.getByRole('button', { name: 'Submit' }).click();
 
   await expect(claude).toContainText('Signed in');
+  await expect(claude).not.toContainText(/JSON|pattern|error/i);
   await expect(field).toHaveCount(0);
   expect((await api(m, 'GET', '/api/providers'))[0].signed_in).toBe(true);
 });

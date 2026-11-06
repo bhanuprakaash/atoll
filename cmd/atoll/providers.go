@@ -299,7 +299,7 @@ func (p *providers) submitCode(w http.ResponseWriter, r *http.Request, name stri
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
-	w.WriteHeader(http.StatusAccepted)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (p *providers) setAvailable(name string, signed bool) {
