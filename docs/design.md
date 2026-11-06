@@ -201,8 +201,9 @@ Undo of a repo registration is refused while a thread uses the repo.
 
 ## MCP servers
 
-- One library, in Settings > MCP servers: a catalog (Context7 now: remote, no sign-in, no secret;
-  always first, not editable) and the user's own servers, listed in the order added. A server is
+- One library, in Settings > MCP servers: a catalog (Context7: remote, no sign-in, no secret; then
+  the hosted servers Notion, Figma and Cloudflare, which need sign-in; always first, not editable)
+  and the user's own servers, listed in the order added. A server is
   local (`command`, `args`, `env`; stdio) or remote (`url`, `headers`; streamable HTTP).
   `GET/POST /api/mcp-servers`, `PUT/DELETE /api/mcp-servers/{id}`; a `PUT` replaces the server.
 - The name is the key in the provider's config and shows in tool names (`mcp__<name>__<tool>`): it
@@ -222,8 +223,40 @@ Undo of a repo registration is refused while a thread uses the repo.
   allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex's
   `mcpServer/elicitation/request` for any server but Reef's becomes an approval, answered
   `{action: "accept"}` or `{action: "decline"}`. Reef's own tools need none.
-- Importing servers from `~/.claude.json` or Codex's config, OAuth sign-in for remote servers and a
-  per-server "always allow" are not built.
+- Importing servers from `~/.claude.json` or Codex's config and a per-server "always allow" are not
+  built.
+
+### MCP sign-in
+
+- A hosted server that needs sign-in connects with one click. `status` on a server is `not_connected`,
+  `connected`, `needs_sign_in` or `needs_app`; it is absent for a server with no sign-in. The status
+  is in the database (`mcp_sign_ins`, by server id, catalog entries too); the tokens never are.
+- Add by URL with no headers sends the URL one MCP `initialize` request. A `401` whose
+  `WWW-Authenticate` has `resource_metadata` means the server needs sign-in: `not_connected`, or
+  `needs_app` when its authorization server has no `registration_endpoint`. Any other answer adds
+  the server with no status. Headers are the user's own sign-in: no request.
+- `POST /api/mcp-servers/{id}/connect` follows the MCP authorization flow: protected-resource
+  metadata from the `401`, the first authorization server's
+  `/.well-known/oauth-authorization-server`, dynamic client registration (public client,
+  `token_endpoint_auth_method: none`), then an authorize URL with PKCE (S256), `state` and
+  `resource` (the server's URL). It answers `{authorize_url}`; the UI opens it in a popup. Reef
+  opens nothing itself. A server with no `registration_endpoint` answers `409`: it needs an app
+  registered by hand.
+- The redirect is fixed: `http://127.0.0.1:<Reef port>/oauth/callback`, a route of Reef's own server
+  (no other listener). The callback accepts a `state` it issued, once, trades the code for tokens,
+  stores them and answers a page; the UI polls the list until the status changes. *The Allow page
+  must come back to a URL registered at registration; a second listener would add a port to
+  allow.*
+- The client ID, access token, refresh token and expiry are one OS secret store entry,
+  `mcp:<id>:oauth`: never the database, a file, a log or an API reply (the authorize URL names the
+  client and is the one exception). Remove deletes the entry. *Reef owns the tokens; providers never
+  run their own MCP OAuth.* A run gets the server as a remote entry with
+  `Authorization: Bearer <access token>` (Claude `headers`, Codex `http_headers`), and Claude stays
+  `--strict-mcp-config`.
+- Before a run uses a connected server, an access token that expires within ten minutes is
+  refreshed (`grant_type=refresh_token`, same client). A rejected refresh (`invalid_grant`) sets
+  `needs_sign_in`; the run fails before the provider starts with `<name> needs sign-in`. Sign in again
+  is Connect again: the server keeps its id and every Bot's pick. Nothing refreshes without a run.
 
 ## Memory
 
@@ -472,7 +505,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 | Repos | Register, worktree per thread, MR via `glab` |
 | Connections | GitLab |
 | Skills | Library, picked per Bot |
-| MCP servers | Catalog, local and remote servers, picked per Bot, approvals |
+| MCP servers | Catalog, local and remote servers, one-click sign-in for hosted ones, picked per Bot, approvals |
 | Memory | Three scopes, four tools, saves shown in the thread |
 
 ## Queue
