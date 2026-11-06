@@ -110,14 +110,12 @@ function messageTime(createdAt: string) {
 function MessageLine({ message, retry }: { message: Message; retry: () => void }) {
   if (message.role === 'user')
     return (
-      <article
-        aria-label="You"
-        data-testid="message"
-        className="flex max-w-[75%] self-end flex-col items-end gap-1"
-      >
-        <div className="rounded-[22px] bg-accent px-[18px] py-2.5 text-[15px] leading-normal whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]">
-          {message.text}
-        </div>
+      <div data-testid="message" className="flex max-w-[75%] self-end flex-col items-end gap-1">
+        <article aria-label="You">
+          <div className="rounded-[22px] bg-accent px-[18px] py-2.5 text-[15px] leading-normal whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]">
+            {message.text}
+          </div>
+        </article>
         <time
           className="text-xs text-muted"
           dateTime={message.created_at}
@@ -125,7 +123,7 @@ function MessageLine({ message, retry }: { message: Message; retry: () => void }
         >
           {messageTime(message.created_at)}
         </time>
-      </article>
+      </div>
     );
   return (
     <div data-testid="message" className="flex max-w-[85%] flex-col gap-2">
@@ -315,16 +313,27 @@ export function ThreadView({
     (['running', 'waiting'].includes(thread?.run_status ?? '') ? thread?.run_id : undefined);
   const log = useRef<HTMLDivElement>(null);
   const previousHeight = useRef<number | null>(null);
+  const shownThread = useRef('');
+  const wasAtLatest = useRef(true);
   const [awayFromLatest, setAwayFromLatest] = useState(false);
   useLayoutEffect(() => {
     const element = log.current;
     if (!element) return;
+    if (shownThread.current !== threadId) {
+      shownThread.current = threadId;
+      wasAtLatest.current = true;
+      setAwayFromLatest(false);
+    }
     if (previousHeight.current !== null) {
       element.scrollTop += element.scrollHeight - previousHeight.current;
       previousHeight.current = null;
+    } else if (wasAtLatest.current && messages.length > 0) {
+      element.scrollTop = element.scrollHeight;
     }
-    setAwayFromLatest(element.scrollTop + element.clientHeight < element.scrollHeight - 1);
-  }, [messages]);
+    const atLatest = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+    wasAtLatest.current = atLatest;
+    setAwayFromLatest(!atLatest);
+  }, [messages, threadId]);
   const answered = new Set(messages.filter((m) => m.role === 'bot').map((m) => m.run_id));
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
   const retry = () => {
@@ -438,7 +447,9 @@ export function ThreadView({
         onScroll={() => {
           const element = log.current;
           if (!element) return;
-          setAwayFromLatest(element.scrollTop + element.clientHeight < element.scrollHeight - 1);
+          const atLatest = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+          wasAtLatest.current = atLatest;
+          setAwayFromLatest(!atLatest);
           loadOlder();
         }}
         className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-7 ${empty ? 'justify-center' : ''}`}
