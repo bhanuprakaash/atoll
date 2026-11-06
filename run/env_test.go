@@ -20,7 +20,7 @@ func githubBot(t *testing.T) (*Manager, store.Bot, *atomic.Int32) {
 	t.Helper()
 	keyring.MockInit()
 	var users atomic.Int32
-	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	gh := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/user" {
 			users.Add(1)
 		}
