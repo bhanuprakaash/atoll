@@ -306,6 +306,16 @@ export function McpServersSettings() {
               <SignInStatus server={s} allowURL={allow?.id === s.id ? allow.url : undefined} />
             </RowText>
             <SignInButton server={s} onClick={() => signIn(s)} />
+            {(s.status === 'connected' || s.status === 'needs_sign_in') && (
+              <button
+                type="button"
+                className={outlineButton}
+                disabled={remove.isPending}
+                onClick={() => remove.mutate(s.id)}
+              >
+                Sign out
+              </button>
+            )}
           </li>
         ))}
       </ul>

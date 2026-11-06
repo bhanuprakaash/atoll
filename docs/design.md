@@ -291,6 +291,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   run their own MCP OAuth.* A run gets the server as a remote entry with
   `Authorization: Bearer <access token>` (Claude `headers`, Codex `http_headers`), and Claude stays
   `--strict-mcp-config`.
+- `DELETE /api/mcp-servers/{id}` on a catalog server with a sign-in (Notion, Figma, Cloudflare) is
+  Sign out: it deletes the `mcp:<id>:oauth` entry and sets `not_connected`; on Context7 it is `400`.
+  Settings shows Sign out on a catalog row that is `connected` or `needs_sign_in`.
 - Before a run uses a connected server, an access token that expires within ten minutes is
   refreshed (`grant_type=refresh_token`, same client). A rejected refresh (`invalid_grant`) sets
   `needs_sign_in`; the run fails before the provider starts with `<name> needs sign-in`. Sign in again

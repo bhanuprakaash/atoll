@@ -211,3 +211,27 @@ func TestTokenRefreshesOnceAtATime(t *testing.T) {
 		t.Errorf("status = %q (%v), want not needs_sign_in", signIns[s.ID], err)
 	}
 }
+
+func TestRemoveCatalogSignsOut(t *testing.T) {
+	keyring.MockInit()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	ctx := context.Background()
+	if err := errors.Join(saveTokens("notion", Tokens{AccessToken: "a"}), st.SetMCPSignIn(ctx, "notion", store.MCPConnected)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Remove(ctx, st, "notion"); err != nil {
+		t.Fatal(err)
+	}
+	signIns, err := st.MCPSignIns(ctx)
+	if _, tokenErr := keyring.Get("atoll", tokensUser("notion")); err != nil || tokenErr == nil || signIns["notion"] != store.MCPNotConnected {
+		t.Errorf("after sign out: token error %v, status %q (%v), want no tokens and not_connected", tokenErr, signIns["notion"], err)
+	}
+	if err := Remove(ctx, st, "context7"); !errors.Is(err, ErrInvalid) {
+		t.Errorf("Remove(context7) = %v, want ErrInvalid", err)
+	}
+}

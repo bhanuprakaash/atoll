@@ -144,8 +144,15 @@ func Replace(ctx context.Context, st *store.Store, c *http.Client, id string, in
 	return s, deleteSecrets(prev, kept)
 }
 
-// Remove deletes the user's server id, its secrets, and every Bot's pick of it.
+// Remove deletes the user's server id, its secrets, and every Bot's pick of it. For a catalog
+// server with a sign-in it deletes the tokens and resets the status to not_connected.
 func Remove(ctx context.Context, st *store.Store, id string) error {
+	if i := slices.IndexFunc(_catalog, func(c store.MCPServer) bool { return c.ID == id }); i >= 0 {
+		if _catalog[i].Status == "" {
+			return invalid(_catalog[i].Name + " has no sign-in to remove")
+		}
+		return errors.Join(deleteTokens(id), st.SetMCPSignIn(ctx, id, store.MCPNotConnected))
+	}
 	s, err := st.MCPServer(ctx, id)
 	if err != nil {
 		return err
