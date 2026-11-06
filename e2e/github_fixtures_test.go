@@ -1,6 +1,8 @@
 package e2e
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -323,6 +325,12 @@ func (f *githubFixture) probe(t *testing.T, b bot) (runInfo, githubProbe) {
 		}
 	}
 	return done, p
+}
+
+// digest is the first 12 hex of the token's sha256, how the probe proves a password without echoing it.
+func digest(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])[:12]
 }
 
 // githubCredential is the key=value lines `git credential fill` printed.

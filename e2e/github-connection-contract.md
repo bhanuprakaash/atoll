@@ -127,6 +127,9 @@ today), within its existing size limit.
   MCP config has a `github` server, calls its `get_me` tool. It replies with JSON `{gh, git,
   other_git, push}` as `{exit, output}` and `mcp` as `{connected, text}`. The fake provider reads the
   fake GitHub's URL from `github-url` beside its executable.
+  The reply is stored with the run, so it never carries the token: each `password=<x>` line of the
+  credential output becomes `password_sha256=<first 12 hex of sha256(x)>` (the test compares the
+  digest), and any `GH_TOKEN` value in the other outputs is replaced by `<GH_TOKEN>`.
 - The fake GitHub MCP server's `get_me` answers `{"login":"reef-fixture","source":"mcp"}` and 401s
   any request without the valid bearer token. The fake git remote is real `git http-backend` behind
   basic auth: only user `x-access-token` with the valid token gets in.

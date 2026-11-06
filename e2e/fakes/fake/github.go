@@ -1,6 +1,8 @@
 package fake
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -15,7 +17,9 @@ import (
 // `gh api user`, `git credential fill` for that URL and for host git.example, and a real
 // `git push` of one commit to <url>/octo/hello.git, then calls get_me on the run's `github` MCP
 // server when it has one. The reply is JSON: gh, git, other_git and push as {exit, output}, and
-// mcp as {connected, text}.
+// mcp as {connected, text}. A reply is stored with the run, so it never carries a secret: in the
+// credential output each password=<x> line becomes password_sha256=<first 12 hex of sha256(x)>, and
+// any GH_TOKEN value elsewhere is replaced by <GH_TOKEN>.
 func GitHubProbe(c *MCP) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -72,6 +76,7 @@ func GitHubProbe(c *MCP) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("%s: %w", name, err)
 		}
+		p.Output = redact(p.Output, strings.HasSuffix(name, "git") && name != "push")
 		reply[name] = p
 	}
 	mcp := map[string]any{"connected": c != nil}
@@ -80,7 +85,7 @@ func GitHubProbe(c *MCP) (string, error) {
 		if err != nil || bad {
 			return "", fmt.Errorf("github get_me: %v %v: %s", err, bad, text)
 		}
-		mcp["text"] = text
+		mcp["text"] = redact(text, false)
 	}
 	reply["mcp"] = mcp
 	out, err := json.Marshal(reply)
@@ -95,4 +100,23 @@ func runProbe(cmd *exec.Cmd) (LoginProbe, error) {
 		return p, nil
 	}
 	return p, err
+}
+
+// redact keeps a secret out of what a run stores: see GitHubProbe.
+func redact(out string, credential bool) string {
+	if credential {
+		var lines []string
+		for line := range strings.Lines(out) {
+			if v, ok := strings.CutPrefix(strings.TrimRight(line, "\r\n"), "password="); ok {
+				sum := sha256.Sum256([]byte(v))
+				line = "password_sha256=" + hex.EncodeToString(sum[:])[:12] + "\n"
+			}
+			lines = append(lines, line)
+		}
+		out = strings.Join(lines, "")
+	}
+	if token := os.Getenv("GH_TOKEN"); token != "" {
+		out = strings.ReplaceAll(out, token, "<GH_TOKEN>")
+	}
+	return out
 }

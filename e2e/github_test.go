@@ -109,10 +109,10 @@ func TestGitHub_RunGetsTheConnection(t *testing.T) {
 				t.Errorf("gh api user in the run: exit %d, output %q; want the fake user reef-fixture", probe.GH.Exit, probe.GH.Output)
 			}
 			cred := githubCredential(probe.Git.Output)
-			if cred["username"] != "x-access-token" || cred["password"] != token {
-				t.Errorf("git credential fill for github: %q, want username x-access-token and the token", probe.Git.Output)
+			if cred["username"] != "x-access-token" || cred["password_sha256"] != digest(token) {
+				t.Errorf("git credential fill for github: %q, want username x-access-token and the token's digest %s", probe.Git.Output, digest(token))
 			}
-			if strings.Contains(probe.OtherGit.Output, "password=") {
+			if strings.Contains(probe.OtherGit.Output, "password") {
 				t.Errorf("git credential fill for another host returned a password: %q", probe.OtherGit.Output)
 			}
 			if probe.Push.Exit != 0 {
@@ -194,7 +194,7 @@ func TestGitHub_BotWithoutTheConnectionGetsNothing(t *testing.T) {
 			if probe.GH.Exit == 0 || strings.Contains(probe.GH.Output, "reef-fixture") {
 				t.Errorf("gh api user in a run without the connection: exit %d, output %q; want it to fail", probe.GH.Exit, probe.GH.Output)
 			}
-			if strings.Contains(probe.Git.Output, "password=") || strings.Contains(probe.Git.Output, "x-access-token") {
+			if strings.Contains(probe.Git.Output, "password") || strings.Contains(probe.Git.Output, "x-access-token") {
 				t.Errorf("git credential fill for github in a run without the connection: %q", probe.Git.Output)
 			}
 			if probe.Push.Exit == 0 {
