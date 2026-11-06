@@ -324,7 +324,7 @@ Finish
   open page reconnect to a restarted sidecar.*
 - The dmg is ad-hoc signed (`signingIdentity: "-"`), not notarized, as old Reef was: free, and a
   web download opens after System Settings → Privacy & Security → Open Anyway once. CI's `dmg` job
-  builds it on the atoll-mac runner for every push to `main` (manual on an MR). *Developer ID and
+  builds it on a GitHub macOS runner for every push to `main` and every `v*` tag. *Developer ID and
   notarization need the paid Apple Developer Program; add them when outside users need a clean
   first open.*
 - Provider sign-in state is cached: checked on start, before each run, on Refresh and when a
@@ -341,9 +341,9 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
   tests come from a ticket's acceptance lines, in their own commit, before the code, written by the
   user or a separate session. The implementing agent never edits them; CI is the referee.
 - Unit tests are for fiddly logic, as table cases. They run shuffled with a 60s timeout.
-- `test-guard` fails an MR that mixes `e2e/` with other code, deletes or renames a test file, adds
-  a skip or `.only(`, or edits CI or the guard. CI runs the target branch's copy of the guard. Only
-  the user's `tests-approved` label lets such an MR pass.
+- `test-guard` fails a PR that mixes `e2e/` with other code, deletes or renames a test file, adds
+  a skip or `.only(`, or edits `.github/workflows/` or the guard. CI runs the base branch's copy of
+  the guard. Only the owner can merge such a PR, past the red check through branch protection.
 - Slice verification runs mutation testing (gremlins) on changed packages; a surviving mutant is a
   finding.
 

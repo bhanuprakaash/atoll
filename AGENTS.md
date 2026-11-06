@@ -2,15 +2,15 @@
 
 ## Rules
 
-1. One ticket per branch, named `<type>/<slug>` (`feat`, `fix`, `chore`, `docs`), with an MR to
-   `main`. Never push `main`; never merge your own MR.
+1. One ticket per branch, named `<type>/<slug>` (`feat`, `fix`, `chore`, `docs`), with a PR to
+   `main`. Never push `main`; never merge your own PR.
 2. Smallest diff that closes the ticket. Nothing speculative: no option, layer or wrapper the ticket
    does not need now.
 3. Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `build:`): one-line subject, no ticket
-   ids in the subject, no AI attribution anywhere (commits, MRs, issues, comments).
+   ids in the subject, no AI attribution anywhere (commits, PRs, issues, comments).
 4. Prove every acceptance line by running the real thing (binary, API, app). "It compiles" is not
-   proof. Put the command and what it showed in the MR under Proof.
-5. A change to the design goes into [`docs/design.md`](docs/design.md) in the same MR. Do not
+   proof. Put the command and what it showed in the PR under Proof.
+5. A change to the design goes into [`docs/design.md`](docs/design.md) in the same PR. Do not
    reopen a settled decision; propose a new one with a reason.
 6. Comments only for a constraint the code cannot show.
 7. Go follows [`docs/go-style.md`](docs/go-style.md); the web app follows
@@ -74,8 +74,8 @@ make app                   # desktop/: Reef.app and an unsigned dmg
 To upgrade a tool: `go get -tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<version>`
 (same for `github.com/evilmartians/lefthook/v2`), then `go mod tidy`.
 
-CI (`.gitlab-ci.yml`) runs `make check`, `make e2e` and `test-guard` on every MR. New issues and MRs
-start from the templates in `.gitlab/`.
+CI (`.github/workflows/ci.yml`) runs `make check`, `make e2e` and `test-guard` on every PR. New
+issues and PRs start from the templates in `.github/`.
 
 ## Tests
 
@@ -83,25 +83,26 @@ start from the templates in `.gitlab/`.
   by the user or a separate session. The implementing agent never edits `e2e/`.
 - If a test looks wrong, stop and report it. Never edit, skip or weaken a test to make code pass.
 - Unit tests are for fiddly logic. Add a case to an existing table-driven test, not a test per bug.
-- `test-guard` (`scripts/check-tests`) fails an MR that mixes `e2e/` with other code, deletes a
-  test, adds a skip or `.only(`, or edits CI. Never add `tests-approved`; only the user does.
+- `test-guard` (`scripts/check-tests`) fails a PR that mixes `e2e/` with other code, deletes a
+  test, adds a skip or `.only(`, or edits `.github/workflows/`. Only the user decides to merge a PR
+  test-guard flags.
 
 ## Definition of done
 
 A ticket is done when:
 
-- `make check` passes locally and in the MR pipeline.
-- Every acceptance line is proven by running it, and the MR's Proof section shows the command and
+- `make check` passes locally and in the PR checks.
+- Every acceptance line is proven by running it, and the PR's Proof section shows the command and
   its output.
-- Each proven line is ticked in the issue (`glab issue update <n> --description`). A line you
+- Each proven line is ticked in the issue (`gh issue edit <n> --body`). A line you
   could not prove stays unticked with a short note. A line only the user can check is listed under
   "Only you can check" with exact steps.
-- Design changes are in `docs/design.md` in the same MR.
+- Design changes are in `docs/design.md` in the same PR.
 - Anything you started or made to test (servers, scratch files, temp branches) is removed.
 
 ## Slice verification
 
-Work is planned as slices (GitLab issues labeled `slice`). A slice is not done when its last ticket
+Work is planned as slices (GitHub issues labeled `slice`). A slice is not done when its last ticket
 closes. It is done after a verification pass by an agent on Opus:
 
 1. Re-run every acceptance line of every ticket against `main` with the real thing (binary, API,

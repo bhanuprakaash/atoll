@@ -1,6 +1,6 @@
 ## What changed
 
-<!-- Short list of what this MR changes and why. -->
+<!-- Short list of what this PR changes and why. -->
 
 ## Proof
 

@@ -1,3 +1,8 @@
+---
+name: Ticket
+about: A ticket with acceptance lines
+---
+
 ## Goal
 
 <!-- One or two sentences: what is true when this is done, and why it matters. -->

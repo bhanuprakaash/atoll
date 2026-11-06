@@ -1,0 +1,88 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.1
+      - run: npm i -g "$(node -p "require('./web/package.json').packageManager")"
+      - id: pnpm-store
+        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+      - run: make check
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    # Ubuntu with Node and Chromium for Playwright; Go is added below.
+    container: mcr.microsoft.com/playwright:v1.64.1-noble
+    env:
+      GO_VERSION: "1.27.3"
+    steps:
+      - uses: actions/checkout@v4
+      # The container user does not own the checkout, so git refuses it and Go's VCS stamping fails.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: apt-get update -qq && apt-get install -y -qq make dbus gnome-keyring libsecret-tools >/dev/null
+      - run: curl -fsSL "https://dl.google.com/go/go$GO_VERSION.linux-$(dpkg --print-architecture).tar.gz" | tar -xz -C /usr/local
+      - run: echo /usr/local/go/bin >> "$GITHUB_PATH"
+      - run: npm i -g "$(node -p "require('./e2e/ui/package.json').packageManager")"
+      - run: make e2e
+
+  test-guard:
+    name: test-guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run the base branch's guard
+        # The base's copy, so a PR cannot loosen the guard it is checked by.
+        run: |
+          git fetch -q origin "$GITHUB_BASE_REF"
+          if git cat-file -e "origin/$GITHUB_BASE_REF:scripts/check-tests" 2>/dev/null; then
+            guard=$(mktemp)
+            git show "origin/$GITHUB_BASE_REF:scripts/check-tests" >"$guard"
+            sh "$guard" "origin/$GITHUB_BASE_REF"
+          else
+            echo "test-guard: $GITHUB_BASE_REF has no scripts/check-tests yet, nothing to enforce"
+          fi
+
+  dmg:
+    name: dmg
+    if: github.event_name == 'push'
+    runs-on: macos-latest
+    # The app is ad-hoc signed, not notarized, so first open needs System Settings → Open Anyway.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.1
+      - run: npm i -g "$(node -p "require('./web/package.json').packageManager")"
+      - run: rustup toolchain install stable --profile minimal
+      - run: make app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Reef
+          path: desktop/src-tauri/target/release/bundle/dmg/

@@ -2,13 +2,6 @@
 # Fails when a change weakens tests. Usage: scripts/check-tests <target ref>
 set -eu
 
-case ",${CI_MERGE_REQUEST_LABELS:-}," in
-*,tests-approved,*)
-	echo "test-guard: tests-approved label set, skipping"
-	exit 0
-	;;
-esac
-
 base=$(git merge-base "${1:?usage: scripts/check-tests <target ref>}" HEAD)
 tab=$(printf '\t')
 found=$(mktemp)
@@ -30,9 +23,9 @@ git diff -M --name-status "$base" HEAD | while IFS=$tab read -r status path new;
 	esac
 done >"$files"
 
-grep -Fx -e .gitlab-ci.yml -e scripts/check-tests "$files" | sed 's/$/: changes the test guard or CI config/' >>"$found" || true
+grep -E '^(\.github/workflows/|scripts/check-tests$)' "$files" | sed 's/$/: changes the test guard or CI config/' >>"$found" || true
 if grep -q '^e2e/' "$files" && grep -qv '^e2e/' "$files"; then
-	sed 's|$|: e2e/ and other files change in one MR|' "$files" >>"$found"
+	sed 's|$|: e2e/ and other files change in one PR|' "$files" >>"$found"
 fi
 
 git diff -U0 --no-color --no-ext-diff "$base" HEAD | awk '
@@ -51,7 +44,7 @@ git diff -U0 --no-color --no-ext-diff "$base" HEAD | awk '
 
 if [ -s "$found" ]; then
 	sed 's/^/test-guard: /' "$found"
-	echo "test-guard: this MR weakens or rewrites tests. Undo it, or ask the user to review and add the tests-approved label."
+	echo "test-guard: this PR weakens or rewrites tests. Undo it, or ask the user to review it."
 	exit 1
 fi
 echo "test-guard: ok"
