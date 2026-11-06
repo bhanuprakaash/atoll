@@ -18,7 +18,7 @@ func TestPollToken(t *testing.T) {
 	}{
 		{name: "pending", status: 400, body: `{"error":"authorization_pending"}`, err: "pending"},
 		{name: "slow down", status: 400, body: `{"error":"slow_down"}`, err: "pending"},
-		{name: "success", status: 200, body: `{"access_token":"secret"}`, want: "secret"},
+		{name: "success", status: 200, body: `{"access_token":"secret","refresh_token":"refresh","expires_in":3600}`, want: "secret"},
 		{name: "access denied", status: 400, body: `{"error":"access_denied"}`, err: "access_denied"},
 	}
 	for _, tt := range tests {
@@ -34,8 +34,8 @@ func TestPollToken(t *testing.T) {
 			}))
 			defer s.Close()
 			got, err := PollToken(t.Context(), s.Client(), s.URL+"/", "device")
-			if got != tt.want {
-				t.Errorf("token = %q, want %q", got, tt.want)
+			if got.AccessToken != tt.want {
+				t.Errorf("token = %q, want %q", got.AccessToken, tt.want)
 			}
 			if tt.err == "pending" && !errors.Is(err, ErrPending) ||
 				tt.err == "access_denied" && (err == nil || !strings.Contains(err.Error(), tt.err)) ||

@@ -16,6 +16,7 @@ import { TextField } from '@/components/text-field';
 import {
   pollConnection,
   useConnections,
+  useSignInAgain,
   useStartGitlab,
   type DeviceFlow,
 } from '@/modules/connections/api/connections';
@@ -30,7 +31,8 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
   const [pollError, setPollError] = useState('');
   const { data: connections = [] } = useConnections();
   const start = useStartGitlab();
-  const showForm = adding || !!flow || !connections.some((c) => c.status === 'connected');
+  const signInAgain = useSignInAgain();
+  const showForm = adding || !!flow || connections.length === 0;
 
   useEffect(() => {
     if (!flow) return;
@@ -76,8 +78,30 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
               <RowText title="GitLab" detail={c.instance_url.replace(/^https?:\/\//, '')} />
               {users.length > 0 && <UsedBy bots={users} />}
               <Tag tone={c.status === 'connected' ? 'ok' : 'warn'}>
-                {c.status === 'connected' ? 'Connected' : 'Pending'}
+                {c.status === 'connected'
+                  ? 'Connected'
+                  : c.status === 'needs_sign_in'
+                    ? 'Needs sign-in'
+                    : 'Pending'}
               </Tag>
+              {c.status === 'needs_sign_in' && (
+                <button
+                  type="button"
+                  disabled={signInAgain.isPending || !!flow}
+                  onClick={() => {
+                    setPollError('');
+                    signInAgain.mutate(c.id, {
+                      onSuccess: (started) => {
+                        setFlow(started);
+                        void queryClient.invalidateQueries({ queryKey: ['connections'] });
+                      },
+                    });
+                  }}
+                  className={solidButton}
+                >
+                  Sign in again
+                </button>
+              )}
             </div>
           );
         })}
@@ -117,6 +141,9 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
             />
           </label>
           {start.isError && <p className="text-sm text-danger">{start.error.message}</p>}
+          {signInAgain.isError && (
+            <p className="text-sm text-danger">{signInAgain.error.message}</p>
+          )}
           {pollError && <p className="text-sm text-danger">{pollError}</p>}
           <button
             type="submit"

@@ -71,6 +71,7 @@ func New(
 	mux.HandleFunc("POST /api/memory/{id}/retire", a.retireMemory)
 	mux.HandleFunc("GET /api/connections", a.listConnections)
 	mux.HandleFunc("POST /api/connections/gitlab/start", a.startGitLab)
+	mux.HandleFunc("POST /api/connections/gitlab", a.startGitLab)
 	mux.HandleFunc("POST /api/connections/{id}/poll", a.pollConnection)
 	mux.HandleFunc("GET /api/connections/{id}", a.getConnection)
 	mux.HandleFunc("POST /api/bots", a.createBot)

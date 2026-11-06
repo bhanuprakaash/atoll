@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -132,7 +133,8 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 		thread, threadErr := m.cfg.Store.Thread(ctx, a.threadID)
 		if threadErr == nil && thread.RepoID != "" {
 			if rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID); repoErr == nil {
-				_, title, _ = m.mrState(rp.Path, url, m.gitlabEnv(a.bot))
+				env, _ := m.gitlabEnv(ctx, a.bot)
+				_, title, _ = m.mrState(rp.Path, url, env)
 			}
 		}
 	}
@@ -242,21 +244,31 @@ func (m *Manager) threadDir(threadID string) string {
 // connection: the token as OAUTH_TOKEN with a glab config marking the host OAuth, and a git
 // credential helper that passes it. It is empty when the
 // Bot has none. The token goes only into the environment.
-func (m *Manager) gitlabEnv(b store.Bot) []string {
+func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, error) {
 	for _, id := range b.Connections {
-		c, err := m.cfg.Store.Connection(m.ctx, id)
-		if err != nil || c.Kind != store.KindGitLab || c.Status != store.ConnectionConnected {
+		c, err := m.cfg.Store.Connection(ctx, id)
+		if err != nil || c.Kind != store.KindGitLab {
 			continue
 		}
-		token, err := connection.Token(id)
-		if err != nil {
-			m.cfg.Log.Warn("read connection token", "connection_id", id, "error", err)
+		if c.Status == store.ConnectionNeedsSignIn {
+			return nil, connection.ErrNeedsSignIn
+		}
+		if c.Status != store.ConnectionConnected {
 			continue
+		}
+		token, err := connection.UsableToken(ctx, &http.Client{Timeout: 30 * time.Second}, c.InstanceURL, id)
+		if errors.Is(err, connection.ErrNeedsSignIn) {
+			if setErr := m.cfg.Store.SetConnectionStatus(ctx, id, store.ConnectionNeedsSignIn); setErr != nil {
+				return nil, fmt.Errorf("set GitLab connection needs sign-in: %w", setErr)
+			}
+			return nil, err
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read GitLab connection token: %w", err)
 		}
 		dir, err := m.glabConfig(id, c.InstanceURL)
 		if err != nil {
-			m.cfg.Log.Warn("write glab config", "connection_id", id, "error", err)
-			continue
+			return nil, err
 		}
 		return []string{
 			"OAUTH_TOKEN=" + token,
@@ -268,9 +280,9 @@ func (m *Manager) gitlabEnv(b store.Bot) []string {
 			"GIT_CONFIG_KEY_1=credential." + c.InstanceURL + ".helper",
 			`GIT_CONFIG_VALUE_1=!f() { test "$1" = get && echo username=oauth2 && ` +
 				`echo "password=$OAUTH_TOKEN"; }; f`,
-		}
+		}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 // glabConfig writes the glab config folder of connection id and returns it. It holds no token: it
@@ -285,8 +297,8 @@ func (m *Manager) glabConfig(id, instance string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create glab config folder: %w", err)
 	}
-	body := fmt.Sprintf("hosts:\n  %s:\n    is_oauth2: \"true\"\n    api_protocol: %s\n    git_protocol: %s\n",
-		u.Host, u.Scheme, u.Scheme)
+	body := fmt.Sprintf("hosts:\n  %s:\n    is_oauth2: \"true\"\n    oauth2_expiry_date: %q\n    api_protocol: %s\n    git_protocol: %s\n",
+		u.Host, time.Now().UTC().Add(24*time.Hour).Format(time.RFC3339), u.Scheme, u.Scheme)
 	if err := os.WriteFile(filepath.Join(dir, "config.yml"), []byte(body), 0o600); err != nil {
 		return "", fmt.Errorf("write glab config: %w", err)
 	}
@@ -336,7 +348,11 @@ func (m *Manager) check(t store.Thread) error {
 	if err != nil {
 		return err
 	}
-	state, title, err := m.mrState(rp.Path, t.MRURL, m.gitlabEnv(bot))
+	env, err := m.gitlabEnv(m.ctx, bot)
+	if err != nil {
+		return err
+	}
+	state, title, err := m.mrState(rp.Path, t.MRURL, env)
 	if err != nil {
 		return err
 	}
