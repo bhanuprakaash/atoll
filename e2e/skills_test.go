@@ -311,6 +311,42 @@ func TestSkills_RepoAndBotSkills(t *testing.T) {
 	}
 }
 
+func TestSkills_PlacedCopyDropsDisableModelInvocation(t *testing.T) {
+	for _, p := range _providers {
+		t.Run(p, func(t *testing.T) {
+			m := newMachine(t, p)
+			m.signIn(t, p)
+			s := m.serve(t)
+			content := strings.Replace(fake.GreetingSkill, "---\nHello", "disable-model-invocation: true\n---\nHello", 1)
+			b, skill := seedSkillBot(t, s, p, content)
+			th := s.newThread(t, b.bot)
+			ch := s.events(t, th)
+			r := s.send(t, th, _useSkills)
+			if got := s.finished(t, ch, r.ID); got.Status != "done" || !strings.Contains(got.Reply, "Hello from the lagoon.") {
+				t.Fatalf("use: %+v", got)
+			}
+			inventory := skillInventory(t, m, p)
+			if len(inventory) != 1 || inventory[0].Name != "reef-greeting" {
+				t.Fatalf("placed skills: %+v", inventory)
+			}
+			placed := inventory[0].Text
+			if strings.Contains(placed, "disable-model-invocation") {
+				t.Fatalf("placed copy hides skill from the model: %s", placed)
+			}
+			for _, want := range []string{"name: reef-greeting\n", "description: Give the Reef greeting.\n", "---\nHello from the lagoon.\n"} {
+				if !strings.Contains(placed, want) {
+					t.Fatalf("placed copy lost %q: %s", want, placed)
+				}
+			}
+			var stored librarySkill
+			s.do(t, "GET", "/api/skills/"+skill.ID, nil, &stored, 200)
+			if stored.Content != content {
+				t.Fatalf("library changed: %q, want %q", stored.Content, content)
+			}
+		})
+	}
+}
+
 func TestSkills_ConcurrentRunsAndNextRun(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {

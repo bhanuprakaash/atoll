@@ -65,6 +65,10 @@ supporting its behavior. This contract pins these two fields, not an exhaustive
 future provider metadata schema. The probe supplies them to Claude and uses the
 stripped copy on Codex. Repo-owned skills are never rewritten or stripped.
 
+`disable-model-invocation:` hides a skill from the model, yet a Bot is given a
+skill for the model to use: strip that line from the placed copy for every
+provider, and preserve it in the library text.
+
 ## Chief and Bot fields
 
 A fresh data directory has exactly one Bot: `{id:"chief", name:"Chief",
@@ -201,6 +205,7 @@ temporary and the harness removes them.
 | Chief creates skill/Bot; next run lists and uses it on both providers | `TestSkills_ChiefCreatesAndUndo/{claude,codex}`; also checks provider-only field stripping |
 | Undo restores previous state | `TestSkills_ChiefCreatesAndUndo` (remove creations, restart), `TestSkills_EditUndoAndNoPlatformTools` (restore edit after restart), `TestSkills_ChiefConfiguresAndUndoes` (skill edit, repo registration, connection attachment) |
 | Bot without switch has no platform tools | `TestSkills_EditUndoAndNoPlatformTools/{claude,codex}` inspects actual tools/list through fake |
+| Placed copy drops `disable-model-invocation`; library unchanged | `TestSkills_PlacedCopyDropsDisableModelInvocation/{claude,codex}` |
 | Repo skills still load | `TestSkills_RepoAndBotSkills/{claude,codex}` in clean checkout and edit worktree alongside Bot skills |
 | Next-run semantics and concurrent isolation | `TestSkills_ConcurrentRunsAndNextRun/{claude,codex}` |
 | UI chat → change with Undo → restored state | `ui/skills.spec.ts` |
