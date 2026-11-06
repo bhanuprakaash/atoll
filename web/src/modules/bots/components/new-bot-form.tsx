@@ -19,7 +19,11 @@ export type ModelControl = (
 export type Choices = {
   repos: { id: string; name: string }[];
   skills: { id: string; name: string }[];
-  connections: { id: string; instance_url: string; status: 'pending' | 'connected' }[];
+  connections: {
+    id: string;
+    instance_url: string;
+    status: 'pending' | 'connected' | 'needs_sign_in';
+  }[];
 };
 
 export const repoAccess = [
