@@ -37,6 +37,10 @@ never a dependency.
   from any run, children included, come to the user in the thread. *The provider already decides
   what needs approval.*
 - Bot settings changed mid-run apply from the next run.
+- Delete Bot (confirmed in the UI; not for Chief) stops its running run, closes its threads (their
+  worktrees are removed, unfinished work saved as for Close) and hard-deletes the Bot, its threads,
+  messages, runs and event files. Memory it saved stays, with its source. *Memory outlives the Bot
+  that wrote it; a Bot's history does not.*
 
 **Chief.** Created on first launch. It has the "Can manage the platform" switch on: tools to create
 and edit Bots, skills and repos, and to attach connections, served as Reef's own MCP tools. Sign-ins

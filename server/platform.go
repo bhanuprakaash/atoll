@@ -117,6 +117,18 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, responseBot(b))
 }
 
+func (a *api) deleteBot(w http.ResponseWriter, r *http.Request) {
+	if r.PathValue("id") == _chiefID {
+		fail(w, http.StatusConflict, "Chief cannot be deleted")
+		return
+	}
+	if err := a.runs.DeleteBot(r.Context(), r.PathValue("id")); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *api) createSkill(w http.ResponseWriter, r *http.Request) {
 	var sk store.Skill
 	if json.NewDecoder(r.Body).Decode(&sk) != nil || sk.Name == "" {

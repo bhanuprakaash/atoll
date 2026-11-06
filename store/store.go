@@ -270,6 +270,41 @@ func (s *Store) Bots(ctx context.Context) ([]Bot, error) {
 		"SELECT "+_botColumns+" FROM bots WHERE removed = 0 ORDER BY rowid", scanBot)
 }
 
+// DeleteBot removes the Bot with its threads, messages and runs, and returns the ids of the runs.
+func (s *Store) DeleteBot(ctx context.Context, id string) ([]string, error) {
+	var runIDs []string
+	err := s.tx(ctx, func(tx *sql.Tx) error {
+		const threads = "(SELECT id FROM threads WHERE bot_id = ?)"
+		var err error
+		runIDs, err = query(ctx, tx, "SELECT id FROM runs WHERE thread_id IN "+threads,
+			func(r *sql.Rows) (string, error) {
+				var runID string
+				return runID, r.Scan(&runID)
+			}, id)
+		if err != nil {
+			return fmt.Errorf("list runs of bot %s: %w", id, err)
+		}
+		for _, stmt := range []string{
+			"DELETE FROM messages WHERE thread_id IN " + threads,
+			"DELETE FROM runs WHERE thread_id IN " + threads,
+			"DELETE FROM threads WHERE bot_id = ?",
+		} {
+			if _, err := tx.ExecContext(ctx, stmt, id); err != nil {
+				return fmt.Errorf("delete bot %s: %w", id, err)
+			}
+		}
+		res, err := tx.ExecContext(ctx, "DELETE FROM bots WHERE id = ? AND removed = 0", id)
+		if err != nil {
+			return fmt.Errorf("delete bot %s: %w", id, err)
+		}
+		return found(res, "bot", id)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return runIDs, nil
+}
+
 // CreateRepo registers a repo. It wraps ErrExists when the name is taken.
 func (s *Store) CreateRepo(ctx context.Context, name, path string) (Repo, error) {
 	r := Repo{ID: newID(), Name: name, Path: path}
