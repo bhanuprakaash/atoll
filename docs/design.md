@@ -246,14 +246,20 @@ Finish
   platform, it bounces; running a command, it breathes.
 - Sidebar: a search field on top filters Bots by name, `+` beside it; no logo (the user found it
   redundant).
-  One row per Bot (creature, name, latest activity, time), Chief first. `+` opens New Bot; the
+  One row per Bot (creature, name, latest activity, time): Chief first, then pinned Bots in the order
+  pinned, then the rest. Hovering a row shows a pin button; Bot settings has Pin to sidebar; Chief
+  cannot be pinned. The activity line is the live verb while a run works ("Running make build"),
+  "Needs you: ..." while an approval waits, otherwise the first line of the latest reply, at most
+  60 characters cut at a word boundary with "…" when cut. `+` opens New Bot; the
   bottom user row opens Settings. No group chats. A thread's activity time moves when a run
   starts, an approval opens or closes, and a run ends, not on every event. *The sidebar polls
   every 2 s; a write per text delta would cost more than the time is worth.*
 - Bot header: creature, Bot name, thread title, a Threads button and a Bot settings icon. The
   Threads button carries a red count of threads waiting on the user and opens a panel: Needs you
   (and what it waits for), Running (live verb, branch, MR), Recent, then Closed folded; New thread
-  on top. A thread's title is its first message, cut to 40 characters.
+  on top. A thread's title is the first six words of its first message, set when that message is sent
+  and stored, with trailing `.,;:!?` removed from the last word. The user can set a title
+  (`PATCH /api/threads/{id}`), and a user title is never replaced.
 - The chat has no cards. The user's message is the only bubble; the Bot replies in plain text with
   markdown. Everything else is one quiet line with its action inline: approvals (Allow, Deny),
   Chief's changes (Undo, struck through once undone), the branch starting, the worktree cleaned up,
