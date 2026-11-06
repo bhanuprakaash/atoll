@@ -97,7 +97,7 @@ export function BotHeader({
             aria-label={waiting ? `Threads, ${waiting} waiting` : 'Threads'}
             aria-expanded={open}
             onClick={onThreads}
-            className="absolute inset-0 rounded-full hover:bg-ink/5"
+            className="absolute inset-0 hover:bg-ink/5"
           />
         </div>
         {children}
