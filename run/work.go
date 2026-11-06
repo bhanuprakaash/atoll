@@ -176,6 +176,44 @@ func (m *Manager) CloseThread(ctx context.Context, threadID string) error {
 	return m.cfg.Store.SetClosed(ctx, threadID)
 }
 
+// DeleteBot stops the runs of the Bot's threads, closes the threads, and deletes the Bot with its
+// threads, runs and event files. Memory the Bot saved stays.
+func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
+	if _, err := m.cfg.Store.Bot(ctx, botID); err != nil {
+		return fmt.Errorf("delete bot: %w", err)
+	}
+	threads, err := m.cfg.Store.Threads(ctx, botID)
+	if err != nil {
+		return err
+	}
+	for _, t := range threads {
+		if runID, _, ok := m.Active(t.ID); ok {
+			if err := m.Stop(ctx, runID); err != nil && !errors.Is(err, ErrBusy) {
+				return err
+			}
+		}
+		if err := m.CloseThread(ctx, t.ID); err != nil {
+			return err
+		}
+	}
+	runIDs, err := m.cfg.Store.DeleteBot(ctx, botID)
+	if err != nil {
+		return err
+	}
+	for _, id := range runIDs {
+		if err := os.Remove(filepath.Join(m.cfg.DataDir, "runs", id+".jsonl")); err != nil &&
+			!errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove event file: %w", err)
+		}
+	}
+	for _, t := range threads {
+		if err := os.RemoveAll(m.threadDir(t.ID)); err != nil {
+			return fmt.Errorf("remove thread folder: %w", err)
+		}
+	}
+	return nil
+}
+
 // release saves the unfinished work of the thread's worktree, removes the worktree and tells the
 // thread's subscribers. When the save fails nothing is removed.
 func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, reason string) error {
