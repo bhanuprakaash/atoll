@@ -141,9 +141,11 @@ test('older messages load at the top without moving the former top message', asy
   await sidebarRow(page, 'History UI').click();
   const log = page.getByRole('log', { name: 'Messages' });
   await expect(log.getByTestId('message-time')).toHaveCount(50);
-  const formerTop = log.getByTestId('message-time').first();
-  const before = (await formerTop.boundingBox())!.y;
-  await log.evaluate((el) => (el.scrollTop = 0));
+  const formerTop = (await log.getByTestId('message-time').first().elementHandle())!;
+  const before = await log.evaluate((el, top) => {
+    el.scrollTop = 0;
+    return top.getBoundingClientRect().y;
+  }, formerTop);
   await expect(log.getByTestId('message-time')).toHaveCount(52);
   expect(Math.abs((await formerTop.boundingBox())!.y - before)).toBeLessThanOrEqual(2);
 });

@@ -31,7 +31,7 @@ test("a memory save shows its source and Retire keeps it in history", async ({
   await expect(saved.getByText(name, { exact: true })).toBeVisible();
   await expect(saved.getByText("decision", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("Saved SQLite decision.", { exact: true }),
+    page.getByRole("log", { name: "Messages" }).getByText("Saved SQLite decision.", { exact: true }),
   ).toBeVisible();
 
   const before = await page.request.get("/api/memory");
