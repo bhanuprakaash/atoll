@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -75,11 +76,15 @@ func TestWorktrees(t *testing.T) {
 		t.Fatal("IsRepo: want true for the repo and false for a plain folder")
 	}
 
-	first, used, err := Create(ctx, src, root, "demo", "fix/bug")
+	first, used, base, err := Create(ctx, src, root, "demo", "fix/bug")
 	if err != nil || used != "fix/bug" || first != filepath.Join(root, "demo", "fix-bug") {
 		t.Fatalf("first Create = %q, %q, %v", first, used, err)
 	}
-	second, used, err := Create(ctx, src, root, "demo", "fix/bug")
+	initSHA := git(src, "rev-parse", "--short=7", "HEAD")
+	if want := (Base{Name: "HEAD " + initSHA}); base != want {
+		t.Errorf("base without origin = %+v, want %+v", base, want)
+	}
+	second, used, _, err := Create(ctx, src, root, "demo", "fix/bug")
 	if err != nil || used != "fix/bug-2" || second != filepath.Join(root, "demo", "fix-bug-2") {
 		t.Fatalf("second Create = %q, %q, %v", second, used, err)
 	}
@@ -111,6 +116,26 @@ func TestWorktrees(t *testing.T) {
 	git(src, "rev-parse", "--verify", "refs/heads/fix/bug")
 	if err := Remove(ctx, src, first); err != nil {
 		t.Errorf("Remove of a missing dir: %v", err)
+	}
+
+	git(src, "update-ref", "refs/remotes/origin/main", "HEAD")
+	git(src, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	_, _, base, err = Create(ctx, src, root, "demo", "feat/even")
+	if want := (Base{Name: "origin/HEAD " + initSHA}); err != nil || base != want {
+		t.Errorf("base level with origin = %+v, %v, want %+v", base, err, want)
+	}
+	for i, noun := range []string{"commit", "commits"} {
+		write(src, "a.txt", noun)
+		git(src, "commit", "-q", "-am", noun)
+		tip := git(src, "rev-parse", "--short=7", "main")
+		_, _, base, err = Create(ctx, src, root, "demo", "feat/ahead")
+		want := Base{
+			Name: "origin/HEAD " + initSHA,
+			Note: fmt.Sprintf("local main is %d %s ahead (%s); not included", i+1, noun, tip),
+		}
+		if err != nil || base != want {
+			t.Errorf("base with local ahead = %+v, %v, want %+v", base, err, want)
+		}
 	}
 
 	dir := filepath.Join(root, "threads", "t2")

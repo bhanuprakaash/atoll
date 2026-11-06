@@ -81,45 +81,46 @@ func (m *Manager) SetWorktreeRoot(ctx context.Context, root string) error {
 }
 
 // StartWork gives the thread of the run with token its worktree, on a new branch typ/slug, and
-// returns its path and branch. A thread that has a worktree gets that one back.
+// returns its path, branch and base. A thread that has a worktree gets that one back with an
+// empty base: no new branch was started.
 func (m *Manager) StartWork(
 	ctx context.Context, token, typ, slug string,
-) (path, branch string, err error) {
+) (path, branch string, base repo.Base, err error) {
 	a, err := m.byToken(token)
 	if err != nil {
-		return "", "", err
+		return "", "", repo.Base{}, err
 	}
 	t, err := m.cfg.Store.Thread(ctx, a.threadID)
 	if err != nil {
-		return "", "", fmt.Errorf("load thread: %w", err)
+		return "", "", repo.Base{}, fmt.Errorf("load thread: %w", err)
 	}
 	if t.Worktree != "" {
-		return t.Worktree, t.Branch, nil
+		return t.Worktree, t.Branch, repo.Base{}, nil
 	}
 	if t.RepoID == "" {
-		return "", "", errors.New("thread has no repo")
+		return "", "", repo.Base{}, errors.New("thread has no repo")
 	}
 	name, err := repo.Branch(typ, slug)
 	if err != nil {
-		return "", "", err
+		return "", "", repo.Base{}, err
 	}
 	rp, err := m.cfg.Store.Repo(ctx, t.RepoID)
 	if err != nil {
-		return "", "", fmt.Errorf("load repo: %w", err)
+		return "", "", repo.Base{}, fmt.Errorf("load repo: %w", err)
 	}
 	root, err := m.WorktreeRoot(ctx)
 	if err != nil {
-		return "", "", err
+		return "", "", repo.Base{}, err
 	}
-	if path, branch, err = repo.Create(ctx, rp.Path, root, rp.Name, name); err != nil {
-		return "", "", err
+	if path, branch, base, err = repo.Create(ctx, rp.Path, root, rp.Name, name); err != nil {
+		return "", "", repo.Base{}, err
 	}
 	if err := m.cfg.Store.SetWorktree(ctx, t.ID, branch, path); err != nil {
-		return "", "", err
+		return "", "", repo.Base{}, err
 	}
 	m.publish(a, EventWorktreeCreated,
 		WorktreeCreated{RunID: a.run.ID, RepoID: t.RepoID, Path: path, Branch: branch})
-	return path, branch, nil
+	return path, branch, base, nil
 }
 
 // TrackMR records url as the MR of the thread of the run with token, opened.
