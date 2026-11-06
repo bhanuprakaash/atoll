@@ -16,7 +16,7 @@ test("Chief creates a skill and Bot in chat, and Undo removes the Bot", async ({
     .fill("Create reef-greeting and a Lagoon Bot using claude.");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(
-    page.getByText("Created reef-greeting and Lagoon.", { exact: true }),
+    page.getByRole("log", { name: "Messages" }).getByText("Created reef-greeting and Lagoon.", { exact: true }),
   ).toBeVisible();
 
   const change = page.getByRole("region", { name: "Platform change" }).filter({
