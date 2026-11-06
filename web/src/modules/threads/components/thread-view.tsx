@@ -324,7 +324,7 @@ export function ThreadView({
       wasAtLatest.current = true;
       setAwayFromLatest(false);
     }
-    if (previousHeight.current !== null) {
+    if (previousHeight.current !== null && element.scrollHeight > previousHeight.current) {
       element.scrollTop += element.scrollHeight - previousHeight.current;
       previousHeight.current = null;
     } else if (wasAtLatest.current && messages.length > 0) {
