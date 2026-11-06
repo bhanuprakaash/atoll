@@ -102,19 +102,6 @@ func SaveTokens(id string, tokens Tokens) error {
 	return keyring.Set("atoll", "gitlab:"+id, string(b))
 }
 
-// Token reads the token of connection id from the OS secret store.
-func Token(id string) (string, error) {
-	value, err := keyring.Get("atoll", "gitlab:"+id)
-	if err != nil {
-		return "", err
-	}
-	var tokens Tokens
-	if json.Unmarshal([]byte(value), &tokens) != nil {
-		return value, nil
-	}
-	return tokens.AccessToken, nil
-}
-
 // UsableToken loads a connection token and refreshes it when it expires soon. A pre-refresh
 // bare token is accepted as-is because its expiry is unknown.
 func UsableToken(ctx context.Context, c *http.Client, instance, id string) (string, error) {
