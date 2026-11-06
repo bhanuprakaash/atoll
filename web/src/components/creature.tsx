@@ -10,6 +10,7 @@ type Drawing = {
   motion: string;
   colors: Palette;
   eyes: readonly [Eye, Eye];
+  scale?: number;
   shapes: (p: Palette) => ReactNode;
 };
 
@@ -48,6 +49,7 @@ const drawings = {
   },
   whale: {
     motion: 'c-bob',
+    scale: 0.85,
     colors: { body: 'var(--color-whale)', ...none },
     eyes: [
       [18, 28, 19.5, 35],
@@ -108,6 +110,7 @@ const drawings = {
   },
   shark: {
     motion: 'c-swim',
+    scale: 0.85,
     colors: {
       body: 'var(--color-shark)',
       light: 'var(--color-shark-light)',
@@ -122,7 +125,7 @@ const drawings = {
       <>
         <path
           className="c-tail"
-          d="M12 34 L1 21 Q3 34 1 47 Z"
+          d="M12 34 L1 21 Q9 34 1 47 Z"
           fill={p.body}
           stroke={p.body}
           strokeWidth="3"
@@ -253,6 +256,7 @@ const drawings = {
   },
   clownfish: {
     motion: 'c-swim',
+    scale: 0.85,
     colors: { body: 'var(--color-danger)', light: '', accent: '', white: 'var(--color-white)' },
     eyes: [
       [45, 27, 45.5, 33],
@@ -262,7 +266,7 @@ const drawings = {
       <>
         <path
           className="c-tail"
-          d="M12 34 L0 22 Q3 34 0 46 Z"
+          d="M12 34 L0 22 Q8 34 0 46 Z"
           fill={p.body}
           stroke={p.body}
           strokeWidth="3"
@@ -281,6 +285,7 @@ const drawings = {
   },
   manta: {
     motion: 'c-glide',
+    scale: 0.85,
     colors: { body: 'var(--color-manta)', ...none },
     eyes: [
       [26, 20, 26.5, 26],
@@ -355,26 +360,32 @@ export function Creature({
       className="shrink-0 overflow-visible"
     >
       <g
-        className={
-          state === 'working' && ['edit', 'platform', 'command'].includes(kind)
-            ? `creature-${motion}`
-            : undefined
+        transform={
+          drawing.scale ? `translate(32 32) scale(${drawing.scale}) translate(-32 -32)` : undefined
         }
       >
-        {drawing.shapes(palette)}
-        <g className={state === 'working' || state === 'idle' ? `creature-${motion}` : undefined}>
-          {drawing.eyes.map(([x1, y1, x2, y2], i) => (
-            <line
-              key={x1}
-              x1={x1}
-              y1={state === 'failed' ? y1 + (i ? 3 : -3) : y1}
-              x2={x2}
-              y2={state === 'failed' ? y2 + (i ? -3 : 3) : y2}
-              stroke="var(--color-eye)"
-              strokeWidth="4"
-              strokeLinecap="round"
-            />
-          ))}
+        <g
+          className={
+            state === 'working' && ['edit', 'platform', 'command'].includes(kind)
+              ? `creature-${motion}`
+              : undefined
+          }
+        >
+          {drawing.shapes(palette)}
+          <g className={state === 'working' || state === 'idle' ? `creature-${motion}` : undefined}>
+            {drawing.eyes.map(([x1, y1, x2, y2], i) => (
+              <line
+                key={x1}
+                x1={x1}
+                y1={state === 'failed' ? y1 + (i ? 3 : -3) : y1}
+                x2={x2}
+                y2={state === 'failed' ? y2 + (i ? -3 : 3) : y2}
+                stroke="var(--color-eye)"
+                strokeWidth="4"
+                strokeLinecap="round"
+              />
+            ))}
+          </g>
         </g>
       </g>
       {state === 'needs_you' && (
