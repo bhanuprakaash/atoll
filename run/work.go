@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -137,7 +138,7 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 		thread, threadErr := m.cfg.Store.Thread(ctx, a.threadID)
 		if threadErr == nil && thread.RepoID != "" {
 			if rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID); repoErr == nil {
-				env, _ := m.gitlabEnv(ctx, a.bot)
+				env, _, _ := m.runEnv(ctx, a.bot)
 				_, title, _ = m.mrState(rp.Path, url, env)
 			}
 		}
@@ -282,18 +283,64 @@ func (m *Manager) threadDir(threadID string) string {
 	return filepath.Join(m.cfg.DataDir, "threads", threadID)
 }
 
-// gitlabEnv is the environment that lets git and glab act as the Bot's first connected GitLab
-// connection: the token as OAUTH_TOKEN with a glab config marking the host OAuth, and a git
-// credential helper that passes it. It is empty when the
-// Bot has none. The token goes only into the environment.
-func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, error) {
+// gitHelper is a git credential helper for the URL it is scoped to.
+type gitHelper struct{ url, script string }
+
+// runEnv is the environment of every run and of the CLIs Reef starts for a Bot: empty glab and gh
+// config folders, so neither CLI finds the user's own login, and a cleared git credential helper
+// list, followed by what the Bot's connections add: for each, a helper scoped to its URL. Only a
+// connection fills these. It also returns the token of the Bot's GitHub connection, empty when
+// it has none.
+func (m *Manager) runEnv(ctx context.Context, b store.Bot) ([]string, string, error) {
+	var env []string
+	for _, cli := range []struct{ name, file string }{{"glab", "config.yml"}, {"gh", "hosts.yml"}} {
+		dir := filepath.Join(m.cfg.DataDir, "empty", cli.name)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, "", fmt.Errorf("create empty %s config folder: %w", cli.name, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, cli.file), nil, 0o600); err != nil {
+			return nil, "", fmt.Errorf("write empty %s config: %w", cli.name, err)
+		}
+		env = append(env, strings.ToUpper(cli.name)+"_CONFIG_DIR="+dir)
+	}
+	var helpers []gitHelper
+	gitlab, helper, err := m.gitlabEnv(ctx, b)
+	if err != nil {
+		return nil, "", err
+	}
+	env = append(env, gitlab...)
+	if helper.url != "" {
+		helpers = append(helpers, helper)
+	}
+	github, token, err := m.githubEnv(ctx, b)
+	if err != nil {
+		return nil, "", err
+	}
+	env = append(env, github...)
+	if token != "" {
+		helpers = append(helpers, gitHelper{connection.GitHubURL(), _githubHelper})
+	}
+	env = append(env, "GIT_CONFIG_COUNT="+strconv.Itoa(1+len(helpers)),
+		"GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=")
+	for i, h := range helpers {
+		n := strconv.Itoa(i + 1)
+		env = append(env, "GIT_CONFIG_KEY_"+n+"=credential."+h.url+".helper", "GIT_CONFIG_VALUE_"+n+"="+h.script)
+	}
+	return env, token, nil
+}
+
+// gitlabEnv is the environment that lets glab act as the Bot's first connected GitLab
+// connection: the token as OAUTH_TOKEN with a glab config marking the host OAuth. It also returns
+// the git credential helper that passes the token. Both are empty when the Bot has none. The
+// token goes only into the environment.
+func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, gitHelper, error) {
 	for _, id := range b.Connections {
 		c, err := m.cfg.Store.Connection(ctx, id)
 		if err != nil || c.Kind != store.KindGitLab {
 			continue
 		}
 		if c.Status == store.ConnectionNeedsSignIn {
-			return nil, connection.ErrNeedsSignIn
+			return nil, gitHelper{}, connection.ErrNeedsSignIn
 		}
 		if c.Status != store.ConnectionConnected {
 			continue
@@ -301,30 +348,63 @@ func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, error) 
 		token, err := connection.UsableToken(ctx, &http.Client{Timeout: 30 * time.Second}, c.InstanceURL, id)
 		if errors.Is(err, connection.ErrNeedsSignIn) {
 			if setErr := m.cfg.Store.SetConnectionStatus(ctx, id, store.ConnectionNeedsSignIn); setErr != nil {
-				return nil, fmt.Errorf("set GitLab connection needs sign-in: %w", setErr)
+				return nil, gitHelper{}, fmt.Errorf("set GitLab connection needs sign-in: %w", setErr)
 			}
-			return nil, err
+			return nil, gitHelper{}, err
 		}
 		if err != nil {
-			return nil, fmt.Errorf("read GitLab connection token: %w", err)
+			return nil, gitHelper{}, fmt.Errorf("read GitLab connection token: %w", err)
 		}
 		dir, err := m.glabConfig(id, c.InstanceURL)
 		if err != nil {
-			return nil, err
+			return nil, gitHelper{}, err
 		}
 		return []string{
 			"OAUTH_TOKEN=" + token,
 			"GLAB_CONFIG_DIR=" + dir,
 			"GITLAB_HOST=" + c.InstanceURL,
-			"GIT_CONFIG_COUNT=2",
-			"GIT_CONFIG_KEY_0=credential.helper",
-			"GIT_CONFIG_VALUE_0=",
-			"GIT_CONFIG_KEY_1=credential." + c.InstanceURL + ".helper",
-			`GIT_CONFIG_VALUE_1=!f() { test "$1" = get && echo username=oauth2 && ` +
-				`echo "password=$OAUTH_TOKEN"; }; f`,
-		}, nil
+		}, gitHelper{c.InstanceURL, `!f() { test "$1" = get && echo username=oauth2 && ` +
+			`echo "password=$OAUTH_TOKEN"; }; f`}, nil
 	}
-	return nil, nil
+	return nil, gitHelper{}, nil
+}
+
+const _githubHelper = `!f() { test "$1" = get && echo username=x-access-token && ` +
+	`echo "password=$GH_TOKEN"; }; f`
+
+// githubEnv is the environment that lets gh act as the Bot's first connected GitHub connection:
+// the token as GH_TOKEN. It also returns the token, empty when the Bot has none. GitHub says
+// whether it still accepts the token before every run: a rejected one sets the connection to
+// needs sign-in.
+func (m *Manager) githubEnv(ctx context.Context, b store.Bot) ([]string, string, error) {
+	for _, id := range b.Connections {
+		c, err := m.cfg.Store.Connection(ctx, id)
+		if err != nil || c.Kind != store.KindGitHub {
+			continue
+		}
+		if c.Status == store.ConnectionNeedsSignIn {
+			return nil, "", connection.ErrGitHubNeedsSignIn
+		}
+		if c.Status != store.ConnectionConnected {
+			continue
+		}
+		token, err := connection.GitHubToken(id)
+		if err != nil {
+			return nil, "", fmt.Errorf("read GitHub connection token: %w", err)
+		}
+		err = connection.CheckGitHubToken(ctx, &http.Client{Timeout: 30 * time.Second}, token)
+		if errors.Is(err, connection.ErrGitHubNeedsSignIn) {
+			if setErr := m.cfg.Store.SetConnectionStatus(ctx, id, store.ConnectionNeedsSignIn); setErr != nil {
+				return nil, "", fmt.Errorf("set GitHub connection needs sign-in: %w", setErr)
+			}
+			return nil, "", err
+		}
+		if err != nil {
+			return nil, "", fmt.Errorf("check GitHub connection token: %w", err)
+		}
+		return []string{"GH_TOKEN=" + token}, token, nil
+	}
+	return nil, "", nil
 }
 
 // glabConfig writes the glab config folder of connection id and returns it. It holds no token: it
@@ -390,7 +470,7 @@ func (m *Manager) check(t store.Thread) error {
 	if err != nil {
 		return err
 	}
-	env, err := m.gitlabEnv(m.ctx, bot)
+	env, _, err := m.runEnv(m.ctx, bot)
 	if err != nil {
 		return err
 	}

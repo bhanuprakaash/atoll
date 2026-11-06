@@ -567,6 +567,12 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 	}
 	if cfg.MCPURL != "" {
 		servers := map[string]any{provider.MCPServer: map[string]string{"url": cfg.MCPURL}}
+		if cfg.GitHubMCPURL != "" {
+			servers[provider.GitHubMCPServer] = map[string]any{
+				"url":          cfg.GitHubMCPURL,
+				"http_headers": map[string]string{"Authorization": "Bearer " + cfg.GitHubToken},
+			}
+		}
 		for _, m := range cfg.MCPServers {
 			servers[m.Name] = userServer(m)
 		}

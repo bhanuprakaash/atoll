@@ -198,6 +198,18 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
+		case "logins-probe":
+			var err error
+			if repoReply, err = fake.LoginsProbe(); err != nil {
+				return err
+			}
+			continue
+		case "github-probe":
+			var err error
+			if repoReply, err = fake.GitHubProbe(t.servers["github"]); err != nil {
+				return err
+			}
+			continue
 		case "ask":
 			if skip {
 				continue

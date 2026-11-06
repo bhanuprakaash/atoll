@@ -131,15 +131,15 @@ func localPort(r *http.Request) string {
 }
 
 // readMCPServer decodes a server request body. The name is the key in a provider's config, where
-// Atoll's own server already has it.
+// Atoll's own server and the GitHub connection's already have theirs.
 func readMCPServer(w http.ResponseWriter, r *http.Request) (mcpserver.Input, bool) {
 	var in mcpserver.Input
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		fail(w, http.StatusBadRequest, "invalid JSON body")
 		return in, false
 	}
-	if in.Name == provider.MCPServer {
-		fail(w, http.StatusBadRequest, fmt.Sprintf("the name %q is Reef's own server", in.Name))
+	if in.Name == provider.MCPServer || in.Name == provider.GitHubMCPServer {
+		fail(w, http.StatusBadRequest, fmt.Sprintf("the name %q is reserved for Reef", in.Name))
 		return in, false
 	}
 	return in, true

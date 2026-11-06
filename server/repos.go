@@ -158,9 +158,50 @@ func (a *api) startGitLab(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	a.writeDevice(w, r, store.KindGitLab, body.InstanceURL, existing, dev)
+}
+
+// startGitHub starts a GitHub device-flow sign-in, for a new connection or, with connection_id,
+// for an existing one.
+func (a *api) startGitHub(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ConnectionID string `json:"connection_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		fail(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	var existing store.Connection
+	if body.ConnectionID != "" {
+		var err error
+		existing, err = a.st.Connection(r.Context(), body.ConnectionID)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		if existing.Kind != store.KindGitHub {
+			fail(w, http.StatusBadRequest, "connection is not GitHub")
+			return
+		}
+	}
+	dev, err := connection.StartGitHubDevice(r.Context(), a.http)
+	if err != nil {
+		a.log.Warn("start GitHub sign-in", "error", err)
+		fail(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	a.writeDevice(w, r, store.KindGitHub, connection.GitHubInstance, existing, dev)
+}
+
+// writeDevice keeps the device code of a started sign-in and replies with what the user needs.
+// A new connection is made unless existing is one, which goes back to pending.
+func (a *api) writeDevice(
+	w http.ResponseWriter, r *http.Request, kind, instance string, existing store.Connection, dev connection.Device,
+) {
 	c := existing
-	if body.ConnectionID == "" {
-		c, err = a.st.CreateConnection(r.Context(), store.KindGitLab, body.InstanceURL)
+	if existing.ID == "" {
+		var err error
+		c, err = a.st.CreateConnection(r.Context(), kind, instance)
 		if err != nil {
 			a.fail(w, r, err)
 			return
@@ -180,8 +221,8 @@ func (a *api) startGitLab(w http.ResponseWriter, r *http.Request) {
 	}{c.ID, dev.UserCode, dev.VerificationURI, dev.Interval.Milliseconds()})
 }
 
-// pollConnection asks GitLab once whether the user approved the sign-in. On approval the token
-// goes to the OS secret store and no further.
+// pollConnection asks GitLab or GitHub once whether the user approved the sign-in. On approval
+// the token goes to the OS secret store and no further.
 func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 	c, err := a.st.Connection(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -199,17 +240,26 @@ func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusConflict, "this sign-in is not in progress: start it again")
 		return
 	}
-	token, err := connection.PollToken(r.Context(), a.http, c.InstanceURL, code)
+	var save func() error
+	if c.Kind == store.KindGitHub {
+		var token string
+		token, err = connection.PollGitHubToken(r.Context(), a.http, code)
+		save = func() error { return connection.SaveGitHubToken(c.ID, token) }
+	} else {
+		var tokens connection.Tokens
+		tokens, err = connection.PollToken(r.Context(), a.http, c.InstanceURL, code)
+		save = func() error { return connection.SaveTokens(c.ID, tokens) }
+	}
 	if errors.Is(err, connection.ErrPending) {
 		writeStatus(w, store.ConnectionPending)
 		return
 	}
 	if err != nil {
-		a.log.Warn("poll GitLab sign-in", "connection_id", c.ID, "error", err)
+		a.log.Warn("poll sign-in", "connection_id", c.ID, "kind", c.Kind, "error", err)
 		fail(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	if err := connection.SaveTokens(c.ID, token); err != nil {
+	if err := save(); err != nil {
 		a.fail(w, r, err)
 		return
 	}

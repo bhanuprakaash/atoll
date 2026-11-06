@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"atoll/connection"
 	"atoll/mcpserver"
 	"atoll/memory"
 	"atoll/provider"
@@ -548,9 +549,13 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		}
 	}
 	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
-	cfg.Env, err = m.gitlabEnv(a.ctx, bot)
+	var githubToken string
+	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot)
 	if err != nil {
 		return "", err
+	}
+	if githubToken != "" {
+		cfg.GitHubMCPURL, cfg.GitHubToken = connection.GitHubMCPURL(), githubToken
 	}
 	cfg.MCPURL = m.cfg.MCPURL + a.token
 	if thread.Session != "" {
