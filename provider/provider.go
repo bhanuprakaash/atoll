@@ -32,12 +32,11 @@ const (
 	ToolEditSkill        = "edit_skill"
 	ToolRegisterRepo     = "register_repo"
 	ToolAttachConnection = "attach_connection"
-	// The list tools only read platform configuration.
-	ToolListBots        = "list_bots"
-	ToolListSkills      = "list_skills"
-	ToolListConnections = "list_connections"
-	ToolListRepos       = "list_repos"
-	ToolListModels      = "list_models"
+	ToolListBots         = "list_bots"
+	ToolListSkills       = "list_skills"
+	ToolListConnections  = "list_connections"
+	ToolListRepos        = "list_repos"
+	ToolListModels       = "list_models"
 )
 
 // Session drives one provider process holding one session. Call Start or Resume once; Send one
