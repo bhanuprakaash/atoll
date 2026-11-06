@@ -24,9 +24,7 @@ function SavedItem({ item, botName }: { item: MemoryItem; botName?: string }) {
         >
           <path d="M6 3h12v18l-6-4-6 4z" />
         </svg>
-        <span className={`min-w-0 ${expanded ? '' : 'truncate'} ${retired ? 'line-through' : ''}`}>
-          {item.body}
-        </span>
+        <span className={`min-w-0 truncate ${retired ? 'line-through' : ''}`}>{item.body}</span>
         <span className="flex-none rounded-full bg-kind-bg px-2 py-px text-[11.5px] text-kind">
           {item.kind}
         </span>
@@ -64,6 +62,8 @@ function SavedItem({ item, botName }: { item: MemoryItem; botName?: string }) {
       </p>
       {expanded && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 pl-3 text-[13px] text-muted">
+          <dt>Text</dt>
+          <dd className="text-ink/80">{item.body}</dd>
           <dt>Kind</dt>
           <dd className="text-ink/80">{item.kind}</dd>
           <dt>For</dt>
