@@ -22,6 +22,25 @@ Extends the platform tools of [skills-contract.md](skills-contract.md). Tests: `
 
 A failure is either a JSON-RPC error or a result with `isError: true`; the tests read its text.
 
+## Repo access names only registered repos
+
+`repo_access` on `create_bot`, `edit_bot`, `POST /api/bots` and `PUT /api/bots/{id}` is `null`
+(All), omitted, or an array of repo ids. Every id in the array must be an `id` `GET /api/repos`
+lists.
+
+- An array with an id `GET /api/repos` does not list fails. The error text contains that id and
+  the `id` of every registered repo. On the tools it is a tool failure as above; on REST it is `400`
+  with that text in `error`. No Bot is created or changed, no `platform_changed` is sent and
+  `GET /api/threads/{id}/changes` for the Chief thread stays empty.
+- With no repos registered, the text contains the unknown id and says no repos are registered: it
+  matches `(?i)\bno (registered )?repos?\b` (for example `no repos are registered`).
+- Registered ids, an omitted `repo_access` and `null` work as before: `GET /api/bots/{id}` shows the
+  array, or `"all"`.
+
+Tests: `TestChiefBot_CreateWithUnknownRepoFails`, `TestChiefBot_EditWithUnknownRepoFails`,
+`TestBots_UnknownRepoRejected`, `TestChiefBot_UnknownRepoWithNoReposRegistered`,
+`TestChiefBot_RepoAccessAsToday`.
+
 ## Fake
 
 A Chief message `Call a platform tool. {"tool":"<name>","args":{...}}` (recordings
@@ -32,4 +51,5 @@ A Chief message `Call a platform tool. {"tool":"<name>","args":{...}}` (recordin
 
 Error wording beyond the names it must contain; whether `create_bot` checks `model` against the
 Bot's own provider or every ready provider (tests have one ready provider); whether `edit_bot`
-checks `model`; the look `create_bot` gives a Bot without `look`.
+checks `model`; the look `create_bot` gives a Bot without `look`; whether the repo error lists only
+the unknown ids or every id the call sent; the order of listed repo ids.

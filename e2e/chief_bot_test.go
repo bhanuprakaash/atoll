@@ -2,6 +2,8 @@ package e2e
 
 import (
 	"encoding/json"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -165,6 +167,185 @@ func TestChiefBot_CreateWithoutModel(t *testing.T) {
 			c := chiefCall(t, s, "create_bot", map[string]any{"name": "Plain", "persona": "Answers questions.", "provider": p})
 			if got := s.bot(t, createdID(t, c)); got.Name != "Plain" || got.Provider != p || got.Model != "" {
 				t.Fatalf("GET /api/bots: %+v, want Plain on %s with no model", got, p)
+			}
+		})
+	}
+}
+
+// _unknownRepo is a repo id no test registers, as Chief once proposed from an agent file.
+const _unknownRepo = "jelly-fish"
+
+var _noReposText = regexp.MustCompile(`(?i)\bno (registered )?repos?\b`)
+
+// registerRepos registers one fresh Git repo per name and returns the ids GET /api/repos shows.
+func registerRepos(t *testing.T, s *server, names ...string) []string {
+	t.Helper()
+	for _, name := range names {
+		dir := t.TempDir()
+		gitIn(t, dir, "init", "-b", "main")
+		writeFile(t, filepath.Join(dir, "README"), name+"\n")
+		gitIn(t, dir, "add", "README")
+		gitIn(t, dir, "commit", "-m", "seed")
+		s.do(t, "POST", "/api/repos", map[string]string{"name": name, "path": dir}, nil, 201)
+	}
+	var repos []registeredRepo
+	s.do(t, "GET", "/api/repos", nil, &repos, 200)
+	ids := make([]string, 0, len(repos))
+	for _, r := range repos {
+		ids = append(ids, r.ID)
+	}
+	if len(ids) != len(names) {
+		t.Fatalf("GET /api/repos: %+v, want %d repos", repos, len(names))
+	}
+	return ids
+}
+
+// noThreadChanges checks a thread recorded no change, so Undo has nothing new.
+func noThreadChanges(t *testing.T, s *server, thread string) {
+	t.Helper()
+	var changes []json.RawMessage
+	s.do(t, "GET", "/api/threads/"+thread+"/changes", nil, &changes, 200)
+	if len(changes) != 0 {
+		t.Fatalf("GET /api/threads/%s/changes: %s, want none", thread, changes)
+	}
+}
+
+// rejected checks a REST call answered 400 with an error naming every one of want.
+func rejected(t *testing.T, s *server, method, path string, body any, want []string) string {
+	t.Helper()
+	var reply struct {
+		Error string `json:"error"`
+	}
+	s.do(t, method, path, body, &reply, 400)
+	for _, w := range want {
+		if !strings.Contains(reply.Error, w) {
+			t.Errorf("%s %s error %q does not name %q", method, path, reply.Error, w)
+		}
+	}
+	return reply.Error
+}
+
+func TestChiefBot_CreateWithUnknownRepoFails(t *testing.T) {
+	for _, p := range _providers {
+		t.Run(p, func(t *testing.T) {
+			_, s := start(t, p)
+			ids := registerRepos(t, s, "atoll", "reef")
+			c := chiefCall(t, s, "create_bot", map[string]any{"name": "Poteto", "persona": "Reviews diffs.", "provider": p, "repo_access": []string{_unknownRepo}})
+			failsListing(t, c, append([]string{_unknownRepo}, ids...))
+			onlyChief(t, s)
+			noThreadChanges(t, s, c.thread)
+		})
+	}
+}
+
+func TestChiefBot_EditWithUnknownRepoFails(t *testing.T) {
+	for _, p := range _providers {
+		t.Run(p, func(t *testing.T) {
+			_, s := start(t, p)
+			ids := registerRepos(t, s, "atoll", "reef")
+			var b botInfo
+			s.do(t, "POST", "/api/bots", map[string]any{"name": "Poteto", "persona": "Reviews diffs.", "provider": p, "repo_access": []string{ids[0]}}, &b, 201)
+			want := `["` + ids[0] + `"]`
+
+			c := chiefCall(t, s, "edit_bot", map[string]any{"id": b.ID, "repo_access": []string{ids[1], _unknownRepo}})
+			failsListing(t, c, append([]string{_unknownRepo}, ids...))
+			if got := s.bot(t, b.ID); string(got.RepoAccess) != want {
+				t.Fatalf("GET /api/bots/%s repo_access %s, want %s", b.ID, got.RepoAccess, want)
+			}
+			noThreadChanges(t, s, c.thread)
+		})
+	}
+}
+
+func TestBots_UnknownRepoRejected(t *testing.T) {
+	_, s := start(t, "claude")
+	ids := registerRepos(t, s, "atoll", "reef")
+	want := append([]string{_unknownRepo}, ids...)
+
+	rejected(t, s, "POST", "/api/bots", map[string]any{"name": "Poteto", "persona": "Reviews diffs.", "provider": "claude", "repo_access": []string{_unknownRepo}}, want)
+	onlyChief(t, s)
+
+	var b botInfo
+	s.do(t, "POST", "/api/bots", map[string]any{"name": "Poteto", "persona": "Reviews diffs.", "provider": "claude", "repo_access": []string{ids[0]}}, &b, 201)
+	before := s.bot(t, b.ID)
+	rejected(t, s, "PUT", "/api/bots/"+b.ID, map[string]any{"name": "Renamed", "persona": "Reviews diffs.", "provider": "claude", "repo_access": []string{ids[1], _unknownRepo}}, want)
+	if after := s.bot(t, b.ID); after.Name != before.Name || string(after.RepoAccess) != string(before.RepoAccess) {
+		t.Fatalf("PUT with unknown repo changed the Bot: before %+v, after %+v", before, after)
+	}
+}
+
+func TestChiefBot_UnknownRepoWithNoReposRegistered(t *testing.T) {
+	for _, p := range _providers {
+		t.Run(p, func(t *testing.T) {
+			_, s := start(t, p)
+			c := chiefCall(t, s, "create_bot", map[string]any{"name": "Poteto", "persona": "Reviews diffs.", "provider": p, "repo_access": []string{_unknownRepo}})
+			failsListing(t, c, []string{_unknownRepo})
+			if !_noReposText.MatchString(c.reply) {
+				t.Errorf("create_bot error %q does not say no repos are registered", c.reply)
+			}
+			onlyChief(t, s)
+			noThreadChanges(t, s, c.thread)
+
+			msg := rejected(t, s, "POST", "/api/bots", map[string]any{"name": "Poteto", "persona": "Reviews diffs.", "provider": p, "repo_access": []string{_unknownRepo}}, []string{_unknownRepo})
+			if !_noReposText.MatchString(msg) {
+				t.Errorf("POST /api/bots error %q does not say no repos are registered", msg)
+			}
+			onlyChief(t, s)
+		})
+	}
+}
+
+// TestChiefBot_RepoAccessAsToday keeps registered ids, an omitted repo_access and null (All)
+// working on both tools and both REST calls.
+func TestChiefBot_RepoAccessAsToday(t *testing.T) {
+	for _, p := range _providers {
+		t.Run(p, func(t *testing.T) {
+			_, s := start(t, p)
+			ids := registerRepos(t, s, "atoll", "reef")
+			only := func(id string) string { return `["` + id + `"]` }
+			access := func(id string) string { return string(s.bot(t, id).RepoAccess) }
+
+			listed := createdID(t, chiefCall(t, s, "create_bot", map[string]any{"name": "Listed", "persona": "x", "provider": p, "repo_access": []string{ids[0]}}))
+			if got := access(listed); got != only(ids[0]) {
+				t.Fatalf("create_bot repo_access [%s]: GET %s", ids[0], got)
+			}
+			omitted := createdID(t, chiefCall(t, s, "create_bot", map[string]any{"name": "Omitted", "persona": "x", "provider": p}))
+			if got := access(omitted); got != `"all"` {
+				t.Fatalf("create_bot without repo_access: GET %s, want \"all\"", got)
+			}
+			all := createdID(t, chiefCall(t, s, "create_bot", map[string]any{"name": "All", "persona": "x", "provider": p, "repo_access": nil}))
+			if got := access(all); got != `"all"` {
+				t.Fatalf("create_bot repo_access null: GET %s, want \"all\"", got)
+			}
+
+			edit := chiefCall(t, s, "edit_bot", map[string]any{"id": listed, "repo_access": []string{ids[1]}})
+			platformChange(t, edit.events, "chief", edit.thread, edit.run, "bot", listed, "edit")
+			if got := access(listed); got != only(ids[1]) {
+				t.Fatalf("edit_bot repo_access [%s]: GET %s", ids[1], got)
+			}
+			chiefCall(t, s, "edit_bot", map[string]any{"id": listed, "persona": "y"})
+			if got := access(listed); got != only(ids[1]) {
+				t.Fatalf("edit_bot without repo_access: GET %s, want %s", got, only(ids[1]))
+			}
+			chiefCall(t, s, "edit_bot", map[string]any{"id": listed, "repo_access": nil})
+			if got := access(listed); got != `"all"` {
+				t.Fatalf("edit_bot repo_access null: GET %s, want \"all\"", got)
+			}
+
+			var b botInfo
+			s.do(t, "POST", "/api/bots", map[string]any{"name": "Rest", "persona": "x", "provider": p, "repo_access": []string{ids[0]}}, &b, 201)
+			if got := access(b.ID); got != only(ids[0]) {
+				t.Fatalf("POST repo_access [%s]: GET %s", ids[0], got)
+			}
+			s.do(t, "POST", "/api/bots", map[string]any{"name": "RestOmitted", "persona": "x", "provider": p}, nil, 201)
+			s.do(t, "POST", "/api/bots", map[string]any{"name": "RestAll", "persona": "x", "provider": p, "repo_access": nil}, nil, 201)
+			s.do(t, "PUT", "/api/bots/"+b.ID, map[string]any{"name": "Rest", "persona": "x", "provider": p, "repo_access": []string{ids[1]}}, nil, 200)
+			if got := access(b.ID); got != only(ids[1]) {
+				t.Fatalf("PUT repo_access [%s]: GET %s", ids[1], got)
+			}
+			s.do(t, "PUT", "/api/bots/"+b.ID, map[string]any{"name": "Rest", "persona": "x", "provider": p, "repo_access": nil}, nil, 200)
+			if got := access(b.ID); got != `"all"` {
+				t.Fatalf("PUT repo_access null: GET %s, want \"all\"", got)
 			}
 		})
 	}
