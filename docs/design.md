@@ -578,7 +578,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 
 ## Queue
 
-Delegation, the Slack connection, a Slack Marketplace listing (one-click Slack for every
+Delegation, a Slack Marketplace listing (one-click Slack for every
 workspace, no per-workspace app), browser pane, background processes pane, the platform
 switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up
 to about 5 items always in the prompt), routines (scheduled, repeating runs), more provider
