@@ -193,7 +193,7 @@ function EmptyThread({
             setup.model || { claude: 'Claude Code', codex: 'Codex' }[setup.provider],
             (setup.skills?.length ?? 0) > 0 &&
               `${setup.skills.length} skill${setup.skills.length === 1 ? '' : 's'}`,
-            (setup.connections?.length ?? 0) > 0 && 'GitLab',
+            ...new Set(setup.connections),
           ]
             .filter(Boolean)
             .join(' · ')}
