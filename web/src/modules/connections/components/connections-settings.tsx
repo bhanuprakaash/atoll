@@ -30,7 +30,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
   const [instance, setInstance] = useState('https://gitlab.com');
   const [adding, setAdding] = useState(false);
   const [flow, setFlow] = useState<DeviceFlow | null>(null);
-  const [pollError, setPollError] = useState('');
+  const [pollFailure, setPollFailure] = useState<{ id: string; message: string } | null>(null);
   const { data: connections = [] } = useConnections();
   const start = useStartGitlab();
   const startGithub = useStartGithub();
@@ -38,6 +38,8 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
   const gitlab = connections.filter((c) => c.kind === 'gitlab');
   const github = connections.find((c) => c.kind === 'github');
   const githubUsers = bots.filter((b) => github && b.connections?.includes(github.id));
+  const githubError = github && pollFailure?.id === github.id ? pollFailure.message : '';
+  const gitlabError = pollFailure && pollFailure.id !== github?.id ? pollFailure.message : '';
   const showForm = adding || !!flow || gitlab.length === 0;
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
         },
         (err: Error) => {
           setFlow(null);
-          setPollError(err.message);
+          setPollFailure({ id: flow.id, message: err.message });
         },
       );
     }, flow.interval_ms);
@@ -61,7 +63,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    setPollError('');
+    setPollFailure(null);
     start.mutate(instance, {
       onSuccess: (started) => {
         setFlow(started);
@@ -81,12 +83,12 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
   );
 
   const signInAgainButton = (c: Connection) =>
-    c.status === 'needs_sign_in' && (
+    (c.status === 'needs_sign_in' || (c.kind === 'github' && c.status === 'pending' && !flow)) && (
       <button
         type="button"
         disabled={signInAgain.isPending || !!flow}
         onClick={() => {
-          setPollError('');
+          setPollFailure(null);
           signInAgain.mutate(c, {
             onSuccess: (started) => {
               setFlow(started);
@@ -140,7 +142,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
               type="button"
               disabled={startGithub.isPending || !!flow}
               onClick={() => {
-                setPollError('');
+                setPollFailure(null);
                 startGithub.mutate(undefined, {
                   onSuccess: (started) => {
                     window.open(started.verification_uri, '_blank');
@@ -178,7 +180,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
           {signInAgain.isError && (
             <p className="text-sm text-danger">{signInAgain.error.message}</p>
           )}
-          {pollError && <p className="text-sm text-danger">{pollError}</p>}
+          {gitlabError && <p className="text-sm text-danger">{gitlabError}</p>}
           <button
             type="submit"
             disabled={start.isPending || !!flow}
@@ -197,6 +199,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
         </button>
       )}
       {startGithub.isError && <p className="text-sm text-danger">{startGithub.error.message}</p>}
+      {githubError && <p className="text-sm text-danger">{githubError}</p>}
       {flow && (
         <div className="flex flex-col gap-1 rounded-2xl border border-line bg-box p-4 text-sm">
           <p>

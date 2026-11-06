@@ -167,7 +167,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   `ATOLL_CODEX_PATH` are the path override until settings are stored.
 - Providers get the parent env minus `ANTHROPIC_*`, `CLAUDE*`, `OPENAI_*`, `CODEX_*` and the user's
   GitLab and GitHub tokens (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`,
-  `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`), with PATH set to the discovery folders first.
+  `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`) and the settings that carry a login (`OAUTH_TOKEN`,
+  `GITLAB_HOST`, `GIT_CONFIG_PARAMETERS`, `SSH_AUTH_SOCK`), with PATH set to the discovery folders
+  first.
 - Transport: Codex through `codex app-server` (JSON-RPC over stdio). Claude Code as
   `claude -p --input-format stream-json --output-format stream-json`, driven from Go. Copy both
   adapters from old Reef (`agent/codex`, `agent/claude`). *The Claude Agent SDK runs the same CLI
@@ -195,15 +197,20 @@ Undo of a repo registration is refused while a thread uses the repo.
   own logins. Every run gets empty CLI configs and cleared credential helpers; only a connection
   fills them. Concretely, every run gets `GLAB_CONFIG_DIR` and `GH_CONFIG_DIR` set to empty folders
   Reef owns (`<data dir>/empty/glab`, `<data dir>/empty/gh`) and a git credential helper list cleared
-  through env (`GIT_CONFIG_*`), and loses the token variables above. `HOME` stays the user's.
+  through env (`GIT_CONFIG_*`), and loses the token variables above. `HOME` stays the user's. A run
+  has no SSH identity: `GIT_SSH_COMMAND` is `ssh -F /dev/null` with no key, agent or user config, so a
+  Bot cannot push over SSH with the user's keys.
 - A run with a connected GitLab connection gets `OAUTH_TOKEN`, `GITLAB_HOST`, `GLAB_CONFIG_DIR` (a
   token-free config marking the host `is_oauth2`) and a git credential helper given only through env
   (`GIT_CONFIG_*`), which clears the user's own helpers. Never `GITLAB_TOKEN`: glab sends it as a
   personal access token, which an OAuth token is not; the user's own is dropped from the env. The
-  token is never written to a file or log.
+  token is never written to a file or log. The connection also maps its host's SSH remotes
+  (`git@<host>:`, `ssh://git@<host>/`) to HTTPS through `url.<instance>/.insteadOf`, so git uses the
+  connection for them.
 - A run with a connected GitHub connection gets `GH_TOKEN` (never `GITHUB_TOKEN` or the Enterprise
   variables), a git credential helper scoped to `https://github.com` that answers
-  `x-access-token` with the token, and a `github` entry in its MCP config next to Reef's own: the
+  `x-access-token` with the token, the same mapping of its SSH remotes (`git@<host>:`,
+  `ssh://git@<host>/`) to HTTPS as GitLab's, and a `github` entry in its MCP config next to Reef's own: the
   hosted server's URL with `Authorization: Bearer <token>` (Claude `--mcp-config` headers, Codex
   `mcp_servers.github.http_headers`). A GitHub tool call goes to the user as an approval named
   `mcp__github__<tool>`, like every tool that is not Reef's own: the tools can push, merge and close
@@ -212,11 +219,15 @@ Undo of a repo registration is refused while a thread uses the repo.
   `ATOLL_GITHUB_MCP_URL` replace the real URLs for tests.
 - Settings > Connections has a GitHub card ("Bots get gh, git and GitHub tools."). Connect GitHub
   starts the device flow, opens `github.com/login/device` and shows the code; a connection that
-  needs sign-in offers Sign in again.
+  needs sign-in, or is still pending with no sign-in running in the page (abandoned, denied,
+  expired, app restarted), offers Sign in again. A failed GitHub sign-in shows its error on the
+  GitHub card.
 - A GitHub token has no refresh and no expiry. Before a run uses one, `GET /user` must accept it;
   a 401 marks that connection `needs_sign_in`, the run stops before the provider starts with
   "GitHub needs sign-in", and signing in again keeps the connection and its Bots. The OS secret
-  store holds the bare token under `github:<connection id>`.
+  store holds the bare token under `github:<connection id>`. Only a run makes that check: the MR
+  watcher and the MR title lookup use GitLab's environment alone, so a GitHub failure never stops
+  GitLab polling.
 - GitLab OAuth records include the refresh token and expiry in the secret store. Before a run uses
   one, it refreshes a token that expires within ten minutes. A rejected refresh marks that connection
   `needs_sign_in`; the run stops before the provider starts, and signing in again keeps the connection.

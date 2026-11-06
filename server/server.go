@@ -40,7 +40,7 @@ type api struct {
 	mem  *memory.Store
 	runs *run.Manager
 	log  *slog.Logger
-	http *http.Client // for GitLab and GitHub sign-in
+	http *http.Client
 
 	providers Providers // serves /api/providers; nil when there is none
 
