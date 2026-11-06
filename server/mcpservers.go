@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"atoll/connection"
 	"atoll/mcpserver"
@@ -140,6 +141,11 @@ func (a *api) connectMCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.mu.Lock()
+	for state, old := range a.signIns {
+		if time.Since(old.Started) > _signInExpiry {
+			delete(a.signIns, state)
+		}
+	}
 	a.signIns[p.State] = p
 	a.mu.Unlock()
 	write(w, http.StatusOK, struct {
@@ -161,7 +167,12 @@ func (a *api) oauthCallback(w http.ResponseWriter, r *http.Request) {
 	case code == "":
 		callbackPage(w, http.StatusBadRequest, p.Server.Name+" was not allowed. Close this window and try again.")
 	default:
-		if err := mcpserver.Finish(r.Context(), a.http, a.st, p, code); err != nil {
+		err := mcpserver.Finish(r.Context(), a.http, a.st, p, code)
+		if errors.Is(err, mcpserver.ErrInvalid) {
+			callbackPage(w, http.StatusBadRequest, p.Server.Name+" was removed or changed. Close this window and connect again.")
+			return
+		}
+		if err != nil {
 			a.log.Error("MCP sign-in failed", "server", p.Server.Name, "err", err)
 			callbackPage(w, http.StatusBadGateway, "Sign-in to "+p.Server.Name+" failed. Close this window and try again.")
 			return

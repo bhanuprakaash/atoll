@@ -282,9 +282,11 @@ Undo of a repo registration is refused while a thread uses the repo.
   registered by hand.
 - The redirect is fixed: `http://127.0.0.1:<Reef port>/oauth/callback`, a route of Reef's own server
   (no other listener). The callback accepts a `state` it issued, once, trades the code for tokens,
-  stores them and answers a page; the UI polls the list until the status changes. *The Allow page
-  must come back to a URL registered at registration; a second listener would add a port to
-  allow.*
+  stores them and answers a page; the UI polls the list until the status changes or Connect fails.
+  Before it stores tokens it checks that the server still exists with the same URL, else the page
+  answers `400` and nothing is stored. A pending sign-in older than ten minutes is dropped when a
+  new one starts. *The Allow page must come back to a URL registered at registration; a second
+  listener would add a port to allow.*
 - The client ID, access token, refresh token and expiry are one OS secret store entry,
   `mcp:<id>:oauth`: never the database, a file, a log or an API reply (the authorize URL names the
   client and is the one exception). Remove deletes the entry. *Reef owns the tokens; providers never

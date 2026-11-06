@@ -55,6 +55,7 @@ type Tokens struct {
 // Pending is a sign-in that waits for the user to allow it in the browser.
 type Pending struct {
 	Server        store.MCPServer
+	Started       time.Time
 	State         string
 	AuthorizeURL  string
 	Verifier      string
@@ -108,13 +109,13 @@ func Begin(ctx context.Context, c *http.Client, s store.MCPServer, redirect stri
 	q.Set("resource", s.URL)
 	u.RawQuery = q.Encode()
 	return Pending{
-		Server: s, State: state, AuthorizeURL: u.String(), Verifier: verifier, ClientID: clientID,
+		Server: s, Started: time.Now(), State: state, AuthorizeURL: u.String(), Verifier: verifier, ClientID: clientID,
 		Redirect: redirect, TokenEndpoint: meta.TokenEndpoint,
 	}, nil
 }
 
 // Finish trades the code the user's Allow produced for tokens, stores them, and marks the server
-// connected.
+// connected. It stores nothing when the server was removed or its URL changed since Begin.
 func Finish(ctx context.Context, c *http.Client, st *store.Store, p Pending, code string) error {
 	tokens, err := postToken(ctx, c, p.TokenEndpoint, url.Values{
 		"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {p.Redirect},
@@ -124,6 +125,13 @@ func Finish(ctx context.Context, c *http.Client, st *store.Store, p Pending, cod
 		return fmt.Errorf("sign in to %s: %w", p.Server.Name, err)
 	}
 	tokens.ClientID = p.ClientID
+	cur, err := Get(ctx, st, p.Server.ID)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	if err != nil || cur.URL != p.Server.URL {
+		return invalid(p.Server.Name + " was removed or changed since the sign-in began")
+	}
 	if err := saveTokens(p.Server.ID, tokens); err != nil {
 		return err
 	}

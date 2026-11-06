@@ -235,3 +235,49 @@ func TestRemoveCatalogSignsOut(t *testing.T) {
 		t.Errorf("Remove(context7) = %v, want ErrInvalid", err)
 	}
 }
+
+func TestFinishChecksTheServerStillStands(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(context.Context, *store.Store, store.MCPServer) error
+		want   bool
+	}{
+		{name: "unchanged", change: func(context.Context, *store.Store, store.MCPServer) error { return nil }, want: true},
+		{name: "removed", change: func(ctx context.Context, st *store.Store, s store.MCPServer) error {
+			return st.DeleteMCPServer(ctx, s.ID)
+		}},
+		{name: "URL changed", change: func(ctx context.Context, st *store.Store, s store.MCPServer) error {
+			s.URL = "https://other.example/mcp"
+			_, err := st.UpdateMCPServer(ctx, s)
+			return err
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			keyring.MockInit()
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = st.Close() }()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"access_token":"a"}`))
+			}))
+			defer srv.Close()
+			ctx := context.Background()
+			s, err := st.CreateMCPServer(ctx, store.MCPServer{Name: "docs", Kind: store.MCPRemote, URL: "https://a.example/mcp"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := tt.change(ctx, st, s); err != nil {
+				t.Fatal(err)
+			}
+
+			err = Finish(ctx, srv.Client(), st, Pending{Server: s, TokenEndpoint: srv.URL}, "code")
+			_, tokenErr := keyring.Get("atoll", tokensUser(s.ID))
+			if tt.want && (err != nil || tokenErr != nil) || !tt.want && (!errors.Is(err, ErrInvalid) || tokenErr == nil) {
+				t.Errorf("Finish = %v with token error %v, want saved: %t", err, tokenErr, tt.want)
+			}
+		})
+	}
+}

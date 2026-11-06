@@ -30,6 +30,7 @@ const MCPPath = "/mcp/"
 const (
 	_pingEvery     = 15 * time.Second
 	_signInTimeout = 30 * time.Second
+	_signInExpiry  = 10 * time.Minute
 	_chiefID       = "chief"
 )
 

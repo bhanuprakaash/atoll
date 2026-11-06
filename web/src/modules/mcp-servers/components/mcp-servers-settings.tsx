@@ -273,6 +273,7 @@ export function McpServersSettings() {
         setAllow({ id: s.id, url: authorize_url });
         window.open(authorize_url, '_blank');
       },
+      onError: () => setWaiting(undefined),
     });
   };
   const catalog = servers.filter((s) => s.kind === 'catalog');
