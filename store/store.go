@@ -56,7 +56,7 @@ const ErrorSignedOut = "signed_out"
 // KindGitLab is the kind of a GitLab connection.
 const KindGitLab = "gitlab"
 
-// KindGitHub is the kind of a GitHub connection.
+// KindGitHub is a GitHub connection.
 const KindGitHub = "github"
 
 // Connection statuses.

@@ -284,8 +284,6 @@ func (m *Manager) threadDir(threadID string) string {
 	return filepath.Join(m.cfg.DataDir, "threads", threadID)
 }
 
-// gitHelper is a git credential helper for the URL it is scoped to, and the SSH remotes of its host
-// that git maps to that URL.
 type gitHelper struct {
 	url, script string
 	ssh         []string
@@ -294,8 +292,8 @@ type gitHelper struct {
 // runEnv empties the glab and gh config folders and the git credential helper list, so neither CLI
 // finds the user's own login, and gives git's ssh no key, agent or config; each connection then
 // adds a helper scoped to its URL and maps its host's SSH remotes to it. GitHub's connection joins
-// only when github is set: it asks GitHub about the token, and the MR watcher needs only GitLab. It
-// also returns the token of the Bot's GitHub connection, empty when there is none.
+// only when github is set, so the MR watcher never depends on GitHub. It also returns the GitHub
+// token, empty when there is none.
 func (m *Manager) runEnv(ctx context.Context, b store.Bot, github bool) ([]string, string, error) {
 	env := []string{
 		"GIT_SSH_COMMAND=ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityFile=/dev/null -o IdentityAgent=none",
@@ -349,8 +347,8 @@ func (m *Manager) runEnv(ctx context.Context, b store.Bot, github bool) ([]strin
 	return env, token, nil
 }
 
-// gitlabEnv makes glab act as the Bot's first GitLab connection. It also returns the git helper of
-// the connection, empty when the Bot has none. The token goes only into the environment.
+// gitlabEnv makes glab act as the Bot's first GitLab connection. The token goes only into the
+// environment.
 func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, gitHelper, error) {
 	for _, id := range b.Connections {
 		c, err := m.cfg.Store.Connection(ctx, id)
@@ -391,7 +389,6 @@ func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, gitHelp
 	return nil, gitHelper{}, nil
 }
 
-// sshRemotes are the SSH forms of the host of rawURL.
 func sshRemotes(rawURL string) ([]string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -403,10 +400,8 @@ func sshRemotes(rawURL string) ([]string, error) {
 const _githubHelper = `!f() { test "$1" = get && echo username=x-access-token && ` +
 	`echo "password=$GH_TOKEN"; }; f`
 
-// githubEnv is the environment that lets gh act as the Bot's first connected GitHub connection:
-// the token as GH_TOKEN. It also returns the token, empty when the Bot has none. GitHub says
-// whether it still accepts the token before every run: a rejected one sets the connection to
-// needs sign-in.
+// githubEnv makes gh act as the Bot's first GitHub connection. It checks the token before every run
+// and marks a rejected one needs sign-in.
 func (m *Manager) githubEnv(ctx context.Context, b store.Bot) ([]string, string, error) {
 	for _, id := range b.Connections {
 		c, err := m.cfg.Store.Connection(ctx, id)
