@@ -73,9 +73,11 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 			return err
 		}
 	}
-	chief.RepoAccess = []string{}
-	if _, err := st.UpdateBot(ctx, chief); err != nil {
-		return err
+	if chief.RepoAccess == nil || len(chief.RepoAccess) > 0 {
+		chief.RepoAccess = []string{}
+		if _, err := st.UpdateBot(ctx, chief); err != nil {
+			return err
+		}
 	}
 	mem, err := memory.Open(st.DB(), nil)
 	if err != nil {

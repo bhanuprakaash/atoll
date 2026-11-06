@@ -148,6 +148,12 @@ func (a *api) setPinned(w http.ResponseWriter, r *http.Request, pinned bool) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+const _chiefRepoRefusal = "Chief has no repo access and cannot be given any"
+
+func chiefHasRepos(b store.Bot) bool {
+	return b.ID == _chiefID && (b.RepoAccess == nil || len(b.RepoAccess) > 0)
+}
+
 func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 	b, err := a.st.Bot(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -159,6 +165,10 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.ID = r.PathValue("id")
+	if chiefHasRepos(b) {
+		fail(w, http.StatusBadRequest, _chiefRepoRefusal)
+		return
+	}
 	b, err = a.st.UpdateBot(r.Context(), b)
 	if err != nil {
 		a.fail(w, r, err)
@@ -388,6 +398,9 @@ func (a *api) platformCall(
 				return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
 			}
 			b.ID, b.CanManagePlatform = in.ID, prev.CanManagePlatform
+			if chiefHasRepos(b) {
+				return nil, &rpcError{Code: _invalidParams, Message: _chiefRepoRefusal}
+			}
 			if rerr := a.botChoiceError(ctx, b, prev.Model); rerr != nil {
 				return nil, rerr
 			}
