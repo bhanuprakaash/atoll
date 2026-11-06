@@ -206,7 +206,7 @@ Undo of a repo registration is refused while a thread uses the repo.
   local (`command`, `args`, `env`; stdio) or remote (`url`, `headers`; streamable HTTP).
   `GET/POST /api/mcp-servers`, `PUT/DELETE /api/mcp-servers/{id}`; a `PUT` replaces the server.
 - The name is the key in the provider's config and shows in tool names (`mcp__<name>__<tool>`): it
-  is `[A-Za-z0-9_-]+`, unique among the user's servers and the catalog, and never `atoll`.
+  is `[A-Za-z0-9_-]+` with no `__`, unique among the user's servers and the catalog, and never `atoll`.
 - Env and header values go to the OS secret store (`mcp:<id>:env:<NAME>`, `mcp:<id>:header:<Name>`),
   never the database, a file, a log or an API reply. The database and the API hold names only. A
   `PUT` that leaves `env` or `headers` out keeps every stored secret; when present it is the whole

@@ -124,8 +124,8 @@ func (in Input) plan(prev store.MCPServer) (s store.MCPServer, write map[string]
 	s = store.MCPServer{ID: prev.ID, Name: in.Name, Command: in.Command, Args: in.Args, URL: in.URL}
 	given := in.Headers
 	switch {
-	case !_name.MatchString(in.Name):
-		return s, nil, invalid("name must be letters, digits, - or _")
+	case !_name.MatchString(in.Name) || strings.Contains(in.Name, "__"):
+		return s, nil, invalid("name must be letters, digits, - or _, and not contain __")
 	case strings.EqualFold(in.Name, _catalog[0].Name):
 		return s, nil, fmt.Errorf("MCP server name %q: %w", in.Name, store.ErrExists)
 	case (in.Command == "") == (in.URL == ""):
