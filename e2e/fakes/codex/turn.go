@@ -118,7 +118,7 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 	repoReply := ""
 	for _, e := range entries {
 		switch e.Fake {
-		case "platform-create", "platform-edit", "platform-denied", "platform-configure", "platform-import", "platform-read", "platform-bots", "platform-call":
+		case "platform-create", "platform-edit", "platform-denied", "platform-configure", "platform-import", "platform-skill-import", "platform-read", "platform-bots", "platform-call":
 			var err error
 			calls := 0
 			// Like app-server, each MCP call starts an mcpToolCall item.
@@ -135,7 +135,7 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
-		case "skills-use", "skills-hold", "skills-worktree":
+		case "skills-use", "skills-hold", "skills-worktree", "skills-run":
 			if e.Fake == "skills-worktree" {
 				var err error
 				t.skills, err = fake.WorktreeSkills(t.servers["atoll"], "codex", t.skills)
@@ -149,7 +149,11 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				}
 			}
 			var err error
-			repoReply, err = fake.SkillsReply(t.skills)
+			if e.Fake == "skills-run" {
+				repoReply, err = fake.SkillsRun(t.skills, t.userMessage)
+			} else {
+				repoReply, err = fake.SkillsReply(t.skills)
+			}
 			if err != nil {
 				return err
 			}

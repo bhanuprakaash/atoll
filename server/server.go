@@ -87,6 +87,7 @@ func New(
 	mux.HandleFunc("GET /api/skills", a.listSkills)
 	mux.HandleFunc("GET /api/skills/{id}", a.getSkill)
 	mux.HandleFunc("PUT /api/skills/{id}", a.putSkill)
+	mux.HandleFunc("POST /api/skills/{id}/reimport", a.reimportSkill)
 	mux.HandleFunc("POST /api/platform/changes/{id}/undo", a.undoChange)
 	mux.HandleFunc("GET /api/threads/{id}/changes", a.listChanges)
 	mux.HandleFunc("POST /api/bots/{id}/threads", a.createThread)

@@ -137,8 +137,8 @@ func TestStore_UndoChange(t *testing.T) {
 	}{
 		{"bot create", store.EntityBot, store.ActionCreate, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'p', 'claude')`, `null`, `missing`},
 		{"bot edit", store.EntityBot, store.ActionEdit, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"can_manage_platform":true}`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"can_manage_platform":true}`},
-		{"skill create", store.EntitySkill, store.ActionCreate, `INSERT INTO skills VALUES ('item', 'new', 'text')`, `null`, `missing`},
-		{"skill edit", store.EntitySkill, store.ActionEdit, `INSERT INTO skills VALUES ('item', 'new', 'text')`, `{"id":"item","name":"old","content":"original"}`, `{"id":"item","name":"old","content":"original"}`},
+		{"skill create", store.EntitySkill, store.ActionCreate, `INSERT INTO skills (id, name, content) VALUES ('item', 'new', 'text'); INSERT INTO skill_files VALUES ('item', 'a.sh', 'x', 1)`, `null`, `missing`},
+		{"skill edit", store.EntitySkill, store.ActionEdit, `INSERT INTO skills (id, name, content) VALUES ('item', 'new', 'text'); INSERT INTO skill_files VALUES ('item', 'new.md', 'x', 0)`, `{"id":"item","name":"old","content":"original","files":[{"path":"a.sh","content":"x","executable":true}]}`, `{"id":"item","name":"old","content":"original","source":"","files":[{"path":"a.sh","content":"x","executable":true}]}`},
 		{"repo create", store.EntityRepo, store.ActionCreate, `INSERT INTO repos VALUES ('item', 'new', '/repo')`, `null`, `missing`},
 		{"repo create in use", store.EntityRepo, store.ActionCreate, `INSERT INTO repos VALUES ('item', 'new', '/repo'); INSERT INTO bots (id, name, persona, provider) VALUES ('bot', 'b', 'p', 'claude'); INSERT INTO threads (id, bot_id, created, repo_id) VALUES ('thread', 'bot', 1, 'item')`, `null`, `in use`},
 	}

@@ -31,6 +31,7 @@ const (
 	ToolEditBot          = "edit_bot"
 	ToolCreateSkill      = "create_skill"
 	ToolEditSkill        = "edit_skill"
+	ToolImportSkill      = "import_skill"
 	ToolRegisterRepo     = "register_repo"
 	ToolAttachConnection = "attach_connection"
 	ToolListBots         = "list_bots"

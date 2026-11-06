@@ -1,6 +1,10 @@
 package skill
 
-import "testing"
+import (
+	"testing"
+
+	"atoll/store"
+)
 
 func TestStrip(t *testing.T) {
 	const greeting = "---\nname: reef-greeting\ndescription: Give the Reef greeting.\n" +
@@ -39,5 +43,39 @@ func TestStrip(t *testing.T) {
 				t.Errorf("Strip = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCheck(t *testing.T) {
+	tests := []struct {
+		name string
+		give []string
+		ok   bool
+	}{
+		{"nested", []string{"scripts/check", "playbooks/ship.md"}, true},
+		{"parent", []string{"../x"}, false},
+		{"parent inside", []string{"scripts/../../x"}, false},
+		{"absolute", []string{"/etc/passwd"}, false},
+		{"dot", []string{"./x"}, false},
+		{"empty element", []string{"a//b"}, false},
+		{"SKILL.md", []string{"SKILL.md"}, false},
+		{"twice", []string{"a", "a"}, false},
+		{"file and folder", []string{"a", "a/b"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files := make([]store.SkillFile, len(tt.give))
+			for i, p := range tt.give {
+				files[i] = store.SkillFile{Path: p, Content: "x"}
+			}
+			if err := Check(files); (err == nil) != tt.ok {
+				t.Fatalf("Check(%q) = %v, want ok %t", tt.give, err, tt.ok)
+			}
+		})
+	}
+	for _, content := range []string{"\xff\xfe", "a\x00b"} {
+		if Check([]store.SkillFile{{Path: "a", Content: content}}) == nil {
+			t.Errorf("Check(content %q) = nil, want an error", content)
+		}
 	}
 }

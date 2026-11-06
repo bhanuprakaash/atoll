@@ -3,18 +3,56 @@ package fake
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 )
 
-// SkillCopy is a discovered file, never text supplied in the user prompt.
-type SkillCopy struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Text string `json:"text"`
+type (
+	// SkillCopy is a discovered file, never text supplied in the user prompt.
+	SkillCopy struct {
+		Name  string      `json:"name"`
+		Path  string      `json:"path"`
+		Text  string      `json:"text"`
+		Files []SkillFile `json:"files,omitempty"`
+	}
+
+	// SkillFile is a file of a discovered skill's folder, SKILL.md included, as found on disk.
+	SkillFile struct {
+		Path string `json:"path"` // relative to the skill folder, slash-separated
+		Mode uint32 `json:"mode"` // permission bits
+		Text string `json:"text"`
+	}
+)
+
+// SkillFiles reads every file under a skill folder, by path.
+func SkillFiles(dir string) ([]SkillFile, error) {
+	var files []SkillFile
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		files = append(files, SkillFile{Path: filepath.ToSlash(rel), Mode: uint32(info.Mode().Perm()), Text: string(b)})
+		return nil
+	})
+	return files, err
 }
 
 // DiscoverSkills models the verified provider search roots. Extra roots contain skill
@@ -73,7 +111,11 @@ func DiscoverSkills(provider, cwd string, extra []string, disabled []string) ([]
 			if name == "" || description == "" {
 				continue
 			}
-			found = append(found, SkillCopy{Name: name, Path: path, Text: text})
+			files, err := SkillFiles(filepath.Dir(path))
+			if err != nil {
+				return nil, err
+			}
+			found = append(found, SkillCopy{Name: name, Path: path, Text: text, Files: files})
 		}
 	}
 	slices.SortFunc(found, func(a, b SkillCopy) int { return strings.Compare(a.Name, b.Name) })
@@ -104,6 +146,47 @@ func SkillsReply(skills []SkillCopy) (string, error) {
 		return "Skills: " + strings.Join(names, ", ") + ". Used reef-greeting: " + strings.TrimSpace(body), nil
 	}
 	return "Skills: " + strings.Join(names, ", ") + ". No reef-greeting skill available.", nil
+}
+
+// _scriptRe finds the script a prompt names: "the poteto-mode script <path>", scripts/check when none.
+var _scriptRe = regexp.MustCompile(`the poteto-mode script (\S+?)\.?(?:\s|$)`)
+
+// SkillsRun runs a script of the discovered poteto-mode skill, scripts/check unless the prompt names
+// another ("the poteto-mode script scripts/hello"), in the folder the provider found it in, and
+// names that folder in its reply. A prompt with "Wait, then" holds after
+// discovery as HoldSkills does and logs the folder again once released, so a test sees what the
+// live run still had.
+func SkillsRun(skills []SkillCopy, prompt string) (string, error) {
+	i := slices.IndexFunc(skills, func(s SkillCopy) bool { return s.Name == "poteto-mode" })
+	if i < 0 {
+		return "", fmt.Errorf("poteto-mode not discovered: %+v", skills)
+	}
+	dir := filepath.Dir(skills[i].Path)
+	if strings.Contains(prompt, "Wait, then") {
+		if err := HoldSkills(); err != nil {
+			return "", err
+		}
+		files, err := SkillFiles(dir)
+		if err != nil {
+			return "", err
+		}
+		skills[i].Files = files
+		if err := LogSkills(skills); err != nil {
+			return "", err
+		}
+	}
+	rel := "scripts/check"
+	if m := _scriptRe.FindStringSubmatch(prompt); m != nil {
+		rel = m[1]
+	}
+	script := filepath.Join(dir, filepath.FromSlash(rel))
+	cmd := exec.Command(script)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("run %s: %w", script, err)
+	}
+	return "Ran " + script + ": " + strings.TrimSpace(string(out)), nil
 }
 
 // LogSkills records the actual discovery, including file bytes, separately from prompts.
