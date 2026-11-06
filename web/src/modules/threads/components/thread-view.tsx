@@ -199,25 +199,27 @@ function EmptyThread({
             .join(' · ')}
         </div>
       )}
-      <div className="flex items-center gap-2 text-sm text-muted">
-        Repo
-        <div className="w-56">
-          <Select
-            ariaLabel="Repo"
-            value={repoId}
-            onChange={setRepoId}
-            groups={[
-              {
-                options: [
-                  { value: '', label: 'No repo' },
-                  ...repos.map((repo) => ({ value: repo.id, label: repo.name })),
-                ],
-              },
-            ]}
-            className="h-9 rounded-xl border border-outline bg-box px-3 text-sm"
-          />
+      {repos.length > 0 && (
+        <div className="flex items-center gap-2 text-sm text-muted">
+          Repo
+          <div className="w-56">
+            <Select
+              ariaLabel="Repo"
+              value={repoId}
+              onChange={setRepoId}
+              groups={[
+                {
+                  options: [
+                    { value: '', label: 'No repo' },
+                    ...repos.map((repo) => ({ value: repo.id, label: repo.name })),
+                  ],
+                },
+              ]}
+              className="h-9 rounded-xl border border-outline bg-box px-3 text-sm"
+            />
+          </div>
         </div>
-      </div>
+      )}
       <div className="w-full">
         <Composer
           threadId={threadId}
@@ -308,6 +310,7 @@ export function ThreadView({
   bot,
   repos,
   repoName,
+  lostRepo,
   afterRun,
   signedOut,
 }: {
@@ -318,6 +321,7 @@ export function ThreadView({
   bot?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
   repoName?: string;
+  lostRepo?: string;
   afterRun?: (runId: string) => ReactNode;
   signedOut?: ReactNode;
 }) {
@@ -548,6 +552,11 @@ export function ThreadView({
             </>
           )}
           {mrChip}
+          {lostRepo && (
+            <p className="text-sm text-muted">
+              {botName} no longer has access to {lostRepo}
+            </p>
+          )}
           {(worktreeRemoved || thread?.worktree_removed) && (
             <p className="text-sm text-muted">
               {iid && mrState === 'merged' ? `!${iid} merged · ` : ''}worktree cleaned up

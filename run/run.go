@@ -492,7 +492,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		}
 	}()
 	var rp store.Repo
-	if thread.RepoID != "" {
+	if thread.RepoID != "" && bot.RepoAccess.Allows(thread.RepoID) {
 		if rp, err = m.cfg.Store.Repo(a.ctx, thread.RepoID); err != nil {
 			return "", fmt.Errorf("load repo: %w", err)
 		}
@@ -523,7 +523,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	var items []memory.Item
 	var counts memory.Counts
 	if m.cfg.Memory != nil {
-		shelf := memory.Shelf{RepoID: thread.RepoID, BotID: thread.BotID}
+		shelf := memory.Shelf{RepoID: rp.ID, BotID: thread.BotID}
 		var seen map[string]bool
 		if thread.Session != "" {
 			seen, err = m.cfg.Memory.Seen(a.ctx, thread.Session)

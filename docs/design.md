@@ -42,10 +42,12 @@ never a dependency.
   messages, runs and event files. Memory it saved stays, with its source. *Memory outlives the Bot
   that wrote it; a Bot's history does not.*
 
-**Chief.** Created on first launch. It has no repo access (every launch sets it to none) and does
-no code work. It has the "Can manage the platform" switch on: tools to create and edit Bots
-(including model and look), skills and repos, and to attach connections, served as Reef's own MCP
-tools; read tools list Bots, skills, connections, repos and signed-in models and record no change.
+**Chief.** Created on first launch. It has no repo access at all times: `PUT` and its own
+`edit_bot` refuse to give it repos, its Bot settings and empty thread offer none, and a launch moves
+an older install's Chief to none. It does no code work. It has the "Can manage the platform" switch
+on: tools to create and edit Bots (including model and look), skills and repos, and to attach
+connections, served as Reef's own MCP tools; read tools list Bots, skills, connections, repos and
+signed-in models and record no change.
 A model must be one the Bot's provider lists while signed in; an unknown model or look fails with
 the valid ones named. Sign-ins stay with the user. Every change shows in the thread with undo.
 Other Bots can get the switch later.
@@ -100,6 +102,10 @@ Undo of a repo registration is refused while a thread uses the repo.
 
 - Repos are registered once. A thread works in one repo.
 - A repo registers without a commit; a thread on it is refused until it has one.
+- Access is checked when the thread is created and at every run. When the Bot's repo access no
+  longer allows the thread's repo, its runs work as in a thread with no repo: the thread folder, no
+  repo block, no worktree, no `start_work`. The thread says the Bot no longer has access. Existing
+  worktrees stay where they are.
 - A thread gets a worktree on its first edit, at `~/Reef/worktrees/<repo>/<branch-folder>` (root is
   a setting). Read-only threads use a clean checkout.
 - The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs) at first edit; the app makes it
