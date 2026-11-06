@@ -283,10 +283,9 @@ func (m *Manager) threadDir(threadID string) string {
 	return filepath.Join(m.cfg.DataDir, "threads", threadID)
 }
 
-// runEnv is the environment of every run and of the CLIs Reef starts for a Bot: empty glab and gh
-// config folders, so neither CLI finds the user's own login, and a cleared git credential helper
-// list, and no ssh key, agent or config, followed by what the Bot's connections add. Only a
-// connection fills these.
+// runEnv empties the glab and gh config folders and the git credential helper list, so neither CLI
+// finds the user's own login, and gives git's ssh no key, agent or config; each connection then
+// adds a helper scoped to its URL.
 func (m *Manager) runEnv(ctx context.Context, b store.Bot) ([]string, error) {
 	env := []string{
 		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
@@ -306,10 +305,8 @@ func (m *Manager) runEnv(ctx context.Context, b store.Bot) ([]string, error) {
 	return append(env, conn...), err
 }
 
-// gitlabEnv is the environment that lets git and glab act as the Bot's first connected GitLab
-// connection: the token as OAUTH_TOKEN with a glab config marking the host OAuth, and a git
-// credential helper that passes it, and a rewrite of the host's SSH remotes to HTTPS. It is empty
-// when the Bot has none. The token goes only into the environment.
+// gitlabEnv makes glab act as the Bot's first GitLab connection. The token goes only into the
+// environment.
 func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, error) {
 	for _, id := range b.Connections {
 		c, err := m.cfg.Store.Connection(ctx, id)
