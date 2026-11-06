@@ -230,6 +230,16 @@ Undo of a repo registration is refused while a thread uses the repo.
   and the user's own servers, listed in the order added. A server is
   local (`command`, `args`, `env`; stdio) or remote (`url`, `headers`; streamable HTTP).
   `GET/POST /api/mcp-servers`, `PUT/DELETE /api/mcp-servers/{id}`; a `PUT` replaces the server.
+- While a GitHub connection exists (`connected` or `needs_sign_in`, not `pending`), the list has one
+  more item after the catalog: `{id: "github", name: "GitHub", kind: "connection", url: <GitHub's MCP
+  URL>}`, shown read-only as "from GitHub connection". It is computed from the connection when the
+  list is read, never stored, and `list_mcp_servers` returns the same list. `PUT` and `DELETE` of it
+  are `400`, and a Bot cannot pick it: it gets `github` through its connection.
+- Add by URL checks the typed URL against GitHub's MCP URL (ignoring spaces and one trailing `/`)
+  while that connection exists. On a match it shows "GitHub has a connection" with Use connection
+  (adds nothing) and Add anyway. The API does not check. A run whose Bot has the GitHub connection
+  drops its picked servers at that URL (same comparison), so the config holds only `github`; the
+  pick stays on the Bot.
 - The name is the key in the provider's config and shows in tool names (`mcp__<name>__<tool>`): it
   is `[A-Za-z0-9_-]+`, unique among the user's servers and the catalog, and never `atoll` or `github` (the keys of
   Reef's own server and of the GitHub connection's).
