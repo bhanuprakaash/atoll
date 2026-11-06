@@ -36,19 +36,21 @@ export function BotHeader({
       className="grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start pt-3.5"
     >
       <div
-        className={`relative z-30 col-start-2 flex flex-col overflow-hidden border border-composer-line bg-composer shadow-[0_12px_32px_rgba(0,0,0,.4)] transition-[min-width,max-height,border-radius] duration-420 ease-[cubic-bezier(.32,1.25,.5,1)] motion-reduce:transition-none ${open ? 'max-h-[60vh] min-w-100 max-w-[calc(100%-2rem)] rounded-[22px]' : 'max-h-10 min-w-0 rounded-[20px]'}`}
+        className={`relative z-30 col-start-2 flex flex-col overflow-hidden border border-composer-line bg-composer shadow-[0_12px_32px_rgba(0,0,0,.4)] transition-[min-width,max-height,border-radius] duration-420 ease-[cubic-bezier(.32,1.25,.5,1)] motion-reduce:transition-none ${open ? 'max-h-[60vh] min-w-100 rounded-[22px]' : 'max-h-10 min-w-0 rounded-[20px]'}`}
       >
-        <div className="relative flex h-9.5 flex-none items-center justify-center gap-2 pr-3.5 pl-2.5 whitespace-nowrap">
+        <div className="relative flex h-9.5 flex-none items-center justify-center gap-2.5 px-3 whitespace-nowrap">
           {bot && <Creature look={bot.look} state={bot.state} size={22} />}
-          <h1 className="text-sm">{bot?.name}</h1>
-          {title && (
-            <>
-              <span aria-hidden="true" className="text-label">
-                ·
-              </span>
-              <h2 className="max-w-50 truncate text-sm font-normal text-muted">{title}</h2>
-            </>
-          )}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h1 className="text-sm">{bot?.name}</h1>
+            {title && (
+              <>
+                <span aria-hidden="true" className="text-label">
+                  ·
+                </span>
+                <h2 className="max-w-50 truncate text-sm font-normal text-muted">{title}</h2>
+              </>
+            )}
+          </div>
           {thread?.approval ? (
             <span className="text-[13px] text-needs-ink">Needs you</span>
           ) : thread?.run_status === 'running' ? (
