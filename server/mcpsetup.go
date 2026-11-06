@@ -8,13 +8,10 @@ import (
 	"atoll/store"
 )
 
-// redirectURI is the one fixed URL an authorization server sends the browser back to.
 func redirectURI(r *http.Request) string {
 	return "http://127.0.0.1:" + localPort(r) + "/oauth/callback"
 }
 
-// mcpServerSetup answers what the user needs to create the app whose Client ID the server signs in
-// with: the redirect URL to register and the scopes to grant.
 func (a *api) mcpServerSetup(w http.ResponseWriter, r *http.Request) {
 	s, ok := a.setupServer(w, r)
 	if !ok {
@@ -50,7 +47,6 @@ func (a *api) saveMCPServerSetup(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setupServer is the server of the request when it has a Client ID to set up, else it answers 404.
 func (a *api) setupServer(w http.ResponseWriter, r *http.Request) (s store.MCPServer, ok bool) {
 	s, err := mcpserver.Get(r.Context(), a.st, r.PathValue("id"))
 	if err != nil {

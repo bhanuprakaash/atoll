@@ -32,7 +32,8 @@ const (
 
 var (
 	// ErrNeedsApp is returned when the server has no dynamic client registration.
-	ErrNeedsApp   = errors.New("this server needs a registered app")
+	ErrNeedsApp = errors.New("this server needs a registered app")
+	// ErrNeedsSetup is returned when the server has no saved Client ID.
 	ErrNeedsSetup = errors.New("this server needs its Client ID: set it up first")
 	// ErrNeedsSignIn is wrapped when a server's tokens are rejected.
 	ErrNeedsSignIn = errors.New("needs sign-in")
@@ -71,7 +72,7 @@ type metadata struct {
 	AuthorizationEndpoint string   `json:"authorization_endpoint"`
 	TokenEndpoint         string   `json:"token_endpoint"`
 	RegistrationEndpoint  string   `json:"registration_endpoint"`
-	Scopes                []string `json:"-"` // scopes_supported of the resource metadata
+	Scopes                []string `json:"-"`
 }
 
 // Begin returns the URL the user opens to allow sign-in. Slack registers no clients, so it uses the saved Client ID.

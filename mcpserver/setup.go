@@ -12,11 +12,10 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// SlackID is the catalog server that signs in with a Client ID the user saves, because Slack
-// registers no clients.
+// SlackID signs in with a saved Client ID: Slack registers no clients.
 const SlackID = "slack"
 
-// Scopes returns the scopes the resource metadata of s lists, which its Client ID's app needs.
+// Scopes returns the scopes the server lists.
 func Scopes(ctx context.Context, c *http.Client, s store.MCPServer) ([]string, error) {
 	meta, err := discover(ctx, c, s.URL)
 	if err != nil {
@@ -25,8 +24,7 @@ func Scopes(ctx context.Context, c *http.Client, s store.MCPServer) ([]string, e
 	return meta.Scopes, nil
 }
 
-// SaveClientID keeps the Client ID of server id in the OS secret store, drops the tokens the old
-// app issued and marks the server not connected.
+// SaveClientID drops tokens the old app issued.
 func SaveClientID(ctx context.Context, st *store.Store, id, clientID string) error {
 	clientID = strings.TrimSpace(clientID)
 	if clientID == "" {
