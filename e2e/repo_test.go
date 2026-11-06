@@ -389,7 +389,7 @@ func (f *repoFixture) connect(t *testing.T) (string, string) {
 				_, _ = fmt.Fprint(w, `{"error":"authorization_pending"}`)
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": token, "token_type": "Bearer", "scope": "api", "created_at": time.Now().Unix()})
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": token, "refresh_token": "glrt-" + token, "token_type": "Bearer", "scope": "api", "expires_in": 7200, "created_at": time.Now().Unix()})
 		default:
 			t.Errorf("unexpected GitLab HTTP call: %s", r.URL.Path)
 			w.WriteHeader(404)
@@ -433,7 +433,10 @@ func (f *repoFixture) connect(t *testing.T) (string, string) {
 		deleteSecret = exec.Command("security", "delete-generic-password", "-s", "atoll", "-a", "gitlab:"+start.ID)
 	}
 	out, err := cmd.Output()
-	if err != nil || strings.TrimSpace(string(out)) != token {
+	var stored struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err != nil || json.Unmarshal(out, &stored) != nil || stored.AccessToken != token {
 		t.Fatal("token not retrievable from OS secret store")
 	}
 	t.Cleanup(func() { _ = deleteSecret.Run() })

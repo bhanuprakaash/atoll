@@ -127,3 +127,5 @@ these tested boundaries belong in `docs/design.md`, not this tests-only MR.
 Slice 4 extends this contract in [memory-contract.md](memory-contract.md).
 
 Slice 5 extends these contracts in [skills-contract.md](skills-contract.md).
+
+GitLab token refresh extends the Slice 3 contract in [gitlab-refresh-contract.md](gitlab-refresh-contract.md).
