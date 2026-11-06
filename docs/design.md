@@ -134,8 +134,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   `gitlab`, read with `git remote get-url origin` and not stored; Settings > Repos tags a GitHub
   repo `GitHub`. The first message's repo block tells the Bot of a GitHub repo to open the pull
   request with `gh pr create`.
-- A Bot with a connected GitHub connection pushes and runs `gh pr create` in its worktree with the
-  connection's env. `start_work` on a GitHub repo for a Bot without one is a tool error, "give this
+- A Bot with a connected GitHub connection pushes (SSH GitHub remotes too, through the connection) and
+  runs `gh pr create` in its worktree with the connection's env. `start_work` on a GitHub repo for a Bot without one is a tool error, "give this
   Bot the GitHub connection", with no worktree made, so the Bot says what to do and the user never
   meets a git auth error. A question in the repo needs no connection.
 - `track_mr` takes the PR URL (`<github>/<owner>/<repo>/pull/<n>`) like an MR URL; the thread shows
@@ -491,7 +491,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 | Providers | Claude Code and Codex: Providers page, own folders, isolation, transports |
 | Bots | Create and edit; Chief with platform tools |
 | Threads | Chat, runs, resume, `finish_run`, live tool calls, approvals in the thread |
-| Repos | Register, worktree per thread, MR via `glab` |
+| Repos | Register, worktree per thread, MR via `glab`, PR via `gh` |
 | Connections | GitLab, GitHub |
 | Skills | Library, picked per Bot |
 | Memory | Three scopes, four tools, saves shown in the thread |
