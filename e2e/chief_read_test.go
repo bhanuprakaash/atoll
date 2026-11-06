@@ -147,6 +147,72 @@ func TestChiefRead_Tools(t *testing.T) {
 	}
 }
 
+// isStatus reports whether c is a provider's sign-in status check, which every run's launch makes.
+func isStatus(c *call) bool {
+	return slices.Contains(c.argv, "status") && (slices.Contains(c.argv, "auth") || slices.Contains(c.argv, "login"))
+}
+
+func TestChiefRead_ListModelsStartsNoProcess(t *testing.T) {
+	m := newMachine(t, "claude", "codex")
+	m.signIn(t, "claude")
+	m.signIn(t, "codex")
+	s := m.serve(t)
+	ready := s.providers(t) // as the app does when it opens
+	before := map[string]int{}
+	for _, p := range _providers {
+		before[p] = len(m.calls(t, p))
+	}
+
+	c := chiefCall(t, s, "list_models", map[string]any{})
+	var models []struct {
+		Name   string       `json:"name"`
+		Models []modelEntry `json:"models"`
+	}
+	if err := json.Unmarshal([]byte(c.reply), &models); err != nil {
+		t.Fatalf("list_models result %q: %v", c.reply, err)
+	}
+	if len(models) != 2 || models[0].Name != "claude" || models[1].Name != "codex" ||
+		!slices.Equal(models[0].Models, ready["claude"].Models) || !slices.Equal(models[1].Models, ready["codex"].Models) {
+		t.Errorf("list_models %s, want both providers with the models GET /api/providers lists", c.reply)
+	}
+
+	// The run itself starts its session and its launch's status check; nothing else may start.
+	sessions, statuses := 0, 0
+	for _, p := range _providers {
+		mode := map[string]string{"claude": "-p", "codex": "app-server"}[p]
+		for _, cl := range m.calls(t, p)[before[p]:] {
+			switch {
+			case slices.Contains(cl.argv, mode) && slices.ContainsFunc(cl.stdin, isTurn):
+				sessions++
+			case isStatus(cl):
+				statuses++
+			default:
+				t.Errorf("a Chief run calling list_models started %s %q", p, cl.argv)
+			}
+		}
+	}
+	if sessions != 1 || statuses > sessions {
+		t.Errorf("Chief run started %d sessions and %d status checks, want 1 and at most 1", sessions, statuses)
+	}
+}
+
+// Codex names an MCP tool without its server, so list_bots arrives bare.
+func TestChiefRead_CodexReadToolIsPlatform(t *testing.T) {
+	_, s := start(t, "codex")
+	th := s.newThread(t, chief(t, s).bot)
+	ch := s.events(t, th)
+	r := s.send(t, th, _whichBotsPrompt)
+	var kinds []any
+	for _, e := range until(t, ch, r.ID, "run_finished") {
+		if e.Type == "tool_call" && e.Data["name"] == "list_bots" {
+			kinds = append(kinds, e.Data["kind"])
+		}
+	}
+	if len(kinds) != 1 || kinds[0] != "platform" {
+		t.Fatalf("list_bots tool_call kinds %v, want one \"platform\"", kinds)
+	}
+}
+
 func TestChiefRead_WhichBots(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {

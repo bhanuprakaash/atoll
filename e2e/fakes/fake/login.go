@@ -76,16 +76,12 @@ func login(dir, file string, withCode bool, lines []string) error {
 
 // Refused reports whether the login in dir/file is one the provider's server refuses: a file
 // holding {"fake":"revoked"}. The fake has no server, so the file stands in for a token revoked
-// there. Like the real CLI, the fake finds out only when a turn calls the model; then it drops
-// the login, before it prints the failure, so its status reports signed out from then on.
+// there. Like a real CLI whose token its server revoked, the fake finds out only when a turn
+// calls the model, and keeps the file: its status still reports signed in, and every later turn
+// fails the same way.
 func Refused(dir, file string) bool {
-	path := filepath.Join(dir, file)
-	b, err := os.ReadFile(path)
-	if err != nil || Directive(b) != "revoked" {
-		return false
-	}
-	_ = os.Remove(path)
-	return true
+	b, err := os.ReadFile(filepath.Join(dir, file))
+	return err == nil && Directive(b) == "revoked"
 }
 
 // Pause is the "pause" directive: {"fake":"pause","ms":1500} holds a tool call that long, so a

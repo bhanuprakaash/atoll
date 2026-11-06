@@ -24,11 +24,28 @@ A Bot with repo access and the switch off gets today's prompt byte for byte:
 ## Chief and API
 
 - A fresh data directory has Chief with `repo_access: []`.
-- Every launch sets Chief's `repo_access` to `[]`. A Chief saved with `"all"` (through
-  `PUT /api/bots/chief`, as an older install has it) reads `[]` after a restart.
+- Chief's `repo_access` is `[]` at all times. `PUT /api/bots/chief` with any other `repo_access`
+  (`"all"` or a list) fails `400` with `{error}`, a plain message that names repo, and Chief keeps
+  `[]`. Chief's `edit_bot` on `chief` with `repo_access` (`null` or a list) fails with that same
+  message in its text and records no change.
+- Every launch moves an older install's Chief to `[]`, and writes nothing to Chief's row when it
+  is already `[]`. The API can no longer give Chief repos, so tests write the older row into the
+  data dir's `atoll.db` while no server runs (`repo_access` NULL, which reads `"all"`), and count
+  writes to Chief's row with a trigger they add there.
+- Chief's Bot settings have no `radiogroup` "Repo access", and its empty thread no `combobox`
+  "Repo". Another Bot's have both.
 - `POST /api/bots` accepts `can_manage_platform: true` and returns it.
 - The `prompt-hey` recordings answer the message `hey` with `finish_run` and the reply `Hello.`
   on both fakes.
+
+## Repo access at every run
+
+A thread keeps the `repo_id` it was created with. When its Bot's `repo_access` no longer allows
+that repo, a run in the thread works as in a thread with no repo: its folder under
+`ATOLL_DATA_DIR/threads/<thread id>` holds no checkout, the first message has no repo block (no
+line starting `Repo: ` and not the repo id), and no `worktree_created` event comes. The thread
+page shows a line with the text `no longer has access to <repo name>`. A thread whose Bot still
+has access works as before: a checkout in the thread folder, the repo block, no such line.
 
 ## Acceptance mapping
 
@@ -40,6 +57,11 @@ A Bot with repo access and the switch off gets today's prompt byte for byte:
 | Chief with all repos is moved to none on the next launch | `TestPrompt_ChiefLosesRepoAccessOnLaunch` |
 | Switch on and repo access: code part and platform block | `TestPrompt_PlatformBotWithRepoAccess` |
 | Chief sent "hey" completes; thread has no branch or worktree | `TestPrompt_ChiefHeyNoBranchNoWorktree` |
+| `PUT /api/bots/chief` and Chief's `edit_bot` with repos fail; Chief keeps `[]` | `TestChief_RepoAccessRefused/{claude,codex}` |
+| The launch reset moves an old Chief to `[]` and writes nothing when already `[]` | `TestPrompt_ChiefLosesRepoAccessOnLaunch`, `TestChief_LaunchWritesNothingWhenNoRepos` |
+| Chief's settings show no Repo access, its empty thread no Repo picker | `repo-access.spec.ts` "Chief has no Repo access control and its empty thread no Repo picker" |
+| Lost access: thread folder, no repo block, no worktree; kept access as today | `TestRepo_LostAccessRunsWithoutRepo/{claude,codex}` |
+| Lost access: the thread says so | `repo-access.spec.ts` "a thread whose Bot lost access to its repo says so" |
 
 ## Platform block text
 

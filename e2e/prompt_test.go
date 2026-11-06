@@ -101,11 +101,11 @@ func TestPrompt_ChiefFreshInstall(t *testing.T) {
 
 func TestPrompt_ChiefLosesRepoAccessOnLaunch(t *testing.T) {
 	m, s := start(t, "claude")
-	s.do(t, "PUT", "/api/bots/chief", map[string]any{"repo_access": "all"}, nil, http.StatusOK)
-	if got := string(s.bot(t, "chief").RepoAccess); got != `"all"` {
-		t.Fatalf("Chief repo_access before restart %s, want \"all\"", got)
-	}
 	s.kill()
+	// The API no longer gives Chief repos, so write the row an older install left: NULL is "all".
+	if n := dbExec(t, m, `UPDATE bots SET repo_access = NULL WHERE id = 'chief'`); n != 1 {
+		t.Fatalf("set Chief to all repos: %d rows, want 1", n)
+	}
 	s = m.serve(t)
 	if got := string(s.bot(t, "chief").RepoAccess); got != "[]" {
 		t.Fatalf("Chief repo_access after restart %s, want []", got)

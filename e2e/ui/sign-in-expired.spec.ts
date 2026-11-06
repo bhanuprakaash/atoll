@@ -96,3 +96,20 @@ for (const c of cases) {
       .toBe('done');
   });
 }
+
+test('the sign-in expired line names the provider of the failed run', async ({ page }) => {
+  const bot = await newBotAPI(m, 'Wrasse', 'claude');
+  await page.goto(m.url);
+  await sidebarRow(page, 'Wrasse').click();
+  m.revoke('claude');
+  await page.getByRole('textbox', { name: 'Message' }).fill(prompts.pong);
+  await page.getByRole('button', { name: 'Send' }).click();
+  const log = page.getByRole('log', { name: 'Messages' });
+  await expect(log.getByText('Claude sign-in expired')).toBeVisible();
+
+  await api(m, 'PUT', `/api/bots/${bot.id}`, { provider: 'codex' });
+  const [thread] = await api(m, 'GET', `/api/bots/${bot.id}/threads`);
+  await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
+  await expect(log.getByText('Claude sign-in expired')).toBeVisible();
+  await expect(log.getByText('Codex sign-in expired')).toHaveCount(0);
+});

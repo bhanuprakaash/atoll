@@ -43,7 +43,8 @@ export type Machine = {
   // release finishes the browser step of a provider's sign-in.
   release: (fake: 'claude' | 'codex') => void;
   // revoke marks a provider's login as revoked by its server: the fake fails the next turn with
-  // the real CLI's auth error and is signed out from then on.
+  // the real CLI's auth error, and every later one until a sign-in replaces the file, while its
+  // status check still says signed in.
   revoke: (fake: 'claude' | 'codex') => void;
   calls: (fake: Fake) => { pid: number; argv?: string[] }[];
 };

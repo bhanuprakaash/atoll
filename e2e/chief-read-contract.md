@@ -23,6 +23,18 @@ MCP text holding a JSON array. Extra fields are allowed unless a line says other
 Read tools record no change: no `platform_changed` event, and `GET /api/threads/{id}/changes`
 stays `[]`. The thread's change card is drawn from those two, so it shows none.
 
+`list_models` and the `create_bot`/`edit_bot` model check take the models from the providers'
+cached state, the source of `GET /api/providers`. Once `GET /api/providers` has answered, a Chief
+run that calls `list_models` starts no provider process (fake call logs) beyond the run's own
+session and one sign-in status check for its launch: no `--version`, no model probe.
+
+A read tool's `tool_call` event has `kind: "platform"` on Codex too, where the tool's name has no
+server prefix (`list_bots`).
+
+The fake Codex starts an `mcpToolCall` item (`item/started`, server `atoll`, the tool's name and
+arguments) before each platform tool call, as app-server does. The fake Claude still makes them
+without a `tool_use` line.
+
 ## Fake scenarios
 
 - `platform-read` (prompt `List every Bot, skill, connection, repo and model.`): requires all
@@ -44,3 +56,5 @@ stays `[]`. The thread's change card is drawn from those two, so it shows none.
 | "Which Bots do I have?" answers from `list_bots` | `TestChiefRead_WhichBots/{claude,codex}`; reading no file is real-provider only |
 | Read tools record no change, no change card | `TestChiefRead_Tools/{claude,codex}` |
 | Fakes work before the product | `TestSkillsFixtures_ProviderScenarios/{claude,codex}/{read,bots}` |
+| A `list_models` call starts no provider process | `TestChiefRead_ListModelsStartsNoProcess` |
+| Codex read calls are platform tool calls, not "Thinking" | `TestChiefRead_CodexReadToolIsPlatform` |
