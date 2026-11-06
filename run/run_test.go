@@ -286,6 +286,46 @@ func TestRun_Finish(t *testing.T) {
 	}
 }
 
+func TestRun_ActivityWrites(t *testing.T) {
+	script := make([]provider.Event, 1000, 1001)
+	for i := range script {
+		script[i] = provider.Event{Kind: provider.KindText, Text: "x"}
+	}
+	e := newEnv(t, &fakeSession{script: append(script, provider.Event{Kind: provider.KindTurnEnd})})
+	e.sess.events = make(chan provider.Event, len(script)+1)
+	_, err := e.st.DB().ExecContext(t.Context(), `
+		CREATE TABLE touches (n INTEGER);
+		CREATE TRIGGER touched AFTER UPDATE OF last_activity ON threads
+		BEGIN INSERT INTO touches VALUES (1); END`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ru, err := e.m.Send(t.Context(), e.thread.ID, "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		got, err := e.st.Run(t.Context(), ru.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status == store.StatusDone {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("run still %s", got.Status)
+		}
+	}
+	var writes int
+	if err := e.st.DB().QueryRowContext(t.Context(), "SELECT count(*) FROM touches").Scan(&writes); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("1000 text deltas wrote last_activity %d times", writes)
+	if writes != 2 {
+		t.Errorf("last_activity written %d times, want 2 (run start, run finish)", writes)
+	}
+}
+
 func TestRun_FinishNotSaved(t *testing.T) {
 	e := newEnv(t, &fakeSession{script: []provider.Event{
 		{Kind: provider.KindText, Text: "hi"}, {Kind: provider.KindTurnEnd},

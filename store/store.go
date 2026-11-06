@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"database/sql/driver"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
@@ -19,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite" // registers the "sqlite" driver
+	"modernc.org/sqlite"
 )
 
 var (
@@ -166,7 +167,11 @@ const (
 
 // Open opens dir/atoll.db, creating dir and the file if needed, and applies any migration the
 // file lacks.
-func Open(dir string) (*Store, error) {
+func Open(dir string) (*Store, error) { return OpenWrapped(dir, nil) }
+
+// OpenWrapped is Open with the database's connector passed through wrap when it is not nil.
+// Tests use it to count statements.
+func OpenWrapped(dir string, wrap func(driver.Connector) driver.Connector) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
@@ -182,10 +187,14 @@ func Open(dir string) (*Store, error) {
 	}
 	_ = f.Close()
 	uri := url.URL{Scheme: "file", Path: path, RawQuery: _dsnParams}
-	db, err := sql.Open("sqlite", uri.String())
+	conn, err := sqlite.NewConnector(uri.String())
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
+	if wrap != nil {
+		conn = wrap(conn)
+	}
+	db := sql.OpenDB(conn)
 	if err := migrate(context.Background(), db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
@@ -400,12 +409,6 @@ func (s *Store) Watched(ctx context.Context) ([]Thread, error) {
 		scanThread)
 }
 
-// TouchThread updates the time of the thread's latest activity.
-func (s *Store) TouchThread(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE threads SET last_activity = ? WHERE id = ?", time.Now().UTC().UnixMicro(), id)
-	return err
-}
-
 // SetWorktree records the thread's branch and worktree; an empty worktree clears it.
 func (s *Store) SetWorktree(ctx context.Context, threadID, branch, worktree string) error {
 	res, err := s.db.ExecContext(ctx, "UPDATE threads SET branch = ?, worktree = ?, worktree_removed = 0, snapshot_ref = '' WHERE id = ?",
@@ -453,6 +456,32 @@ func (s *Store) LatestRun(ctx context.Context, threadID string) (string, error) 
 		return "", fmt.Errorf("read latest run of thread %s: %w", threadID, err)
 	}
 	return id, nil
+}
+
+// ThreadRun is a thread that has a run, with the status of its newest run.
+type ThreadRun struct {
+	BotID        string
+	ThreadID     string
+	LastActivity time.Time
+	Status       string
+}
+
+// ThreadRuns lists the threads that have a run, newest activity first. botID limits it to one
+// Bot; empty means every Bot.
+func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, error) {
+	return query(ctx, s.db,
+		`SELECT t.bot_id, t.id, t.last_activity, r.status
+		 FROM (SELECT max(rowid) AS rid FROM runs GROUP BY thread_id) latest
+		 JOIN runs r ON r.rowid = latest.rid
+		 JOIN threads t ON t.id = r.thread_id
+		 WHERE ? = '' OR t.bot_id = ?
+		 ORDER BY t.last_activity DESC, t.rowid DESC`,
+		func(r *sql.Rows) (tr ThreadRun, err error) {
+			var at int64
+			err = r.Scan(&tr.BotID, &tr.ThreadID, &at, &tr.Status)
+			tr.LastActivity = time.UnixMicro(at).UTC()
+			return tr, err
+		}, botID, botID)
 }
 
 // SetSession records the provider session the thread's next runs resume.
@@ -529,14 +558,23 @@ func (s *Store) CountTool(ctx context.Context, runID, kind string) error {
 }
 
 // SetStatus sets the status of a run that is running or waiting; a finished run keeps its status.
+// It also updates the time of the thread's latest activity.
 func (s *Store) SetStatus(ctx context.Context, runID, status string) error {
-	res, err := s.db.ExecContext(ctx,
-		"UPDATE runs SET status = CASE WHEN status IN (?, ?) THEN ? ELSE status END WHERE id = ?",
-		StatusRunning, StatusWaiting, status, runID)
-	if err != nil {
-		return fmt.Errorf("set status: %w", err)
-	}
-	return found(res, "run", runID)
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx,
+			"UPDATE runs SET status = CASE WHEN status IN (?, ?) THEN ? ELSE status END WHERE id = ?",
+			StatusRunning, StatusWaiting, status, runID)
+		if err != nil {
+			return fmt.Errorf("set status: %w", err)
+		}
+		if err := found(res, "run", runID); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx,
+			"UPDATE threads SET last_activity = ? WHERE id = (SELECT thread_id FROM runs WHERE id = ?)",
+			time.Now().UTC().UnixMicro(), runID)
+		return err
+	})
 }
 
 // SetReport stores the run's finish_run report. A second call replaces the first.
@@ -570,6 +608,11 @@ func (s *Store) FinishRun(ctx context.Context, runID, status, reply, errText str
 			status, reply, errText, time.Now().UTC().UnixMicro(), runID)
 		if err != nil {
 			return fmt.Errorf("finish run: %w", err)
+		}
+		_, err = tx.ExecContext(ctx, "UPDATE threads SET last_activity = ? WHERE id = ?",
+			time.Now().UTC().UnixMicro(), threadID)
+		if err != nil {
+			return fmt.Errorf("touch thread: %w", err)
 		}
 		if reply == "" {
 			return nil
