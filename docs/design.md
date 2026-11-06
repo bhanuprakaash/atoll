@@ -152,8 +152,9 @@ Undo of a repo registration is refused while a thread uses the repo.
 - Env knobs, for tests and dev: `ATOLL_DATA_DIR` replaces `~/Library/Application Support/Atoll`;
   `ATOLL_PROVIDER_PATH` (PATH syntax) is the only place discovery looks; `ATOLL_CLAUDE_PATH` and
   `ATOLL_CODEX_PATH` are the path override until settings are stored.
-- Providers get the parent env minus `ANTHROPIC_*`, `CLAUDE*`, `OPENAI_*` and `CODEX_*`, with PATH
-  set to the discovery folders first.
+- Providers get the parent env minus `ANTHROPIC_*`, `CLAUDE*`, `OPENAI_*`, `CODEX_*` and the user's
+  GitLab and GitHub tokens (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`,
+  `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`), with PATH set to the discovery folders first.
 - Transport: Codex through `codex app-server` (JSON-RPC over stdio). Claude Code as
   `claude -p --input-format stream-json --output-format stream-json`, driven from Go. Copy both
   adapters from old Reef (`agent/codex`, `agent/claude`). *The Claude Agent SDK runs the same CLI
@@ -175,6 +176,11 @@ Undo of a repo registration is refused while a thread uses the repo.
   - Slack (v2): needs a small hosted token exchange. *Its MCP server wants a confidential client;
     desktop PKCE sign-in cannot get bot scopes and expires in 30 days.*
 - The device code stays in server memory, so a sign-in pending at restart is started again.
+- A Bot reaches GitLab and GitHub only through a connection Reef gave it, never through the user's
+  own logins. Every run gets empty CLI configs and cleared credential helpers; only a connection
+  fills them. Concretely, every run gets `GLAB_CONFIG_DIR` and `GH_CONFIG_DIR` set to empty folders
+  Reef owns (`<data dir>/empty/glab`, `<data dir>/empty/gh`) and a git credential helper list cleared
+  through env (`GIT_CONFIG_*`), and loses the token variables above. `HOME` stays the user's.
 - A run with a connected GitLab connection gets `OAUTH_TOKEN`, `GITLAB_HOST`, `GLAB_CONFIG_DIR` (a
   token-free config marking the host `is_oauth2`) and a git credential helper given only through env
   (`GIT_CONFIG_*`), which clears the user's own helpers. Never `GITLAB_TOKEN`: glab sends it as a
