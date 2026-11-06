@@ -32,6 +32,8 @@ var (
 	// ErrNeedsApp is returned when a server cannot register clients, so it needs an app registered
 	// by hand.
 	ErrNeedsApp = errors.New("this server needs a registered app")
+	// ErrNeedsSetup is returned when a server needs its Client ID saved before it can sign in.
+	ErrNeedsSetup = errors.New("this server needs its Client ID: set it up first")
 	// ErrNeedsSignIn is wrapped when a server's tokens are rejected: the user must sign in again.
 	ErrNeedsSignIn = errors.New("needs sign-in")
 
@@ -61,19 +63,23 @@ type Pending struct {
 }
 
 type metadata struct {
-	AuthorizationEndpoint string `json:"authorization_endpoint"`
-	TokenEndpoint         string `json:"token_endpoint"`
-	RegistrationEndpoint  string `json:"registration_endpoint"`
+	AuthorizationEndpoint string   `json:"authorization_endpoint"`
+	TokenEndpoint         string   `json:"token_endpoint"`
+	RegistrationEndpoint  string   `json:"registration_endpoint"`
+	Scopes                []string `json:"-"` // scopes_supported of the resource metadata
 }
 
 // Begin starts the sign-in of s: it finds the server's authorization server, registers a client
-// whose redirect is redirect, and returns the URL the user opens to allow it.
+// whose redirect is redirect (Slack uses the Client ID the user saved, and asks for its scopes),
+// and returns the URL the user opens to allow it.
 func Begin(ctx context.Context, c *http.Client, s store.MCPServer, redirect string) (Pending, error) {
 	switch s.Status {
 	case "":
 		return Pending{}, invalid(s.Name + " needs no sign-in")
 	case store.MCPNeedsApp:
 		return Pending{}, ErrNeedsApp
+	case store.MCPNeedsSetup:
+		return Pending{}, ErrNeedsSetup
 	}
 	meta, err := discover(ctx, c, s.URL)
 	if errors.Is(err, errNoSignIn) {
@@ -82,12 +88,17 @@ func Begin(ctx context.Context, c *http.Client, s store.MCPServer, redirect stri
 	if err != nil {
 		return Pending{}, fmt.Errorf("find sign-in of %s: %w", s.Name, err)
 	}
-	if meta.RegistrationEndpoint == "" {
+	var clientID string
+	switch {
+	case s.ID == SlackID:
+		clientID, err = savedClientID(s.ID)
+	case meta.RegistrationEndpoint == "":
 		return Pending{}, ErrNeedsApp
+	default:
+		clientID, err = register(ctx, c, meta.RegistrationEndpoint, redirect)
 	}
-	clientID, err := register(ctx, c, meta.RegistrationEndpoint, redirect)
 	if err != nil {
-		return Pending{}, fmt.Errorf("register with %s: %w", s.Name, err)
+		return Pending{}, fmt.Errorf("client of %s: %w", s.Name, err)
 	}
 	verifier, state := randomText(), randomText()
 	sum := sha256.Sum256([]byte(verifier))
@@ -103,6 +114,9 @@ func Begin(ctx context.Context, c *http.Client, s store.MCPServer, redirect stri
 	q.Set("code_challenge_method", "S256")
 	q.Set("state", state)
 	q.Set("resource", s.URL)
+	if s.ID == SlackID {
+		q.Set("scope", strings.Join(meta.Scopes, " "))
+	}
 	u.RawQuery = q.Encode()
 	return Pending{
 		Server: s, State: state, AuthorizeURL: u.String(), Verifier: verifier, ClientID: clientID,
@@ -214,6 +228,7 @@ func discover(ctx context.Context, c *http.Client, serverURL string) (metadata, 
 	}
 	var resource struct {
 		AuthorizationServers []string `json:"authorization_servers"`
+		ScopesSupported      []string `json:"scopes_supported"`
 	}
 	if err := getJSON(ctx, c, found[1], &resource); err != nil {
 		return metadata{}, err
@@ -228,6 +243,7 @@ func discover(ctx context.Context, c *http.Client, serverURL string) (metadata, 
 	wellKnown := issuer.Scheme + "://" + issuer.Host + "/.well-known/oauth-authorization-server" +
 		strings.TrimRight(issuer.Path, "/")
 	var meta metadata
+	meta.Scopes = resource.ScopesSupported
 	return meta, getJSON(ctx, c, wellKnown, &meta)
 }
 
@@ -267,9 +283,17 @@ func postToken(ctx context.Context, c *http.Client, endpoint string, form url.Va
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
 		ExpiresIn    int    `json:"expires_in"`
+		OK           *bool  `json:"ok"` // Slack answers a rejection with HTTP 200 and ok false
+		Error        string `json:"error"`
 	}
 	if err := doJSON(c, req, &reply); err != nil {
 		return Tokens{}, err
+	}
+	if reply.OK != nil && !*reply.OK {
+		if reply.Error == "invalid_refresh_token" || reply.Error == errInvalidGrant.Error() {
+			return Tokens{}, errInvalidGrant
+		}
+		return Tokens{}, fmt.Errorf("%s rejected the request: %s", req.URL.Host, reply.Error)
 	}
 	if reply.AccessToken == "" {
 		return Tokens{}, errors.New("token reply has no access_token")

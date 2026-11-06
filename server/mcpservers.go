@@ -67,8 +67,11 @@ func (a *api) connectMCPServer(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	redirect := "http://127.0.0.1:" + localPort(r) + "/oauth/callback"
-	p, err := mcpserver.Begin(r.Context(), a.http, s, redirect)
+	p, err := mcpserver.Begin(r.Context(), a.http, s, redirectURI(r))
+	if errors.Is(err, mcpserver.ErrNeedsSetup) {
+		fail(w, http.StatusConflict, err.Error())
+		return
+	}
 	if errors.Is(err, mcpserver.ErrNeedsApp) {
 		if s.Status != store.MCPNeedsApp {
 			if err := a.st.SetMCPSignIn(r.Context(), s.ID, store.MCPNeedsApp); err != nil {
