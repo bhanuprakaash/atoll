@@ -106,6 +106,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 			return launch(ctx, name)
 		},
 		Available:    providers.available,
+		SignedOut:    func(name string) { providers.setAvailable(name, false) },
 		MCPURL:       url + server.MCPPath,
 		DataDir:      data,
 		WorktreeRoot: filepath.Join(home, "Reef", "worktrees"),

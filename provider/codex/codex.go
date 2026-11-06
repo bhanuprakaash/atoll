@@ -75,7 +75,8 @@ type (
 		Turn       struct {
 			Status string `json:"status"`
 			Error  *struct {
-				Message string `json:"message"`
+				Message        string `json:"message"`
+				CodexErrorInfo any    `json:"codexErrorInfo"`
 			} `json:"error"`
 		} `json:"turn"`
 	}
@@ -491,11 +492,11 @@ func (m message) event() (ev provider.Event, ok bool) {
 	case m.Method == "item/started":
 		return toolCall(p.Item)
 	case m.Method == "turn/completed" && p.Turn.Status != "completed":
-		msg := "turn " + p.Turn.Status
+		msg, signedOut := "turn "+p.Turn.Status, false
 		if p.Turn.Error != nil {
-			msg = p.Turn.Error.Message
+			msg, signedOut = p.Turn.Error.Message, p.Turn.Error.CodexErrorInfo == "unauthorized"
 		}
-		return provider.Event{Kind: provider.KindError, Text: msg}, true
+		return provider.Event{Kind: provider.KindError, Text: msg, SignedOut: signedOut}, true
 	case m.Method == "turn/completed":
 		return provider.Event{Kind: provider.KindTurnEnd}, true
 	}

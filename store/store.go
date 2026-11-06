@@ -50,6 +50,9 @@ const (
 	StatusFailed  = "failed"
 )
 
+// ErrorSignedOut is the error kind of a run that failed because its provider is signed out.
+const ErrorSignedOut = "signed_out"
+
 // KindGitLab is the kind of a GitLab connection.
 const KindGitLab = "gitlab"
 
@@ -147,6 +150,7 @@ type (
 		Status     string         `json:"status"`
 		Reply      string         `json:"reply"`
 		Error      string         `json:"error"`
+		ErrorKind  string         `json:"error_kind"`
 		Report     *Report        `json:"report"`
 		StartedAt  time.Time      `json:"started_at"`
 		FinishedAt time.Time      `json:"finished_at"`
@@ -595,8 +599,8 @@ func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 	var started, finished int64
 	var tools string
 	err := s.db.QueryRowContext(ctx,
-		"SELECT id, thread_id, status, reply, error, report, started_at, finished_at, tools FROM runs WHERE id = ?", id).
-		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &report, &started, &finished, &tools)
+		"SELECT id, thread_id, status, reply, error, error_kind, report, started_at, finished_at, tools FROM runs WHERE id = ?", id).
+		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &r.ErrorKind, &report, &started, &finished, &tools)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("run %s: %w", id, ErrNotFound)
 	}
@@ -659,9 +663,9 @@ func (s *Store) SetReport(ctx context.Context, runID string, r Report) error {
 	return found(res, "run", runID)
 }
 
-// FinishRun ends a run as done with reply, or as failed with errText. A non-empty reply also
-// becomes the thread's bot message, in the same transaction.
-func (s *Store) FinishRun(ctx context.Context, runID, status, reply, errText string) error {
+// FinishRun ends a run as done with reply, or as failed with errText and its errKind. A non-empty
+// reply also becomes the thread's bot message, in the same transaction.
+func (s *Store) FinishRun(ctx context.Context, runID, status, reply, errText, errKind string) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		var threadID string
 		err := tx.QueryRowContext(ctx, "SELECT thread_id FROM runs WHERE id = ?", runID).
@@ -673,8 +677,8 @@ func (s *Store) FinishRun(ctx context.Context, runID, status, reply, errText str
 			return fmt.Errorf("read run %s: %w", runID, err)
 		}
 		_, err = tx.ExecContext(ctx,
-			"UPDATE runs SET status = ?, reply = ?, error = ?, finished_at = ? WHERE id = ?",
-			status, reply, errText, time.Now().UTC().UnixMicro(), runID)
+			"UPDATE runs SET status = ?, reply = ?, error = ?, error_kind = ?, finished_at = ? WHERE id = ?",
+			status, reply, errText, errKind, time.Now().UTC().UnixMicro(), runID)
 		if err != nil {
 			return fmt.Errorf("finish run: %w", err)
 		}

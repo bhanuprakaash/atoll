@@ -329,6 +329,10 @@ Finish
   first open.*
 - Provider sign-in state is cached: checked on start, before each run, on Refresh and when a
   sign-in finishes, never on the sidebar's poll.
+- A run that fails because its provider refused the sign-in (Claude `authentication_failed`, Codex
+  `unauthorized`) is stored with `error_kind: "signed_out"` and marks the provider signed out. The
+  thread shows "Claude sign-in expired" (or Codex) with Sign in again, which runs the provider's
+  sign-in from the thread; Retry then sends the same message.
 - Names: the UI says Reef. Repo, Go module, binary and bundle ID (`dev.atoll.desktop`) say
   `atoll`; app data lives in `~/Library/Application Support/Atoll`. *Runs beside the old Reef;
   rename when it retires.*
