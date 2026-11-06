@@ -119,7 +119,6 @@ func Secrets(s store.MCPServer) (map[string]string, error) {
 	return values, nil
 }
 
-// plan checks in and returns the server it makes next to prev, and the secret values to write.
 func (in Input) plan(prev store.MCPServer) (s store.MCPServer, write map[string]string, err error) {
 	s = store.MCPServer{ID: prev.ID, Name: in.Name, Command: in.Command, Args: in.Args, URL: in.URL}
 	given := in.Headers
@@ -187,7 +186,6 @@ func setNames(s *store.MCPServer, names []string) {
 	}
 }
 
-// secretUser is the OS secret store entry of one secret of s.
 func secretUser(s store.MCPServer, name string) string {
 	kind := "header"
 	if s.Kind == store.MCPLocal {
@@ -205,7 +203,6 @@ func saveSecrets(s store.MCPServer, values map[string]string) error {
 	return nil
 }
 
-// deleteSecrets removes the secrets of s whose names are not in keep.
 func deleteSecrets(s store.MCPServer, keep []string) error {
 	var errs []error
 	for _, name := range secretNames(s) {

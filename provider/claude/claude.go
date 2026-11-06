@@ -320,7 +320,6 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 	return append(args, extra...), nil
 }
 
-// userServer is the --mcp-config entry of a user's server; an empty field is left out.
 func userServer(m provider.UserMCPServer) map[string]any {
 	e := map[string]any{"type": "http", "url": m.URL}
 	if m.Command != "" {

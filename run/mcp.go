@@ -10,8 +10,7 @@ import (
 	"atoll/store"
 )
 
-// mcpServers returns the library servers the Bot picks, with their secrets, as the library stands
-// now. A pick the library no longer has is skipped.
+// mcpServers skips picks the library no longer has.
 func (m *Manager) mcpServers(ctx context.Context, bot store.Bot) ([]provider.UserMCPServer, error) {
 	var out []provider.UserMCPServer
 	for _, id := range bot.MCPServers {

@@ -56,8 +56,7 @@ func (a *api) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// readMCPServer decodes a server request body. The name is the key in a provider's config, where
-// Atoll's own server already has it.
+// The name is a key in a provider's config: Atoll's own server's name is taken.
 func readMCPServer(w http.ResponseWriter, r *http.Request) (mcpserver.Input, bool) {
 	var in mcpserver.Input
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -71,7 +70,6 @@ func readMCPServer(w http.ResponseWriter, r *http.Request) (mcpserver.Input, boo
 	return in, true
 }
 
-// unknownMCPServers is the message for MCP server ids the library lacks, or "" when there are none.
 func (a *api) unknownMCPServers(ctx context.Context, picks []string) (string, error) {
 	if len(picks) == 0 {
 		return "", nil

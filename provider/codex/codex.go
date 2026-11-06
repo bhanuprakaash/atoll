@@ -52,15 +52,13 @@ type (
 		changes  map[string]json.RawMessage
 		notes    map[string]bool // commentary agent message items of the turn; owned by run
 
-		// asks holds each open approval, by event ID.
 		askMu sync.Mutex
 		asks  map[string]ask
 	}
 
-	// ask is an open approval: the raw request id, and whether it is an MCP elicitation, which
-	// answers {action} where the others answer {decision}.
 	ask struct {
-		id          json.RawMessage
+		id json.RawMessage
+		// elicitation: MCP elicitations answer {action}, other requests {decision}.
 		elicitation bool
 	}
 
@@ -577,7 +575,6 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 	return params, nil
 }
 
-// userServer is the config.mcp_servers entry of a user's server; an empty field is left out.
 func userServer(m provider.UserMCPServer) map[string]any {
 	e := map[string]any{"url": m.URL}
 	if m.Command != "" {
