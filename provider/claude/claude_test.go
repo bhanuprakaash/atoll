@@ -109,7 +109,7 @@ func TestSession(t *testing.T) {
 func TestArgv(t *testing.T) {
 	base := []string{
 		"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-		"--include-partial-messages", "--strict-mcp-config", "--settings", `{"disableAllHooks":true}`,
+		"--include-partial-messages", "--strict-mcp-config", "--settings", `{"disableAllHooks":true,"disableBundledSkills":true,"skillOverrides":{"design":"off","doctor":"off","plugin-authoring":"off"}}`,
 	}
 	mcp := []string{
 		"--mcp-config", `{"mcpServers":{"atoll":{"type":"http","url":"http://127.0.0.1:9/mcp/t0k"}}}`,

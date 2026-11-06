@@ -322,16 +322,32 @@ func (m *machine) assertClaudeIsolated(t *testing.T, c *call) {
 			t.Errorf("claude env %s=%q, want %q", k, got, want)
 		}
 	}
-	if !m.claudeHooksDisabled(t, c) {
-		t.Errorf(`claude hooks are on: want "disableAllHooks": true in --settings or in %s; argv %q`,
-			filepath.Join(m.providerDir("claude"), "settings.json"), c.argv)
+	file := filepath.Join(m.providerDir("claude"), "settings.json")
+	if !m.claudeSetting(c, func(s claudeSettings) bool { return s.DisableAllHooks }) {
+		t.Errorf(`claude hooks are on: want "disableAllHooks": true in --settings or in %s; argv %q`, file, c.argv)
+	}
+	if c.env["CLAUDE_CODE_DISABLE_BUNDLED_SKILLS"] != "1" &&
+		!m.claudeSetting(c, func(s claudeSettings) bool { return s.DisableBundledSkills }) {
+		t.Errorf(`claude bundled skills are on: want "disableBundledSkills": true in --settings or in %s, `+
+			`or env CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1; argv %q`, file, c.argv)
+	}
+	for _, name := range []string{"design", "doctor", "plugin-authoring"} {
+		if !m.claudeSetting(c, func(s claudeSettings) bool { return s.SkillOverrides[name] == "off" }) {
+			t.Errorf(`claude bundled skill %q survives disableBundledSkills: want "skillOverrides": {%q: "off"} `+
+				`in --settings or in %s; argv %q`, name, name, file, c.argv)
+		}
 	}
 }
 
-// claudeHooksDisabled reports whether disableAllHooks is true in the --settings claude got (JSON
-// or a file) or in the settings.json of its Atoll folder.
-func (m *machine) claudeHooksDisabled(t *testing.T, c *call) bool {
-	t.Helper()
+type claudeSettings struct {
+	DisableAllHooks      bool              `json:"disableAllHooks"`
+	DisableBundledSkills bool              `json:"disableBundledSkills"`
+	SkillOverrides       map[string]string `json:"skillOverrides"`
+}
+
+// claudeSetting reports whether ok holds for the --settings claude got (JSON or a file) or for
+// the settings.json of its Atoll folder.
+func (m *machine) claudeSetting(c *call, ok func(claudeSettings) bool) bool {
 	var sources [][]byte
 	if v := flagValue(c.argv, "--settings"); strings.HasPrefix(strings.TrimSpace(v), "{") {
 		sources = append(sources, []byte(v))
@@ -342,10 +358,8 @@ func (m *machine) claudeHooksDisabled(t *testing.T, c *call) bool {
 	b, _ := os.ReadFile(filepath.Join(m.providerDir("claude"), "settings.json"))
 	sources = append(sources, b)
 	for _, src := range sources {
-		var s struct {
-			DisableAllHooks bool `json:"disableAllHooks"`
-		}
-		if json.Unmarshal(src, &s) == nil && s.DisableAllHooks {
+		var s claudeSettings
+		if json.Unmarshal(src, &s) == nil && ok(s) {
 			return true
 		}
 	}

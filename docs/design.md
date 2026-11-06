@@ -141,7 +141,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   as T3 Code; Bot sessions stay out of the user's own history.*
 - Every run also sets:
   - Claude Code: `--strict-mcp-config` with only Reef's servers, `ENABLE_CLAUDEAI_MCP_SERVERS=false`,
-    `disableAllHooks`.
+    `disableAllHooks`, `disableBundledSkills` and `skillOverrides` turning off `design`, `doctor`,
+    `plugin-authoring` (the bundled skills that survive `disableBundledSkills`).
   - Codex: `skills.bundled.enabled=false`; plugins, remote plugins and apps off; each skill in
     `~/.agents/skills` disabled by the path of its `SKILL.md`, since a skill's name can differ from
     its folder (Codex finds that folder through `HOME`).
