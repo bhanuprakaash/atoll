@@ -133,3 +133,5 @@ GitLab token refresh extends the Slice 3 contract in [gitlab-refresh-contract.md
 The platform prompt split extends these contracts in [prompt-contract.md](prompt-contract.md).
 
 Importing a local skill extends these contracts in [skill-import-contract.md](skill-import-contract.md).
+
+Skills keeping their scripts, playbooks and references extends these contracts in [skill-files-contract.md](skill-files-contract.md).

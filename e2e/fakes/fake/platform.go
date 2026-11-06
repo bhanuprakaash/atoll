@@ -1,6 +1,7 @@
 package fake
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,9 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 			return "", fmt.Errorf("non-platform guessed create_bot succeeded: %s", text)
 		}
 		return "No platform tools available.", nil
+	}
+	if mode == "skill-import" && !c.Tools["create_bot"] {
+		return deniedImport(c)
 	}
 	want := PlatformTools()
 	if mode == "read" || mode == "bots" {
@@ -155,6 +159,9 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 	if mode == "import" {
 		return importAgent(call, prompt)
 	}
+	if mode == "skill-import" {
+		return importSkill(c, raw, prompt)
+	}
 	if mode == "edit" {
 		_, id, _ := strings.Cut(prompt, "bot_id=")
 		fields := strings.Fields(id)
@@ -253,6 +260,84 @@ func importAgent(call func(string, any) (map[string]any, error), prompt string) 
 		return "", fmt.Errorf("create_bot result: %v", out)
 	}
 	return "Imported " + strings.Join(names, ", ") + " and created " + name + ".", nil
+}
+
+// deniedImport is a Bot without the platform switch guessing import_skill: it must not be listed
+// and the call must fail.
+func deniedImport(c *MCP) (string, error) {
+	if c.Tools["import_skill"] {
+		return "", fmt.Errorf("non-platform Bot received import_skill")
+	}
+	if text, bad, err := c.Call("import_skill", json.RawMessage(`{"path":"/"}`)); err == nil && !bad {
+		return "", fmt.Errorf("non-platform guessed import_skill succeeded: %s", text)
+	}
+	return "import_skill denied.", nil
+}
+
+// importSkill imports the folder the prompt names after "the skill folder " with import_skill,
+// sending replace when the user says "Yes, replace". The reply is a sentence naming the status
+// and what was skipped, or what the user must confirm, then the result as one line of JSON.
+func importSkill(c *MCP, raw func(string, any) (string, error), prompt string) (string, error) {
+	_, rest, ok := strings.Cut(prompt, "the skill folder ")
+	fields := strings.Fields(rest)
+	if !ok || len(fields) == 0 {
+		return "", fmt.Errorf("import scenario requires the skill folder <path>")
+	}
+	args := map[string]any{"path": fields[0]}
+	if strings.Contains(prompt, "Yes, replace") {
+		args["replace"] = true
+	}
+	if !c.Tools["import_skill"] {
+		return "", fmt.Errorf("platform tool missing: import_skill")
+	}
+	for name := range args {
+		if !slices.Contains(c.Params["import_skill"], name) {
+			return "", fmt.Errorf("import_skill declares no %q parameter: %q", name, c.Params["import_skill"])
+		}
+	}
+	text, err := raw("import_skill", args)
+	if err != nil {
+		return "", err
+	}
+	var res struct {
+		Status  string   `json:"status"`
+		Added   []string `json:"added"`
+		Changed []string `json:"changed"`
+		Removed []string `json:"removed"`
+		Skipped []struct {
+			Path   string `json:"path"`
+			Reason string `json:"reason"`
+		} `json:"skipped"`
+		Skill struct {
+			Name string `json:"name"`
+		} `json:"skill"`
+		Warning string `json:"warning"`
+	}
+	if err := json.Unmarshal([]byte(text), &res); err != nil {
+		return "", fmt.Errorf("import_skill result %q: %w", text, err)
+	}
+	list := func(items []string) string {
+		if len(items) == 0 {
+			return "none"
+		}
+		return strings.Join(items, ", ")
+	}
+	var summary string
+	if res.Status == "confirm" {
+		summary = fmt.Sprintf("Import needs confirmation: %s Added: %s. Changed: %s. Removed: %s.",
+			res.Warning, list(res.Added), list(res.Changed), list(res.Removed))
+	} else {
+		skipped := make([]string, 0, len(res.Skipped))
+		for _, s := range res.Skipped {
+			skipped = append(skipped, s.Path+" ("+s.Reason+")")
+		}
+		summary = fmt.Sprintf("Import %s: %s. Skipped: %s.", res.Status, res.Skill.Name, list(skipped))
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, []byte(text)); err != nil {
+		return "", err
+	}
+	return strings.Join(strings.Fields(summary), " ") + "\n" + compact.String(), nil
 }
 
 // callOne makes the one call the prompt names after "Call a platform tool. " as
