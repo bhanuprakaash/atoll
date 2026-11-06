@@ -137,8 +137,9 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 		thread, threadErr := m.cfg.Store.Thread(ctx, a.threadID)
 		if threadErr == nil && thread.RepoID != "" {
 			if rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID); repoErr == nil {
-				env, _ := m.runEnv(ctx, a.bot)
-				_, title, _ = m.mrState(rp.Path, url, env)
+				if env, envErr := m.runEnv(ctx, a.bot); envErr == nil {
+					_, title, _ = m.mrState(rp.Path, url, env)
+				}
 			}
 		}
 	}
@@ -284,9 +285,13 @@ func (m *Manager) threadDir(threadID string) string {
 
 // runEnv is the environment of every run and of the CLIs Reef starts for a Bot: empty glab and gh
 // config folders, so neither CLI finds the user's own login, and a cleared git credential helper
-// list, followed by what the Bot's connections add. Only a connection fills these.
+// list, and no ssh key, agent or config, followed by what the Bot's connections add. Only a
+// connection fills these.
 func (m *Manager) runEnv(ctx context.Context, b store.Bot) ([]string, error) {
-	env := []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0="}
+	env := []string{
+		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
+		"GIT_SSH_COMMAND=ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityFile=/dev/null -o IdentityAgent=none",
+	}
 	for _, cli := range []struct{ name, file string }{{"glab", "config.yml"}, {"gh", "hosts.yml"}} {
 		dir := filepath.Join(m.cfg.DataDir, "empty", cli.name)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -303,8 +308,8 @@ func (m *Manager) runEnv(ctx context.Context, b store.Bot) ([]string, error) {
 
 // gitlabEnv is the environment that lets git and glab act as the Bot's first connected GitLab
 // connection: the token as OAUTH_TOKEN with a glab config marking the host OAuth, and a git
-// credential helper that passes it. It is empty when the
-// Bot has none. The token goes only into the environment.
+// credential helper that passes it, and a rewrite of the host's SSH remotes to HTTPS. It is empty
+// when the Bot has none. The token goes only into the environment.
 func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, error) {
 	for _, id := range b.Connections {
 		c, err := m.cfg.Store.Connection(ctx, id)
@@ -331,16 +336,25 @@ func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, error) 
 		if err != nil {
 			return nil, err
 		}
+		u, err := url.Parse(c.InstanceURL)
+		if err != nil {
+			return nil, fmt.Errorf("instance URL %q: %w", c.InstanceURL, err)
+		}
+		rewrite := "url." + strings.TrimRight(c.InstanceURL, "/") + "/.insteadOf"
 		return []string{
 			"OAUTH_TOKEN=" + token,
 			"GLAB_CONFIG_DIR=" + dir,
 			"GITLAB_HOST=" + c.InstanceURL,
-			"GIT_CONFIG_COUNT=2",
+			"GIT_CONFIG_COUNT=4",
 			"GIT_CONFIG_KEY_0=credential.helper",
 			"GIT_CONFIG_VALUE_0=",
 			"GIT_CONFIG_KEY_1=credential." + c.InstanceURL + ".helper",
 			`GIT_CONFIG_VALUE_1=!f() { test "$1" = get && echo username=oauth2 && ` +
 				`echo "password=$OAUTH_TOKEN"; }; f`,
+			"GIT_CONFIG_KEY_2=" + rewrite,
+			"GIT_CONFIG_VALUE_2=git@" + u.Hostname() + ":",
+			"GIT_CONFIG_KEY_3=" + rewrite,
+			"GIT_CONFIG_VALUE_3=ssh://git@" + u.Hostname() + "/",
 		}, nil
 	}
 	return nil, nil
