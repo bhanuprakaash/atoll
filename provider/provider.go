@@ -13,8 +13,7 @@ import (
 
 // Atoll's own MCP server, as every provider's config names it, and its tools.
 const (
-	MCPServer = "atoll"
-	// GitHubMCPServer is the name of GitHub's MCP server in a run's config.
+	MCPServer       = "atoll"
 	GitHubMCPServer = "github"
 	// ToolFinishRun takes the run's report: {done, tried, blocked, next}.
 	ToolFinishRun = "finish_run"
@@ -77,8 +76,7 @@ type Config struct {
 	// MCPURL is Atoll's MCP server for this run. Empty runs without it, and without approvals:
 	// nobody is there to answer them.
 	MCPURL string
-	// GitHubMCPURL and GitHubToken are GitHub's MCP server and the bearer token it takes. Empty
-	// URL runs without it.
+	// Empty GitHubMCPURL runs without GitHub's MCP server.
 	GitHubMCPURL string
 	GitHubToken  string
 	// SkillDir is the absolute root of this run's skill copies. Empty runs without them.
@@ -123,7 +121,8 @@ type Event struct {
 // Env returns the parent environment without the variables that carry a provider's credentials or
 // session state (ANTHROPIC_*, CLAUDE*, OPENAI_*, CODEX_*) or the user's own GitLab and GitHub
 // tokens (GITLAB_TOKEN, GITLAB_ACCESS_TOKEN, GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN,
-// GITHUB_ENTERPRISE_TOKEN: the CLIs would prefer them to a Bot's own login), followed by kv.
+// GITHUB_ENTERPRISE_TOKEN: the CLIs would prefer them to a Bot's own login), the settings that
+// carry a login (OAUTH_TOKEN, GITLAB_HOST, GIT_CONFIG_PARAMETERS, SSH_AUTH_SOCK), followed by kv.
 func Env(kv ...string) []string {
 	var env []string
 	for _, e := range os.Environ() {
@@ -138,4 +137,5 @@ func Env(kv ...string) []string {
 
 var _loginTokens = []string{
 	"GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+	"OAUTH_TOKEN", "GITLAB_HOST", "GIT_CONFIG_PARAMETERS", "SSH_AUTH_SOCK",
 }
