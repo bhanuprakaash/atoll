@@ -172,7 +172,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   sign-in feeds both the service's MCP server and its CLI (`OAUTH_TOKEN` for `glab`, `GH_TOKEN`).
   - GitLab (v1): OAuth device flow, instance URL (default gitlab.com); Bots use `glab`. *GitLab's own
     MCP server is beta and needs Premium/Ultimate plus Duo.*
-  - GitHub (v2): hosted MCP server `api.githubcopilot.com/mcp/`.
+  - GitHub (v1): OAuth device flow on github.com only (no Enterprise), through Reef's own OAuth App:
+    client ID `Ov23li5N8B8tlXHi1Rza`, public, no secret, scopes `repo read:org workflow`. Bots use
+    `gh`, git and GitHub's hosted MCP server `api.githubcopilot.com/mcp/`.
   - Slack (v2): needs a small hosted token exchange. *Its MCP server wants a confidential client;
     desktop PKCE sign-in cannot get bot scopes and expires in 30 days.*
 - The device code stays in server memory, so a sign-in pending at restart is started again.
@@ -186,6 +188,21 @@ Undo of a repo registration is refused while a thread uses the repo.
   (`GIT_CONFIG_*`), which clears the user's own helpers. Never `GITLAB_TOKEN`: glab sends it as a
   personal access token, which an OAuth token is not; the user's own is dropped from the env. The
   token is never written to a file or log.
+- A run with a connected GitHub connection gets `GH_TOKEN` (never `GITHUB_TOKEN` or the Enterprise
+  variables), a git credential helper scoped to `https://github.com` that answers
+  `x-access-token` with the token, and a `github` entry in its MCP config next to Reef's own: the
+  hosted server's URL with `Authorization: Bearer <token>` (Claude `--mcp-config` headers, Codex
+  `mcp_servers.github.http_headers`). The GitHub tools are not asked about: the user gave the Bot
+  the connection. A Bot with GitLab and GitHub gets both helpers, in one `GIT_CONFIG_*` list after
+  the clearing entry. The token is never written to a file or log. `ATOLL_GITHUB_URL` and
+  `ATOLL_GITHUB_MCP_URL` replace the real URLs for tests.
+- Settings > Connections has a GitHub card ("Bots get gh, git and GitHub tools."). Connect GitHub
+  starts the device flow, opens `github.com/login/device` and shows the code; a connection that
+  needs sign-in offers Sign in again.
+- A GitHub token has no refresh and no expiry. Before a run uses one, `GET /user` must accept it;
+  a 401 marks that connection `needs_sign_in`, the run stops before the provider starts with
+  "GitHub needs sign-in", and signing in again keeps the connection and its Bots. The OS secret
+  store holds the bare token under `github:<connection id>`.
 - GitLab OAuth records include the refresh token and expiry in the secret store. Before a run uses
   one, it refreshes a token that expires within ten minutes. A rejected refresh marks that connection
   `needs_sign_in`; the run stops before the provider starts, and signing in again keeps the connection.
@@ -291,7 +308,7 @@ Reef guide
 - A Bot has a persona, model, skills, connections, repo access, look, platform switch. A thread is a chat; each message is a run.
 - Repos are registered once. A thread works in one repo, in its own worktree.
 - Providers are Claude Code and Codex, signed in from Settings > Providers.
-- A connection is a signed-in service (GitLab) whose token Reef holds and gives a Bot's CLI or MCP server. MCP is how tools reach a Bot: Reef serves its own tools (memory, finish_run, platform) over MCP. Bots never see the provider's own MCP servers. Importing MCP servers is not supported.
+- A connection is a signed-in service (GitLab, GitHub) whose token Reef holds and gives a Bot's CLI or MCP. MCP is how tools reach a Bot: Reef serves its own tools (memory, finish_run, platform) over MCP. Bots never see the provider's own MCP servers. Importing MCP servers is not supported.
 - A skill is a folder (SKILL.md plus text files) in one library, picked per Bot.
 - Memory: decisions and findings Bots save, per user, repo or Bot.
 - Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
@@ -450,13 +467,13 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 | Bots | Create and edit; Chief with platform tools |
 | Threads | Chat, runs, resume, `finish_run`, live tool calls, approvals in the thread |
 | Repos | Register, worktree per thread, MR via `glab` |
-| Connections | GitLab |
+| Connections | GitLab, GitHub |
 | Skills | Library, picked per Bot |
 | Memory | Three scopes, four tools, saves shown in the thread |
 
 ## Queue
 
-Delegation, GitHub and Slack connections, browser pane, background processes pane, the platform
+Delegation, the Slack connection, browser pane, background processes pane, the platform
 switch for Bots other than Chief, importing MCP servers, a skill's binary files, desktop Linux, mobile,
 memory pins (up to about 5 items always in the prompt), routines (scheduled, repeating runs),
 more provider adapters.
