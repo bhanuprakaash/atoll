@@ -10,6 +10,7 @@ import {
 } from '@/components/settings-ui';
 import { TextArea, TextField } from '@/components/text-field';
 import {
+  useConnectMcpServer,
   useMcpServers,
   useRemoveMcpServer,
   useSaveMcpServer,
@@ -188,14 +189,58 @@ function ServerDialog({
   );
 }
 
+const statusText = {
+  not_connected: 'Not connected',
+  connected: 'Connected',
+  needs_sign_in: 'Needs sign-in',
+  needs_app: 'This server needs a registered app',
+};
+
+function SignInStatus({ server }: { server: McpServer }) {
+  return (
+    server.status && (
+      <i className="block text-[12.5px] not-italic text-muted">{statusText[server.status]}</i>
+    )
+  );
+}
+
+function SignInButton({ server, onClick }: { server: McpServer; onClick: () => void }) {
+  const label =
+    server.status === 'not_connected'
+      ? 'Connect'
+      : server.status === 'needs_sign_in'
+        ? 'Sign in again'
+        : undefined;
+  return (
+    label && (
+      <button type="button" className={solidButton} onClick={onClick}>
+        {label}
+      </button>
+    )
+  );
+}
+
 function runs(s: McpServer) {
   return s.kind === 'local' ? [s.command, ...(s.args ?? [])].join(' ') : s.url;
 }
 
 export function McpServersSettings() {
   const [dialog, setDialog] = useState<{ kind: 'local' | 'remote'; server?: McpServer }>();
-  const { data: servers = [] } = useMcpServers();
+  const [waiting, setWaiting] = useState<McpServer>();
+  const connect = useConnectMcpServer();
   const remove = useRemoveMcpServer();
+  const { data: servers = [] } = useMcpServers(waiting);
+  const signIn = (s: McpServer) => {
+    // The popup opens inside the click, before the authorize URL is known, so it is not blocked.
+    const popup = window.open('about:blank', '_blank');
+    setWaiting(s);
+    connect.mutate(s.id, {
+      onSuccess: ({ authorize_url }) => {
+        if (popup) popup.location.href = authorize_url;
+      },
+      onError: () => popup?.close(),
+    });
+  };
   const catalog = servers.filter((s) => s.kind === 'catalog');
   const own = servers.filter((s) => s.kind !== 'catalog');
   return (
@@ -222,7 +267,10 @@ export function McpServersSettings() {
             <Tile>
               <ServerIcon />
             </Tile>
-            <RowText title={s.name} detail={runs(s)} mono />
+            <RowText title={s.name} detail={runs(s)} mono>
+              <SignInStatus server={s} />
+            </RowText>
+            <SignInButton server={s} onClick={() => signIn(s)} />
           </li>
         ))}
       </ul>
@@ -242,7 +290,9 @@ export function McpServersSettings() {
                       {s.kind === 'local' ? 'Env' : 'Headers'}: {names.join(', ')}
                     </i>
                   )}
+                  <SignInStatus server={s} />
                 </RowText>
+                <SignInButton server={s} onClick={() => signIn(s)} />
                 <button
                   type="button"
                   className={outlineButton}
@@ -267,6 +317,7 @@ export function McpServersSettings() {
       ) : (
         <p className="text-[13.5px] text-muted">No servers of your own yet.</p>
       )}
+      {connect.isError && <p className="text-sm text-danger">{connect.error.message}</p>}
       {remove.isError && <p className="text-sm text-danger">{remove.error.message}</p>}
       {dialog && (
         <ServerDialog
