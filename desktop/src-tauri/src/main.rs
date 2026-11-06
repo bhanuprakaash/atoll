@@ -66,18 +66,36 @@ fn main() {
                 let mut navigated = false;
                 while !quitting.load(Ordering::SeqCst) {
                     match Command::new(&binary)
-                        .args(["serve", "--addr", "127.0.0.1:4317"])
+                        .args([
+                            "serve",
+                            "--addr",
+                            "127.0.0.1:4317",
+                            "--exit-on-stdin-close",
+                        ])
+                        .stdin(Stdio::piped())
                         .stdout(Stdio::piped())
-                        .stderr(Stdio::inherit())
+                        .stderr(Stdio::piped())
                         .spawn()
                     {
                         Ok(mut child) => {
+                            let _stdin = child.stdin.take().expect("piped stdin");
                             let stdout = child.stdout.take().expect("piped stdout");
-                            let (tx, rx) = std::sync::mpsc::channel();
-                            thread::spawn(move || {
+                            let stderr = child.stderr.take().expect("piped stderr");
+                            let (url_tx, url_rx) = std::sync::mpsc::channel();
+                            let stdout_thread = thread::spawn(move || {
                                 for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                                     if let Some(url) = line.strip_prefix("listening on ") {
-                                        let _ = tx.send(url.to_owned());
+                                        let _ = url_tx.send(url.to_owned());
+                                    }
+                                }
+                            });
+                            let (port_error_tx, port_error_rx) = std::sync::mpsc::channel();
+                            let stderr_thread = thread::spawn(move || {
+                                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                                    if line.contains("127.0.0.1:4317 is in use by another program") {
+                                        let _ = port_error_tx.send(());
+                                    } else {
+                                        eprintln!("sidecar: {line}");
                                     }
                                 }
                             });
@@ -85,10 +103,12 @@ fn main() {
                                 if quitting.load(Ordering::SeqCst) {
                                     let _ = child.kill();
                                     let _ = child.wait();
+                                    let _ = stdout_thread.join();
+                                    let _ = stderr_thread.join();
                                     return;
                                 }
                                 if !navigated {
-                                    if let Ok(url) = rx.try_recv() {
+                                    if let Ok(url) = url_rx.try_recv() {
                                         match url.parse() {
                                             Ok(url) => match window.navigate(url) {
                                                 Ok(()) => navigated = true,
@@ -101,12 +121,20 @@ fn main() {
                                 match child.try_wait() {
                                     Ok(Some(status)) => {
                                         eprintln!("sidecar exited: {status}");
+                                        let _ = stdout_thread.join();
+                                        let _ = stderr_thread.join();
+                                        if port_error_rx.try_recv().is_ok() {
+                                            show_port_error(&window);
+                                            return;
+                                        }
                                         break;
                                     }
                                     Err(err) => {
                                         eprintln!("wait for sidecar: {err}");
                                         let _ = child.kill();
                                         let _ = child.wait();
+                                        let _ = stdout_thread.join();
+                                        let _ = stderr_thread.join();
                                         break;
                                     }
                                     Ok(None) => thread::sleep(Duration::from_millis(100)),
@@ -138,4 +166,11 @@ fn main() {
                 }
             }
         });
+}
+
+fn show_port_error(window: &tauri::WebviewWindow) {
+    let script = r#"document.documentElement.innerHTML = '<head><title>Reef</title></head><body style="background:#131313;color:#fff;font:16px system-ui;padding:48px"><h1>Reef can’t start</h1><p>Port 4317 is in use by another program.</p></body>';"#;
+    if let Err(err) = window.eval(script) {
+        eprintln!("show port error: {err}");
+    }
 }

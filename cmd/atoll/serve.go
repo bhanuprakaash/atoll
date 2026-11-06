@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"atoll/memory"
@@ -30,8 +31,18 @@ const (
 func serve(ctx context.Context, args []string, w io.Writer) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:4317", "address to listen on")
+	exitOnStdinClose := fs.Bool("exit-on-stdin-close", false, "stop when standard input closes")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
 		return usage()
+	}
+	if *exitOnStdinClose {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		go func() {
+			_, _ = io.Copy(io.Discard, os.Stdin)
+			cancel()
+		}()
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	data, err := dataDir()
@@ -75,6 +86,9 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
+		if errors.Is(err, syscall.EADDRINUSE) {
+			return fmt.Errorf("%s is in use by another program: %w", *addr, err)
+		}
 		return err
 	}
 	url := "http://" + ln.Addr().String()
