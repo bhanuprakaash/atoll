@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	// GitHubInstance is the instance_url of every GitHub connection.
+	// GitHubInstance is the instance_url of GitHub connections.
 	GitHubInstance = "https://github.com"
 	// GitHubClientID is Reef's public GitHub OAuth App: device flow, no secret.
 	GitHubClientID = "Ov23li5N8B8tlXHi1Rza"
@@ -24,7 +24,7 @@ const (
 	_githubMCP     = "https://api.githubcopilot.com/mcp/"
 )
 
-// ErrGitHubNeedsSignIn is returned when GitHub rejects a token.
+// ErrGitHubNeedsSignIn is GitHub rejecting the token.
 var ErrGitHubNeedsSignIn = errors.New("GitHub needs sign-in")
 
 // GitHubURL is the base URL of GitHub's sign-in and the one git's credential helper is scoped
@@ -44,7 +44,7 @@ func GitHubMCPURL() string {
 	return _githubMCP
 }
 
-// StartGitHubDevice starts a GitHub OAuth device-flow sign-in.
+// StartGitHubDevice starts the device flow.
 func StartGitHubDevice(ctx context.Context, c *http.Client) (Device, error) {
 	var reply struct {
 		DeviceCode      string `json:"device_code"`
@@ -66,8 +66,7 @@ func StartGitHubDevice(ctx context.Context, c *http.Client) (Device, error) {
 	}, nil
 }
 
-// PollGitHubToken asks once for the access token of the sign-in deviceCode. It returns
-// ErrPending until the user approves.
+// PollGitHubToken returns ErrPending until the user approves.
 func PollGitHubToken(ctx context.Context, c *http.Client, deviceCode string) (string, error) {
 	var reply struct {
 		AccessToken string `json:"access_token"`
@@ -85,8 +84,7 @@ func PollGitHubToken(ctx context.Context, c *http.Client, deviceCode string) (st
 	return reply.AccessToken, nil
 }
 
-// CheckGitHubToken asks GitHub who token belongs to. It returns ErrGitHubNeedsSignIn when GitHub
-// rejects it.
+// CheckGitHubToken returns ErrGitHubNeedsSignIn when GitHub rejects the token.
 func CheckGitHubToken(ctx context.Context, c *http.Client, token string) error {
 	api := _githubAPI
 	if u := os.Getenv("ATOLL_GITHUB_URL"); u != "" {
@@ -111,18 +109,17 @@ func CheckGitHubToken(ctx context.Context, c *http.Client, token string) error {
 	return fmt.Errorf("GitHub HTTP status: %d", resp.StatusCode)
 }
 
-// SaveGitHubToken stores the access token of connection id in the OS secret store.
+// SaveGitHubToken stores the token in the OS secret store.
 func SaveGitHubToken(id, token string) error {
 	return keyring.Set("atoll", "github:"+id, token)
 }
 
-// GitHubToken loads the access token of connection id from the OS secret store.
+// GitHubToken loads the token from the OS secret store.
 func GitHubToken(id string) (string, error) {
 	return keyring.Get("atoll", "github:"+id)
 }
 
-// githubPost sends a form to GitHub's sign-in. GitHub answers 200 with an error field, and a
-// form-encoded body unless asked for JSON.
+// GitHub answers 200 with an error field, and form-encoded unless asked for JSON.
 func githubPost(ctx context.Context, c *http.Client, path string, form url.Values, result any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, GitHubURL()+path, strings.NewReader(form.Encode()))
 	if err != nil {

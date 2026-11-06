@@ -161,8 +161,7 @@ func (a *api) startGitLab(w http.ResponseWriter, r *http.Request) {
 	a.writeDevice(w, r, store.KindGitLab, body.InstanceURL, existing, dev)
 }
 
-// startGitHub starts a GitHub device-flow sign-in, for a new connection or, with connection_id,
-// for an existing one.
+// startGitHub takes an optional connection_id to re-sign-in an existing connection.
 func (a *api) startGitHub(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ConnectionID string `json:"connection_id"`
@@ -193,8 +192,6 @@ func (a *api) startGitHub(w http.ResponseWriter, r *http.Request) {
 	a.writeDevice(w, r, store.KindGitHub, connection.GitHubInstance, existing, dev)
 }
 
-// writeDevice keeps the device code of a started sign-in and replies with what the user needs.
-// A new connection is made unless existing is one, which goes back to pending.
 func (a *api) writeDevice(
 	w http.ResponseWriter, r *http.Request, kind, instance string, existing store.Connection, dev connection.Device,
 ) {
@@ -221,8 +218,7 @@ func (a *api) writeDevice(
 	}{c.ID, dev.UserCode, dev.VerificationURI, dev.Interval.Milliseconds()})
 }
 
-// pollConnection asks GitLab or GitHub once whether the user approved the sign-in. On approval
-// the token goes to the OS secret store and no further.
+// pollConnection stores an approved token only in the OS secret store.
 func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 	c, err := a.st.Connection(r.Context(), r.PathValue("id"))
 	if err != nil {
