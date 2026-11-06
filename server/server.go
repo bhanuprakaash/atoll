@@ -40,7 +40,7 @@ type api struct {
 	mem  *memory.Store
 	runs *run.Manager
 	log  *slog.Logger
-	http *http.Client // for GitLab sign-in
+	http *http.Client // for GitLab and GitHub sign-in
 
 	providers Providers // serves /api/providers; nil when there is none
 
@@ -74,6 +74,8 @@ func New(
 	mux.HandleFunc("GET /api/connections", a.listConnections)
 	mux.HandleFunc("POST /api/connections/gitlab/start", a.startGitLab)
 	mux.HandleFunc("POST /api/connections/gitlab", a.startGitLab)
+	mux.HandleFunc("POST /api/connections/github/start", a.startGitHub)
+	mux.HandleFunc("POST /api/connections/github", a.startGitHub)
 	mux.HandleFunc("POST /api/connections/{id}/poll", a.pollConnection)
 	mux.HandleFunc("GET /api/connections/{id}", a.getConnection)
 	mux.HandleFunc("POST /api/bots", a.createBot)

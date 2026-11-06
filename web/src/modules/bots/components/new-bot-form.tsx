@@ -21,6 +21,7 @@ export type Choices = {
   skills: { id: string; name: string }[];
   connections: {
     id: string;
+    kind: 'gitlab' | 'github';
     instance_url: string;
     status: 'pending' | 'connected' | 'needs_sign_in';
   }[];

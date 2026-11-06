@@ -377,9 +377,10 @@ func (s *Session) serverRequest(m message) bool {
 	case "item/fileChange/requestApproval":
 		name = "fileChange"
 	case "mcpServer/elicitation/request":
-		// Codex asks before every MCP tool call; Atoll's own tools never reach the user.
+		// Codex asks before every MCP tool call; Atoll's own tools and the GitHub tools of a
+		// connection the user gave the Bot never reach the user.
 		action := "decline"
-		if m.body().ServerName == provider.MCPServer {
+		if name := m.body().ServerName; name == provider.MCPServer || name == provider.GitHubMCPServer {
 			action = "accept"
 		}
 		_ = s.write(map[string]any{"id": m.ID, "result": map[string]any{"action": action}})
@@ -551,9 +552,16 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 		params["developerInstructions"] = cfg.SystemPrompt
 	}
 	if cfg.MCPURL != "" {
-		config["mcp_servers"] = map[string]any{
+		servers := map[string]any{
 			provider.MCPServer: map[string]string{"url": cfg.MCPURL},
 		}
+		if cfg.GitHubMCPURL != "" {
+			servers[provider.GitHubMCPServer] = map[string]any{
+				"url":          cfg.GitHubMCPURL,
+				"http_headers": map[string]string{"Authorization": "Bearer " + cfg.GitHubToken},
+			}
+		}
+		config["mcp_servers"] = servers
 		params["approvalPolicy"] = "on-request"
 		params["sandbox"] = "workspace-write"
 	}

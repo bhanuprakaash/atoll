@@ -3,7 +3,7 @@ import { api } from '@/lib/api-client';
 
 export type Connection = {
   id: string;
-  kind: 'gitlab';
+  kind: 'gitlab' | 'github';
   instance_url: string;
   status: 'pending' | 'connected' | 'needs_sign_in';
 };
@@ -32,12 +32,18 @@ export function useStartGitlab() {
   });
 }
 
+export function useStartGithub() {
+  return useMutation({
+    mutationFn: () => api<DeviceFlow>('/connections/github/start', { method: 'POST' }),
+  });
+}
+
 export function useSignInAgain() {
   return useMutation({
-    mutationFn: (connectionId: string) =>
-      api<DeviceFlow>('/connections/gitlab', {
+    mutationFn: (connection: Pick<Connection, 'id' | 'kind'>) =>
+      api<DeviceFlow>(`/connections/${connection.kind}`, {
         method: 'POST',
-        body: { connection_id: connectionId },
+        body: { connection_id: connection.id },
       }),
   });
 }
