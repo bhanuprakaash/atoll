@@ -51,6 +51,7 @@ func RepoStep(c *MCP, mode, cwd string) (string, error) {
 	if bad {
 		return "", fmt.Errorf("start_work: %s", out)
 	}
+	startWork := out
 	var work struct {
 		Path   string `json:"path"`
 		Branch string `json:"branch"`
@@ -68,7 +69,7 @@ func RepoStep(c *MCP, mode, cwd string) (string, error) {
 		if err := os.WriteFile(filepath.Join(work.Path, "unfinished.txt"), []byte("keep this untracked work\n"), 0o644); err != nil {
 			return "", err
 		}
-		return "Left tracked and untracked edits unfinished.", nil
+		return "Left tracked and untracked edits unfinished.\nstart_work result: " + startWork, nil
 	}
 	for _, args := range [][]string{{"add", "answer.txt"}, {"commit", "-m", "fix: correct seeded answer"}, {"push", "-u", "origin", work.Branch}} {
 		if _, err := git(work.Path, args...); err != nil {
@@ -90,5 +91,5 @@ func RepoStep(c *MCP, mode, cwd string) (string, error) {
 	if bad {
 		return "", fmt.Errorf("track_mr: %s", out)
 	}
-	return "Fixed the seeded bug. " + url, nil
+	return "Fixed the seeded bug. " + url + "\nstart_work result: " + startWork, nil
 }
