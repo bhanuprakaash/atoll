@@ -73,7 +73,7 @@ test("the catalog lists Context7, Notion, Figma and Cloudflare; the hosted ones 
   const items = page
     .getByRole("list", { name: "Catalog" })
     .getByRole("listitem");
-  await expect(items).toHaveCount(4);
+  await expect(items).toHaveCount(5);
   await expect(items.first()).toContainText("Context7");
   await expect(connect(catalogItem(page, "Context7"))).toHaveCount(0);
   for (const [name, url] of [
@@ -154,6 +154,7 @@ test("a server that answers 200 is added without Connect; one with no registrati
     ["Notion", "not_connected"],
     ["Figma", "not_connected"],
     ["Cloudflare", "not_connected"],
+    ["Slack", "needs_setup"],
     ["docs-open", ""],
     ["docs-app", "needs_app"],
   ]);
