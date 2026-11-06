@@ -5,7 +5,13 @@ import { Segmented } from '@/components/segmented';
 import { outlineButton, solidButton } from '@/components/settings-ui';
 import { Switch } from '@/components/switch';
 import { TextArea, TextField } from '@/components/text-field';
-import { useDeleteBot, useUpdateBot, type Bot, type NewBot } from '@/modules/bots/api/bots';
+import {
+  useDeleteBot,
+  usePinBot,
+  useUpdateBot,
+  type Bot,
+  type NewBot,
+} from '@/modules/bots/api/bots';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { ConnectionList } from '@/modules/bots/components/connection-list';
 import { CreatureCarousel } from '@/modules/bots/components/creature-picker';
@@ -35,6 +41,7 @@ export function BotSettings({
   const [connectionIds, setConnectionIds] = useState(bot.connections ?? []);
   const [confirming, setConfirming] = useState(false);
   const update = useUpdateBot(bot.id);
+  const pin = usePinBot(bot.id);
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const mutate = update.mutate;
   const pending = useRef<Record<string, Partial<NewBot>>>({});
@@ -164,6 +171,16 @@ export function BotSettings({
             }}
           />
           {memory}
+          {bot.id !== 'chief' && (
+            <button
+              type="button"
+              aria-pressed={bot.pinned}
+              onClick={() => pin.mutate(!bot.pinned)}
+              className={`self-start rounded-full border border-outline px-3 py-1.5 text-[13.5px] ${bot.pinned ? 'bg-selected' : 'hover:bg-line'}`}
+            >
+              Pin to sidebar
+            </button>
+          )}
           {bot.can_manage_platform && (
             <label className="flex items-center justify-between border-t border-line pt-4 text-sm">
               Manage platform

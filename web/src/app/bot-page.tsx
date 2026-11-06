@@ -33,7 +33,7 @@ export function BotHeader({
       {bot && <Creature look={bot.look} state={bot.state} size={30} />}
       <div className="min-w-0 flex-1">
         <h1 className="text-base">{bot?.name}</h1>
-        <div className="truncate text-xs text-muted">{title}</div>
+        <h2 className="truncate text-xs font-normal text-muted">{title}</h2>
       </div>
       <button
         type="button"

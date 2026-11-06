@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","session_id":"e5249980-178d-4e8c-8829-3c64eb27639f","mcp_servers":[],"model":"claude-haiku-5-5"}
+{"type":"user","message":{"role":"user","content":"Continue waiting for the build to finish."},"session_id":"e5249980-178d-4e8c-8829-3c64eb27639f","isReplay":true}
+{"fake":"hang"}

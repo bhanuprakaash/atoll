@@ -254,14 +254,20 @@ Finish
   platform, it bounces; running a command, it breathes.
 - Sidebar: a search field on top filters Bots by name, `+` beside it; no logo (the user found it
   redundant).
-  One row per Bot (creature, name, latest activity, time), Chief first. `+` opens New Bot; the
+  One row per Bot (creature, name, latest activity, time): Chief first, then pinned Bots in the order
+  pinned, then the rest. Hovering a row shows a pin button; Bot settings has Pin to sidebar; Chief
+  cannot be pinned. The activity line is the live verb while a run works ("Running make build"),
+  "Needs you: ..." while an approval waits, otherwise the first line of the latest reply, at most
+  60 characters cut at a word boundary with "…" when cut. `+` opens New Bot; the
   bottom user row opens Settings. No group chats. A thread's activity time moves when a run
   starts, an approval opens or closes, and a run ends, not on every event. *The sidebar polls
   every 2 s; a write per text delta would cost more than the time is worth.*
 - Bot header: creature, Bot name, thread title, a Threads button and a Bot settings icon. The
   Threads button carries a red count of threads waiting on the user and opens a panel: Needs you
   (and what it waits for), Running (live verb, branch, MR), Recent, then Closed folded; New thread
-  on top. A thread's title is its first message, cut to 40 characters.
+  on top. A thread's title is the first six words of its first message, set when that message is sent
+  and stored, with trailing `.,;:!?` removed from the last word. The user can set a title
+  (`PATCH /api/threads/{id}`), and a user title is never replaced.
 - The chat has no cards. The user's message is the only bubble; the Bot replies in plain text with
   markdown. Everything else is one quiet line with its action inline: approvals (Allow, Deny),
   Chief's changes (Undo, struck through once undone), the branch starting, the worktree cleaned up,
@@ -269,6 +275,9 @@ Finish
   and reconnecting. Chips are the exception: an MR with its live state, a saved memory with its
   kind and Retire (tap opens kind, scope, why and what it replaced), a closed thread. A Bot Chief
   creates gets one card: its creature, name, model, persona, skills, repos, Open and Undo.
+- Messages show their local send time beneath them. The log opens on its newest 50 messages and
+  loads older pages at its top without shifting what the user was reading; a round jump control
+  returns to the latest message when the user has scrolled away.
 - While a run works, one status line shows the Bot, a verb and its target ("Reading
   repo-step.tsx") and the time; never raw tool calls. When it ends, a summary line ("Worked 1m 12s
   · read 4 files, edited 1, ran tests") sits above the reply. Approvals show a short form per tool:

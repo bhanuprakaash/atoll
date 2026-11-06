@@ -47,6 +47,7 @@ type (
 		LastActivity time.Time       `json:"last_activity"`
 		RepoAccess   json.RawMessage `json:"repo_access"`
 		Connections  []string        `json:"connections"`
+		Pinned       bool            `json:"pinned"`
 	}
 
 	threadInfo struct {
@@ -89,10 +90,15 @@ func eventually(t *testing.T, d time.Duration, what string, ok func() bool) {
 	}
 }
 
-// cut40 is a thread title: the first 40 runes of the first message.
-func cut40(s string) string {
-	r := []rune(s)
-	return string(r[:min(len(r), 40)])
+func threadTitle(s string) string {
+	words := strings.Fields(s)
+	if len(words) > 6 {
+		words = words[:6]
+	}
+	if len(words) > 0 {
+		words[len(words)-1] = strings.TrimRight(words[len(words)-1], ".,;:!?")
+	}
+	return strings.Join(words, " ")
 }
 
 func (s *server) providers(t *testing.T) map[string]providerInfo {
@@ -131,8 +137,8 @@ func (s *server) openThread(t *testing.T, botID, text string) threadInfo {
 	var th threadInfo
 	s.do(t, "POST", "/api/bots/"+botID+"/threads", map[string]string{"text": text}, &th, http.StatusCreated)
 	if th.ID == "" || th.BotID != botID || th.Run == nil || th.Run.ID == "" || th.Message == nil ||
-		th.Message.Text != text || th.Message.Role != "user" || th.Title != cut40(text) {
-		t.Fatalf("POST /api/bots/%s/threads {text} returned %+v; want the thread with title %q, its message and run", botID, th, cut40(text))
+		th.Message.Text != text || th.Message.Role != "user" || th.Title != threadTitle(text) {
+		t.Fatalf("POST /api/bots/%s/threads {text} returned %+v; want the thread with title %q, its message and run", botID, th, threadTitle(text))
 	}
 	return th
 }
@@ -357,8 +363,8 @@ func TestThreads_Summary(t *testing.T) {
 			})
 			long := "Привет, это первое сообщение длиннее сорока символов, честно."
 			runes := s.openThread(t, b.ID, long)
-			if runes.Title != cut40(long) {
-				t.Errorf("title %q, want the first 40 runes %q", runes.Title, cut40(long))
+			if runes.Title != threadTitle(long) {
+				t.Errorf("title %q, want the first six words without final punctuation %q", runes.Title, threadTitle(long))
 			}
 
 			var list []threadInfo
@@ -370,7 +376,7 @@ func TestThreads_Summary(t *testing.T) {
 					t.Errorf("thread list not newest activity first at %d: %v after %v", i, th.LastActivity, list[i-1].LastActivity)
 				}
 			}
-			for id, want := range map[string]string{empty.ID: "", waiting.ID: cut40(_writePrompt), done.ID: cut40(_keepPrompt), runes.ID: cut40(long)} {
+			for id, want := range map[string]string{empty.ID: "", waiting.ID: threadTitle(_writePrompt), done.ID: threadTitle(_keepPrompt), runes.ID: threadTitle(long)} {
 				if got, ok := byID[id]; !ok || got.Title != want || got.LastActivity.Before(before) {
 					t.Errorf("listed thread %s: %+v (listed %v); want title %q and last_activity", id, got, ok, want)
 				}
@@ -564,8 +570,8 @@ func TestRestart_ThreadRecovers(t *testing.T) {
 			s = m.serve(t)
 
 			got := s.thread(t, th.ID)
-			if got.RunID != r.ID || got.RunStatus != "failed" || got.Approval != nil || got.Title != cut40(_keepPrompt) {
-				t.Errorf("thread after a restart: %+v; want run %s failed, no approval, title %q", got, r.ID, cut40(_keepPrompt))
+			if got.RunID != r.ID || got.RunStatus != "failed" || got.Approval != nil || got.Title != threadTitle(_keepPrompt) {
+				t.Errorf("thread after a restart: %+v; want run %s failed, no approval, title %q", got, r.ID, threadTitle(_keepPrompt))
 			}
 			var list []threadInfo
 			s.do(t, "GET", "/api/bots/"+b.ID+"/threads", nil, &list, http.StatusOK)

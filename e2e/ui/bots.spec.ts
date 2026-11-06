@@ -26,12 +26,12 @@ test('create a Bot, chat, watch the run work, approve a step', async ({ page }) 
   };
 
   await send(keep);
-  await expect(page.getByText('ok', { exact: true })).toBeVisible();
+  await expect(page.getByRole('log', { name: 'Messages' }).getByText('ok', { exact: true })).toBeVisible();
   await send(ask);
-  await expect(page.getByText('kestrel', { exact: true })).toBeVisible();
+  await expect(page.getByRole('log', { name: 'Messages' }).getByText('kestrel', { exact: true })).toBeVisible();
 
   // The run shows as one working line while it goes, before its reply; never raw tool calls.
-  const reply = page.getByText(/notes\.txt has 3 lines/);
+  const reply = page.getByRole('log', { name: 'Messages' }).getByText(/notes\.txt has 3 lines/);
   await recordText(page);
   await send(tools);
   const working = page.getByRole('log', { name: 'Messages' }).getByRole('status');
@@ -45,6 +45,6 @@ test('create a Bot, chat, watch the run work, approve a step', async ({ page }) 
   await expect(allow).toBeVisible();
   await expect(page.getByRole('button', { name: 'Deny', exact: true })).toBeVisible();
   await allow.click();
-  await expect(page.getByText(/Created .*hello\.txt/)).toBeVisible();
+  await expect(page.getByRole('log', { name: 'Messages' }).getByText(/Created .*hello\.txt/)).toBeVisible();
   await expect(allow).toHaveCount(0);
 });
