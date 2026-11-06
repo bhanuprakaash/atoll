@@ -64,16 +64,24 @@ test('sidebar activity is the reply, the current verb, or the approval prompt', 
   await expect(sidebarRow(page, 'Approval activity')).toContainText('Needs you: Write hello.txt');
 });
 
-test('message times use the pinned today format and muted 12px text', async ({ page }) => {
-  await page.clock.install({ time: new Date('2026-11-06T09:40:00') });
+test('message times show today as H:MM in muted 12px text', async ({ page }) => {
   const bot = await newBotAPI(m, 'Times');
   await page.goto(m.url);
   await sidebarRow(page, 'Times').click();
   await send(page, prompts.keep);
   const times = page.getByTestId('message-time');
   await expect(times).toHaveCount(2);
-  await expect(times.first()).toHaveText('9:40');
-  await expect(times.nth(1)).toHaveText('9:40');
+  const [thread] = await api(m, 'GET', `/api/bots/${bot.id}/threads`);
+  const messages = await api(m, 'GET', `/api/threads/${thread.id}/messages`);
+  const want = await page.evaluate(
+    (stamps: string[]) =>
+      stamps.map((s) => {
+        const d = new Date(s);
+        return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+      }),
+    messages.map((msg: { created_at: string }) => msg.created_at),
+  );
+  await expect(times).toHaveText(want);
   await expect(times.first()).toHaveCSS('font-size', '12px');
   await expect(times.first()).toHaveCSS(
     'color',
