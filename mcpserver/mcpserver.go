@@ -108,8 +108,8 @@ func Add(ctx context.Context, st *store.Store, c *http.Client, in Input) (store.
 	return s, nil
 }
 
-// Replace replaces the user's server id with in. A new URL or kind drops the sign-in, and a remote
-// server left with no headers is asked once whether it needs sign-in.
+// Replace drops the sign-in when the URL or kind changes, and probes a remote server left with no
+// headers.
 func Replace(ctx context.Context, st *store.Store, c *http.Client, id string, in Input) (store.MCPServer, error) {
 	prev, err := st.MCPServer(ctx, id)
 	if err != nil {
@@ -144,8 +144,7 @@ func Replace(ctx context.Context, st *store.Store, c *http.Client, id string, in
 	return s, deleteSecrets(prev, kept)
 }
 
-// Remove deletes the user's server id, its secrets, and every Bot's pick of it. For a catalog
-// server with a sign-in it deletes the tokens and resets the status to not_connected.
+// Remove on a catalog server with a sign-in deletes its tokens and resets its status.
 func Remove(ctx context.Context, st *store.Store, id string) error {
 	if i := slices.IndexFunc(_catalog, func(c store.MCPServer) bool { return c.ID == id }); i >= 0 {
 		if _catalog[i].Status == "" {

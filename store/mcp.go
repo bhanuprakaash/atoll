@@ -26,7 +26,7 @@ type MCPServer struct {
 	URL         string   `json:"url,omitempty"`
 	EnvNames    []string `json:"env_names,omitempty"`
 	HeaderNames []string `json:"header_names,omitempty"`
-	// Status is the sign-in state of a server that needs one; the tokens are in the OS secret store.
+	// Status is empty for a server that needs no sign-in.
 	Status string `json:"status,omitempty"`
 }
 
@@ -76,7 +76,7 @@ func (s *Store) MCPServers(ctx context.Context) ([]MCPServer, error) {
 	return query(ctx, s.db, "SELECT "+_mcpColumns+" FROM mcp_servers ORDER BY rowid", scanMCPServer)
 }
 
-// MCPSignIns returns the sign-in status of each server that has one, by server id.
+// MCPSignIns returns each server's sign-in status by id.
 func (s *Store) MCPSignIns(ctx context.Context) (map[string]string, error) {
 	rows, err := query(ctx, s.db, "SELECT server_id, status FROM mcp_sign_ins",
 		func(r *sql.Rows) ([2]string, error) {
@@ -93,7 +93,7 @@ func (s *Store) MCPSignIns(ctx context.Context) (map[string]string, error) {
 	return out, nil
 }
 
-// SetMCPSignIn sets the sign-in status of the server with id, a catalog entry or the user's own.
+// SetMCPSignIn also takes a catalog id.
 func (s *Store) SetMCPSignIn(ctx context.Context, id, status string) error {
 	_, err := s.db.ExecContext(ctx,
 		"INSERT INTO mcp_sign_ins (server_id, status) VALUES (?1, ?2) "+
@@ -104,7 +104,7 @@ func (s *Store) SetMCPSignIn(ctx context.Context, id, status string) error {
 	return nil
 }
 
-// DeleteMCPSignIn drops the sign-in status of the server with id.
+// DeleteMCPSignIn drops a server's sign-in status.
 func (s *Store) DeleteMCPSignIn(ctx context.Context, id string) error {
 	if _, err := s.db.ExecContext(ctx, "DELETE FROM mcp_sign_ins WHERE server_id = ?", id); err != nil {
 		return fmt.Errorf("delete MCP sign-in: %w", err)

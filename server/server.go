@@ -42,13 +42,13 @@ type api struct {
 	mem  *memory.Store
 	runs *run.Manager
 	log  *slog.Logger
-	http *http.Client // for GitLab and GitHub sign-in
+	http *http.Client
 
 	providers Providers // serves /api/providers; nil when there is none
 
 	mu      sync.Mutex
-	devices map[string]string            // device code of each pending sign-in, by connection id
-	signIns map[string]mcpserver.Pending // MCP sign-ins waiting for Allow, by state
+	devices map[string]string
+	signIns map[string]mcpserver.Pending
 }
 
 // New returns the handler for the API, the MCP tools and the UI. providers, when not nil, serves
