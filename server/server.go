@@ -152,6 +152,15 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "name is required and provider must be claude or codex")
 		return
 	}
+	msg, err := a.unknownRepos(r.Context(), b.RepoAccess)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if msg != "" {
+		fail(w, http.StatusBadRequest, msg)
+		return
+	}
 	if b.Look == "" {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(_looks))))
 		if err != nil {
@@ -160,7 +169,7 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 		}
 		b.Look = _looks[n.Int64()]
 	}
-	b, err := a.st.CreateBot(r.Context(), b)
+	b, err = a.st.CreateBot(r.Context(), b)
 	if err != nil {
 		a.fail(w, r, err)
 		return

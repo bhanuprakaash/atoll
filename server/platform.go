@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -156,6 +157,15 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 	}
 	if json.NewDecoder(r.Body).Decode(&b) != nil || !validBot(b) {
 		fail(w, http.StatusBadRequest, "invalid bot")
+		return
+	}
+	msg, err := a.unknownRepos(r.Context(), b.RepoAccess)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if msg != "" {
+		fail(w, http.StatusBadRequest, msg)
 		return
 	}
 	b.ID = r.PathValue("id")
@@ -431,12 +441,19 @@ func (a *api) platformCall(
 	return a.jsonText(after)
 }
 
-// botChoiceError rejects a look no creature has, and a model the Bot's provider does not list while
+// botChoiceError rejects a look no creature has, a repo id no repo has, and a model the Bot's provider does not list while
 // signed in, unless it is the model the Bot already has.
 func (a *api) botChoiceError(ctx context.Context, b store.Bot, current string) *rpcError {
 	if b.Look != "" && !slices.Contains(_looks, b.Look) {
 		return &rpcError{Code: _invalidParams, Message: fmt.Sprintf(
 			"unknown look %q; looks: %s", b.Look, strings.Join(_looks, ", "))}
+	}
+	msg, err := a.unknownRepos(ctx, b.RepoAccess)
+	if err != nil {
+		return a.toolError(err)
+	}
+	if msg != "" {
+		return &rpcError{Code: _invalidParams, Message: msg}
 	}
 	if b.Model == "" || b.Model == current {
 		return nil
@@ -459,6 +476,35 @@ func (a *api) botChoiceError(ctx context.Context, b store.Bot, current string) *
 			"unknown model %q; models: %s", b.Model, strings.Join(models, ", "))}
 	}
 	return nil
+}
+
+// unknownRepos is the message for repo ids no registered repo has, or "" when there are none.
+func (a *api) unknownRepos(ctx context.Context, access store.RepoAccess) (string, error) {
+	if len(access) == 0 {
+		return "", nil
+	}
+	repos, err := a.st.Repos(ctx)
+	if err != nil {
+		return "", err
+	}
+	ids := make([]string, len(repos))
+	for i, rp := range repos {
+		ids[i] = rp.ID
+	}
+	var unknown []string
+	for _, id := range access {
+		if !slices.Contains(ids, id) {
+			unknown = append(unknown, strconv.Quote(id))
+		}
+	}
+	if len(unknown) == 0 {
+		return "", nil
+	}
+	if len(ids) == 0 {
+		return fmt.Sprintf("unknown repo ids %s; no repos are registered", strings.Join(unknown, ", ")), nil
+	}
+	return fmt.Sprintf("unknown repo ids %s; registered repos: %s",
+		strings.Join(unknown, ", "), strings.Join(ids, ", ")), nil
 }
 
 func (a *api) registerRepo(ctx context.Context, rp store.Repo) (store.Repo, error) {
