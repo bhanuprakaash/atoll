@@ -324,7 +324,7 @@ func (m *Manager) runEnv(ctx context.Context, b store.Bot, github bool) ([]strin
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, "", fmt.Errorf("create empty %s config folder: %w", cli.name, err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, cli.file), nil, 0o600); err != nil {
+		if err := writeFileAtomic(filepath.Join(dir, cli.file), nil); err != nil {
 			return nil, "", fmt.Errorf("write empty %s config: %w", cli.name, err)
 		}
 		env = append(env, strings.ToUpper(cli.name)+"_CONFIG_DIR="+dir)
@@ -468,7 +468,7 @@ func (m *Manager) glabConfig(id, instance string) (string, error) {
 	}
 	body := fmt.Sprintf("hosts:\n  %s:\n    is_oauth2: \"true\"\n    oauth2_expiry_date: %q\n    api_protocol: %s\n    git_protocol: %s\n",
 		u.Host, time.Now().UTC().Add(24*time.Hour).Format(time.RFC3339), u.Scheme, u.Scheme)
-	if err := os.WriteFile(filepath.Join(dir, "config.yml"), []byte(body), 0o600); err != nil {
+	if err := writeFileAtomic(filepath.Join(dir, "config.yml"), []byte(body)); err != nil {
 		return "", fmt.Errorf("write glab config: %w", err)
 	}
 	return dir, nil
@@ -576,4 +576,22 @@ func (m *Manager) mrState(dir, url string, env []string) (string, string, error)
 		return "", "", fmt.Errorf("glab mr view: no state in %q", out)
 	}
 	return mr.State, mr.Title, nil
+}
+
+// writeFileAtomic replaces path in one rename, so a CLI reading the file never sees it half
+// written.
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	_, err = tmp.Write(data)
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
