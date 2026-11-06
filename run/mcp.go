@@ -33,7 +33,7 @@ func (m *Manager) mcpServers(ctx context.Context, bot store.Bot) ([]provider.Use
 		} else {
 			u.Headers = secrets
 		}
-		if s.Kind == store.MCPRemote && (s.Status == store.MCPConnected || s.Status == store.MCPNeedsSignIn) {
+		if s.Kind != store.MCPLocal && (s.Status == store.MCPConnected || s.Status == store.MCPNeedsSignIn) {
 			token, err := mcpserver.Token(ctx, &http.Client{Timeout: 30 * time.Second}, m.cfg.Store, s)
 			if err != nil {
 				return nil, err
