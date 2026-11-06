@@ -67,7 +67,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	if err != nil {
 		chief = store.Bot{
 			ID: "chief", Name: "Chief", Persona: "I help configure Reef.",
-			Provider: chiefProvider(ctx), Look: "jellyfish", CanManagePlatform: true,
+			Provider: chiefProvider(ctx), Look: "jellyfish", CanManagePlatform: true, RepoAccess: []string{},
 		}
 		if _, err := st.EnsureBot(ctx, chief); err != nil {
 			return err
