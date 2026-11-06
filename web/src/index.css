@@ -76,6 +76,19 @@
   --animate-drift-b: drift-b 12s ease-in-out infinite;
   --animate-drift-c: drift-c 9s ease-in-out infinite;
   --animate-rise: rise 0.35s ease-out;
+  --animate-wave: wave 1.2s ease-in-out infinite;
+  @keyframes wave {
+    0%,
+    60%,
+    100% {
+      transform: scale(0.8);
+      opacity: 0.45;
+    }
+    30% {
+      transform: scale(1.1);
+      opacity: 1;
+    }
+  }
   @keyframes drift-a {
     0%,
     100% {

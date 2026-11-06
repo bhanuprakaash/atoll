@@ -484,7 +484,7 @@ export function ThreadView({
           setAwayFromLatest(!atLatest);
           loadOlder();
         }}
-        className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-7 ${empty ? 'justify-center' : ''}`}
+        className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-7 [mask-image:linear-gradient(to_bottom,transparent,black_1.5rem)] ${empty ? 'justify-center' : ''}`}
       >
         <div className="mx-auto flex w-full max-w-190 flex-col gap-4.5 pt-6 pb-4">
           {empty && (

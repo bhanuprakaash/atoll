@@ -7,7 +7,6 @@ export function ThreadsPanel({
   name,
   threads,
   repos,
-  onClose,
   onNew,
   onSelect,
   currentId,
@@ -15,22 +14,32 @@ export function ThreadsPanel({
   name: string;
   threads: Thread[];
   repos: { id: string; name: string }[];
-  onClose: () => void;
   onNew: () => void;
   onSelect: (id: string) => void;
   currentId?: string;
 }) {
   const [showClosed, setShowClosed] = useState(false);
+  const [query, setQuery] = useState('');
+  const searchable = threads.filter((t) => !t.closed).length > 8;
+  const match = (t: Thread) =>
+    !searchable || t.title.toLowerCase().includes(query.trim().toLowerCase());
   const groups: [string, Thread[]][] = [
-    ['Needs you', threads.filter((t) => !t.closed && !!t.approval)],
-    ['Running', threads.filter((t) => !t.closed && !t.approval && t.run_status === 'running')],
-    ['Recent', threads.filter((t) => !t.closed && !t.approval && t.run_status !== 'running')],
+    ['Needs you', threads.filter((t) => !t.closed && !!t.approval && match(t))],
+    [
+      'Running',
+      threads.filter((t) => !t.closed && !t.approval && t.run_status === 'running' && match(t)),
+    ],
+    [
+      'Recent',
+      threads.filter((t) => !t.closed && !t.approval && t.run_status !== 'running' && match(t)),
+    ],
   ];
+  const shown = groups.filter(([, items]) => items.length > 0);
   const list = (label: string, items: Thread[]) => (
     <section key={label}>
       {label !== 'Closed' && (
         <h3
-          className={`px-2.5 pt-2.5 pb-0.5 text-[11.5px] tracking-[.06em] uppercase ${label === 'Needs you' ? 'text-danger' : 'text-label'}`}
+          className={`sticky top-0 bg-composer px-2.5 pt-2.5 pb-0.5 text-[11.5px] tracking-[.06em] uppercase ${label === 'Needs you' ? 'text-danger' : 'text-label'}`}
         >
           {label}
         </h3>
@@ -87,41 +96,33 @@ export function ThreadsPanel({
   );
   const closed = threads.filter((t) => t.closed);
   return (
-    <div className="fixed inset-0 z-20" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Threads with ${name}`}
-        className="absolute top-15 right-4 flex max-h-[calc(100%-5rem)] w-100 max-w-[calc(100%-2rem)] flex-col gap-1 overflow-auto rounded-[22px] border border-composer-line bg-popover p-2 shadow-[0_18px_48px_rgba(0,0,0,.55)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2 pt-1.5 pr-1.5 pb-2 pl-2.5">
-          <h2 className="text-sm">Threads with {name}</h2>
-          <button
-            type="button"
-            className="ml-auto flex h-7.5 items-center gap-1.5 rounded-full bg-accent px-3 text-[13px] text-accent-ink"
-            onClick={onNew}
+    <div
+      role="dialog"
+      aria-label={`Threads with ${name}`}
+      className="flex min-h-0 flex-1 flex-col gap-1 border-t border-composer-line p-2"
+    >
+      <div className="flex flex-none items-center gap-2">
+        <button
+          type="button"
+          className="flex h-9 flex-none items-center gap-2 rounded-[14px] px-3 text-[13.5px] hover:bg-line"
+          onClick={onNew}
+        >
+          <svg
+            aria-hidden="true"
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
           >
-            <svg
-              aria-hidden="true"
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            New thread
-          </button>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="flex size-7.5 items-center justify-center rounded-full text-muted hover:bg-line"
-          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          New thread
+        </button>
+        {searchable && (
+          <label className="flex h-8.5 min-w-0 flex-1 items-center gap-2 rounded-xl border border-composer-line bg-card px-2.5 text-muted">
             <svg
               aria-hidden="true"
               width="14"
@@ -129,39 +130,56 @@ export function ThreadsPanel({
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="1.8"
               strokeLinecap="round"
             >
-              <path d="M6 6l12 12M18 6L6 18" />
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="M16 16l4 4" />
             </svg>
-          </button>
-        </div>
-        {groups.filter(([, items]) => items.length > 0).map(([label, items]) => list(label, items))}
-        {threads.length === closed.length && (
-          <p className="px-2.5 py-3 text-[13px] text-muted">No open threads.</p>
+            <span className="sr-only">Search threads</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search threads"
+              className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none"
+            />
+          </label>
         )}
-        <button
-          type="button"
-          className="mt-1 flex items-center gap-1.5 border-t border-line p-2.5 text-left text-[13px] text-muted"
-          onClick={() => setShowClosed(!showClosed)}
-        >
-          Closed · {closed.length}
-          <svg
-            aria-hidden="true"
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            className={showClosed ? 'rotate-180' : ''}
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </button>
-        {showClosed && list('Closed', closed)}
       </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {shown.map(([label, items]) => list(label, items))}
+        {shown.length === 0 && (
+          <p className="px-2.5 py-3 text-[13px] text-muted">
+            {threads.length === closed.length ? 'No open threads.' : 'No open thread matches.'}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        className="mt-1 flex flex-none items-center gap-1.5 border-t border-line p-2.5 text-left text-[13px] text-muted"
+        onClick={() => setShowClosed(!showClosed)}
+      >
+        Closed · {closed.length}
+        <svg
+          aria-hidden="true"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className={showClosed ? 'rotate-180' : ''}
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {showClosed && (
+        <div className="max-h-48 flex-none overflow-y-auto">
+          {list('Closed', closed.filter(match))}
+        </div>
+      )}
     </div>
   );
 }
