@@ -172,6 +172,12 @@ func (p *player) play(lines []string) error {
 				return err
 			}
 			continue
+		case "github-probe":
+			var err error
+			if repoReply, err = fake.GitHubProbe(p.servers["github"]); err != nil {
+				return err
+			}
+			continue
 		case "ask":
 			if skip {
 				continue
