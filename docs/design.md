@@ -478,8 +478,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 ## Queue
 
 Delegation, GitHub and Slack connections, browser pane, background processes pane, the platform
-switch for Bots other than Chief, importing MCP servers from provider configs (user-added MCP
-servers are built), a skill's binary files, desktop Linux, mobile, memory pins (up to about 5
-items always in the prompt), routines (scheduled, repeating runs), more provider adapters.
+switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up to about 5 items always in the
+prompt), routines (scheduled, repeating runs), more provider adapters.
 
 An item moves into the build when its absence hurts in daily use.
