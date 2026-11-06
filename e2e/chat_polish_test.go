@@ -12,7 +12,8 @@ func TestChatPolish_AutoTitleAndUserTitle(t *testing.T) {
 	th := s.newThread(t, b)
 
 	first := "One\t two three four five six!!! seven"
-	s.send(t, th, first)
+	ev := s.events(t, th)
+	defer until(t, ev, s.send(t, th, first).ID, "run_finished")
 	if got, want := s.thread(t, th.ID).Title, "One two three four five six"; got != want {
 		t.Errorf("first-message title %q, want %q", got, want)
 	}
@@ -23,7 +24,8 @@ func TestChatPolish_AutoTitleAndUserTitle(t *testing.T) {
 	if edited.Title != "Planning notes" {
 		t.Errorf("PATCH title %q, want %q", edited.Title, "Planning notes")
 	}
-	s.send(t, user, "One two three four five six.")
+	userEv := s.events(t, user)
+	defer until(t, userEv, s.send(t, user, "One two three four five six.").ID, "run_finished")
 	if got := s.thread(t, user.ID).Title; got != "Planning notes" {
 		t.Errorf("user title after first message %q, want %q", got, "Planning notes")
 	}
