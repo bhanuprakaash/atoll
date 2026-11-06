@@ -104,7 +104,7 @@ func (p *player) play(lines []string) error {
 	repoReply := ""
 	for _, s := range lines {
 		switch directive := fake.Directive([]byte(s)); directive {
-		case "platform-create", "platform-edit", "platform-denied", "platform-configure":
+		case "platform-create", "platform-edit", "platform-denied", "platform-configure", "platform-import", "platform-read", "platform-bots", "platform-call":
 			var err error
 			repoReply, err = fake.PlatformStep(p.servers["atoll"], strings.TrimPrefix(directive, "platform-"), p.userMessage, func(name string, args json.RawMessage) error {
 				answer, err := p.ask(&toolUse{ID: "platform-" + name, Name: "mcp__atoll__" + name, Input: args})

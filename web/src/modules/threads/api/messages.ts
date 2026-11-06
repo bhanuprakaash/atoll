@@ -23,6 +23,8 @@ export type Run = {
   tools: Record<string, number>;
   report?: { blocked: string } | null;
   error: string;
+  error_kind: '' | 'signed_out';
+  provider: 'claude' | 'codex';
 };
 
 type MessagePageParam = { before?: string; after?: string };

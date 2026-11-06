@@ -80,6 +80,8 @@ type (
 		Memory    *memory.Store
 		Launch    Launch
 		Available func(context.Context, string) bool
+		// SignedOut is told the provider name of a run that failed because it is signed out.
+		SignedOut func(string)
 		// MCPURL is the base of Atoll's MCP endpoint; a run's server is MCPURL + its token.
 		MCPURL string
 		// DataDir holds runs/<run id>.jsonl, each run's event stream, and threads/<thread id>,
@@ -423,35 +425,41 @@ func (m *Manager) execute(a *active, text string) {
 		m.mu.Unlock()
 		reply, err = m.drive(a, text)
 	}
-	status, errText := store.StatusDone, ""
+	res := store.RunResult{Status: store.StatusDone, Reply: strings.TrimSpace(reply)}
 	if err != nil {
-		status, reply, errText = store.StatusFailed, "", err.Error()
+		res = store.RunResult{Status: store.StatusFailed, Error: err.Error()}
 		if m.ctx.Err() != nil {
-			errText = _stopReason
+			res.Error = _stopReason
+		} else if errors.Is(err, provider.ErrSignedOut) {
+			res.ErrorKind = store.ErrorSignedOut
+			if m.cfg.SignedOut != nil {
+				m.cfg.SignedOut(a.bot.Provider)
+			}
 		}
 	}
 	m.mu.Lock()
 	a.ending = true
 	if a.stopped {
-		status, reply, errText = "stopped", "", ""
+		res = store.RunResult{Status: "stopped"}
 	}
 	m.mu.Unlock()
+	res.Provider = a.bot.Provider
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
-		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, status, strings.TrimSpace(reply), errText)
+		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, res)
 		if err == nil {
 			break
 		}
 	}
 	if err != nil {
 		m.cfg.Log.Error("finish run", "run_id", a.run.ID, "error", err)
-		status, errText = store.StatusFailed, "could not save the run: "+err.Error()
+		res.Status, res.Error = store.StatusFailed, "could not save the run: "+err.Error()
 	}
-	m.cfg.Log.Info("run finished", "run_id", a.run.ID, "status", status, "error", errText,
+	m.cfg.Log.Info("run finished", "run_id", a.run.ID, "status", res.Status, "error", res.Error,
 		"duration", time.Since(start))
 	// Dropped before run_finished: a client may send the next message the moment it sees it.
 	m.drop(a)
-	m.publish(a, EventRunFinished, Finished{RunID: a.run.ID, Status: status, Error: errText})
+	m.publish(a, EventRunFinished, Finished{RunID: a.run.ID, Status: res.Status, Error: res.Error})
 }
 
 // drive runs the provider session for one prompt and returns its reply.
@@ -485,7 +493,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		}
 	}()
 	var rp store.Repo
-	if thread.RepoID != "" {
+	if thread.RepoID != "" && bot.RepoAccess.Allows(thread.RepoID) {
 		if rp, err = m.cfg.Store.Repo(a.ctx, thread.RepoID); err != nil {
 			return "", fmt.Errorf("load repo: %w", err)
 		}
@@ -516,7 +524,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	var items []memory.Item
 	var counts memory.Counts
 	if m.cfg.Memory != nil {
-		shelf := memory.Shelf{RepoID: thread.RepoID, BotID: thread.BotID}
+		shelf := memory.Shelf{RepoID: rp.ID, BotID: thread.BotID}
 		var seen map[string]bool
 		if thread.Session != "" {
 			seen, err = m.cfg.Memory.Seen(a.ctx, thread.Session)
@@ -662,6 +670,9 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 			case provider.KindTurnEnd:
 				return reply.String(), nil
 			case provider.KindError:
+				if ev.SignedOut {
+					return "", fmt.Errorf("%w: %s", provider.ErrSignedOut, ev.Text)
+				}
 				return "", errors.New(ev.Text)
 			}
 		}
@@ -914,10 +925,12 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 	if strings.Contains(name, "start_work") || strings.Contains(name, "track_mr") {
 		return "work", ""
 	}
-	if strings.HasPrefix(name, "mcp__atoll__") || name == provider.ToolCreateBot ||
-		name == provider.ToolEditBot || name == provider.ToolCreateSkill ||
-		name == provider.ToolEditSkill || name == provider.ToolRegisterRepo ||
-		name == provider.ToolAttachConnection {
+	if strings.HasPrefix(name, "mcp__atoll__") || slices.Contains([]string{
+		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
+		provider.ToolEditSkill, provider.ToolRegisterRepo, provider.ToolAttachConnection,
+		provider.ToolListBots, provider.ToolListSkills, provider.ToolListConnections,
+		provider.ToolListRepos, provider.ToolListModels,
+	}, name) {
 		return "platform", v.Name
 	}
 	return "other", ""

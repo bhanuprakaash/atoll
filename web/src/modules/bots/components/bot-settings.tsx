@@ -140,27 +140,31 @@ export function BotSettings({
               mutate({ skills: value });
             }}
           />
-          <Segmented
-            label="Repo access"
-            value={repoAccess === 'all' ? 'all' : 'only'}
-            onChange={(choice) => {
-              const value = choice === 'all' ? 'all' : [];
-              setRepoAccess(value);
-              mutate({ repo_access: value });
-            }}
-            choices={repoAccessChoices}
-          />
-          {repoAccess !== 'all' && (
-            <ChoiceList
-              title="Repos"
-              singular="repo"
-              choices={repos}
-              selected={repoAccess}
-              onChange={(value) => {
-                setRepoAccess(value);
-                mutate({ repo_access: value });
-              }}
-            />
+          {bot.id !== 'chief' && (
+            <>
+              <Segmented
+                label="Repo access"
+                value={repoAccess === 'all' ? 'all' : 'only'}
+                onChange={(choice) => {
+                  const value = choice === 'all' ? 'all' : [];
+                  setRepoAccess(value);
+                  mutate({ repo_access: value });
+                }}
+                choices={repoAccessChoices}
+              />
+              {repoAccess !== 'all' && (
+                <ChoiceList
+                  title="Repos"
+                  singular="repo"
+                  choices={repos}
+                  selected={repoAccess}
+                  onChange={(value) => {
+                    setRepoAccess(value);
+                    mutate({ repo_access: value });
+                  }}
+                />
+              )}
+            </>
           )}
           <ConnectionList
             connections={connections}

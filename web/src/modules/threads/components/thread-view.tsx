@@ -25,7 +25,15 @@ function duration(run: Run) {
     Math.max(0, Math.floor((Date.parse(run.finished_at) - Date.parse(run.started_at)) / 1000)) || 0;
   return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
 }
-function RunResult({ id, retry }: { id: string; retry: () => void }) {
+function RunResult({
+  id,
+  retry,
+  signedOut,
+}: {
+  id: string;
+  retry: () => void;
+  signedOut?: (provider: Run['provider']) => ReactNode;
+}) {
   const { data: run } = useRun(id);
   if (!run || run.status === 'running' || run.status === 'waiting') return null;
   const tools = run.tools ?? {};
@@ -68,20 +76,24 @@ function RunResult({ id, retry }: { id: string; retry: () => void }) {
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7.5v5M12 16v.5" />
           </svg>
-          <span className="min-w-60 flex-1 text-ink/80 [overflow-wrap:anywhere]">
-            Run failed{run.error ? `: ${run.error}` : '.'}
-            {/sign.?in|authenticat|not logged in|login/i.test(run.error) && (
-              <>
-                {' '}
-                <Link
-                  className="text-ink underline decoration-outline underline-offset-3"
-                  to="/settings/providers"
-                >
-                  Sign in
-                </Link>
-              </>
-            )}
-          </span>
+          {run.error_kind === 'signed_out' && signedOut ? (
+            signedOut(run.provider)
+          ) : (
+            <span className="min-w-60 flex-1 text-ink/80 [overflow-wrap:anywhere]">
+              Run failed{run.error ? `: ${run.error}` : '.'}
+              {/sign.?in|authenticat|not logged in|login/i.test(run.error) && (
+                <>
+                  {' '}
+                  <Link
+                    className="text-ink underline decoration-outline underline-offset-3"
+                    to="/settings/providers"
+                  >
+                    Sign in
+                  </Link>
+                </>
+              )}
+            </span>
+          )}
           <button
             type="button"
             onClick={retry}
@@ -107,7 +119,15 @@ function messageTime(createdAt: string) {
   return `${date.getDate()} ${date.toLocaleDateString([], { month: 'short' })} ${time}`;
 }
 
-function MessageLine({ message, retry }: { message: Message; retry: () => void }) {
+function MessageLine({
+  message,
+  retry,
+  signedOut,
+}: {
+  message: Message;
+  retry: () => void;
+  signedOut?: (provider: Run['provider']) => ReactNode;
+}) {
   if (message.role === 'user')
     return (
       <div data-testid="message" className="flex max-w-[75%] self-end flex-col items-end gap-1">
@@ -127,7 +147,7 @@ function MessageLine({ message, retry }: { message: Message; retry: () => void }
     );
   return (
     <div data-testid="message" className="flex max-w-[85%] flex-col gap-2">
-      <RunResult id={message.run_id} retry={retry} />
+      <RunResult id={message.run_id} retry={retry} signedOut={signedOut} />
       <div className="text-[15px] leading-normal">
         <Markdown>{message.text}</Markdown>
       </div>
@@ -179,25 +199,27 @@ function EmptyThread({
             .join(' · ')}
         </div>
       )}
-      <div className="flex items-center gap-2 text-sm text-muted">
-        Repo
-        <div className="w-56">
-          <Select
-            ariaLabel="Repo"
-            value={repoId}
-            onChange={setRepoId}
-            groups={[
-              {
-                options: [
-                  { value: '', label: 'No repo' },
-                  ...repos.map((repo) => ({ value: repo.id, label: repo.name })),
-                ],
-              },
-            ]}
-            className="h-9 rounded-xl border border-outline bg-box px-3 text-sm"
-          />
+      {repos.length > 0 && (
+        <div className="flex items-center gap-2 text-sm text-muted">
+          Repo
+          <div className="w-56">
+            <Select
+              ariaLabel="Repo"
+              value={repoId}
+              onChange={setRepoId}
+              groups={[
+                {
+                  options: [
+                    { value: '', label: 'No repo' },
+                    ...repos.map((repo) => ({ value: repo.id, label: repo.name })),
+                  ],
+                },
+              ]}
+              className="h-9 rounded-xl border border-outline bg-box px-3 text-sm"
+            />
+          </div>
         </div>
-      </div>
+      )}
       <div className="w-full">
         <Composer
           threadId={threadId}
@@ -288,7 +310,9 @@ export function ThreadView({
   bot,
   repos,
   repoName,
+  lostRepo,
   afterRun,
+  signedOut,
 }: {
   threadId: string;
   botId: string;
@@ -297,7 +321,9 @@ export function ThreadView({
   bot?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
   repoName?: string;
+  lostRepo?: string;
   afterRun?: (runId: string) => ReactNode;
+  signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
   const navigate = useNavigate();
   const [repoId, setRepoId] = useState('');
@@ -496,7 +522,7 @@ export function ThreadView({
                     <span className="h-px flex-1 bg-line" />
                   </div>
                 )}
-                <MessageLine message={m} retry={retry} />
+                <MessageLine message={m} retry={retry} signedOut={signedOut} />
                 {thread?.branch && m.role === 'user' && m.id === firstUserId && (
                   <p className="text-sm text-muted">
                     Working on <span className="font-mono text-ink/80">{thread.branch}</span>
@@ -513,7 +539,7 @@ export function ThreadView({
               <LiveRun id={id} run={run} look={look} />
               {run.finished && !answered.has(id) && (
                 <>
-                  <RunResult id={id} retry={retry} />
+                  <RunResult id={id} retry={retry} signedOut={signedOut} />
                   {afterRun?.(id)}
                 </>
               )}
@@ -521,11 +547,16 @@ export function ThreadView({
           ))}
           {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
             <>
-              <RunResult id={thread.run_id} retry={retry} />
+              <RunResult id={thread.run_id} retry={retry} signedOut={signedOut} />
               {afterRun?.(thread.run_id)}
             </>
           )}
           {mrChip}
+          {lostRepo && (
+            <p className="text-sm text-muted">
+              {botName} no longer has access to {lostRepo}
+            </p>
+          )}
           {(worktreeRemoved || thread?.worktree_removed) && (
             <p className="text-sm text-muted">
               {iid && mrState === 'merged' ? `!${iid} merged · ` : ''}worktree cleaned up

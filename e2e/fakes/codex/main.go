@@ -4,8 +4,9 @@
 // recorded on a resumed thread only plays on a resumed thread. Like the real app-server it calls
 // the HTTP MCP servers of its config (mcp_servers.<name>.url) when a recording uses their tools,
 // and sends a recorded approval request unless approvalPolicy is "never". Methods no recording
-// has get an empty result. Signed in means CODEX_HOME (default ~/.codex) holds auth.json. Every
-// call is logged to <executable>.log.
+// has get an empty result. Signed in means CODEX_HOME (default ~/.codex) holds auth.json; a
+// revoked one (fake.Refused) fails the next turn as the real app-server does. Every call is logged
+// to <executable>.log.
 package main
 
 import (
@@ -183,6 +184,10 @@ func serve(log *fake.Log, args []string) error {
 			if t != nil {
 				t.userMessage = prompt
 			}
+			if fake.Refused(fake.ConfigDir("CODEX_HOME", ".codex"), "auth.json") {
+				signedOut(m.ID, p.ThreadID)
+				continue
+			}
 			var rec *recording
 			for i, r := range recs {
 				if r.prompt != "" && strings.Contains(prompt, r.prompt) && thread != nil && r.thread == thread.thread &&
@@ -207,6 +212,30 @@ func serve(log *fake.Log, args []string) error {
 		}
 	}
 	return in.Err()
+}
+
+// signedOut fails the turn the way the app-server does when the ChatGPT login can no longer be
+// refreshed: the turn starts, then an error notification and a failed turn/completed, both
+// marked unauthorized. The app-server keeps running.
+func signedOut(id json.RawMessage, thread string) {
+	const turn = "01a1a5d2-7c4e-7b19-9f30-2e8d6a1c5b47"
+	e := map[string]any{
+		"message":           "Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again.",
+		"codexErrorInfo":    "unauthorized",
+		"additionalDetails": nil,
+	}
+	started := map[string]any{"id": turn, "items": []any{}, "status": "inProgress", "error": nil}
+	b, _ := json.Marshal(map[string]any{"turn": started})
+	reply(id, b, "")
+	for _, n := range []map[string]any{
+		{"method": "turn/started", "params": map[string]any{"threadId": thread, "turn": started}},
+		{"method": "error", "params": map[string]any{"error": e, "willRetry": false, "threadId": thread, "turnId": turn}},
+		{"method": "turn/completed", "params": map[string]any{"threadId": thread,
+			"turn": map[string]any{"id": turn, "items": []any{}, "status": "failed", "error": e}}},
+	} {
+		b, _ := json.Marshal(n)
+		fmt.Println(string(b))
+	}
 }
 
 func reply(id, result json.RawMessage, errMsg string) {

@@ -3,11 +3,12 @@
 // prompt the user message on stdin contains. Like the real CLI it calls the HTTP MCP servers of
 // --mcp-config when a recording uses their tools, and asks --permission-prompt-tool before a call
 // the recording marks with a "fake" ask line, unless --allowedTools allows it. Signed in means
-// CLAUDE_CONFIG_DIR (default ~/.claude) holds .credentials.json. Every call is logged to
-// <executable>.log.
+// CLAUDE_CONFIG_DIR (default ~/.claude) holds .credentials.json; a revoked one (fake.Refused)
+// fails the next turn as the real CLI does. Every call is logged to <executable>.log.
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -162,6 +163,10 @@ func stream(log *fake.Log, args []string) error {
 			return err
 		}
 		p.userMessage = prompt
+		if fake.Refused(fake.ConfigDir("CLAUDE_CONFIG_DIR", ".claude"), ".credentials.json") {
+			rec, _ := find(recs, prompt, resume)
+			signedOut(cmp.Or(rec.session, resume, "0b5e7a1c-3f2d-4c8e-9a61-7d4f2e8b1c90"))
+		}
 		rec, ok := find(recs, prompt, resume)
 		if !ok {
 			return fmt.Errorf("no recording for prompt %q (resume %q)", prompt, resume)
@@ -171,6 +176,28 @@ func stream(log *fake.Log, args []string) error {
 		}
 	}
 	return in.Err()
+}
+
+// signedOut ends the turn the way claude does when the server refuses its OAuth token: the init
+// line, a synthetic assistant message marked authentication_failed, an error result, exit 1.
+func signedOut(session string) {
+	const msg = "Failed to authenticate: OAuth token revoked"
+	cwd, _ := os.Getwd()
+	for _, l := range []map[string]any{
+		{"type": "system", "subtype": "init", "cwd": cwd, "session_id": session, "tools": []string{}, "mcp_servers": []any{},
+			"model": "claude-opus-5-5", "permissionMode": "default", "apiKeySource": "none", "claude_code_version": "2.1.306"},
+		{"type": "assistant", "message": map[string]any{"id": "c1a7e2b0-5d3f-4e9a-8b21-6f0d9c4e3a17", "model": "<synthetic>",
+			"role": "assistant", "type": "message", "stop_reason": "stop_sequence", "stop_sequence": "",
+			"content": []map[string]string{{"type": "text", "text": msg}}},
+			"parent_tool_use_id": nil, "session_id": session, "error": "authentication_failed"},
+		{"type": "result", "subtype": "success", "is_error": true, "duration_ms": 212, "duration_api_ms": 0,
+			"num_turns": 1, "result": msg, "stop_reason": "stop_sequence", "session_id": session, "total_cost_usd": 0,
+			"permission_denials": []any{}},
+	} {
+		b, _ := json.Marshal(l)
+		fmt.Println(string(b))
+	}
+	os.Exit(1)
 }
 
 // text is the text of a user message: a string, or the text blocks of a content array.

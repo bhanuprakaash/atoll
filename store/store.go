@@ -50,6 +50,9 @@ const (
 	StatusFailed  = "failed"
 )
 
+// ErrorSignedOut is the error kind of a run that failed because its provider is signed out.
+const ErrorSignedOut = "signed_out"
+
 // KindGitLab is the kind of a GitLab connection.
 const KindGitLab = "gitlab"
 
@@ -147,6 +150,8 @@ type (
 		Status     string         `json:"status"`
 		Reply      string         `json:"reply"`
 		Error      string         `json:"error"`
+		ErrorKind  string         `json:"error_kind"`
+		Provider   string         `json:"provider"`
 		Report     *Report        `json:"report"`
 		StartedAt  time.Time      `json:"started_at"`
 		FinishedAt time.Time      `json:"finished_at"`
@@ -595,8 +600,8 @@ func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 	var started, finished int64
 	var tools string
 	err := s.db.QueryRowContext(ctx,
-		"SELECT id, thread_id, status, reply, error, report, started_at, finished_at, tools FROM runs WHERE id = ?", id).
-		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &report, &started, &finished, &tools)
+		"SELECT id, thread_id, status, reply, error, error_kind, provider, report, started_at, finished_at, tools FROM runs WHERE id = ?", id).
+		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &r.ErrorKind, &r.Provider, &report, &started, &finished, &tools)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("run %s: %w", id, ErrNotFound)
 	}
@@ -659,9 +664,18 @@ func (s *Store) SetReport(ctx context.Context, runID string, r Report) error {
 	return found(res, "run", runID)
 }
 
-// FinishRun ends a run as done with reply, or as failed with errText. A non-empty reply also
-// becomes the thread's bot message, in the same transaction.
-func (s *Store) FinishRun(ctx context.Context, runID, status, reply, errText string) error {
+// RunResult is how a run ended.
+type RunResult struct {
+	Status    string
+	Reply     string
+	Error     string
+	ErrorKind string
+	Provider  string // the provider the run used
+}
+
+// FinishRun ends a run with res. A non-empty reply also becomes the thread's bot message, in the
+// same transaction.
+func (s *Store) FinishRun(ctx context.Context, runID string, res RunResult) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		var threadID string
 		err := tx.QueryRowContext(ctx, "SELECT thread_id FROM runs WHERE id = ?", runID).
@@ -673,8 +687,8 @@ func (s *Store) FinishRun(ctx context.Context, runID, status, reply, errText str
 			return fmt.Errorf("read run %s: %w", runID, err)
 		}
 		_, err = tx.ExecContext(ctx,
-			"UPDATE runs SET status = ?, reply = ?, error = ?, finished_at = ? WHERE id = ?",
-			status, reply, errText, time.Now().UTC().UnixMicro(), runID)
+			"UPDATE runs SET status = ?, reply = ?, error = ?, error_kind = ?, provider = ?, finished_at = ? WHERE id = ?",
+			res.Status, res.Reply, res.Error, res.ErrorKind, res.Provider, time.Now().UTC().UnixMicro(), runID)
 		if err != nil {
 			return fmt.Errorf("finish run: %w", err)
 		}
@@ -683,11 +697,11 @@ func (s *Store) FinishRun(ctx context.Context, runID, status, reply, errText str
 		if err != nil {
 			return fmt.Errorf("touch thread: %w", err)
 		}
-		if reply == "" {
+		if res.Reply == "" {
 			return nil
 		}
 		return insertMessage(ctx, tx,
-			Message{ID: newID(), ThreadID: threadID, Role: RoleBot, Text: reply, RunID: runID})
+			Message{ID: newID(), ThreadID: threadID, Role: RoleBot, Text: res.Reply, RunID: runID})
 	})
 }
 

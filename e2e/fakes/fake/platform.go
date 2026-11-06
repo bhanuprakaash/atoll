@@ -2,7 +2,12 @@ package fake
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -14,13 +19,18 @@ func PlatformTools() []string {
 	return []string{"create_bot", "edit_bot", "create_skill", "edit_skill", "register_repo", "attach_connection"}
 }
 
+// ReadTools are the platform tools that only read; non-platform runs must never receive them either.
+func ReadTools() []string {
+	return []string{"list_bots", "list_skills", "list_connections", "list_repos", "list_models"}
+}
+
 // PlatformStep uses ids from actual MCP results rather than assumed product state.
 func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessage) error) (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("atoll MCP server absent")
 	}
 	if mode == "denied" {
-		for _, name := range PlatformTools() {
+		for _, name := range append(PlatformTools(), ReadTools()...) {
 			if c.Tools[name] {
 				return "", fmt.Errorf("non-platform Bot received %s", name)
 			}
@@ -30,28 +40,77 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 		}
 		return "No platform tools available.", nil
 	}
-	for _, name := range PlatformTools() {
+	want := PlatformTools()
+	if mode == "read" || mode == "bots" {
+		want = append(want, ReadTools()...)
+	}
+	for _, name := range want {
 		if !c.Tools[name] {
 			return "", fmt.Errorf("platform tool missing: %s", name)
 		}
 	}
-	call := func(name string, args any) (map[string]any, error) {
+	if mode == "call" {
+		return callOne(c, prompt, before)
+	}
+	raw := func(name string, args any) (string, error) {
 		b, _ := json.Marshal(args)
 		if before != nil {
 			if err := before(name, b); err != nil {
-				return nil, err
+				return "", err
 			}
 		}
 		text, bad, err := c.Call(name, b)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		if bad {
-			return nil, fmt.Errorf("%s: %s", name, text)
+			return "", fmt.Errorf("%s: %s", name, text)
+		}
+		return text, nil
+	}
+	call := func(name string, args any) (map[string]any, error) {
+		text, err := raw(name, args)
+		if err != nil {
+			return nil, err
 		}
 		var out map[string]any
 		err = json.Unmarshal([]byte(text), &out)
 		return out, err
+	}
+
+	// The reply is every read tool's result by tool name, so a test can compare them with REST.
+	if mode == "read" {
+		results := map[string]json.RawMessage{}
+		for _, name := range ReadTools() {
+			text, err := raw(name, map[string]any{})
+			if err != nil {
+				return "", err
+			}
+			if !json.Valid([]byte(text)) {
+				return "", fmt.Errorf("%s result is not JSON: %s", name, text)
+			}
+			results[name] = json.RawMessage(text)
+		}
+		b, err := json.Marshal(results)
+		return string(b), err
+	}
+	if mode == "bots" {
+		text, err := raw("list_bots", map[string]any{})
+		if err != nil {
+			return "", err
+		}
+		var bots []struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal([]byte(text), &bots); err != nil {
+			return "", fmt.Errorf("list_bots result %s: %w", text, err)
+		}
+		names := make([]string, 0, len(bots))
+		for _, b := range bots {
+			names = append(names, b.Name)
+		}
+		slices.Sort(names)
+		return "Bots: " + strings.Join(names, ", ") + ".", nil
 	}
 
 	if mode == "configure" {
@@ -93,6 +152,9 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 		}
 		return "Edited the skill, registered the repo and attached the connection.", nil
 	}
+	if mode == "import" {
+		return importAgent(call, prompt)
+	}
 	if mode == "edit" {
 		_, id, _ := strings.Cut(prompt, "bot_id=")
 		fields := strings.Fields(id)
@@ -129,4 +191,105 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 		return "", fmt.Errorf("create_bot result: %v", out)
 	}
 	return "Created reef-greeting and Lagoon.", nil
+}
+
+var (
+	_agentFile  = regexp.MustCompile(`~/\.claude/agents/[^\s/]+\.md`)
+	_localSkill = regexp.MustCompile(`~/\.claude/skills/([^\s/]+)/SKILL\.md`)
+)
+
+// importAgent reads the agent file and its local skills from HOME as the provider's own file
+// tool would, then imports each skill's SKILL.md and creates the Bot without any ~/.claude path.
+func importAgent(call func(string, any) (map[string]any, error), prompt string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	path := _agentFile.FindString(prompt)
+	if path == "" {
+		return "", fmt.Errorf("import scenario requires ~/.claude/agents/<agent>.md")
+	}
+	b, err := os.ReadFile(filepath.Join(home, strings.TrimPrefix(path, "~/")))
+	if err != nil {
+		return "", err
+	}
+	front, body, ok := strings.Cut(strings.TrimPrefix(string(b), "---\n"), "---\n")
+	if !ok {
+		return "", fmt.Errorf("agent file has no frontmatter: %s", path)
+	}
+	name := ""
+	for line := range strings.Lines(front) {
+		if value, ok := strings.CutPrefix(line, "name:"); ok {
+			name = strings.TrimSpace(value)
+		}
+	}
+	persona := strings.TrimSpace(body)
+	var ids, names []string
+	for _, m := range _localSkill.FindAllStringSubmatch(body, -1) {
+		content, err := os.ReadFile(filepath.Join(home, ".claude", "skills", m[1], "SKILL.md"))
+		if err != nil {
+			return "", err
+		}
+		out, err := call("create_skill", map[string]any{"name": m[1], "content": string(content)})
+		if err != nil {
+			return "", err
+		}
+		id, _ := out["id"].(string)
+		if id == "" || out["content"] != string(content) {
+			return "", fmt.Errorf("create_skill result: %v", out)
+		}
+		ids, names = append(ids, id), append(names, m[1])
+		persona = strings.ReplaceAll(persona, m[0], "the "+m[1]+" skill")
+	}
+	provider := "claude"
+	if strings.Contains(prompt, "using codex") {
+		provider = "codex"
+	}
+	out, err := call("create_bot", map[string]any{"name": name, "persona": persona, "provider": provider, "skills": ids})
+	if err != nil {
+		return "", err
+	}
+	if out["id"] == nil || out["name"] != name {
+		return "", fmt.Errorf("create_bot result: %v", out)
+	}
+	return "Imported " + strings.Join(names, ", ") + " and created " + name + ".", nil
+}
+
+// callOne makes the one call the prompt names after "Call a platform tool. " as
+// {"tool":...,"args":{...}}, sending only arguments the tool's schema declares, as a model reading
+// tools/list would. Its reply is the result text, or "Error: " and the error text.
+func callOne(c *MCP, prompt string, before func(string, json.RawMessage) error) (string, error) {
+	_, payload, ok := strings.Cut(prompt, "Call a platform tool. ")
+	if !ok {
+		return "", fmt.Errorf("call payload absent")
+	}
+	var in struct {
+		Tool string          `json:"tool"`
+		Args json.RawMessage `json:"args"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(payload)), &in); err != nil {
+		return "", err
+	}
+	var args map[string]any
+	if err := json.Unmarshal(in.Args, &args); err != nil {
+		return "", err
+	}
+	for name := range args {
+		if !slices.Contains(c.Params[in.Tool], name) {
+			return "", fmt.Errorf("%s declares no %q parameter: %q", in.Tool, name, c.Params[in.Tool])
+		}
+	}
+	if before != nil {
+		if err := before(in.Tool, in.Args); err != nil {
+			return "", err
+		}
+	}
+	text, bad, err := c.Call(in.Tool, in.Args)
+	if err != nil {
+		return "Error: " + errors.Unwrap(err).Error(), nil
+	}
+	if bad {
+		return "Error: " + text, nil
+	}
+	return text, nil
 }

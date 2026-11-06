@@ -1,0 +1,1 @@
+ALTER TABLE runs ADD COLUMN error_kind TEXT NOT NULL DEFAULT '';

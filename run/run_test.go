@@ -169,6 +169,8 @@ func TestRun_Finish(t *testing.T) {
 		wantStatus string
 		wantReply  string
 		wantError  string
+		wantKind   string
+		stopped    bool // the run is stopped while the provider fails
 		wantReport string
 		wantSends  int
 		wantEvents []string
@@ -229,6 +231,27 @@ func TestRun_Finish(t *testing.T) {
 			wantEvents: []string{EventPrompt, EventRunFinished},
 		},
 		{
+			name: "provider signed out",
+			give: &fakeSession{script: []provider.Event{
+				{Kind: provider.KindError, Text: "token revoked", SignedOut: true},
+			}},
+			wantStatus: store.StatusFailed,
+			wantError:  "provider is signed out: token revoked",
+			wantKind:   store.ErrorSignedOut,
+			wantSends:  1,
+			wantEvents: []string{EventPrompt, EventRunFinished},
+		},
+		{
+			name: "stopped while signed out",
+			give: &fakeSession{script: []provider.Event{
+				{Kind: provider.KindError, Text: "token revoked", SignedOut: true},
+			}},
+			stopped:    true,
+			wantStatus: "stopped",
+			wantSends:  1,
+			wantEvents: []string{EventPrompt, EventRunFinished},
+		},
+		{
 			name:       "events end early",
 			give:       &fakeSession{end: true},
 			wantStatus: store.StatusFailed,
@@ -241,6 +264,11 @@ func TestRun_Finish(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newEnv(t, tt.give)
 			tt.give.onSend = func(n int) {
+				if tt.stopped {
+					e.m.mu.Lock()
+					e.m.runs[e.thread.ID].stopped = true
+					e.m.mu.Unlock()
+				}
 				if n != tt.reportOn {
 					return
 				}
@@ -262,9 +290,9 @@ func TestRun_Finish(t *testing.T) {
 				t.Fatal(err)
 			}
 			if fin.Status != tt.wantStatus || got.Status != tt.wantStatus || got.Reply != tt.wantReply ||
-				got.Error != tt.wantError {
-				t.Errorf("run_finished %+v, stored %+v; want %s, reply %q, error %q",
-					fin, got, tt.wantStatus, tt.wantReply, tt.wantError)
+				got.Error != tt.wantError || got.ErrorKind != tt.wantKind {
+				t.Errorf("run_finished %+v, stored %+v; want %s, reply %q, error %q, kind %q",
+					fin, got, tt.wantStatus, tt.wantReply, tt.wantError, tt.wantKind)
 			}
 			if (got.Report == nil) != (tt.wantReport == "") ||
 				got.Report != nil && got.Report.Done != tt.wantReport {

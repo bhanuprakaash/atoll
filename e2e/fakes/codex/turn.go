@@ -118,9 +118,19 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 	repoReply := ""
 	for _, e := range entries {
 		switch e.Fake {
-		case "platform-create", "platform-edit", "platform-denied", "platform-configure":
+		case "platform-create", "platform-edit", "platform-denied", "platform-configure", "platform-import", "platform-read", "platform-bots", "platform-call":
 			var err error
-			repoReply, err = fake.PlatformStep(t.servers["atoll"], strings.TrimPrefix(e.Fake, "platform-"), t.userMessage, nil)
+			calls := 0
+			// Like app-server, each MCP call starts an mcpToolCall item.
+			announce := func(name string, args json.RawMessage) error {
+				calls++
+				b, _ := json.Marshal(map[string]any{"method": "item/started", "params": map[string]any{"item": map[string]any{
+					"type": "mcpToolCall", "id": fmt.Sprintf("platform-%d", calls), "server": "atoll", "tool": name,
+					"status": "inProgress", "arguments": args}}})
+				fmt.Println(string(b))
+				return nil
+			}
+			repoReply, err = fake.PlatformStep(t.servers["atoll"], strings.TrimPrefix(e.Fake, "platform-"), t.userMessage, announce)
 			if err != nil {
 				return err
 			}
