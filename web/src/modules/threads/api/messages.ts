@@ -33,7 +33,7 @@ export function useMessages(threadId: string) {
       api<Message[]>(
         `/threads/${threadId}/messages${pageParam ? `?before=${encodeURIComponent(pageParam)}` : ''}`,
       ),
-    getPreviousPageParam: (page) => page[0]?.id,
+    getPreviousPageParam: (page) => (page.length === 50 ? page[0]?.id : undefined),
     getNextPageParam: () => undefined,
   });
 }
