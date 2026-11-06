@@ -159,7 +159,7 @@ func (p *player) play(lines []string) error {
 				return err
 			}
 			continue
-		case "repo-fix", "repo-question", "repo-uncommitted", "repo-resume":
+		case "repo-fix", "repo-question", "repo-uncommitted", "repo-resume", "repo-github-fix":
 			var err error
 			repoReply, err = fake.RepoStep(p.servers["atoll"], strings.TrimPrefix(directive, "repo-"), "")
 			if err != nil {

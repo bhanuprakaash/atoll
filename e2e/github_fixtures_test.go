@@ -46,6 +46,7 @@ type fakeGitHub struct {
 	tokenForms []url.Values
 	mcp        []githubMCPRequest
 	pushAuth   []string // "user:password" of every git request GitHub accepted
+	pulls      []githubPull
 }
 
 func newFakeGitHub(t *testing.T) *fakeGitHub {
@@ -56,6 +57,7 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 	mux.HandleFunc("POST /login/device/code", g.deviceCode)
 	mux.HandleFunc("POST /login/oauth/access_token", g.accessToken)
 	mux.HandleFunc("GET /user", g.user)
+	mux.HandleFunc("POST /repos/{owner}/{repo}/pulls", g.createPull)
 	mux.HandleFunc("POST /mcp/", g.mcpServer)
 	mux.HandleFunc("/octo/", g.gitRemote)
 	g.Server = httptest.NewServer(mux)

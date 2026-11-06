@@ -141,3 +141,5 @@ The skill editor for every file of a skill extends these contracts in [skill-edi
 Run login isolation (a Bot uses only the logins Reef gives it) extends these contracts in [login-isolation-contract.md](login-isolation-contract.md).
 
 GitHub connection (gh, git and GitHub's MCP server from one sign-in) extends these contracts in [github-connection-contract.md](github-connection-contract.md).
+
+GitHub repos (a repo on GitHub: push and open a pull request with `gh`) extends these contracts in [github-repos-contract.md](github-repos-contract.md).

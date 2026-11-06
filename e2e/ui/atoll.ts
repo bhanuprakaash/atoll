@@ -10,14 +10,14 @@ import { expect, type Locator, type Page } from '@playwright/test';
 
 export const e2e = resolve(import.meta.dirname, '..');
 
-type Fake = 'claude' | 'codex' | 'glab';
+type Fake = 'claude' | 'codex' | 'glab' | 'gh';
 
 // build compiles atoll and the fakes into a fresh folder and returns it.
 export function build(): string {
   const out = mkdtempSync(join(tmpdir(), 'atoll-ui-build-'));
   const go = (...args: string[]) => execFileSync('go', args, { cwd: e2e, stdio: 'inherit' });
   go('build', '-o', join(out, 'atoll'), 'atoll/cmd/atoll');
-  for (const fake of ['claude', 'codex', 'glab']) {
+  for (const fake of ['claude', 'codex', 'glab', 'gh']) {
     go(
       'build',
       '-o',
