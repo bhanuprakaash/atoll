@@ -247,7 +247,9 @@ Finish
 - Sidebar: a search field on top filters Bots by name, `+` beside it; no logo (the user found it
   redundant).
   One row per Bot (creature, name, latest activity, time), Chief first. `+` opens New Bot; the
-  bottom user row opens Settings. No group chats.
+  bottom user row opens Settings. No group chats. A thread's activity time moves when a run
+  starts, an approval opens or closes, and a run ends, not on every event. *The sidebar polls
+  every 2 s; a write per text delta would cost more than the time is worth.*
 - Bot header: creature, Bot name, thread title, a Threads button and a Bot settings icon. The
   Threads button carries a red count of threads waiting on the user and opens a panel: Needs you
   (and what it waits for), Running (live verb, branch, MR), Recent, then Closed folded; New thread
