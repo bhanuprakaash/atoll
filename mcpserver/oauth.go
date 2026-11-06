@@ -144,6 +144,11 @@ func Finish(ctx context.Context, c *http.Client, st *store.Store, p Pending, cod
 	if err != nil || cur.URL != p.Server.URL {
 		return invalid(p.Server.Name + " was removed or changed since the sign-in began")
 	}
+	if p.Server.ID == SlackID {
+		if saved, err := savedClientID(SlackID); err != nil || saved != p.ClientID {
+			return invalid(p.Server.Name + " was set up again since the sign-in began")
+		}
+	}
 	if err := saveTokens(p.Server.ID, tokens); err != nil {
 		return err
 	}

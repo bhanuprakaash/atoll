@@ -295,8 +295,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   run their own MCP OAuth.* A run gets the server as a remote entry with
   `Authorization: Bearer <access token>` (Claude `headers`, Codex `http_headers`), and Claude stays
   `--strict-mcp-config`.
-- `DELETE /api/mcp-servers/{id}` on a catalog server with a sign-in (Notion, Figma, Cloudflare) is
-  Sign out: it deletes the `mcp:<id>:oauth` entry and sets `not_connected`; on Context7 it is `404`.
+- `DELETE /api/mcp-servers/{id}` on a catalog server with a sign-in (Notion, Figma, Cloudflare,
+  Slack) is Sign out: it deletes the `mcp:<id>:oauth` entry and sets `not_connected`; on Context7 it
+  is `404`. Slack keeps its saved Client ID: the app still exists, and Set up again replaces it.
   Settings shows Sign out on a catalog row that is `connected` or `needs_sign_in`.
 - Before a run uses a connected server, an access token that expires within ten minutes is
   refreshed (`grant_type=refresh_token`, same client). A rejected refresh (`invalid_grant`) sets
@@ -318,6 +319,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   `needs_setup` is `409`. Otherwise it is the generic flow with the saved Client ID in place of
   registration and `scope` (the scopes joined by spaces) in the authorize URL: a public client, no
   `client_secret` on the exchange or the refresh.
+  Before it stores tokens the callback also checks that the saved Client ID is the one the sign-in
+  started with: a Client ID saved mid-flow ends it (`400`, nothing stored).
 - Slack's token endpoint answers HTTP 200 with `{"ok": ...}`: `ok:false` is a rejection.
   On a refresh, `invalid_grant`, `invalid_refresh_token`, `token_revoked` and `token_expired` set
   `needs_sign_in`; any other code is a plain failure. Access tokens last 12 hours; a refresh token is single use, and each refresh reply carries the next one, which is saved

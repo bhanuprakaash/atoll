@@ -300,3 +300,32 @@ func TestFinishChecksTheServerStillStands(t *testing.T) {
 		})
 	}
 }
+
+func TestFinishSlackChecksTheClientID(t *testing.T) {
+	keyring.MockInit()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"a"}`))
+	}))
+	defer srv.Close()
+	ctx := context.Background()
+	if err := SaveClientID(ctx, st, SlackID, "new"); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Get(ctx, st, SlackID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = Finish(ctx, srv.Client(), st, Pending{Server: s, ClientID: "old", TokenEndpoint: srv.URL}, "code")
+	if _, tokenErr := keyring.Get("atoll", tokensUser(SlackID)); !errors.Is(err, ErrInvalid) || tokenErr == nil {
+		t.Errorf("Finish with the old Client ID = %v with token error %v, want ErrInvalid and no tokens", err, tokenErr)
+	}
+	if err := Finish(ctx, srv.Client(), st, Pending{Server: s, ClientID: "new", TokenEndpoint: srv.URL}, "code"); err != nil {
+		t.Errorf("Finish with the saved Client ID = %v, want nil", err)
+	}
+}
