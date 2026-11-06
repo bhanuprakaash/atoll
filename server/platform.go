@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -37,7 +38,7 @@ func responseBot(b store.Bot) botResponse {
 	return botResponse{Bot: b, Look: b.Look, Model: b.Model, Pinned: b.Pinned, Activity: b.Activity, LastActivity: b.LastActivity}
 }
 
-func (a *api) botSummary(r *http.Request, b store.Bot, threads []store.ThreadRun) store.Bot {
+func (a *api) botSummary(ctx context.Context, b store.Bot, threads []store.ThreadRun) store.Bot {
 	latest := ""
 	for _, t := range threads {
 		if latest == "" {
@@ -81,7 +82,7 @@ func (a *api) botSummary(r *http.Request, b store.Bot, threads []store.ThreadRun
 	}
 	if latest == "failed" {
 		b.State = "failed"
-	} else if !a.runs.Available(r.Context(), b.Provider) {
+	} else if !a.runs.Available(ctx, b.Provider) {
 		b.State = "asleep"
 	} else {
 		b.State = "idle"
@@ -122,7 +123,7 @@ func (a *api) getBot(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusOK, responseBot(a.botSummary(r, b, threads)))
+	write(w, http.StatusOK, responseBot(a.botSummary(r.Context(), b, threads)))
 }
 
 func (a *api) pinBot(w http.ResponseWriter, r *http.Request) {
@@ -252,14 +253,88 @@ const _platformTools = `[
 {"name":"create_skill","description":"Create a skill.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"}},"required":["name","content"]}},
 {"name":"edit_skill","description":"Edit a skill.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"content":{"type":"string"}},"required":["id"]}},
 {"name":"register_repo","description":"Register a local Git repository.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"path":{"type":"string"}},"required":["name","path"]}},
-{"name":"attach_connection","description":"Attach a connected account to a Bot.","inputSchema":{"type":"object","properties":{"bot_id":{"type":"string"},"connection_id":{"type":"string"}},"required":["bot_id","connection_id"]}}
+{"name":"attach_connection","description":"Attach a connected account to a Bot.","inputSchema":{"type":"object","properties":{"bot_id":{"type":"string"},"connection_id":{"type":"string"}},"required":["bot_id","connection_id"]}},
+{"name":"list_bots","description":"List every Bot.","inputSchema":{"type":"object","properties":{}}},
+{"name":"list_skills","description":"List the skills in the library, without their content.","inputSchema":{"type":"object","properties":{}}},
+{"name":"list_connections","description":"List the connected accounts.","inputSchema":{"type":"object","properties":{}}},
+{"name":"list_repos","description":"List the registered repos.","inputSchema":{"type":"object","properties":{}}},
+{"name":"list_models","description":"List the signed-in providers and their models.","inputSchema":{"type":"object","properties":{}}}
 ]`
 
+type providerResponse struct {
+	Name     string `json:"name"`
+	Label    string `json:"label"`
+	SignedIn bool   `json:"signed_in"`
+	Models   []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"models"`
+}
+
+var _readTools = []string{
+	provider.ToolListBots, provider.ToolListSkills, provider.ToolListConnections,
+	provider.ToolListRepos, provider.ToolListModels,
+}
+
 func isPlatformTool(name string) bool {
-	return slices.Contains([]string{
+	return slices.Contains(_readTools, name) || slices.Contains([]string{
 		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
 		provider.ToolEditSkill, provider.ToolRegisterRepo, provider.ToolAttachConnection,
 	}, name)
+}
+
+func (a *api) readCall(ctx context.Context, name string) (any, *rpcError) {
+	var v any
+	var err error
+	switch name {
+	case provider.ToolListBots:
+		v, err = a.botList(ctx)
+	case provider.ToolListSkills:
+		var skills []store.Skill
+		skills, err = a.st.Skills(ctx)
+		items := make([]struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}, len(skills))
+		for i, sk := range skills {
+			items[i].ID, items[i].Name = sk.ID, sk.Name
+		}
+		v = items
+	case provider.ToolListConnections:
+		var conns []store.Connection
+		conns, err = a.st.Connections(ctx)
+		v = orEmpty(conns)
+	case provider.ToolListRepos:
+		var repos []store.Repo
+		repos, err = a.st.Repos(ctx)
+		v = orEmpty(repos)
+	default:
+		v, err = a.signedInProviders(ctx)
+	}
+	if err != nil {
+		return nil, a.toolError(err)
+	}
+	return a.jsonText(v)
+}
+
+// signedInProviders reads what GET /api/providers answers, so Chief sees the New Bot model picker.
+func (a *api) signedInProviders(ctx context.Context) ([]providerResponse, error) {
+	signedIn := []providerResponse{}
+	if a.providers == nil {
+		return signedIn, nil
+	}
+	rec := httptest.NewRecorder()
+	a.providers.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/providers", nil))
+	var all []providerResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &all); err != nil {
+		return nil, err
+	}
+	for _, p := range all {
+		if p.SignedIn {
+			signedIn = append(signedIn, p)
+		}
+	}
+	return signedIn, nil
 }
 
 func (a *api) platformCall(
@@ -271,6 +346,9 @@ func (a *api) platformCall(
 	}
 	if !source.CanManagePlatform {
 		return nil, &rpcError{Code: _invalidParams, Message: "platform access denied"}
+	}
+	if slices.Contains(_readTools, name) {
+		return a.readCall(ctx, name)
 	}
 	var before, after any
 	var entity, id, action string
