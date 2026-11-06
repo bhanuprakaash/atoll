@@ -21,8 +21,18 @@ import (
 var _looks = []string{"jellyfish", "whale", "penguin", "shark", "octopus", "turtle", "seahorse", "otter", "clownfish", "manta"}
 
 func validBot(b store.Bot) bool {
-	return b.Name != "" && (b.Provider == "claude" || b.Provider == "codex") &&
-		(b.Look == "" || slices.Contains(_looks, b.Look))
+	return botProblem(b) == ""
+}
+
+// botProblem says why b cannot be saved, or "" when it can.
+func botProblem(b store.Bot) string {
+	switch {
+	case b.Name == "" || (b.Provider != "claude" && b.Provider != "codex"):
+		return "invalid bot"
+	case b.Look != "" && !slices.Contains(_looks, b.Look):
+		return fmt.Sprintf("unknown look %q; looks: %s", b.Look, strings.Join(_looks, ", "))
+	}
+	return ""
 }
 
 type botResponse struct {
@@ -328,7 +338,7 @@ func (a *api) readCall(ctx context.Context, name string) (any, *rpcError) {
 		var repos []store.Repo
 		repos, err = a.st.Repos(ctx)
 		v = orEmpty(repos)
-	default:
+	case provider.ToolListModels:
 		v = a.signedInProviders(ctx)
 	}
 	if err != nil {
@@ -378,11 +388,11 @@ func (a *api) platformCall(
 		if json.Unmarshal(args, &b) != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
 		}
+		if msg := botProblem(b); msg != "" {
+			return nil, &rpcError{Code: _invalidParams, Message: msg}
+		}
 		if rerr := a.botChoiceError(ctx, b, store.Bot{}); rerr != nil {
 			return nil, rerr
-		}
-		if !validBot(b) {
-			return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
 		}
 		b.CanManagePlatform = false
 		b, err = a.st.CreateBot(ctx, b)
@@ -409,11 +419,11 @@ func (a *api) platformCall(
 			if chiefHasRepos(b) {
 				return nil, &rpcError{Code: _invalidParams, Message: _chiefRepoRefusal}
 			}
+			if msg := botProblem(b); msg != "" {
+				return nil, &rpcError{Code: _invalidParams, Message: msg}
+			}
 			if rerr := a.botChoiceError(ctx, b, prev); rerr != nil {
 				return nil, rerr
-			}
-			if !validBot(b) {
-				return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
 			}
 			b, err = a.st.UpdateBot(ctx, b)
 		}
@@ -499,20 +509,19 @@ func (a *api) platformCall(
 	return a.jsonText(after)
 }
 
-// botChoiceError rejects a look no creature has, and a model the Bot's provider does not list while
-// signed in, unless the Bot keeps the provider and model it has.
+// botChoiceError rejects a model the Bot's provider does not list, and a provider that is not signed
+// in, unless the Bot keeps the provider and model it has.
 func (a *api) botChoiceError(ctx context.Context, b, current store.Bot) *rpcError {
-	if b.Look != "" && !slices.Contains(_looks, b.Look) {
-		return &rpcError{Code: _invalidParams, Message: fmt.Sprintf(
-			"unknown look %q; looks: %s", b.Look, strings.Join(_looks, ", "))}
-	}
 	if b.Model == "" || (b.Model == current.Model && b.Provider == current.Provider) {
 		return nil
 	}
 	var models []string
-	for _, p := range a.signedInProviders(ctx) {
+	for _, p := range a.cachedProviders(ctx) {
 		if p.Name != b.Provider {
 			continue
+		}
+		if !p.SignedIn {
+			return &rpcError{Code: _invalidParams, Message: p.Name + " is not signed in"}
 		}
 		for _, m := range p.Models {
 			models = append(models, m.ID)

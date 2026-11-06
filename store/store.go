@@ -663,9 +663,17 @@ func (s *Store) SetReport(ctx context.Context, runID string, r Report) error {
 	return found(res, "run", runID)
 }
 
-// FinishRun ends a run as done with reply, or as failed with errText and its errKind. A non-empty
-// reply also becomes the thread's bot message, in the same transaction.
-func (s *Store) FinishRun(ctx context.Context, runID, status, reply, errText, errKind string) error {
+// RunResult is how a run ended.
+type RunResult struct {
+	Status    string
+	Reply     string
+	Error     string
+	ErrorKind string
+}
+
+// FinishRun ends a run with res. A non-empty reply also becomes the thread's bot message, in the
+// same transaction.
+func (s *Store) FinishRun(ctx context.Context, runID string, res RunResult) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		var threadID string
 		err := tx.QueryRowContext(ctx, "SELECT thread_id FROM runs WHERE id = ?", runID).
@@ -678,7 +686,7 @@ func (s *Store) FinishRun(ctx context.Context, runID, status, reply, errText, er
 		}
 		_, err = tx.ExecContext(ctx,
 			"UPDATE runs SET status = ?, reply = ?, error = ?, error_kind = ?, finished_at = ? WHERE id = ?",
-			status, reply, errText, errKind, time.Now().UTC().UnixMicro(), runID)
+			res.Status, res.Reply, res.Error, res.ErrorKind, time.Now().UTC().UnixMicro(), runID)
 		if err != nil {
 			return fmt.Errorf("finish run: %w", err)
 		}
@@ -687,11 +695,11 @@ func (s *Store) FinishRun(ctx context.Context, runID, status, reply, errText, er
 		if err != nil {
 			return fmt.Errorf("touch thread: %w", err)
 		}
-		if reply == "" {
+		if res.Reply == "" {
 			return nil
 		}
 		return insertMessage(ctx, tx,
-			Message{ID: newID(), ThreadID: threadID, Role: RoleBot, Text: reply, RunID: runID})
+			Message{ID: newID(), ThreadID: threadID, Role: RoleBot, Text: res.Reply, RunID: runID})
 	})
 }
 

@@ -425,13 +425,13 @@ func (m *Manager) execute(a *active, text string) {
 		m.mu.Unlock()
 		reply, err = m.drive(a, text)
 	}
-	status, errText, errKind := store.StatusDone, "", ""
+	res := store.RunResult{Status: store.StatusDone, Reply: strings.TrimSpace(reply)}
 	if err != nil {
-		status, reply, errText = store.StatusFailed, "", err.Error()
+		res = store.RunResult{Status: store.StatusFailed, Error: err.Error()}
 		if m.ctx.Err() != nil {
-			errText = _stopReason
+			res.Error = _stopReason
 		} else if errors.Is(err, provider.ErrSignedOut) {
-			errKind = store.ErrorSignedOut
+			res.ErrorKind = store.ErrorSignedOut
 			if m.cfg.SignedOut != nil {
 				m.cfg.SignedOut(a.bot.Provider)
 			}
@@ -440,25 +440,25 @@ func (m *Manager) execute(a *active, text string) {
 	m.mu.Lock()
 	a.ending = true
 	if a.stopped {
-		status, reply, errText = "stopped", "", ""
+		res = store.RunResult{Status: "stopped"}
 	}
 	m.mu.Unlock()
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
-		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, status, strings.TrimSpace(reply), errText, errKind)
+		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, res)
 		if err == nil {
 			break
 		}
 	}
 	if err != nil {
 		m.cfg.Log.Error("finish run", "run_id", a.run.ID, "error", err)
-		status, errText = store.StatusFailed, "could not save the run: "+err.Error()
+		res.Status, res.Error = store.StatusFailed, "could not save the run: "+err.Error()
 	}
-	m.cfg.Log.Info("run finished", "run_id", a.run.ID, "status", status, "error", errText,
+	m.cfg.Log.Info("run finished", "run_id", a.run.ID, "status", res.Status, "error", res.Error,
 		"duration", time.Since(start))
 	// Dropped before run_finished: a client may send the next message the moment it sees it.
 	m.drop(a)
-	m.publish(a, EventRunFinished, Finished{RunID: a.run.ID, Status: status, Error: errText})
+	m.publish(a, EventRunFinished, Finished{RunID: a.run.ID, Status: res.Status, Error: res.Error})
 }
 
 // drive runs the provider session for one prompt and returns its reply.
@@ -924,10 +924,12 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 	if strings.Contains(name, "start_work") || strings.Contains(name, "track_mr") {
 		return "work", ""
 	}
-	if strings.HasPrefix(name, "mcp__atoll__") || name == provider.ToolCreateBot ||
-		name == provider.ToolEditBot || name == provider.ToolCreateSkill ||
-		name == provider.ToolEditSkill || name == provider.ToolRegisterRepo ||
-		name == provider.ToolAttachConnection {
+	if strings.HasPrefix(name, "mcp__atoll__") || slices.Contains([]string{
+		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
+		provider.ToolEditSkill, provider.ToolRegisterRepo, provider.ToolAttachConnection,
+		provider.ToolListBots, provider.ToolListSkills, provider.ToolListConnections,
+		provider.ToolListRepos, provider.ToolListModels,
+	}, name) {
 		return "platform", v.Name
 	}
 	return "other", ""

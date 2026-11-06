@@ -231,8 +231,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   may not load a tool's description until it searches for the tool; without the line, Bots
   branched in the clean checkout.*
 
-Budget: platform prompt about 500 tokens; everything Reef adds under about 3–4k. *Less context
-recalls better; load the rest just in time.*
+Budget per part: core and memory about 250 tokens, platform block about 500 (the e2e cap is 2000
+bytes); everything Reef adds under about 3–4k. *Less context recalls better; load the rest just in
+time.*
 
 Platform prompt (draft; the code part is `How you work`, the platform block follows `Finish`):
 
