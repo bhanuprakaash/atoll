@@ -205,7 +205,7 @@ func IsRepo(ctx context.Context, path string) bool {
 	return err == nil && got == want
 }
 
-// Origin returns the URL of the repo's origin remote, empty when it has none.
+// Origin is empty when the repo has no origin remote.
 func Origin(ctx context.Context, path string) string {
 	url, err := git(ctx, path, nil, "remote", "get-url", "origin")
 	if err != nil {

@@ -57,7 +57,7 @@ type (
 	}
 )
 
-// RepoHost is github when the origin of the repo at path is on GitHub, else gitlab.
+// RepoHost is github or gitlab.
 func RepoHost(ctx context.Context, path string) string {
 	if connection.OnGitHub(repo.Origin(ctx, path)) {
 		return _hostGitHub

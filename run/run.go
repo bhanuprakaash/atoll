@@ -33,8 +33,7 @@ var (
 	ErrClosed = errors.New("thread is closed")
 	// ErrNotFound is wrapped when an approval id or run token matches nothing open.
 	ErrNotFound = errors.New("not found")
-	// ErrNoGitHubConnection is returned by StartWork for a GitHub repo when the Bot has no connected
-	// GitHub connection.
+	// ErrNoGitHubConnection means the Bot has no GitHub connection.
 	ErrNoGitHubConnection = errors.New("this repo is on GitHub and this Bot has no GitHub connection: " +
 		"give this Bot the GitHub connection in its settings, then ask again")
 )

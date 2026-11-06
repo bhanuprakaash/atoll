@@ -295,7 +295,6 @@ func (a *api) jsonText(v any) (any, *rpcError) {
 
 func text(s string) any { return result(s, false) }
 
-// failure is a tool result that tells the model the call failed, so it can say why to the user.
 func failure(s string) any { return result(s, true) }
 
 func result(s string, isError bool) any {
