@@ -210,7 +210,9 @@ Undo of a repo registration is refused while a thread uses the repo.
 - A GitHub token has no refresh and no expiry. Before a run uses one, `GET /user` must accept it;
   a 401 marks that connection `needs_sign_in`, the run stops before the provider starts with
   "GitHub needs sign-in", and signing in again keeps the connection and its Bots. The OS secret
-  store holds the bare token under `github:<connection id>`.
+  store holds the bare token under `github:<connection id>`. Only a run makes that check: the MR
+  watcher and the MR title lookup use GitLab's environment alone, so a GitHub failure never stops
+  GitLab polling.
 - GitLab OAuth records include the refresh token and expiry in the secret store. Before a run uses
   one, it refreshes a token that expires within ten minutes. A rejected refresh marks that connection
   `needs_sign_in`; the run stops before the provider starts, and signing in again keeps the connection.

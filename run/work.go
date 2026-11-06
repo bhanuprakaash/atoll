@@ -138,7 +138,7 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 		thread, threadErr := m.cfg.Store.Thread(ctx, a.threadID)
 		if threadErr == nil && thread.RepoID != "" {
 			if rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID); repoErr == nil {
-				if env, _, envErr := m.runEnv(ctx, a.bot); envErr == nil {
+				if env, _, envErr := m.runEnv(ctx, a.bot, false); envErr == nil {
 					_, title, _ = m.mrState(rp.Path, url, env)
 				}
 			}
@@ -293,9 +293,10 @@ type gitHelper struct {
 
 // runEnv empties the glab and gh config folders and the git credential helper list, so neither CLI
 // finds the user's own login, and gives git's ssh no key, agent or config; each connection then
-// adds a helper scoped to its URL and maps its host's SSH remotes to it. It also returns the token
-// of the Bot's GitHub connection, empty when it has none.
-func (m *Manager) runEnv(ctx context.Context, b store.Bot) ([]string, string, error) {
+// adds a helper scoped to its URL and maps its host's SSH remotes to it. GitHub's connection joins
+// only when github is set: it asks GitHub about the token, and the MR watcher needs only GitLab. It
+// also returns the token of the Bot's GitHub connection, empty when there is none.
+func (m *Manager) runEnv(ctx context.Context, b store.Bot, github bool) ([]string, string, error) {
 	env := []string{
 		"GIT_SSH_COMMAND=ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityFile=/dev/null -o IdentityAgent=none",
 	}
@@ -318,17 +319,20 @@ func (m *Manager) runEnv(ctx context.Context, b store.Bot) ([]string, string, er
 	if helper.url != "" {
 		helpers = append(helpers, helper)
 	}
-	github, token, err := m.githubEnv(ctx, b)
-	if err != nil {
-		return nil, "", err
-	}
-	env = append(env, github...)
-	if token != "" {
-		ssh, err := sshRemotes(connection.GitHubURL())
+	var token string
+	if github {
+		githubEnv, githubToken, err := m.githubEnv(ctx, b)
 		if err != nil {
 			return nil, "", err
 		}
-		helpers = append(helpers, gitHelper{connection.GitHubURL(), _githubHelper, ssh})
+		env, token = append(env, githubEnv...), githubToken
+		if token != "" {
+			ssh, err := sshRemotes(connection.GitHubURL())
+			if err != nil {
+				return nil, "", err
+			}
+			helpers = append(helpers, gitHelper{connection.GitHubURL(), _githubHelper, ssh})
+		}
 	}
 	config := [][2]string{{"credential.helper", ""}}
 	for _, h := range helpers {
@@ -497,7 +501,7 @@ func (m *Manager) check(t store.Thread) error {
 	if err != nil {
 		return err
 	}
-	env, _, err := m.runEnv(m.ctx, bot)
+	env, _, err := m.runEnv(m.ctx, bot, false)
 	if err != nil {
 		return err
 	}

@@ -47,7 +47,7 @@ func githubBot(t *testing.T) (*Manager, store.Bot, *atomic.Int32) {
 
 func TestRunEnv_GitHubSSHRemotes(t *testing.T) {
 	m, bot, _ := githubBot(t)
-	env, _, err := m.runEnv(t.Context(), bot)
+	env, _, err := m.runEnv(t.Context(), bot, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,6 +68,29 @@ func TestRunEnv_GitHubSSHRemotes(t *testing.T) {
 			}
 			if got := strings.TrimSpace(string(out)); got != tt.want {
 				t.Errorf("git resolves %s to %s, want %s", tt.give, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunEnv_GitHubCheck(t *testing.T) {
+	m, bot, users := githubBot(t)
+	tests := []struct {
+		name   string
+		github bool
+		want   int32
+	}{
+		{"run", true, 1},
+		{"MR watcher", false, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			users.Store(0)
+			if _, _, err := m.runEnv(t.Context(), bot, tt.github); err != nil {
+				t.Fatal(err)
+			}
+			if got := users.Load(); got != tt.want {
+				t.Errorf("GET /user requests = %d, want %d", got, tt.want)
 			}
 		})
 	}

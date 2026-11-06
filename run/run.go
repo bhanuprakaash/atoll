@@ -545,7 +545,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	}
 	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
 	var githubToken string
-	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot)
+	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {
 		return "", err
 	}
