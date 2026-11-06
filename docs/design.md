@@ -42,9 +42,9 @@ never a dependency.
   messages, runs and event files. Memory it saved stays, with its source. *Memory outlives the Bot
   that wrote it; a Bot's history does not.*
 
-**Chief.** Created on first launch. It has the "Can manage the platform" switch on: tools to create
-and edit Bots, skills and repos, and to attach connections, served as Reef's own MCP tools. Sign-ins
-stay with the user. Every change shows in the thread with undo. Other Bots can get the switch later.
+**Chief.** Created on first launch. It has no repo access (every launch sets it to none) and does
+no code work. It has the "Can manage the platform" switch on: tools to create and edit Bots, skills
+and repos, and to attach connections, served as Reef's own MCP tools. Sign-ins stay with the user. Every change shows in the thread with undo. Other Bots can get the switch later.
 Undo: each change stores the entity before and after; Undo writes `before` back, or removes an entity
 the change created, and keeps the record marked undone. *Records survive restart; no undo of undo.*
 Undo of a repo registration is refused while a thread uses the repo.
@@ -197,10 +197,14 @@ Undo of a repo registration is refused while a thread uses the repo.
 
 | Where | Content |
 | --- | --- |
-| System prompt | Provider's own prompt, untouched, then the platform prompt, then the persona |
+| System prompt | Provider's own prompt, untouched, then the platform prompt (shared core, code part, platform block), then the persona |
 | First message | Up to 8 memory items picked by relevance to the message across scopes (ties: rules first), with ids; a count line `Memory: repo 42, user 9, bot 6. Use recall.`; repo, worktree, branch; the message |
 | Each resumed message | Relevant memory items the session has not seen; the message |
 
+- The platform prompt has three parts. The shared core (How you talk, Memory, Finish) goes to every
+  Bot. The code part (How you work, with the branch rule) goes to a Bot whose repo access is All or
+  a non-empty list. The platform block (Managing Reef) goes to a Bot with "Can manage the platform".
+  The code part sits between How you talk and Memory; the platform block sits after Finish.
 - Relevance counts distinct non-stop-word message words matching body or why; ties favor convention, decision, lesson, finding, fact, then newer items.
 - In prompts a body is cut to 400 bytes and a why to 200, at a rune boundary, then `…`.
 - Seen items are tracked per provider session id, marked once the turn ends without error.
@@ -213,7 +217,7 @@ Undo of a repo registration is refused while a thread uses the repo.
 Budget: platform prompt about 500 tokens; everything Reef adds under about 3–4k. *Less context
 recalls better; load the rest just in time.*
 
-Platform prompt (draft):
+Platform prompt (draft; the code part is `How you work`, the platform block follows `Finish`):
 
 ```
 You are {bot}, a Bot in Reef. {user} talks to you in a thread; you do the work and bring back the result.
@@ -238,6 +242,9 @@ Memory
 
 Finish
 - End every run with finish_run: done, tried and failed, blocked on, next. Then reply in 2-3 lines.
+
+Managing Reef
+- You manage Reef's Bots, skills, repos and connections with your platform tools. You do no code work.
 ```
 
 ## App and UI

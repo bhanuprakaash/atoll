@@ -63,14 +63,19 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 			return err
 		}
 	}
-	if _, err := st.Bot(ctx, "chief"); err != nil {
-		chief := store.Bot{
+	chief, err := st.Bot(ctx, "chief")
+	if err != nil {
+		chief = store.Bot{
 			ID: "chief", Name: "Chief", Persona: "I help configure Reef.",
 			Provider: chiefProvider(ctx), Look: "jellyfish", CanManagePlatform: true,
 		}
 		if _, err := st.EnsureBot(ctx, chief); err != nil {
 			return err
 		}
+	}
+	chief.RepoAccess = []string{}
+	if _, err := st.UpdateBot(ctx, chief); err != nil {
+		return err
 	}
 	mem, err := memory.Open(st.DB(), nil)
 	if err != nil {
