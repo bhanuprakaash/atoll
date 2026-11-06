@@ -174,8 +174,9 @@ Undo of a repo registration is refused while a thread uses the repo.
 - Skills: one library in standard `SKILL.md`, created in the app; each Bot picks its skills. Each run
   gets read-only copies of its Bot's skills in its own folder under the provider's Atoll folder
   (`runs/<run id>`), removed when the run ends: Claude through `--add-dir` (copies in
-  `.claude/skills`), Codex through `skills/extraRoots/set` before the thread starts, with
-  `allowed-tools` and `context` stripped. *Shared `<config dir>/skills` would leak one Bot's skills into
+  `.claude/skills`), Codex through `skills/extraRoots/set` before the thread starts. Every copy drops
+  `disable-model-invocation` (a Bot cannot type slash commands, so the flag would only hide the
+  skill); Codex copies also drop `allowed-tools` and `context`. *Shared `<config dir>/skills` would leak one Bot's skills into
   an overlapping run and change files a live run reads.* A provider without skills gets a list in the
   prompt and reads the file on demand. Never written into the repo. Skills the repo commits itself (`.claude/skills`,
   `.agents/skills`) still load, like its CLAUDE.md.
