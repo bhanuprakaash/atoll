@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -171,6 +172,15 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 	}
 	if json.NewDecoder(r.Body).Decode(&b) != nil || !validBot(b) {
 		fail(w, http.StatusBadRequest, "invalid bot")
+		return
+	}
+	msg, err := a.unknownRepos(r.Context(), b.RepoAccess)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if msg != "" {
+		fail(w, http.StatusBadRequest, msg)
 		return
 	}
 	b.ID = r.PathValue("id")
@@ -509,9 +519,17 @@ func (a *api) platformCall(
 	return a.jsonText(after)
 }
 
-// botChoiceError rejects a model the Bot's provider does not list, and a provider that is not signed
-// in, unless the Bot keeps the provider and model it has.
+// botChoiceError rejects a repo id no registered repo has, a model the Bot's provider does not list,
+// and a provider that is not signed in; the model check is skipped when the Bot keeps the provider and
+// model it has.
 func (a *api) botChoiceError(ctx context.Context, b, current store.Bot) *rpcError {
+	msg, err := a.unknownRepos(ctx, b.RepoAccess)
+	if err != nil {
+		return a.toolError(err)
+	}
+	if msg != "" {
+		return &rpcError{Code: _invalidParams, Message: msg}
+	}
 	if b.Model == "" || (b.Model == current.Model && b.Provider == current.Provider) {
 		return nil
 	}
@@ -532,6 +550,35 @@ func (a *api) botChoiceError(ctx context.Context, b, current store.Bot) *rpcErro
 			"unknown model %q; models: %s", b.Model, strings.Join(models, ", "))}
 	}
 	return nil
+}
+
+// unknownRepos is the message for repo ids no registered repo has, or "" when there are none.
+func (a *api) unknownRepos(ctx context.Context, access store.RepoAccess) (string, error) {
+	if len(access) == 0 {
+		return "", nil
+	}
+	repos, err := a.st.Repos(ctx)
+	if err != nil {
+		return "", err
+	}
+	ids := make([]string, len(repos))
+	for i, rp := range repos {
+		ids[i] = rp.ID
+	}
+	var unknown []string
+	for _, id := range access {
+		if !slices.Contains(ids, id) {
+			unknown = append(unknown, strconv.Quote(id))
+		}
+	}
+	if len(unknown) == 0 {
+		return "", nil
+	}
+	if len(ids) == 0 {
+		return fmt.Sprintf("unknown repo ids %s; no repos are registered", strings.Join(unknown, ", ")), nil
+	}
+	return fmt.Sprintf("unknown repo ids %s; registered repos: %s",
+		strings.Join(unknown, ", "), strings.Join(ids, ", ")), nil
 }
 
 func (a *api) registerRepo(ctx context.Context, rp store.Repo) (store.Repo, error) {

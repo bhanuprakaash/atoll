@@ -49,7 +49,8 @@ on: tools to create and edit Bots (including model and look), skills and repos, 
 connections, served as Reef's own MCP tools; read tools list Bots, skills, connections, repos and
 signed-in models and record no change.
 A model must be one the Bot's provider lists while signed in; an unknown model or look fails with
-the valid ones named. Sign-ins stay with the user. Every change shows in the thread with undo.
+the valid ones named, and so does a repo id in a Bot's repo access that no
+registered repo has (REST answers 400 with the same text). Sign-ins stay with the user. Every change shows in the thread with undo.
 Other Bots can get the switch later.
 Undo: each change stores the entity before and after; Undo writes `before` back, or removes an entity
 the change created, and keeps the record marked undone. *Records survive restart; no undo of undo.*

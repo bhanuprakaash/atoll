@@ -36,6 +36,25 @@ A failure is either a JSON-RPC error or a result with `isError: true`; the tests
 | `edit_bot` keeping provider and model skips the check | `TestChiefBot_EditKeepsOldModel/{claude,codex}` |
 | A signed-out provider says so instead of listing no models | `TestChiefBot_SignedOutProviderSaysSo/{claude,codex}` |
 
+## Repo access names only registered repos
+
+`repo_access` on `create_bot`, `edit_bot`, `POST /api/bots` and `PUT /api/bots/{id}` is `null`
+(All), omitted, or an array of repo ids. Every id in the array must be an `id` `GET /api/repos`
+lists.
+
+- An array with an id `GET /api/repos` does not list fails. The error text contains that id and
+  the `id` of every registered repo. On the tools it is a tool failure as above; on REST it is `400`
+  with that text in `error`. No Bot is created or changed, no `platform_changed` is sent and
+  `GET /api/threads/{id}/changes` for the Chief thread stays empty.
+- With no repos registered, the text contains the unknown id and says no repos are registered: it
+  matches `(?i)\bno (registered )?repos?\b` (for example `no repos are registered`).
+- Registered ids, an omitted `repo_access` and `null` work as before: `GET /api/bots/{id}` shows the
+  array, or `"all"`.
+
+Tests: `TestChiefBot_CreateWithUnknownRepoFails`, `TestChiefBot_EditWithUnknownRepoFails`,
+`TestBots_UnknownRepoRejected`, `TestChiefBot_UnknownRepoWithNoReposRegistered`,
+`TestChiefBot_RepoAccessAsToday`.
+
 ## Fake
 
 A Chief message `Call a platform tool. {"tool":"<name>","args":{...}}` (recordings
@@ -45,4 +64,5 @@ A Chief message `Call a platform tool. {"tool":"<name>","args":{...}}` (recordin
 ## Not pinned
 
 Error wording beyond the names and words it must contain; the look `create_bot` gives a Bot
-without `look`.
+without `look`; whether the repo error lists only the unknown ids or every id the call sent;
+the order of listed repo ids.
