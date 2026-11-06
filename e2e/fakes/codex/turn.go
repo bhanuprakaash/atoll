@@ -118,7 +118,7 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 	repoReply := ""
 	for _, e := range entries {
 		switch e.Fake {
-		case "platform-create", "platform-edit", "platform-denied", "platform-configure":
+		case "platform-create", "platform-edit", "platform-denied", "platform-configure", "platform-call":
 			var err error
 			repoReply, err = fake.PlatformStep(t.servers["atoll"], strings.TrimPrefix(e.Fake, "platform-"), t.userMessage, nil)
 			if err != nil {

@@ -2,7 +2,9 @@ package fake
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -34,6 +36,9 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 		if !c.Tools[name] {
 			return "", fmt.Errorf("platform tool missing: %s", name)
 		}
+	}
+	if mode == "call" {
+		return callOne(c, prompt, before)
 	}
 	call := func(name string, args any) (map[string]any, error) {
 		b, _ := json.Marshal(args)
@@ -129,4 +134,43 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 		return "", fmt.Errorf("create_bot result: %v", out)
 	}
 	return "Created reef-greeting and Lagoon.", nil
+}
+
+// callOne makes the one call the prompt names after "Call a platform tool. " as
+// {"tool":...,"args":{...}}, sending only arguments the tool's schema declares, as a model reading
+// tools/list would. Its reply is the result text, or "Error: " and the error text.
+func callOne(c *MCP, prompt string, before func(string, json.RawMessage) error) (string, error) {
+	_, payload, ok := strings.Cut(prompt, "Call a platform tool. ")
+	if !ok {
+		return "", fmt.Errorf("call payload absent")
+	}
+	var in struct {
+		Tool string          `json:"tool"`
+		Args json.RawMessage `json:"args"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(payload)), &in); err != nil {
+		return "", err
+	}
+	var args map[string]any
+	if err := json.Unmarshal(in.Args, &args); err != nil {
+		return "", err
+	}
+	for name := range args {
+		if !slices.Contains(c.Params[in.Tool], name) {
+			return "", fmt.Errorf("%s declares no %q parameter: %q", in.Tool, name, c.Params[in.Tool])
+		}
+	}
+	if before != nil {
+		if err := before(in.Tool, in.Args); err != nil {
+			return "", err
+		}
+	}
+	text, bad, err := c.Call(in.Tool, in.Args)
+	if err != nil {
+		return "Error: " + errors.Unwrap(err).Error(), nil
+	}
+	if bad {
+		return "Error: " + text, nil
+	}
+	return text, nil
 }
