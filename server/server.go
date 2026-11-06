@@ -368,7 +368,7 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) listMessages(w http.ResponseWriter, r *http.Request) {
-	msgs, err := a.st.Messages(r.Context(), r.PathValue("id"))
+	msgs, err := a.st.MessagePage(r.Context(), r.PathValue("id"), r.URL.Query().Get("before"))
 	if err != nil {
 		a.fail(w, r, err)
 		return

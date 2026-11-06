@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
 export type Message = {
@@ -21,9 +26,15 @@ export type Run = {
 };
 
 export function useMessages(threadId: string) {
-  return useQuery({
+  return useInfiniteQuery<Message[], Error, InfiniteData<Message[]>, [string, string], string>({
     queryKey: ['messages', threadId],
-    queryFn: () => api<Message[]>(`/threads/${threadId}/messages`),
+    initialPageParam: '',
+    queryFn: ({ pageParam }) =>
+      api<Message[]>(
+        `/threads/${threadId}/messages${pageParam ? `?before=${encodeURIComponent(pageParam)}` : ''}`,
+      ),
+    getPreviousPageParam: (page) => page[0]?.id,
+    getNextPageParam: () => undefined,
   });
 }
 

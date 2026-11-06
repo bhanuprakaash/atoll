@@ -672,12 +672,35 @@ func (s *Store) FailUnfinished(ctx context.Context, reason string) ([]string, er
 	return ids, nil
 }
 
-// Messages lists the thread's messages, oldest first.
+// Messages lists every message in the thread, oldest first.
 func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error) {
-	return query(ctx, s.db,
+	return s.messages(ctx,
 		`SELECT m.id, m.thread_id, m.role, m.text, m.run_id,
             CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END
          FROM messages m JOIN runs r ON r.id = m.run_id WHERE m.thread_id = ? ORDER BY m.rowid`,
+		threadID)
+}
+
+// MessagePage lists up to 50 messages ending before before, oldest first. An empty before returns
+// the newest page.
+func (s *Store) MessagePage(ctx context.Context, threadID, before string) ([]Message, error) {
+	return s.messages(ctx,
+		`SELECT id, thread_id, role, text, run_id, at FROM (
+            SELECT m.id, m.thread_id, m.role, m.text, m.run_id,
+                CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END AS at,
+                m.rowid
+            FROM messages m JOIN runs r ON r.id = m.run_id
+            WHERE m.thread_id = ?
+              AND (CASE WHEN ? = '' THEN 1 ELSE m.rowid < (
+                  SELECT rowid FROM messages WHERE id = ? AND thread_id = ?
+              ) END)
+            ORDER BY m.rowid DESC LIMIT 50
+         ) ORDER BY rowid`,
+		threadID, before, before, threadID)
+}
+
+func (s *Store) messages(ctx context.Context, querySQL string, args ...any) ([]Message, error) {
+	return query(ctx, s.db, querySQL,
 		func(r *sql.Rows) (m Message, err error) {
 			var at int64
 			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &at)
@@ -685,7 +708,7 @@ func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error
 				m.CreatedAt = time.UnixMicro(at).UTC()
 			}
 			return m, err
-		}, threadID)
+		}, args...)
 }
 
 func (s *Store) tx(ctx context.Context, fn func(*sql.Tx) error) error {

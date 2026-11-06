@@ -267,6 +267,9 @@ Finish
   and reconnecting. Chips are the exception: an MR with its live state, a saved memory with its
   kind and Retire (tap opens kind, scope, why and what it replaced), a closed thread. A Bot Chief
   creates gets one card: its creature, name, model, persona, skills, repos, Open and Undo.
+- Messages show their local send time beneath them. The log opens on its newest 50 messages and
+  loads older pages at its top without shifting what the user was reading; a round jump control
+  returns to the latest message when the user has scrolled away.
 - While a run works, one status line shows the Bot, a verb and its target ("Reading
   repo-step.tsx") and the time; never raw tool calls. When it ends, a summary line ("Worked 1m 12s
   · read 4 files, edited 1, ran tests") sits above the reply. Approvals show a short form per tool:
