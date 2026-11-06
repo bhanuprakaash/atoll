@@ -25,7 +25,7 @@ func TestPrompt_ChiefImportRule(t *testing.T) {
 			_, s := start(t, p)
 			system := heySystem(t, s, p, chief(t, s).bot)
 			rule := strings.Join(section(t, platformBlock(t, system), _importHeading), "\n")
-			for _, want := range []string{"create_skill", "SKILL.md", "persona"} {
+			for _, want := range []string{"import_skill", "persona"} {
 				if !strings.Contains(rule, want) {
 					t.Fatalf("%q does not name %q:\n%s", _importHeading, want, rule)
 				}

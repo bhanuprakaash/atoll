@@ -927,8 +927,8 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 	}
 	if strings.HasPrefix(name, "mcp__atoll__") || slices.Contains([]string{
 		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
-		provider.ToolEditSkill, provider.ToolRegisterRepo, provider.ToolAttachConnection,
-		provider.ToolListBots, provider.ToolListSkills, provider.ToolListConnections,
+		provider.ToolEditSkill, provider.ToolImportSkill, provider.ToolRegisterRepo,
+		provider.ToolAttachConnection, provider.ToolListBots, provider.ToolListSkills, provider.ToolListConnections,
 		provider.ToolListRepos, provider.ToolListModels,
 	}, name) {
 		return "platform", v.Name

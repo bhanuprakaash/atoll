@@ -3,6 +3,9 @@
 Extends [prompt-contract.md](prompt-contract.md) ("Platform block text") and
 [skills-contract.md](skills-contract.md). Tests: `e2e/skill_import_test.go`.
 
+[skill-files-contract.md](skill-files-contract.md) supersedes the new-tool and pinned-words parts below:
+Chief imports with `import_skill`, and the rule pins `import_skill` and `persona`.
+
 ## What the product provides
 
 No new tool, field or endpoint. Chief reads `~/.claude/agents/<agent>.md` and

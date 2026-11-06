@@ -104,7 +104,7 @@ func (p *player) play(lines []string) error {
 	repoReply := ""
 	for _, s := range lines {
 		switch directive := fake.Directive([]byte(s)); directive {
-		case "platform-create", "platform-edit", "platform-denied", "platform-configure", "platform-import", "platform-read", "platform-bots", "platform-call":
+		case "platform-create", "platform-edit", "platform-denied", "platform-configure", "platform-import", "platform-skill-import", "platform-read", "platform-bots", "platform-call":
 			var err error
 			repoReply, err = fake.PlatformStep(p.servers["atoll"], strings.TrimPrefix(directive, "platform-"), p.userMessage, func(name string, args json.RawMessage) error {
 				answer, err := p.ask(&toolUse{ID: "platform-" + name, Name: "mcp__atoll__" + name, Input: args})
@@ -120,7 +120,7 @@ func (p *player) play(lines []string) error {
 				return err
 			}
 			continue
-		case "skills-use", "skills-hold", "skills-worktree":
+		case "skills-use", "skills-hold", "skills-worktree", "skills-run":
 			if directive == "skills-worktree" {
 				var err error
 				p.skills, err = fake.WorktreeSkills(p.servers["atoll"], "claude", p.skills)
@@ -134,7 +134,11 @@ func (p *player) play(lines []string) error {
 				}
 			}
 			var err error
-			repoReply, err = fake.SkillsReply(p.skills)
+			if directive == "skills-run" {
+				repoReply, err = fake.SkillsRun(p.skills, p.userMessage)
+			} else {
+				repoReply, err = fake.SkillsReply(p.skills)
+			}
 			if err != nil {
 				return err
 			}

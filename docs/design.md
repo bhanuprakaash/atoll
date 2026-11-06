@@ -22,7 +22,7 @@ never a dependency.
 | Repo | A git repo registered once in the app |
 | Provider | An installed agent CLI the app drives: Claude Code, Codex |
 | Connection | A signed-in external service: GitLab, GitHub, Slack |
-| Skill | A `SKILL.md` folder in the app's skill library |
+| Skill | A folder in the app's skill library: `SKILL.md` plus its text files |
 | Memory item | A saved decision, convention, finding, fact or lesson |
 
 ## Bots
@@ -183,8 +183,12 @@ Undo of a repo registration is refused while a thread uses the repo.
   `needs_sign_in`; the run stops before the provider starts, and signing in again keeps the connection.
 - Tokens live in the OS secret store through one cross-platform library. Targets: macOS and desktop
   Linux; headless Linux is out.
-- Skills: one library in standard `SKILL.md`, created in the app; each Bot picks its skills. Each run
-  gets read-only copies of its Bot's skills in its own folder under the provider's Atoll folder
+- Skills: one library in standard `SKILL.md` folders, created in the app or imported; each Bot picks
+  its skills. A skill is `SKILL.md` (`skills.content`) plus its other text files (`skill_files`:
+  relative path, content, executable), and keeps the folder it was imported from. Paths are
+  relative, clean and inside the folder; content is UTF-8 text. Binaries are not stored. `PUT
+  /api/skills/{id}` with `files` replaces the whole set in one transaction; without `files` it keeps
+  them. Each run gets read-only copies of its Bot's skills (scripts 0555, the rest 0444) in its own folder under the provider's Atoll folder
   (`runs/<run id>`), removed when the run ends: Claude through `--add-dir` (copies in
   `.claude/skills`), Codex through `skills/extraRoots/set` before the thread starts. Every copy drops
   `disable-model-invocation` (a Bot cannot type slash commands, so the flag would only hide the
@@ -221,10 +225,17 @@ Undo of a repo registration is refused while a thread uses the repo.
 - The platform block holds the Reef guide (so Chief answers without reading a file), the ask-first
   rule for creates (it overrides the core's "ask only when two real readings") and Chief's voice.
   The voice lives here, not in the persona; only a Bot with the switch has it.
-- Importing a local skill needs no new tool. Chief reads the agent file and each skill's `SKILL.md`
-  with the provider's own file tool, imports with `create_skill`, attaches through `create_bot`, and
-  keeps `~/.claude` paths out of the persona. A skill's other files are not imported; Chief says so
-  before creating anything.
+- Chief imports a local skill folder with `import_skill(path)`: it reads the agent file with the
+  provider's own file tool, imports each skill it names, attaches them through `create_bot`, and keeps
+  `~/.claude` paths out of the persona. *Reopened "importing a local skill needs no new tool": passing
+  every file through `create_skill` costs tokens and loses the executable bit.* `import_skill` takes
+  text files, skips binaries and `.git` and reports them, rewrites `~/.claude/skills/<folder>/` in
+  `SKILL.md` to relative paths in Reef's copy only, and flags other `~/` paths left in it. The source
+  folder is never written. It matches an existing skill by source folder, else a same-named skill made
+  in Reef, and answers `created`, `replaced` (with added / changed / removed), `unchanged`, or
+  `confirm` when the stored files were edited in Reef since the last import (a hash of the set as
+  imported): Chief warns, asks, and calls again with `replace: true` after a yes. Both paths write
+  through the same whole-set replace as `PUT`.
 - Relevance counts distinct non-stop-word message words matching body or why; ties favor convention, decision, lesson, finding, fact, then newer items.
 - In prompts a body is cut to 400 bytes and a why to 200, at a rune boundary, then `…`.
 - Seen items are tracked per provider session id, marked once the turn ends without error.
@@ -273,7 +284,7 @@ Reef guide
 - Repos are registered once. A thread works in one repo, in its own worktree.
 - Providers are Claude Code and Codex, signed in from Settings > Providers.
 - A connection is a signed-in service (GitLab) whose token Reef holds and gives a Bot's CLI or MCP server. MCP is how tools reach a Bot: Reef serves its own tools (memory, finish_run, platform) over MCP. Bots never see the provider's own MCP servers. Importing MCP servers is not supported.
-- Skills are SKILL.md files in one library, picked per Bot. Only SKILL.md is stored.
+- A skill is a folder (SKILL.md plus text files) in one library, picked per Bot.
 - Memory: decisions and findings Bots save, per user, repo or Bot.
 - Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
 
@@ -282,9 +293,9 @@ Ask first
 - Small edits (rename, persona tweak, look) need no question.
 
 Import a local skill
-- For a Bot from a local agent file (~/.claude/agents/<name>.md): read it and each SKILL.md it names, import each with create_skill, attach the ids in create_bot. Ask first applies.
+- Import a skill folder with import_skill(path). For a Bot from an agent file (~/.claude/agents/<name>.md): read it, import each skill it names, attach the ids in create_bot. Ask first applies.
 - The persona keeps the agent's expertise, never a ~/.claude path.
-- Before creating anything, say that files besides SKILL.md (scripts, playbooks) are not imported.
+- Say what import_skill skipped or flagged. Re-import: list added, changed, removed; on confirm, warn that Reef edits get overwritten; replace: true only after a yes.
 
 Voice
 - A calm, dry reef keeper. At most one sea word per reply.
@@ -429,7 +440,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 ## Queue
 
 Delegation, GitHub and Slack connections, browser pane, background processes pane, the platform
-switch for Bots other than Chief, importing MCP servers and a skill's extra files, desktop Linux, mobile,
+switch for Bots other than Chief, importing MCP servers, a skill's binary files, desktop Linux, mobile,
 memory pins (up to about 5 items always in the prompt), routines (scheduled, repeating runs),
 more provider adapters.
 
