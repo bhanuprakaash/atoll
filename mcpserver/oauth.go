@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"atoll/store"
@@ -39,6 +40,8 @@ var (
 	errInvalidGrant = errors.New("invalid_grant")
 
 	_resourceMetadata = regexp.MustCompile(`resource_metadata="([^"]+)"`)
+
+	_tokenLocks sync.Map
 )
 
 // Tokens is the sign-in record of one server, kept in the OS secret store.
@@ -133,6 +136,9 @@ func Token(ctx context.Context, c *http.Client, st *store.Store, s store.MCPServ
 	if s.Status == store.MCPNeedsSignIn {
 		return "", fmt.Errorf("%s %w", s.Name, ErrNeedsSignIn)
 	}
+	lock, _ := _tokenLocks.LoadOrStore(s.ID, &sync.Mutex{})
+	lock.(*sync.Mutex).Lock()
+	defer lock.(*sync.Mutex).Unlock()
 	value, err := keyring.Get("atoll", tokensUser(s.ID))
 	if err != nil {
 		return "", fmt.Errorf("read sign-in of MCP server %s: %w", s.Name, err)

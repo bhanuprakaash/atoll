@@ -294,6 +294,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   refreshed (`grant_type=refresh_token`, same client). A rejected refresh (`invalid_grant`) sets
   `needs_sign_in`; the run fails before the provider starts with `<name> needs sign-in`. Sign in again
   is Connect again: the server keeps its id and every Bot's pick. Nothing refreshes without a run.
+  Reads and refreshes of one server's tokens run one at a time (refresh tokens are single-use), and
+  each re-reads the record first, so a run that waited uses the tokens the other saved.
   A token reply may omit `expires_in` (no known expiry: never refreshed before a run) and
   `refresh_token` (near expiry the server goes `needs_sign_in` with no refresh attempt; a refresh
   reply without a new one keeps the old).
