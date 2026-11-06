@@ -39,6 +39,7 @@ const (
 	ToolListConnections  = "list_connections"
 	ToolListRepos        = "list_repos"
 	ToolListModels       = "list_models"
+	ToolListMCPServers   = "list_mcp_servers"
 )
 
 // ErrSignedOut is the error of a run that failed because the provider refused its sign-in.
@@ -75,6 +76,19 @@ type Config struct {
 	MCPURL string
 	// SkillDir is the absolute root of this run's skill copies. Empty runs without them.
 	SkillDir string
+	// MCPServers are the user's servers this run gets next to Atoll's own.
+	MCPServers []UserMCPServer
+}
+
+// UserMCPServer is a user-added MCP server with its secrets resolved. A local one has Command, Args
+// and Env; a remote one has URL and Headers.
+type UserMCPServer struct {
+	Name    string
+	Command string
+	Args    []string
+	Env     map[string]string
+	URL     string
+	Headers map[string]string
 }
 
 // Kind says what an Event carries.

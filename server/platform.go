@@ -18,6 +18,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"atoll/mcpserver"
 	"atoll/provider"
 	"atoll/repo"
 	"atoll/run"
@@ -191,7 +192,7 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "invalid bot")
 		return
 	}
-	msg, err := a.unknownRepos(r.Context(), b.RepoAccess)
+	msg, err := a.unknownPicks(r.Context(), b)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -320,8 +321,8 @@ func (a *api) listChanges(w http.ResponseWriter, r *http.Request) {
 }
 
 const _platformTools = `[
-{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"}},"required":["name","provider"]}},
-{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"}},"required":["id"]}},
+{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"}},"required":["name","provider"]}},
+{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"}},"required":["id"]}},
 {"name":"create_skill","description":"Create a skill.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"}},"required":["name","content"]}},
 {"name":"edit_skill","description":"Edit a skill.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"content":{"type":"string"}},"required":["id"]}},
 {"name":"import_skill","description":"Import a local skill folder (SKILL.md and its text files), or update the skill imported from it. Returns what it added, changed, removed and skipped.","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"replace":{"type":"boolean","description":"Overwrite edits made in Reef. Only after the user agreed."}},"required":["path"]}},
@@ -329,6 +330,7 @@ const _platformTools = `[
 {"name":"attach_connection","description":"Attach a connected account to a Bot.","inputSchema":{"type":"object","properties":{"bot_id":{"type":"string"},"connection_id":{"type":"string"}},"required":["bot_id","connection_id"]}},
 {"name":"list_bots","description":"List every Bot.","inputSchema":{"type":"object","properties":{}}},
 {"name":"list_skills","description":"List the skills in the library, without their content.","inputSchema":{"type":"object","properties":{}}},
+{"name":"list_mcp_servers","description":"List the MCP servers in the library: the catalog and the user's own, without their secrets.","inputSchema":{"type":"object","properties":{}}},
 {"name":"list_connections","description":"List the connected accounts.","inputSchema":{"type":"object","properties":{}}},
 {"name":"list_repos","description":"List the registered repos.","inputSchema":{"type":"object","properties":{}}},
 {"name":"list_models","description":"List the signed-in providers and their models.","inputSchema":{"type":"object","properties":{}}}
@@ -356,7 +358,7 @@ type Model struct {
 
 var _readTools = []string{
 	provider.ToolListBots, provider.ToolListSkills, provider.ToolListConnections,
-	provider.ToolListRepos, provider.ToolListModels,
+	provider.ToolListRepos, provider.ToolListModels, provider.ToolListMCPServers,
 }
 
 func isPlatformTool(name string) bool {
@@ -394,6 +396,8 @@ func (a *api) readCall(ctx context.Context, name string) (any, *rpcError) {
 		v = orEmpty(repos)
 	case provider.ToolListModels:
 		v = a.signedInProviders(ctx)
+	case provider.ToolListMCPServers:
+		v, err = mcpserver.List(ctx, a.st)
 	}
 	if err != nil {
 		return nil, a.toolError(err)
@@ -465,6 +469,7 @@ func (a *api) platformCall(
 			b = prev
 			b.Skills = slices.Clone(prev.Skills)
 			b.Connections = slices.Clone(prev.Connections)
+			b.MCPServers = slices.Clone(prev.MCPServers)
 			b.RepoAccess = slices.Clone(prev.RepoAccess)
 			if json.Unmarshal(args, &b) != nil {
 				return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
@@ -590,7 +595,7 @@ func (a *api) platformCall(
 // and a provider that is not signed in; the model check is skipped when the Bot keeps the provider and
 // model it has.
 func (a *api) botChoiceError(ctx context.Context, b, current store.Bot) *rpcError {
-	msg, err := a.unknownRepos(ctx, b.RepoAccess)
+	msg, err := a.unknownPicks(ctx, b)
 	if err != nil {
 		return a.toolError(err)
 	}
@@ -617,6 +622,15 @@ func (a *api) botChoiceError(ctx context.Context, b, current store.Bot) *rpcErro
 			"unknown model %q; models: %s", b.Model, strings.Join(models, ", "))}
 	}
 	return nil
+}
+
+// unknownPicks is the message for the repo and MCP server ids of b that nothing has, or "".
+func (a *api) unknownPicks(ctx context.Context, b store.Bot) (string, error) {
+	msg, err := a.unknownRepos(ctx, b.RepoAccess)
+	if err != nil || msg != "" {
+		return msg, err
+	}
+	return a.unknownMCPServers(ctx, b.MCPServers)
 }
 
 // unknownRepos is the message for repo ids no registered repo has, or "" when there are none.

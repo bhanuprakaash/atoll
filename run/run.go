@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"atoll/mcpserver"
 	"atoll/memory"
 	"atoll/provider"
 	"atoll/skill"
@@ -521,6 +522,9 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if cfg.SkillDir, err = skill.Place(skillDir, bot.Provider, skills); err != nil {
 		return "", fmt.Errorf("place skills: %w", err)
 	}
+	if cfg.MCPServers, err = m.mcpServers(a.ctx, bot); err != nil {
+		return "", err
+	}
 	var items []memory.Item
 	var counts memory.Counts
 	if m.cfg.Memory != nil {
@@ -605,6 +609,33 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		m.cfg.Log.Warn("run ended without a finish_run report", "run_id", a.run.ID)
 	}
 	return reply, nil
+}
+
+// mcpServers returns the library servers the Bot picks, with their secrets, as the library stands
+// now. A pick the library no longer has is skipped.
+func (m *Manager) mcpServers(ctx context.Context, bot store.Bot) ([]provider.UserMCPServer, error) {
+	var out []provider.UserMCPServer
+	for _, id := range bot.MCPServers {
+		s, err := mcpserver.Get(ctx, m.cfg.Store, id)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("load MCP server: %w", err)
+		}
+		secrets, err := mcpserver.Secrets(s)
+		if err != nil {
+			return nil, err
+		}
+		u := provider.UserMCPServer{Name: s.Name, Command: s.Command, Args: s.Args, URL: s.URL}
+		if s.Kind == store.MCPLocal {
+			u.Env = secrets
+		} else {
+			u.Headers = secrets
+		}
+		out = append(out, u)
+	}
+	return out, nil
 }
 
 // stream reads the turn's events until it ends and returns the reply. With showText false the
@@ -933,7 +964,7 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
 		provider.ToolEditSkill, provider.ToolImportSkill, provider.ToolRegisterRepo,
 		provider.ToolAttachConnection, provider.ToolListBots, provider.ToolListSkills, provider.ToolListConnections,
-		provider.ToolListRepos, provider.ToolListModels,
+		provider.ToolListRepos, provider.ToolListModels, provider.ToolListMCPServers,
 	}, name) {
 		return "platform", v.Name
 	}

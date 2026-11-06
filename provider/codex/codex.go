@@ -52,9 +52,16 @@ type (
 		changes  map[string]json.RawMessage
 		notes    map[string]bool // commentary agent message items of the turn; owned by run
 
-		// asks holds the raw request id of each open approval, by event ID.
+		// asks holds each open approval, by event ID.
 		askMu sync.Mutex
-		asks  map[string]json.RawMessage
+		asks  map[string]ask
+	}
+
+	// ask is an open approval: the raw request id, and whether it is an MCP elicitation, which
+	// answers {action} where the others answer {decision}.
+	ask struct {
+		id          json.RawMessage
+		elicitation bool
 	}
 
 	message struct {
@@ -68,11 +75,14 @@ type (
 	}
 
 	body struct {
-		Delta      string          `json:"delta"`
-		ItemID     string          `json:"itemId"`
-		ServerName string          `json:"serverName"`
-		Item       json.RawMessage `json:"item"`
-		Turn       struct {
+		Delta      string `json:"delta"`
+		ItemID     string `json:"itemId"`
+		ServerName string `json:"serverName"`
+		Meta       struct {
+			ToolTitle string `json:"tool_title"`
+		} `json:"_meta"`
+		Item json.RawMessage `json:"item"`
+		Turn struct {
 			Status string `json:"status"`
 			Error  *struct {
 				Message        string `json:"message"`
@@ -89,7 +99,7 @@ type (
 func New() *Session {
 	return &Session{
 		events:  make(chan provider.Event, 1),
-		asks:    map[string]json.RawMessage{},
+		asks:    map[string]ask{},
 		notes:   map[string]bool{},
 		changes: map[string]json.RawMessage{},
 		done:    make(chan struct{}),
@@ -156,17 +166,20 @@ func (s *Session) Events() <-chan provider.Event { return s.events }
 // Answer replies to the approval request with id. It is safe to call while run reads.
 func (s *Session) Answer(id string, allow bool) error {
 	s.askMu.Lock()
-	raw, ok := s.asks[id]
+	a, ok := s.asks[id]
 	delete(s.asks, id)
 	s.askMu.Unlock()
 	if !ok {
 		return fmt.Errorf("no open approval request %s", id)
 	}
-	decision := "decline"
-	if allow {
-		decision = "accept"
+	reply, answer := "decision", "decline"
+	if a.elicitation {
+		reply = "action"
 	}
-	return s.write(map[string]any{"id": raw, "result": map[string]string{"decision": decision}})
+	if allow {
+		answer = "accept"
+	}
+	return s.write(map[string]any{"id": a.id, "result": map[string]string{reply: answer}})
 }
 
 // Interrupt stops codex, waits for it, and closes Events. Codex gets SIGTERM so it can stop the
@@ -371,6 +384,7 @@ func (s *Session) read() {
 // request, which nobody is there to answer. It reports whether to keep reading.
 func (s *Session) serverRequest(m message) bool {
 	var name string
+	var elicitation bool
 	switch m.Method {
 	case "item/commandExecution/requestApproval":
 		name = "commandExecution"
@@ -378,12 +392,13 @@ func (s *Session) serverRequest(m message) bool {
 		name = "fileChange"
 	case "mcpServer/elicitation/request":
 		// Codex asks before every MCP tool call; Atoll's own tools never reach the user.
-		action := "decline"
-		if m.body().ServerName == provider.MCPServer {
-			action = "accept"
+		server := m.body().ServerName
+		if server == provider.MCPServer {
+			_ = s.write(map[string]any{"id": m.ID, "result": map[string]any{"action": "accept"}})
+			return true
 		}
-		_ = s.write(map[string]any{"id": m.ID, "result": map[string]any{"action": action}})
-		return true
+		name = "mcp__" + server + "__" + m.body().Meta.ToolTitle
+		elicitation = true
 	default:
 		_ = s.write(map[string]any{
 			"id":    m.ID,
@@ -393,7 +408,7 @@ func (s *Session) serverRequest(m message) bool {
 	}
 	id := string(m.ID)
 	s.askMu.Lock()
-	s.asks[id] = m.ID
+	s.asks[id] = ask{id: m.ID, elicitation: elicitation}
 	s.askMu.Unlock()
 	input := m.Params
 	if name == "fileChange" {
@@ -551,13 +566,33 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 		params["developerInstructions"] = cfg.SystemPrompt
 	}
 	if cfg.MCPURL != "" {
-		config["mcp_servers"] = map[string]any{
-			provider.MCPServer: map[string]string{"url": cfg.MCPURL},
+		servers := map[string]any{provider.MCPServer: map[string]string{"url": cfg.MCPURL}}
+		for _, m := range cfg.MCPServers {
+			servers[m.Name] = userServer(m)
 		}
+		config["mcp_servers"] = servers
 		params["approvalPolicy"] = "on-request"
 		params["sandbox"] = "workspace-write"
 	}
 	return params, nil
+}
+
+// userServer is the config.mcp_servers entry of a user's server; an empty field is left out.
+func userServer(m provider.UserMCPServer) map[string]any {
+	e := map[string]any{"url": m.URL}
+	if m.Command != "" {
+		e = map[string]any{"command": m.Command}
+	}
+	if len(m.Args) > 0 {
+		e["args"] = m.Args
+	}
+	if len(m.Env) > 0 {
+		e["env"] = m.Env
+	}
+	if len(m.Headers) > 0 {
+		e["http_headers"] = m.Headers
+	}
+	return e
 }
 
 // threadConfig turns off everything of the user's that Codex would load besides what CODEX_HOME
