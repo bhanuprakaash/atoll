@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,6 +40,8 @@ var (
 
 	errNoSignIn     = errors.New("server does not ask for sign-in")
 	errInvalidGrant = errors.New("invalid_grant")
+
+	_rejectedGrants = []string{"invalid_grant", "invalid_refresh_token", "token_revoked", "token_expired"}
 
 	_resourceMetadata = regexp.MustCompile(`resource_metadata="([^"]+)"`)
 )
@@ -290,7 +293,7 @@ func postToken(ctx context.Context, c *http.Client, endpoint string, form url.Va
 		return Tokens{}, err
 	}
 	if reply.OK != nil && !*reply.OK {
-		if reply.Error == "invalid_refresh_token" || reply.Error == errInvalidGrant.Error() {
+		if slices.Contains(_rejectedGrants, reply.Error) {
 			return Tokens{}, errInvalidGrant
 		}
 		return Tokens{}, fmt.Errorf("%s rejected the request: %s", req.URL.Host, reply.Error)

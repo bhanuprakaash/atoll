@@ -308,9 +308,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   `needs_setup` is `409`. Otherwise it is the generic flow with the saved Client ID in place of
   registration and `scope` (the scopes joined by spaces) in the authorize URL: a public client, no
   `client_secret` on the exchange or the refresh.
-- Slack's token endpoint answers HTTP 200 with `{"ok": ...}`: `ok:false` is a rejection, and
-  `invalid_refresh_token` is `invalid_grant`, so it sets `needs_sign_in`. Access tokens last 12
-  hours; a refresh token is single use, and each refresh reply carries the next one, which is saved
+- Slack's token endpoint answers HTTP 200 with `{"ok": ...}`: `ok:false` is a rejection.
+  On a refresh, `invalid_grant`, `invalid_refresh_token`, `token_revoked` and `token_expired` set
+  `needs_sign_in`; any other code is a plain failure. Access tokens last 12 hours; a refresh token is single use, and each refresh reply carries the next one, which is saved
   with the new access token.
 
 ## Memory
