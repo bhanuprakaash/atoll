@@ -180,7 +180,7 @@ export function BotPage() {
           repos={repos}
           skills={skills}
           connections={connections}
-          mcpServers={mcpServers}
+          mcpServers={mcpServers.filter((s) => s.kind !== 'connection')}
           modelControl={(provider, model, onChange) => (
             <ModelSelect
               providers={providers}

@@ -12,13 +12,63 @@ import (
 	"strconv"
 	"strings"
 
+	"atoll/connection"
 	"atoll/mcpserver"
 	"atoll/provider"
 	"atoll/store"
 )
 
+// mcpLibrary is the library as the user sees it: the catalog, the row of the GitHub connection
+// while that connection exists, then the user's servers.
+func (a *api) mcpLibrary(ctx context.Context) ([]store.MCPServer, error) {
+	servers, err := mcpserver.List(ctx, a.st)
+	if err != nil {
+		return nil, err
+	}
+	ok, err := a.hasGitHubConnection(ctx)
+	if err != nil || !ok {
+		return servers, err
+	}
+	row := store.MCPServer{
+		ID: provider.GitHubMCPServer, Name: "GitHub", Kind: store.MCPConnection,
+		URL: connection.GitHubMCPURL(),
+	}
+	i := slices.IndexFunc(servers, func(s store.MCPServer) bool { return s.Kind != store.MCPCatalog })
+	if i < 0 {
+		i = len(servers)
+	}
+	return slices.Insert(servers, i, row), nil
+}
+
+// hasGitHubConnection reports whether a GitHub connection is connected or needs sign-in.
+func (a *api) hasGitHubConnection(ctx context.Context) (bool, error) {
+	conns, err := a.st.Connections(ctx)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(conns, func(c store.Connection) bool {
+		return c.Kind == store.KindGitHub && c.Status != store.ConnectionPending
+	}), nil
+}
+
+// refuseGitHubRow answers 400 when id is the GitHub row and that connection exists.
+func (a *api) refuseGitHubRow(w http.ResponseWriter, r *http.Request) bool {
+	if r.PathValue("id") != provider.GitHubMCPServer {
+		return false
+	}
+	ok, err := a.hasGitHubConnection(r.Context())
+	if err != nil {
+		a.fail(w, r, err)
+		return true
+	}
+	if ok {
+		fail(w, http.StatusBadRequest, "GitHub comes from its connection and cannot be changed here")
+	}
+	return ok
+}
+
 func (a *api) listMCPServers(w http.ResponseWriter, r *http.Request) {
-	servers, err := mcpserver.List(r.Context(), a.st)
+	servers, err := a.mcpLibrary(r.Context())
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -40,6 +90,9 @@ func (a *api) createMCPServer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) putMCPServer(w http.ResponseWriter, r *http.Request) {
+	if a.refuseGitHubRow(w, r) {
+		return
+	}
 	in, ok := readMCPServer(w, r)
 	if !ok {
 		return
@@ -53,6 +106,9 @@ func (a *api) putMCPServer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) deleteMCPServer(w http.ResponseWriter, r *http.Request) {
+	if a.refuseGitHubRow(w, r) {
+		return
+	}
 	if err := mcpserver.Remove(r.Context(), a.st, r.PathValue("id")); err != nil {
 		a.fail(w, r, err)
 		return

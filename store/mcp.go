@@ -10,9 +10,10 @@ import (
 
 // MCP server kinds.
 const (
-	MCPCatalog = "catalog"
-	MCPLocal   = "local"
-	MCPRemote  = "remote"
+	MCPCatalog    = "catalog"
+	MCPConnection = "connection"
+	MCPLocal      = "local"
+	MCPRemote     = "remote"
 )
 
 // MCPServer is an MCP server of the library. A local one starts Command with Args; a remote one
