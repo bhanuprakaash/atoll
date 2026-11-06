@@ -137,7 +137,7 @@ function MessageLine({
           </div>
         </article>
         <time
-          className="text-xs text-muted"
+          className="pr-3 text-xs text-muted"
           dateTime={message.created_at}
           data-testid="message-time"
         >
@@ -583,7 +583,7 @@ export function ThreadView({
       {!empty && (
         <div className="mx-auto w-full max-w-204 px-7 pb-4.5">
           {awayFromLatest && (
-            <div className="mb-2 flex justify-end">
+            <div className="mb-2 flex justify-center">
               <button
                 type="button"
                 aria-label="Jump to latest"

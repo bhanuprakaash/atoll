@@ -4,7 +4,6 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -12,7 +11,6 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
@@ -163,15 +161,7 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, msg)
 		return
 	}
-	if b.Look == "" {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(_looks))))
-		if err != nil {
-			a.fail(w, r, err)
-			return
-		}
-		b.Look = _looks[n.Int64()]
-	}
-	b, err = a.st.CreateBot(r.Context(), b)
+	b, err = a.createWithLook(r.Context(), b)
 	if err != nil {
 		a.fail(w, r, err)
 		return

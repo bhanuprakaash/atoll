@@ -90,7 +90,7 @@ line and summary come from these, so it never shows a provider's tool names.
 | `search` | Grep, Glob | `commandExecution` with `commandActions[0].type` `search` | the pattern or query |
 | `read` | Read | `commandActions` `read` | file base name |
 | `edit` | Edit, Write | `fileChange` | file base name (first change) |
-| `command` | Bash | other `commandExecution` | the command (`commandActions[0].command`, without the shell wrapper) |
+| `command` | Bash | other `commandExecution` | Bash's `description`; else the program name only (`commandActions[0].command`'s first word) |
 | `memory`, `platform`, `work`, `other` | Atoll's memory, platform, `start_work`/`track_mr` tools; anything else | | not tested here |
 
 `tools` on the run counts the run's calls by kind; the tests read `search`, `read`, `edit` and
@@ -126,7 +126,7 @@ Found by role and accessible name. Colours, sizes and motion curves are not test
   `Worked <n>s · …` (or `<m>m <n>s`) containing "read 1 file" and "edited 1" sits above the
   reply and is still there after a reload.
 - **Lines**: an approval shows its target, `button`s "Allow" and "Deny", and "Show diff" for an
-  edit; after Allow it reads "Allowed". `blocked` from `finish_run` shows
+  edit; once answered (Allow or Deny) the line leaves the log. `blocked` from `finish_run` shows
   `Blocked: <blocked>`. A stopped run shows `Stopped by you after <n>s`. A failed run shows
   `Run failed…` with a `button` "Retry". A dropped connection shows "Reconnecting".
 - **Chips**: the MR is a `link` named with `!<iid>`, `href` the MR URL, showing its state

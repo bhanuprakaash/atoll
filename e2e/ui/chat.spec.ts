@@ -47,7 +47,7 @@ test('one working line by tool kind, a summary above the reply, the user message
     /Searching selectedRepo/,
     /Reading repo-step\.tsx/,
     /Editing wizard\.tsx/,
-    /Running pnpm test/,
+    /Running Run the tests/,
   ]) {
     await expect(working).toHaveCount(1);
     await expect(working).toHaveText(step);
@@ -73,7 +73,7 @@ test('one working line by tool kind, a summary above the reply, the user message
   await expect(log.getByText(/^Worked \d+(m \d+)?s · /)).toContainText('edited 1');
 });
 
-test('an approval shows Allow and Deny; Deny ends in a blocked line', async ({ page }) => {
+test('an approval shows Allow and Deny, leaves once answered; Deny ends in a blocked line', async ({ page }) => {
   await emptyThread(page, 'Ash');
   const log = page.getByRole('log', { name: 'Messages' });
 
@@ -87,7 +87,7 @@ test('an approval shows Allow and Deny; Deny ends in a blocked line', async ({ p
   await allow.click();
   await expect(log.getByText(/^Created .*hello\.txt/)).toBeVisible();
   await expect(allow).toHaveCount(0);
-  await expect(log.getByText('Allowed', { exact: false }).first()).toBeVisible();
+  await expect(log.getByText('Allowed', { exact: false })).toHaveCount(0);
 
   await send(page, prompts.write);
   await log.getByRole('button', { name: 'Deny', exact: true }).click();
@@ -105,7 +105,7 @@ test('Stop ends a running run and the chat says it was stopped', async ({ page }
   const stop = page.getByRole('button', { name: 'Stop' });
   await expect(stop).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send' })).toHaveCount(0);
-  await expect(log.getByRole('status')).toHaveText(/Running make build/);
+  await expect(log.getByRole('status')).toHaveText(/Running Run the build/);
   await stop.click();
 
   await expect(log.getByText(/Stopped by you after \d+(m \d+)?s/)).toBeVisible();

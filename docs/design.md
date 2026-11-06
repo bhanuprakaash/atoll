@@ -65,7 +65,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   exits after replying. No agent process lives between messages.
 - Resume by default. A fresh session only comes from starting a new thread or delegation.
 - Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply stays
-  2–3 plain lines. *The report feeds memory, parents and fresh starts.* A turn that ends without
+  2–3 plain lines. *The report feeds memory, parents and fresh starts.* `blocked` is only what
+  the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
+  is not blocked, so the chat shows no Blocked line for it. A turn that ends without
   the report gets one more prompt in the same session asking for it; its text is not shown. If
   there is still none, the run ends `done` with `report: null` and a logged warning.
 - One provider process per run, in the thread's folder (`<data>/threads/<id>`): a provider
@@ -341,12 +343,16 @@ Voice
   message is sent and stored, with trailing `.,;:!?` removed from the last word. The user can set a
   title (`PATCH /api/threads/{id}`), and a user title is never replaced.
 - The chat has no cards. The user's message is the only bubble; the Bot replies in plain text with
-  markdown. Everything else is one quiet line with its action inline: approvals (Allow, Deny),
-  Chief's changes (Undo, struck through once undone), the branch starting, the worktree cleaned up,
-  a failed run (Retry), a stopped run, blocked (from `finish_run`'s `blocked`), a refused message
-  and reconnecting. Chips are the exception: an MR with its live state, a saved memory with its
-  kind and Retire (tap opens kind, scope, why and what it replaced), a closed thread. A Bot Chief
-  creates gets one card: its creature, name, model, persona, skills, repos, Open and Undo.
+  markdown. Everything else is one quiet line with its action inline: approvals (Allow, Deny; the
+  line leaves once answered), Chief's changes (Undo, struck through once undone), the branch
+  starting, the worktree cleaned up, a failed run (Retry), a stopped run, blocked (from
+  `finish_run`'s `blocked`), a refused message and reconnecting. Chips are the exception: an MR
+  with its live state, a saved memory with its kind and Retire (tap opens kind, scope, why and what
+  it replaced), a closed thread. A Bot Chief creates gets one card: its creature, name, model,
+  persona, skills, repos, Open and Undo.
+  One run's changes are grouped by kind and action: one change shows as above; two or more show as
+  one line ("Created 5 skills teach, tdd, …") or, for new Bots, one compact list with Open per row,
+  and one Undo all.
 - Messages show their local send time beneath them. The log opens on its newest 50 messages and
   loads older pages at its top without shifting what the user was reading; a round jump control
   returns to the latest message when the user has scrolled away.

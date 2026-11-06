@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,6 +26,17 @@ import (
 )
 
 var _looks = []string{"jellyfish", "whale", "penguin", "shark", "octopus", "turtle", "seahorse", "otter", "clownfish", "manta"}
+
+func (a *api) createWithLook(ctx context.Context, b store.Bot) (store.Bot, error) {
+	if b.Look == "" {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(_looks))))
+		if err != nil {
+			return store.Bot{}, err
+		}
+		b.Look = _looks[n.Int64()]
+	}
+	return a.st.CreateBot(ctx, b)
+}
 
 func validBot(b store.Bot) bool {
 	return botProblem(b) == ""
@@ -436,7 +449,7 @@ func (a *api) platformCall(
 			return nil, rerr
 		}
 		b.CanManagePlatform = false
-		b, err = a.st.CreateBot(ctx, b)
+		b, err = a.createWithLook(ctx, b)
 		after, entity, id, action = b, store.EntityBot, b.ID, store.ActionCreate
 	case provider.ToolEditBot:
 		var in struct {

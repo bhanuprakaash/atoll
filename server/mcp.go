@@ -23,7 +23,7 @@ const _tools = `{"tools":[
 {"name":"finish_run",
 "description":"Report how this run went. Call it once in every run, when the work is done and before your final reply.",
 "inputSchema":{"type":"object",
-"properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string"},"next":{"type":"string"}},
+"properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string","description":"What stopped the work that only the user can fix: a missing sign-in or token, no access, a denied approval, a failing service. Empty string if nothing. A question you asked in your reply is not blocked."},"next":{"type":"string"}},
 "required":["done","tried","blocked","next"]}},
 {"name":"start_work",
 "description":"Repo threads start in a clean read-only checkout. Call before your first edit in a repo thread. Makes this thread's worktree on a new branch type/slug and returns its path and branch as JSON. Change into that path for your edits. Calling it again returns the same worktree.",
