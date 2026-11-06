@@ -122,8 +122,9 @@ server's name, with the `Allow` and `Deny` buttons of any other approval.
 
 - `e2e/fakes/mcpstdio` (built by `TestMain` and by `ui/atoll.ts`): a local MCP server on stdio. Tool
   `answer` answers `stdio-answer-42`; tool `inspect` `{env: <name>}` answers
-  `args=<its arguments joined by |>;env=<that variable, or (unset)>`. Each start is logged to
-  `<executable>.log` (arguments only, never env) so a test counts starts.
+  `args=<its arguments joined by |>;env=<first 12 hex digits of the SHA-256 of that variable, or
+  (unset)>`: the answer proves the value arrived without holding it, since a run stores its answers.
+  Each start is logged to `<executable>.log` (arguments only, never env) so a test counts starts.
 - The remote fake is an `httptest` server in the tests: `POST` only, every request must carry header
   `X-Fake-Key: fake-mcp-key-1` or it is `401`; tool `answer` answers `http-answer-42`.
 - Both fake providers read stdio servers too (Claude `command`/`args`/`env`, Codex

@@ -113,7 +113,7 @@ func TestMCPServers_RunGetsExactlyThePickedServers(t *testing.T) {
 			ch := f.s.events(t, th)
 			done, approvals := f.use(t, th, ch, true, useAll()...)
 			want := replyLines(
-				"docs-local/inspect: args=--tag|one;env="+_mcpEnvSecret,
+				"docs-local/inspect: args=--tag|one;env="+envDigest(_mcpEnvSecret),
 				"docs-local/answer: stdio-answer-42",
 				"docs-remote/answer: http-answer-42",
 			)
@@ -206,7 +206,7 @@ func TestMCPServers_EditAndRemoveApplyFromTheNextRun(t *testing.T) {
 			f.s.do(t, "POST", "/api/approvals/"+firstID, map[string]bool{"approve": true}, nil, http.StatusNoContent)
 			done, _ := f.answerAll(t, ch, r.ID, true, nil)
 			want := replyLines(
-				"docs-local/inspect: args=--tag|one;env="+_mcpEnvSecret,
+				"docs-local/inspect: args=--tag|one;env="+envDigest(_mcpEnvSecret),
 				"docs-local/answer: stdio-answer-42",
 				"docs-remote/answer: http-answer-42",
 			)
@@ -229,7 +229,7 @@ func TestMCPServers_EditAndRemoveApplyFromTheNextRun(t *testing.T) {
 			// The next run, in the same thread, gets the edited local server and no remote one.
 			done, approvals := f.use(t, th, ch, true, useAll()...)
 			want = replyLines(
-				"docs-local/inspect: args=--tag|two;env="+_mcpEnvSecret,
+				"docs-local/inspect: args=--tag|two;env="+envDigest(_mcpEnvSecret),
 				"docs-local/answer: stdio-answer-42",
 				"docs-remote/answer: unavailable",
 			)
@@ -481,7 +481,7 @@ func TestMCPFixtures_ProviderScenarios(t *testing.T) {
 					t.Fatalf("fake %s: %v\n%s", p, err, out)
 				}
 				want := []string{
-					"docs-local/inspect: args=--tag|one;env=" + _mcpEnvSecret,
+					"docs-local/inspect: args=--tag|one;env=" + envDigest(_mcpEnvSecret),
 					"docs-local/answer: stdio-answer-42",
 					"docs-remote/answer: http-answer-42",
 				}

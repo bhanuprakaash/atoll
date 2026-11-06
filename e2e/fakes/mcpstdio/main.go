@@ -1,12 +1,15 @@
 // Command mcpstdio is a local MCP server for the e2e tests: JSON-RPC lines on stdin and stdout, as
 // a provider CLI starts one from its config. Tool answer always answers "stdio-answer-42". Tool
-// inspect, given {"env": "<name>"}, answers "args=<its arguments joined by |>;env=<that variable>"
-// ("(unset)" when it has none), so a test sees what the provider passed. Every start is logged to
+// inspect, given {"env": "<name>"}, answers "args=<its arguments joined by |>;env=<first 12 hex digits of the SHA-256 of that variable>"
+// ("(unset)" when it has none), so a test sees what the provider passed without the answer, which a
+// run stores, holding the secret itself. Every start is logged to
 // <executable>.log with its arguments, never its env.
 package main
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -70,6 +73,9 @@ func run() error {
 				value, ok := os.LookupEnv(req.Params.Arguments.Env)
 				if !ok {
 					value = "(unset)"
+				} else {
+					sum := sha256.Sum256([]byte(value))
+					value = hex.EncodeToString(sum[:])[:12]
 				}
 				text = "args=" + strings.Join(os.Args[1:], "|") + ";env=" + value
 			}

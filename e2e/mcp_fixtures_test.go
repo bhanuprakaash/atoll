@@ -1,6 +1,8 @@
 package e2e
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -118,6 +120,13 @@ func installMCPStdio(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// envDigest is what the local fake MCP server's inspect tool answers for a variable: the first 12
+// hex digits of its SHA-256, so the answer proves the value arrived without holding it.
+func envDigest(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])[:12]
 }
 
 // starts is how many times the local fake MCP server at path was started.
