@@ -324,7 +324,11 @@ func (m *Manager) runEnv(ctx context.Context, b store.Bot) ([]string, string, er
 	}
 	env = append(env, github...)
 	if token != "" {
-		helpers = append(helpers, gitHelper{url: connection.GitHubURL(), script: _githubHelper})
+		ssh, err := sshRemotes(connection.GitHubURL())
+		if err != nil {
+			return nil, "", err
+		}
+		helpers = append(helpers, gitHelper{connection.GitHubURL(), _githubHelper, ssh})
 	}
 	config := [][2]string{{"credential.helper", ""}}
 	for _, h := range helpers {

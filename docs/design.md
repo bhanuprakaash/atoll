@@ -196,7 +196,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   connection for them.
 - A run with a connected GitHub connection gets `GH_TOKEN` (never `GITHUB_TOKEN` or the Enterprise
   variables), a git credential helper scoped to `https://github.com` that answers
-  `x-access-token` with the token, and a `github` entry in its MCP config next to Reef's own: the
+  `x-access-token` with the token, the same mapping of its SSH remotes (`git@<host>:`,
+  `ssh://git@<host>/`) to HTTPS as GitLab's, and a `github` entry in its MCP config next to Reef's own: the
   hosted server's URL with `Authorization: Bearer <token>` (Claude `--mcp-config` headers, Codex
   `mcp_servers.github.http_headers`). A GitHub tool call goes to the user as an approval named
   `mcp__github__<tool>`, like every tool that is not Reef's own: the tools can push, merge and close
