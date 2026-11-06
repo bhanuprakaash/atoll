@@ -1,10 +1,11 @@
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useEffect, useRef, useState } from 'react';
 import type { CreatureLook } from '@/components/creature';
 import { Creature } from '@/components/creature';
 import { Markdown } from '@/components/markdown';
 import {
   Box,
+  outlineButton,
   RowText,
   rowClass,
   SectionHead,
@@ -13,7 +14,14 @@ import {
   UsedBy,
 } from '@/components/settings-ui';
 import { TextArea, TextField } from '@/components/text-field';
-import { type Skill, useSaveSkill, useSkills } from '@/modules/skills/api/skills';
+import {
+  type Reimport,
+  type Skill,
+  type SkillFile,
+  useReimportSkill,
+  useSaveSkill,
+  useSkills,
+} from '@/modules/skills/api/skills';
 
 type Bot = { id: string; name: string; look: CreatureLook; skills: string[] };
 
@@ -50,28 +58,149 @@ function FileIcon({ size }: { size: number }) {
   );
 }
 
-const draft: Skill = { id: '', name: '', content: '---\ndescription: \n---\n' };
+const draft: Skill = {
+  id: '',
+  name: '',
+  content: '---\ndescription: \n---\n',
+  source: '',
+  files: [],
+};
+
+type Draft = Pick<Skill, 'name' | 'content' | 'files'>;
+const toDraft = ({ name, content, files }: Skill): Draft => ({ name, content, files });
+const same = (a: Draft, b: Draft) => JSON.stringify(a) === JSON.stringify(b);
+const skillMd = 'SKILL.md';
+
+function pathProblem(path: string, files: SkillFile[]) {
+  const parts = path.split('/');
+  if (path.startsWith('/') || parts.includes('..')) {
+    return 'Use a path inside the skill: no .. and no leading /.';
+  }
+  if (!path || parts.some((p) => p === '' || p === '.')) {
+    return 'Type a relative path such as scripts/check.';
+  }
+  if (path === skillMd || files.some((f) => f.path === path)) return `${path} already exists.`;
+  return '';
+}
+
+function ReimportResult({
+  result,
+  cancel,
+  confirm,
+}: {
+  result: Reimport;
+  cancel: () => void;
+  confirm: () => void;
+}) {
+  const lists = [
+    ['Added', result.added],
+    ['Changed', result.changed],
+    ['Removed', result.removed],
+  ] as const;
+  const none = lists.every(([, paths]) => paths.length === 0);
+  return (
+    <section
+      aria-label="Re-import"
+      className="flex flex-col gap-3 rounded-2xl border border-line p-4 text-[13px]"
+    >
+      {none ? (
+        <p>No changes</p>
+      ) : (
+        lists.map(
+          ([title, paths]) =>
+            paths.length > 0 && (
+              <div key={title}>
+                <h3 className={labelClass}>{title}</h3>
+                <ul aria-label={title} className="font-mono">
+                  {paths.map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+              </div>
+            ),
+        )
+      )}
+      {result.status === 'confirm' ? (
+        <>
+          <p role="alert" className="text-blocked">
+            This skill was edited in Reef since its last import. Those edits will be overwritten.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button type="button" className={outlineButton} onClick={cancel}>
+              Cancel
+            </button>
+            <button type="button" className={solidButton} onClick={confirm}>
+              Confirm
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="text-muted">{none ? 'Up to date with its folder.' : 'Replaced.'}</p>
+      )}
+    </section>
+  );
+}
 
 function SkillEditor({
   skill,
   bots,
   close,
   onCreated,
+  onDirty,
 }: {
   skill: Skill;
   bots: Bot[];
   close: () => void;
   onCreated: (id: string) => void;
+  onDirty: (dirty: boolean) => void;
 }) {
   const isNew = !skill.id;
-  const [name, setName] = useState(skill.name);
-  const [content, setContent] = useState(skill.content);
+  const [base, setBase] = useState(() => toDraft(skill));
+  const [edit, setEdit] = useState(base);
+  const [open, setOpen] = useState(skillMd);
+  const [manual, setManual] = useState<string[]>([]);
+  const [adding, setAdding] = useState<string | null>(null);
+  const [addError, setAddError] = useState('');
   const [preview, setPreview] = useState(false);
+  const [result, setResult] = useState<Reimport | null>(null);
   const save = useSaveSkill(skill.id || undefined);
+  const reimport = useReimportSkill(skill.id);
+  const { name, content, files } = edit;
   const { head, body } = split(content);
   const description = head.match(/^description:\s*(.*)$/m)?.[1] ?? '';
   const users = bots.filter((b) => b.skills?.includes(skill.id));
-  const dirty = isNew ? name.trim() !== '' : name !== skill.name || content !== skill.content;
+  const changed = !same(edit, base);
+  const canSave = isNew ? name.trim() !== '' : changed;
+  const file = files.find((f) => f.path === open);
+  useEffect(() => onDirty(changed), [changed]);
+  useEffect(() => () => onDirty(false), []);
+  useEffect(() => {
+    if (isNew || changed) return;
+    const next = toDraft(skill);
+    setBase(next);
+    setEdit(next);
+    if (open !== skillMd && !next.files.some((f) => f.path === open)) setOpen(skillMd);
+  }, [skill]);
+  const setContent = (value: string) => setEdit({ ...edit, content: value });
+  function setFile(path: string, patch: Partial<SkillFile>) {
+    setEdit({
+      ...edit,
+      files: files.map((f) => (f.path === path ? { ...f, ...patch } : f)),
+    });
+  }
+  function addFile(path: string) {
+    const problem = pathProblem(path, files);
+    setAddError(problem);
+    if (problem) return;
+    setEdit({
+      ...edit,
+      files: [...files, { path, content: '', executable: false }].sort((a, b) =>
+        a.path < b.path ? -1 : 1,
+      ),
+    });
+    setAdding(null);
+    setOpen(path);
+  }
   function setDescription(value: string) {
     const line = `description: ${value}`;
     setContent(
@@ -85,6 +214,8 @@ function SkillEditor({
       ),
     );
   }
+  const runReimport = (replace: boolean) =>
+    reimport.mutate(replace, { onSuccess: (r) => setResult(r) });
   return (
     <aside
       role="dialog"
@@ -98,11 +229,22 @@ function SkillEditor({
         <h2 className="font-mono text-[15px] font-normal">
           {isNew ? name || 'New skill' : skill.name}
         </h2>
+        {skill.source && (
+          <button
+            type="button"
+            className={`${outlineButton} ml-auto`}
+            title={`Read ${skill.source} again`}
+            disabled={changed || reimport.isPending}
+            onClick={() => runReimport(false)}
+          >
+            Re-import
+          </button>
+        )}
         <button
           type="button"
           aria-label="Close"
           onClick={close}
-          className="ml-auto flex size-9 items-center justify-center rounded-[10px] text-muted"
+          className={`${skill.source ? '' : 'ml-auto'} flex size-9 items-center justify-center rounded-[10px] text-muted`}
         >
           <svg
             width="18"
@@ -119,6 +261,14 @@ function SkillEditor({
         </button>
       </div>
       <div className="flex flex-1 flex-col gap-5 overflow-auto p-5">
+        {reimport.isError && <p className="text-[13px] text-danger">{reimport.error.message}</p>}
+        {result && (
+          <ReimportResult
+            result={result}
+            cancel={() => setResult(null)}
+            confirm={() => runReimport(true)}
+          />
+        )}
         <label className="flex flex-col gap-2">
           <span className={labelClass}>Name</span>
           <TextField
@@ -126,50 +276,157 @@ function SkillEditor({
             size="sm"
             placeholder="review-mr"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => setEdit({ ...edit, name: e.target.value })}
           />
         </label>
-        <label className="flex flex-col gap-2">
-          <span className={labelClass}>When to use it</span>
-          <TextField
-            size="sm"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-          <span className="text-xs text-muted">
-            The Bot reads this to decide when the skill applies.
-          </span>
-        </label>
-        <div className="flex flex-1 flex-col gap-2">
+        <div className="flex flex-col gap-2">
           <div className={`flex items-center ${labelClass}`}>
-            <label htmlFor="skill-instructions">Instructions</label>
-            <span className="ml-auto flex gap-1 rounded-full bg-field p-[3px] text-xs tracking-normal">
-              {modes.map(([label, on]) => (
-                <button
-                  key={label}
-                  type="button"
-                  aria-pressed={preview === on}
-                  onClick={() => setPreview(on)}
-                  className={`h-6 rounded-full px-2.5 ${preview === on ? 'bg-outline text-ink' : 'text-muted'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </span>
+            <span>Files</span>
+            <button
+              type="button"
+              className="ml-auto text-xs tracking-normal text-ink"
+              onClick={() => {
+                setAdding('');
+                setAddError('');
+              }}
+            >
+              + File
+            </button>
           </div>
-          {preview ? (
-            <div className="min-h-[420px] rounded-2xl border border-line bg-well p-4 text-[13px] leading-[1.7] text-ink/80">
-              <Markdown>{body}</Markdown>
-            </div>
-          ) : (
-            <TextArea
-              id="skill-instructions"
-              variant="code"
-              value={body}
-              onChange={(e) => setContent(join(head, e.target.value))}
-            />
+          {adding !== null && (
+            <form
+              className="flex flex-col gap-1.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                addFile(adding.trim());
+              }}
+            >
+              <div className="flex gap-2">
+                <TextField
+                  aria-label="File path"
+                  className="font-mono"
+                  size="sm"
+                  placeholder="scripts/check"
+                  autoFocus
+                  value={adding}
+                  onChange={(e) => setAdding(e.target.value)}
+                />
+                <button type="submit" className={outlineButton}>
+                  Add
+                </button>
+              </div>
+              {addError && (
+                <p role="alert" className="text-xs text-danger">
+                  {addError}
+                </p>
+              )}
+            </form>
           )}
+          <ul aria-label="Files" className="flex flex-col rounded-2xl border border-line py-1">
+            {[skillMd, ...files.map((f) => f.path)].map((path) => {
+              const script = files.find((f) => f.path === path)?.executable;
+              return (
+                <li key={path}>
+                  <button
+                    type="button"
+                    aria-label={path}
+                    aria-current={open === path}
+                    onClick={() => setOpen(path)}
+                    className={`flex h-8 w-full items-center gap-2 px-3 text-left font-mono text-[13px] ${open === path ? 'bg-line' : ''}`}
+                  >
+                    {path}
+                    {script && <span className="ml-auto font-sans text-xs text-muted">script</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
+        {file ? (
+          <div className="flex flex-1 flex-col gap-2">
+            <div className={`flex items-center gap-3 ${labelClass}`}>
+              <span className="font-mono tracking-normal text-ink">{file.path}</span>
+              <label className="ml-auto flex items-center gap-1.5 tracking-normal">
+                <input
+                  type="checkbox"
+                  className="accent-accent"
+                  checked={file.executable}
+                  onChange={(e) => {
+                    setManual([...manual, file.path]);
+                    setFile(file.path, { executable: e.target.checked });
+                  }}
+                />
+                Script
+              </label>
+              <button
+                type="button"
+                className="tracking-normal text-danger"
+                onClick={() => {
+                  setEdit({ ...edit, files: files.filter((f) => f.path !== file.path) });
+                  setOpen(skillMd);
+                }}
+              >
+                Delete file
+              </button>
+            </div>
+            <TextArea
+              aria-label="Content"
+              variant="code"
+              value={file.content}
+              onChange={(e) => {
+                const value = e.target.value;
+                setFile(file.path, {
+                  content: value,
+                  executable: manual.includes(file.path) ? file.executable : value.startsWith('#!'),
+                });
+              }}
+            />
+          </div>
+        ) : (
+          <>
+            <label className="flex flex-col gap-2">
+              <span className={labelClass}>When to use it</span>
+              <TextField
+                size="sm"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+              <span className="text-xs text-muted">
+                The Bot reads this to decide when the skill applies.
+              </span>
+            </label>
+            <div className="flex flex-1 flex-col gap-2">
+              <div className={`flex items-center ${labelClass}`}>
+                <label htmlFor="skill-instructions">Instructions</label>
+                <span className="ml-auto flex gap-1 rounded-full bg-field p-[3px] text-xs tracking-normal">
+                  {modes.map(([label, on]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      aria-pressed={preview === on}
+                      onClick={() => setPreview(on)}
+                      className={`h-6 rounded-full px-2.5 ${preview === on ? 'bg-outline text-ink' : 'text-muted'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </span>
+              </div>
+              {preview ? (
+                <div className="min-h-[420px] rounded-2xl border border-line bg-well p-4 text-[13px] leading-[1.7] text-ink/80">
+                  <Markdown>{body}</Markdown>
+                </div>
+              ) : (
+                <TextArea
+                  id="skill-instructions"
+                  variant="code"
+                  value={body}
+                  onChange={(e) => setContent(join(head, e.target.value))}
+                />
+              )}
+            </div>
+          </>
+        )}
         <div className={`flex flex-col gap-2 ${isNew ? 'hidden' : ''}`}>
           <span className={labelClass}>Used by</span>
           {users.length > 0 ? (
@@ -194,7 +451,7 @@ function SkillEditor({
           <span className="text-danger">{save.error.message}</span>
         ) : isNew ? (
           'Not created yet'
-        ) : dirty ? (
+        ) : changed ? (
           'Unsaved changes'
         ) : (
           <>
@@ -217,11 +474,16 @@ function SkillEditor({
         <button
           type="button"
           className={`${solidButton} ml-auto`}
-          disabled={!dirty || save.isPending}
+          disabled={!canSave || save.isPending}
           onClick={() =>
             save.mutate(
-              { name: name.trim(), content },
-              { onSuccess: (s) => isNew && onCreated(s.id) },
+              { ...edit, name: name.trim() },
+              {
+                onSuccess: (s) => {
+                  if (isNew) onCreated(s.id);
+                  else setBase(toDraft(s));
+                },
+              },
             )
           }
         >
@@ -232,26 +494,81 @@ function SkillEditor({
   );
 }
 
+function DiscardDialog({ keep, discard }: { keep: () => void; discard: () => void }) {
+  return (
+    <div className="fixed inset-0 z-20 flex items-center justify-center bg-bg/60">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="discard-title"
+        className="flex w-90 flex-col gap-4 rounded-2xl border border-line bg-card p-5"
+      >
+        <h2 id="discard-title" className="text-[15px] font-normal">
+          Discard unsaved changes?
+        </h2>
+        <p className="text-[13px] text-muted">Your edits to this skill are not saved.</p>
+        <div className="flex justify-end gap-2">
+          <button type="button" className={outlineButton} onClick={keep}>
+            Keep editing
+          </button>
+          <button type="button" className={solidButton} onClick={discard}>
+            Discard
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
   const { data: skills = [] } = useSkills();
   const [selected, setSelected] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [leave, setLeave] = useState<{ go: () => void } | null>(null);
+  const navigate = useNavigate();
   const skill = selected === 'new' ? draft : skills.find((s) => s.id === selected);
   const [params, setParams] = useSearchParams();
   const wantsNew = params.has('new');
   const startedNew = useRef(false);
+  const guard = (go: () => void) => (dirty ? setLeave({ go }) : go());
   useEffect(() => {
     if (!wantsNew || startedNew.current) return;
     startedNew.current = true;
     setParams({}, { replace: true });
     setSelected('new');
   }, [wantsNew]);
+  useEffect(() => {
+    if (!dirty) return;
+    // A link elsewhere in the app would unmount the editor without asking.
+    function onClick(e: MouseEvent) {
+      const link = e.target instanceof Element ? e.target.closest('a[href]') : null;
+      if (!link) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const href = link.getAttribute('href') ?? '/';
+      setLeave({ go: () => navigate(href) });
+    }
+    function onUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+    }
+    document.addEventListener('click', onClick, true);
+    window.addEventListener('beforeunload', onUnload);
+    return () => {
+      document.removeEventListener('click', onClick, true);
+      window.removeEventListener('beforeunload', onUnload);
+    };
+  }, [dirty]);
   return (
     <>
       <SectionHead
         title="Skills"
         lead="One library. Each Bot picks its own; runs get read-only copies."
       >
-        <button type="button" className={solidButton} onClick={() => setSelected('new')}>
+        <button
+          type="button"
+          className={solidButton}
+          onClick={() => guard(() => setSelected('new'))}
+        >
           New skill
         </button>
       </SectionHead>
@@ -259,7 +576,8 @@ export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
         <div className="rounded-[18px] border border-dashed border-outline px-6 py-10 text-center">
           <p>No skills yet</p>
           <p className="mt-1 text-[13px] text-muted">
-            A skill is a SKILL.md your Bots read when it applies. Create one with New skill.
+            A skill is a SKILL.md and its files, which your Bots read when it applies. Create one
+            with New skill.
           </p>
         </div>
       ) : (
@@ -271,7 +589,7 @@ export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
                 key={s.id}
                 type="button"
                 className={`${rowClass} w-full text-left ${s.id === selected ? 'bg-line' : ''}`}
-                onClick={() => setSelected(s.id)}
+                onClick={() => s.id !== selected && guard(() => setSelected(s.id))}
               >
                 <Tile>
                   <FileIcon size={16} />
@@ -308,8 +626,19 @@ export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
           key={skill.id || 'new'}
           skill={skill}
           bots={bots}
-          close={() => setSelected(null)}
+          close={() => guard(() => setSelected(null))}
           onCreated={setSelected}
+          onDirty={setDirty}
+        />
+      )}
+      {leave && (
+        <DiscardDialog
+          keep={() => setLeave(null)}
+          discard={() => {
+            setLeave(null);
+            setDirty(false);
+            leave.go();
+          }}
         />
       )}
     </>

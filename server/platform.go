@@ -262,6 +262,32 @@ func (a *api) putSkill(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, sk)
 }
 
+// reimportSkill reads a skill's source folder again, as import_skill does.
+func (a *api) reimportSkill(w http.ResponseWriter, r *http.Request) {
+	sk, err := a.st.Skill(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if sk.Source == "" {
+		fail(w, http.StatusConflict, "skill was not imported from a folder")
+		return
+	}
+	var in struct {
+		Replace bool `json:"replace"`
+	}
+	if json.NewDecoder(r.Body).Decode(&in) != nil {
+		fail(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	res, _, _, err := a.importSkill(r.Context(), sk.Source, in.Replace)
+	if err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	write(w, http.StatusOK, res)
+}
+
 func (a *api) undoChange(w http.ResponseWriter, r *http.Request) {
 	_, err := a.st.UndoChange(r.Context(), r.PathValue("id"))
 	if err != nil {
