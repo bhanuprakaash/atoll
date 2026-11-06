@@ -78,6 +78,7 @@ type (
 		Provider          string     `json:"provider"`
 		Look              string     `json:"look,omitempty"`
 		Model             string     `json:"model,omitempty"`
+		Pinned            bool       `json:"pinned,omitempty"`
 		State             string     `json:"state,omitempty"`
 		Activity          string     `json:"activity,omitempty"`
 		LastActivity      *time.Time `json:"last_activity,omitempty"`
@@ -112,6 +113,7 @@ type (
 	Thread struct {
 		ID              string     `json:"id"`
 		BotID           string     `json:"bot_id"`
+		Title           string     `json:"title"`
 		Session         string     `json:"-"`
 		RepoID          string     `json:"repo_id"`
 		Branch          string     `json:"branch"`
@@ -162,7 +164,7 @@ type (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model"
-	_threadColumns = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref"
+	_threadColumns = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title"
 )
 
 // Open opens dir/atoll.db, creating dir and the file if needed, and applies any migration the
@@ -254,7 +256,8 @@ func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 // Bot returns the Bot with id.
 func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
 	rows, err := query(ctx, s.db,
-		"SELECT "+_botColumns+" FROM bots WHERE id = ? AND removed = 0", scanBot, id)
+		"SELECT "+_botColumns+", pinned_at IS NOT NULL FROM bots WHERE id = ? AND removed = 0",
+		scanBot, id)
 	if err != nil {
 		return Bot{}, fmt.Errorf("read bot %s: %w", id, err)
 	}
@@ -264,10 +267,26 @@ func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
 	return rows[0], nil
 }
 
-// Bots lists every Bot, oldest first.
+// Bots lists every Bot: Chief, then the pinned Bots in the order pinned, then the rest, oldest
+// first.
 func (s *Store) Bots(ctx context.Context) ([]Bot, error) {
 	return query(ctx, s.db,
-		"SELECT "+_botColumns+" FROM bots WHERE removed = 0 ORDER BY rowid", scanBot)
+		"SELECT "+_botColumns+", pinned_at IS NOT NULL FROM bots WHERE removed = 0 "+
+			"ORDER BY id = 'chief' DESC, pinned_at IS NULL, pinned_at, rowid", scanBot)
+}
+
+// SetPinned pins the Bot with id, or unpins it. Pinning a pinned Bot keeps its place.
+func (s *Store) SetPinned(ctx context.Context, id string, pinned bool) error {
+	stmt, args := "UPDATE bots SET pinned_at = NULL WHERE id = ? AND removed = 0", []any{id}
+	if pinned {
+		stmt = "UPDATE bots SET pinned_at = coalesce(pinned_at, ?) WHERE id = ? AND removed = 0"
+		args = []any{time.Now().UTC().UnixMicro(), id}
+	}
+	res, err := s.db.ExecContext(ctx, stmt, args...)
+	if err != nil {
+		return fmt.Errorf("set pinned: %w", err)
+	}
+	return found(res, "bot", id)
 }
 
 // CreateRepo registers a repo. It wraps ErrExists when the name is taken.
@@ -438,6 +457,15 @@ func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) e
 	return found(res, "thread", threadID)
 }
 
+// SetTitle sets the thread's title.
+func (s *Store) SetTitle(ctx context.Context, threadID, title string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET title = ? WHERE id = ?", title, threadID)
+	if err != nil {
+		return fmt.Errorf("set title: %w", err)
+	}
+	return found(res, "thread", threadID)
+}
+
 // SetClosed closes the thread: it takes no more messages.
 func (s *Store) SetClosed(ctx context.Context, threadID string) error {
 	res, err := s.db.ExecContext(ctx, "UPDATE threads SET closed = 1, closed_at = ? WHERE id = ?", time.Now().UTC().UnixMicro(), threadID)
@@ -458,19 +486,21 @@ func (s *Store) LatestRun(ctx context.Context, threadID string) (string, error) 
 	return id, nil
 }
 
-// ThreadRun is a thread that has a run, with the status of its newest run.
+// ThreadRun is a thread that has a run, with the status and the reply of its newest run. Reply
+// is only its first 300 characters: enough for a one-line preview.
 type ThreadRun struct {
 	BotID        string
 	ThreadID     string
 	LastActivity time.Time
 	Status       string
+	Reply        string
 }
 
 // ThreadRuns lists the threads that have a run, newest activity first. botID limits it to one
 // Bot; empty means every Bot.
 func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, error) {
 	return query(ctx, s.db,
-		`SELECT t.bot_id, t.id, t.last_activity, r.status
+		`SELECT t.bot_id, t.id, t.last_activity, r.status, substr(r.reply, 1, 300)
 		 FROM (SELECT max(rowid) AS rid FROM runs GROUP BY thread_id) latest
 		 JOIN runs r ON r.rowid = latest.rid
 		 JOIN threads t ON t.id = r.thread_id
@@ -478,7 +508,7 @@ func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, erro
 		 ORDER BY t.last_activity DESC, t.rowid DESC`,
 		func(r *sql.Rows) (tr ThreadRun, err error) {
 			var at int64
-			err = r.Scan(&tr.BotID, &tr.ThreadID, &at, &tr.Status)
+			err = r.Scan(&tr.BotID, &tr.ThreadID, &at, &tr.Status, &tr.Reply)
 			tr.LastActivity = time.UnixMicro(at).UTC()
 			return tr, err
 		}, botID, botID)
@@ -508,7 +538,9 @@ func (s *Store) StartRun(ctx context.Context, threadID, text string) (Message, R
 		if err := found(res, "thread", threadID); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE threads SET last_activity = ? WHERE id = ?", time.Now().UTC().UnixMicro(), threadID); err != nil {
+		if _, err := tx.ExecContext(ctx,
+			"UPDATE threads SET last_activity = ?, title = CASE WHEN title = '' THEN ? ELSE title END WHERE id = ?",
+			time.Now().UTC().UnixMicro(), firstWords(text), threadID); err != nil {
 			return err
 		}
 		return insertMessage(ctx, tx, m)
@@ -671,6 +703,17 @@ func (s *Store) tx(ctx context.Context, fn func(*sql.Tx) error) error {
 	return nil
 }
 
+// firstWords is the title a thread's first message gives it: the first six words, without the
+// punctuation that ends the last one.
+func firstWords(text string) string {
+	words := strings.Fields(text)
+	words = words[:min(6, len(words))]
+	if len(words) > 0 {
+		words[len(words)-1] = strings.TrimRight(words[len(words)-1], ".,;:!?")
+	}
+	return strings.Join(words, " ")
+}
+
 func insertMessage(ctx context.Context, tx *sql.Tx, m Message) error {
 	_, err := tx.ExecContext(ctx,
 		"INSERT INTO messages (id, thread_id, role, text, run_id) VALUES (?, ?, ?, ?, ?)",
@@ -701,7 +744,8 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	var removed int
 	var closedAt sql.NullInt64
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
-		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef)
+		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
+		&t.Title)
 	if err != nil {
 		return Thread{}, err
 	}
@@ -721,7 +765,7 @@ func scanBot(r *sql.Rows) (Bot, error) {
 	var access sql.NullString
 	var conns, skills string
 	err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills,
-		&b.CanManagePlatform, &b.Look, &b.Model)
+		&b.CanManagePlatform, &b.Look, &b.Model, &b.Pinned)
 	if err != nil {
 		return Bot{}, err
 	}

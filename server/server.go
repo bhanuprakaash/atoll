@@ -77,6 +77,8 @@ func New(
 	mux.HandleFunc("GET /api/bots", a.listBots)
 	mux.HandleFunc("GET /api/bots/{id}", a.getBot)
 	mux.HandleFunc("PUT /api/bots/{id}", a.putBot)
+	mux.HandleFunc("POST /api/bots/{id}/pin", a.pinBot)
+	mux.HandleFunc("DELETE /api/bots/{id}/pin", a.unpinBot)
 	mux.HandleFunc("POST /api/skills", a.createSkill)
 	mux.HandleFunc("GET /api/skills", a.listSkills)
 	mux.HandleFunc("GET /api/skills/{id}", a.getSkill)
@@ -86,6 +88,7 @@ func New(
 	mux.HandleFunc("POST /api/bots/{id}/threads", a.createThread)
 	mux.HandleFunc("GET /api/bots/{id}/threads", a.listThreads)
 	mux.HandleFunc("GET /api/threads/{id}", a.getThread)
+	mux.HandleFunc("PATCH /api/threads/{id}", a.patchThread)
 	mux.HandleFunc("POST /api/threads/{id}/close", a.closeThread)
 	mux.HandleFunc("POST /api/threads/{id}/messages", a.sendMessage)
 	mux.HandleFunc("GET /api/threads/{id}/messages", a.listMessages)
@@ -239,7 +242,6 @@ func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
 
 type threadSummary struct {
 	store.Thread
-	Title     string        `json:"title"`
 	RunID     string        `json:"run_id"`
 	RunStatus string        `json:"run_status"`
 	Approval  *run.Approval `json:"approval"`
@@ -253,23 +255,7 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 		return threadSummary{}, err
 	}
 	out := threadSummary{Thread: t, UpdatedAt: t.LastActivity}
-	tool := a.runs.ActiveTool(t.ID)
-	if tool.Verb != "" {
-		out.Verb = strings.TrimSpace(tool.Verb + " " + tool.Target)
-	} else {
-		out.Verb = "Thinking"
-	}
-	msgs, err := a.st.Messages(r.Context(), t.ID)
-	if err != nil {
-		return out, err
-	}
-	for _, msg := range msgs {
-		if msg.Role == store.RoleUser {
-			chars := []rune(msg.Text)
-			out.Title = string(chars[:min(40, len(chars))])
-			break
-		}
-	}
+	out.Verb = a.liveVerb(t.ID)
 	out.RunID, err = a.st.LatestRun(r.Context(), t.ID)
 	if err != nil {
 		return out, err
@@ -286,6 +272,15 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 		out.Approval = &approvals[0]
 	}
 	return out, nil
+}
+
+// liveVerb is what the thread's active run is doing now, as the live run line shows it.
+func (a *api) liveVerb(threadID string) string {
+	tool := a.runs.ActiveTool(threadID)
+	if tool.Verb == "" {
+		return "Thinking"
+	}
+	return strings.TrimSpace(tool.Verb + " " + tool.Target)
 }
 
 func (a *api) listThreads(w http.ResponseWriter, r *http.Request) {
@@ -332,6 +327,25 @@ func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
 		ActiveRun *store.Run     `json:"active_run"`
 		Approvals []run.Approval `json:"approvals"`
 	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals)})
+}
+
+func (a *api) patchThread(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Title string `json:"title"`
+	}
+	title := ""
+	if json.NewDecoder(r.Body).Decode(&body) == nil {
+		title = strings.TrimSpace(body.Title)
+	}
+	if title == "" {
+		fail(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	if err := a.st.SetTitle(r.Context(), r.PathValue("id"), title); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	a.getThread(w, r)
 }
 
 func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {

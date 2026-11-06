@@ -11,6 +11,7 @@ export type Bot = {
   look: CreatureLook;
   model: string;
   state: CreatureState;
+  pinned: boolean;
   activity: string;
   last_activity: string;
   repo_access: 'all' | string[];
@@ -37,6 +38,15 @@ export function useCreateBot() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (bot: NewBot) => api<Bot>('/bots', { method: 'POST', body: bot }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
+  });
+}
+
+export function usePinBot(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (pinned: boolean) =>
+      api<void>(`/bots/${id}/pin`, { method: pinned ? 'POST' : 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
   });
 }
