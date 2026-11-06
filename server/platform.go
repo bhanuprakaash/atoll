@@ -35,22 +35,11 @@ func responseBot(b store.Bot) botResponse {
 	return botResponse{Bot: b, Look: b.Look, Model: b.Model, Activity: b.Activity, LastActivity: b.LastActivity}
 }
 
-func (a *api) botSummary(r *http.Request, b store.Bot) (store.Bot, error) {
-	threads, err := a.st.Threads(r.Context(), b.ID)
-	if err != nil {
-		return b, err
-	}
+func (a *api) botSummary(r *http.Request, b store.Bot, threads []store.ThreadRun) store.Bot {
 	latest := ""
 	for _, t := range threads {
-		summary, err := a.threadSummary(r, t)
-		if err != nil {
-			return b, err
-		}
-		if summary.RunID == "" {
-			continue
-		}
 		if latest == "" {
-			latest = summary.RunStatus
+			latest = t.Status
 			at := t.LastActivity
 			b.LastActivity = &at
 			switch latest {
@@ -64,9 +53,12 @@ func (a *api) botSummary(r *http.Request, b store.Bot) (store.Bot, error) {
 				b.Activity = "Stopped"
 			}
 		}
-		if summary.Approval != nil {
+		if t.Status != "running" && t.Status != "waiting" {
+			continue
+		}
+		if _, approvals, _ := a.runs.Active(t.ThreadID); len(approvals) > 0 {
 			b.State = "needs_you"
-			kind, target := run.ToolKind(summary.Approval.Tool, summary.Approval.Input)
+			kind, target := run.ToolKind(approvals[0].Tool, approvals[0].Input)
 			verb := "use"
 			switch kind {
 			case "search", "read", "edit":
@@ -75,14 +67,12 @@ func (a *api) botSummary(r *http.Request, b store.Bot) (store.Bot, error) {
 				verb = "run"
 			}
 			b.Activity = strings.TrimSpace("Needs you: " + verb + " " + target)
-			return b, nil
+			return b
 		}
-		if summary.RunStatus == "running" || summary.RunStatus == "waiting" {
-			b.State = "working"
-		}
+		b.State = "working"
 	}
 	if b.State != "" {
-		return b, nil
+		return b
 	}
 	if latest == "failed" {
 		b.State = "failed"
@@ -91,7 +81,7 @@ func (a *api) botSummary(r *http.Request, b store.Bot) (store.Bot, error) {
 	} else {
 		b.State = "idle"
 	}
-	return b, nil
+	return b
 }
 
 func (a *api) getBot(w http.ResponseWriter, r *http.Request) {
@@ -100,12 +90,12 @@ func (a *api) getBot(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	b, err = a.botSummary(r, b)
+	threads, err := a.st.ThreadRuns(r.Context(), b.ID)
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusOK, responseBot(b))
+	write(w, http.StatusOK, responseBot(a.botSummary(r, b, threads)))
 }
 
 func (a *api) putBot(w http.ResponseWriter, r *http.Request) {

@@ -166,16 +166,18 @@ func (a *api) listBots(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	for i, b := range bots {
-		bots[i], err = a.botSummary(r, b)
-		if err != nil {
-			a.fail(w, r, err)
-			return
-		}
+	runs, err := a.st.ThreadRuns(r.Context(), "")
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	threads := map[string][]store.ThreadRun{}
+	for _, tr := range runs {
+		threads[tr.BotID] = append(threads[tr.BotID], tr)
 	}
 	responses := make([]botResponse, 0, len(bots))
 	for _, b := range bots {
-		responses = append(responses, responseBot(b))
+		responses = append(responses, responseBot(a.botSummary(r, b, threads[b.ID])))
 	}
 	write(w, http.StatusOK, responses)
 }
