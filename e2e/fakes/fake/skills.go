@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -147,8 +148,12 @@ func SkillsReply(skills []SkillCopy) (string, error) {
 	return "Skills: " + strings.Join(names, ", ") + ". No reef-greeting skill available.", nil
 }
 
-// SkillsRun runs scripts/check of the discovered poteto-mode skill, in the folder the provider
-// found it in, and names that folder in its reply. A prompt with "Wait, then" holds after
+// _scriptRe finds the script a prompt names: "the poteto-mode script <path>", scripts/check when none.
+var _scriptRe = regexp.MustCompile(`the poteto-mode script (\S+?)\.?(?:\s|$)`)
+
+// SkillsRun runs a script of the discovered poteto-mode skill, scripts/check unless the prompt names
+// another ("the poteto-mode script scripts/hello"), in the folder the provider found it in, and
+// names that folder in its reply. A prompt with "Wait, then" holds after
 // discovery as HoldSkills does and logs the folder again once released, so a test sees what the
 // live run still had.
 func SkillsRun(skills []SkillCopy, prompt string) (string, error) {
@@ -170,7 +175,11 @@ func SkillsRun(skills []SkillCopy, prompt string) (string, error) {
 			return "", err
 		}
 	}
-	script := filepath.Join(dir, "scripts", "check")
+	rel := "scripts/check"
+	if m := _scriptRe.FindStringSubmatch(prompt); m != nil {
+		rel = m[1]
+	}
+	script := filepath.Join(dir, filepath.FromSlash(rel))
 	cmd := exec.Command(script)
 	cmd.Dir = dir
 	out, err := cmd.Output()
