@@ -26,7 +26,7 @@ test('create a Bot, chat, watch the run work, approve a step', async ({ page }) 
   };
 
   await send(keep);
-  await expect(page.getByText('ok', { exact: true })).toBeVisible();
+  await expect(page.getByRole('log', { name: 'Messages' }).getByText('ok', { exact: true })).toBeVisible();
   await send(ask);
   await expect(page.getByText('kestrel', { exact: true })).toBeVisible();
 
