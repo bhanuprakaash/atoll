@@ -60,7 +60,7 @@ test('sidebar activity is the reply, the current verb, or the approval prompt', 
   await page.goto(m.url);
   await expect(sidebarRow(page, 'Reply activity')).toContainText('ok');
   await expect(sidebarRow(page, 'Reply activity')).not.toContainText('Done');
-  await expect(sidebarRow(page, 'Working activity')).toContainText('Running make build');
+  await expect(sidebarRow(page, 'Working activity')).toContainText('Running Run the build');
   await expect(sidebarRow(page, 'Approval activity')).toContainText('Needs you: Write hello.txt');
 });
 

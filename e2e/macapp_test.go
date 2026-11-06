@@ -468,7 +468,8 @@ func TestRun_ToolKinds(t *testing.T) {
 					got = append(got, kind+" "+target)
 				}
 			}
-			want := []string{"search selectedRepo", "read repo-step.tsx", "edit wizard.tsx", "command pnpm test"}
+			command := map[string]string{"claude": "command Run the tests", "codex": "command pnpm"}[p]
+			want := []string{"search selectedRepo", "read repo-step.tsx", "edit wizard.tsx", command}
 			if !slices.Equal(got, want) {
 				t.Errorf("tool_call kinds and targets %q, want %q", got, want)
 			}
