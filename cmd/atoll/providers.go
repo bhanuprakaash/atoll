@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,9 +33,10 @@ type providerInfo struct {
 	Models   []providerModel `json:"models"`
 }
 type loginState struct {
-	Status string `json:"status"`
-	URL    string `json:"url"`
-	Error  string `json:"error"`
+	Status    string `json:"status"`
+	URL       string `json:"url"`
+	NeedsCode bool   `json:"needs_code"`
+	Error     string `json:"error"`
 }
 type providers struct {
 	ctx      context.Context
@@ -41,6 +44,7 @@ type providers struct {
 	wg       sync.WaitGroup
 	mu       sync.Mutex
 	states   map[string]loginState
+	codes    map[string]io.Writer
 	signedIn map[string]bool
 }
 
@@ -48,7 +52,7 @@ var _loginURL = regexp.MustCompile(`https://[^\s"'<>]+`)
 
 func newProviders(parent context.Context) *providers {
 	ctx, cancel := context.WithCancel(parent)
-	return &providers{ctx: ctx, cancel: cancel, states: map[string]loginState{}, signedIn: map[string]bool{}}
+	return &providers{ctx: ctx, cancel: cancel, states: map[string]loginState{}, codes: map[string]io.Writer{}, signedIn: map[string]bool{}}
 }
 func (p *providers) Close() { p.cancel(); p.wg.Wait() }
 func (p *providers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +67,10 @@ func (p *providers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 3 && parts[1] == "sign-in" && parts[2] == "code" && r.Method == http.MethodPost {
+		p.submitCode(w, r, parts[0])
+		return
+	}
 	if len(parts) != 2 || parts[1] != "sign-in" {
 		http.NotFound(w, r)
 		return
@@ -199,24 +207,51 @@ func (p *providers) login(a adapter) {
 	}
 	defer func() { _ = read.Close(); _ = write.Close() }()
 	cmd.Stdout, cmd.Stderr = write, write
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		p.finish(a.name, err)
+		return
+	}
 	if err = cmd.Start(); err != nil {
 		p.finish(a.name, err)
 		return
 	}
 	_ = write.Close()
+	p.mu.Lock()
+	p.codes[a.name] = stdin
+	p.mu.Unlock()
 	scanner := bufio.NewScanner(read)
-	for scanner.Scan() {
-		if url := _loginURL.FindString(scanner.Text()); url != "" {
-			p.mu.Lock()
-			st := p.states[a.name]
-			if st.URL == "" {
-				st.URL, st.Status = url, "waiting"
-				p.states[a.name] = st
-			}
-			p.mu.Unlock()
+	// claude's "Paste code here if prompted > " has no newline, so a line also ends at ">".
+	scanner.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		if i := bytes.IndexAny(data, "\n>"); i >= 0 {
+			return i + 1, data[:i], nil
 		}
+		if atEOF && len(data) > 0 {
+			return len(data), data, nil
+		}
+		return 0, nil, nil
+	})
+	var last string
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			last = line
+		}
+		p.mu.Lock()
+		st := p.states[a.name]
+		if url := _loginURL.FindString(line); url != "" && st.URL == "" {
+			st.URL, st.Status = url, "waiting"
+		}
+		if strings.Contains(line, "Paste code") {
+			st.NeedsCode = true
+		}
+		p.states[a.name] = st
+		p.mu.Unlock()
 	}
 	err = cmd.Wait()
+	if err != nil && last != "" && p.ctx.Err() == nil {
+		err = errors.New(last)
+	}
 	if err == nil {
 		signed, e := a.signedIn(p.ctx, bin, dir)
 		if e != nil {
@@ -230,8 +265,9 @@ func (p *providers) login(a adapter) {
 func (p *providers) finish(name string, err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	delete(p.codes, name)
 	st := p.states[name]
-	st.Status = "signed_in"
+	st.Status, st.NeedsCode = "signed_in", false
 	if err != nil {
 		st.Status, st.Error = "failed", err.Error()
 	}
@@ -239,6 +275,31 @@ func (p *providers) finish(name string, err error) {
 	if err == nil {
 		p.signedIn[name] = true
 	}
+}
+
+func (p *providers) submitCode(w http.ResponseWriter, r *http.Request, name string) {
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Code) == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "code is required"})
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	stdin, ok := p.codes[name]
+	if !ok || !p.states[name].NeedsCode {
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "no sign-in is waiting for a code"})
+		return
+	}
+	if _, err := io.WriteString(stdin, strings.TrimSpace(body.Code)+"\n"); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (p *providers) setAvailable(name string, signed bool) {

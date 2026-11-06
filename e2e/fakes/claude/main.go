@@ -83,7 +83,7 @@ func run(args []string) error {
 	case len(args) >= 2 && args[0] == "auth" && args[1] == "status":
 		return status()
 	case len(args) >= 2 && args[0] == "auth" && args[1] == "login":
-		return fake.Login(fake.ConfigDir("CLAUDE_CONFIG_DIR", ".claude"), ".credentials.json",
+		return fake.LoginWithCode(fake.ConfigDir("CLAUDE_CONFIG_DIR", ".claude"), ".credentials.json",
 			"Opening browser to sign in…",
 			"If the browser didn't open, visit: "+_loginURL)
 	case slices.Contains(args, "-p") || slices.Contains(args, "--print"):

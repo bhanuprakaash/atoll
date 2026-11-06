@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
 import { Creature, type CreatureLook } from '@/components/creature';
+import { TextField } from '@/components/text-field';
 import { outlineButton, SectionHead, solidButton, Tag, Tile } from '@/components/settings-ui';
 import {
   type Provider,
@@ -10,6 +11,7 @@ import {
   useRefreshProviders,
   useSignIn,
   useSignInState,
+  useSubmitSignInCode,
 } from '@/modules/providers/api/providers';
 
 type Bot = { id: string; name: string; look: CreatureLook; provider: Provider['name'] };
@@ -20,6 +22,7 @@ function useProviderSignIn(provider: Provider) {
   const client = useQueryClient();
   const signIn = useSignIn();
   const state = useSignInState(provider.name, active);
+  const submit = useSubmitSignInCode(provider.name);
   useEffect(() => {
     if (!active) return;
     if (state.data?.status === 'waiting' && state.data.url && !opened.current) {
@@ -39,8 +42,36 @@ function useProviderSignIn(provider: Provider) {
   return {
     start,
     busy: signIn.isPending || active,
-    error: failed ? state.data?.error || signIn.error?.message : '',
+    needsCode: active && !!state.data?.needs_code,
+    submitCode: (code: string) => submit.mutate(code),
+    error: failed ? state.data?.error || signIn.error?.message : submit.error?.message,
   };
+}
+
+function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }) {
+  const [code, setCode] = useState('');
+  return (
+    <form
+      className="mt-3 flex basis-full items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (code.trim()) onSubmit(code.trim());
+      }}
+    >
+      <TextField
+        size="sm"
+        width="min-w-0 flex-1"
+        aria-label="Code"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        placeholder="Paste the code from Claude's page"
+        className="font-mono"
+      />
+      <button type="submit" className={solidButton} disabled={!code.trim()}>
+        Submit
+      </button>
+    </form>
+  );
 }
 
 const tileClass = (name: Provider['name']) => (name === 'claude' ? 'bg-claude-bg' : 'bg-tile');
@@ -49,7 +80,7 @@ const status = (p: Provider) =>
   !p.found ? 'Not found' : p.signed_in ? 'Signed in' : 'Not signed in';
 
 function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
-  const { start, busy, error } = useProviderSignIn(provider);
+  const { start, busy, needsCode, submitCode, error } = useProviderSignIn(provider);
   const users = bots.filter((b) => b.provider === provider.name);
   const slash = provider.path.lastIndexOf('/');
   return (
@@ -120,6 +151,7 @@ function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
           Sign in to use {provider.label} with your Bots.
         </p>
       )}
+      {needsCode && <CodeForm onSubmit={submitCode} />}
       {error && <p className="mt-2 text-[12.5px] text-danger">{error}</p>}
     </section>
   );
@@ -159,12 +191,12 @@ const cardTone = {
 };
 
 function ProviderCard({ provider }: { provider: Provider }) {
-  const { start, busy, error } = useProviderSignIn(provider);
+  const { start, busy, needsCode, submitCode, error } = useProviderSignIn(provider);
   return (
     <section
       role="group"
       aria-label={provider.label}
-      className="flex items-center gap-3.5 rounded-[20px] border border-line bg-box p-4"
+      className="flex flex-wrap items-center gap-3.5 rounded-[20px] border border-line bg-box p-4"
     >
       <span
         aria-hidden="true"
@@ -191,6 +223,7 @@ function ProviderCard({ provider }: { provider: Provider }) {
           Sign in
         </button>
       )}
+      {needsCode && <CodeForm onSubmit={submitCode} />}
     </section>
   );
 }
