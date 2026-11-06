@@ -55,7 +55,7 @@ func runSkillFake(t *testing.T, m *machine, p, cwd, extra, prompt, url string, d
 
 func TestSkillsFixtures_ProviderScenarios(t *testing.T) {
 	for _, p := range _providers {
-		for _, mode := range []string{"create", "create-codex", "configure", "edit", "denied", "use", "prompt-only", "disabled", "worktree", "hold"} {
+		for _, mode := range []string{"create", "create-codex", "configure", "edit", "denied", "read", "bots", "use", "prompt-only", "disabled", "worktree", "hold"} {
 			t.Run(p+"/"+mode, func(t *testing.T) {
 				m := newMachine(t, p)
 				cwd := t.TempDir()
@@ -114,7 +114,7 @@ func TestSkillsFixtures_ProviderScenarios(t *testing.T) {
 					case "tools/list":
 						tools := []map[string]any{{"name": "finish_run", "inputSchema": map[string]any{"type": "object"}}}
 						if mode != "denied" {
-							for _, name := range fake.PlatformTools() {
+							for _, name := range append(fake.PlatformTools(), fake.ReadTools()...) {
 								tools = append(tools, map[string]any{"name": name, "inputSchema": map[string]any{"type": "object"}})
 							}
 						}
@@ -170,6 +170,8 @@ func TestSkillsFixtures_ProviderScenarios(t *testing.T) {
 								t.Errorf("edit bot: %v", args)
 							}
 							value = map[string]any{"id": "dynamic-bot-id", "persona": "A lagoon guide."}
+						case "list_bots", "list_skills", "list_connections", "list_repos", "list_models":
+							value = _readResults[req.Params.Name]
 						case "finish_run":
 						default:
 							t.Errorf("unexpected tool: %s", req.Params.Name)
@@ -199,6 +201,14 @@ func TestSkillsFixtures_ProviderScenarios(t *testing.T) {
 				case "denied":
 					prompt = "Create a Bot without platform access."
 					want = "No platform tools available."
+				case "read":
+					prompt = _readAllPrompt
+					reply, _ := json.Marshal(_readResults)
+					encoded, _ := json.Marshal(string(reply))
+					want = string(encoded[1 : len(encoded)-1])
+				case "bots":
+					prompt = _whichBotsPrompt
+					want = "Bots: Chief, Lagoon."
 				case "hold":
 					prompt = "Wait, then list your skills and use reef-greeting."
 					want = "Used reef-greeting: Hello from the lagoon."
@@ -264,6 +274,12 @@ func TestSkillsFixtures_ProviderScenarios(t *testing.T) {
 				}
 				if mode == "edit" {
 					expected = []string{"edit_bot", "finish_run"}
+				}
+				if mode == "read" {
+					expected = append(fake.ReadTools(), "finish_run")
+				}
+				if mode == "bots" {
+					expected = []string{"list_bots", "finish_run"}
 				}
 				if !slices.Equal(calls, expected) {
 					t.Fatalf("calls %v, want %v", calls, expected)

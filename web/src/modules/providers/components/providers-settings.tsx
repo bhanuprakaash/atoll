@@ -16,13 +16,13 @@ import {
 
 type Bot = { id: string; name: string; look: CreatureLook; provider: Provider['name'] };
 
-function useProviderSignIn(provider: Provider) {
+function useProviderSignIn(name: Provider['name']) {
   const [active, setActive] = useState(false);
   const opened = useRef(false);
   const client = useQueryClient();
   const signIn = useSignIn();
-  const state = useSignInState(provider.name, active);
-  const submit = useSubmitSignInCode(provider.name);
+  const state = useSignInState(name, active);
+  const submit = useSubmitSignInCode(name);
   useEffect(() => {
     if (!active) return;
     if (state.data?.status === 'waiting' && state.data.url && !opened.current) {
@@ -33,8 +33,8 @@ function useProviderSignIn(provider: Provider) {
   }, [active, state.data]);
   function start() {
     opened.current = false;
-    client.removeQueries({ queryKey: ['providers', provider.name, 'sign-in'] });
-    signIn.mutate(provider.name, {
+    client.removeQueries({ queryKey: ['providers', name, 'sign-in'] });
+    signIn.mutate(name, {
       onSuccess: () => setActive(true),
     });
   }
@@ -52,7 +52,7 @@ function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }) {
   const [code, setCode] = useState('');
   return (
     <form
-      className="mt-3 flex basis-full items-center gap-2"
+      className="order-last mt-3 flex basis-full items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         if (code.trim()) onSubmit(code.trim());
@@ -74,13 +74,29 @@ function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }) {
   );
 }
 
+export function SignInExpired({ provider }: { provider: Provider['name'] }) {
+  const { start, busy, needsCode, submitCode, error } = useProviderSignIn(provider);
+  return (
+    <>
+      <span className="min-w-60 flex-1 text-ink/80">
+        {provider === 'codex' ? 'Codex' : 'Claude'} sign-in expired
+        {error && <i className="block text-[12.5px] not-italic text-danger">{error}</i>}
+      </span>
+      <button type="button" className={outlineButton} onClick={start} disabled={busy}>
+        Sign in again
+      </button>
+      {needsCode && <CodeForm onSubmit={submitCode} />}
+    </>
+  );
+}
+
 const tileClass = (name: Provider['name']) => (name === 'claude' ? 'bg-claude-bg' : 'bg-tile');
 const tone = (p: Provider) => (!p.found ? 'plain' : p.signed_in ? 'ok' : 'warn');
 const status = (p: Provider) =>
   !p.found ? 'Not found' : p.signed_in ? 'Signed in' : 'Not signed in';
 
 function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
-  const { start, busy, needsCode, submitCode, error } = useProviderSignIn(provider);
+  const { start, busy, needsCode, submitCode, error } = useProviderSignIn(provider.name);
   const users = bots.filter((b) => b.provider === provider.name);
   const slash = provider.path.lastIndexOf('/');
   return (
@@ -191,7 +207,7 @@ const cardTone = {
 };
 
 function ProviderCard({ provider }: { provider: Provider }) {
-  const { start, busy, needsCode, submitCode, error } = useProviderSignIn(provider);
+  const { start, busy, needsCode, submitCode, error } = useProviderSignIn(provider.name);
   return (
     <section
       role="group"

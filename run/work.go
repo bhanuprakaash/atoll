@@ -98,7 +98,10 @@ func (m *Manager) StartWork(
 	if t.Worktree != "" {
 		return t.Worktree, t.Branch, repo.Base{}, nil
 	}
-	if t.RepoID == "" {
+	m.mu.Lock()
+	access := a.bot.RepoAccess
+	m.mu.Unlock()
+	if t.RepoID == "" || !access.Allows(t.RepoID) {
 		return "", "", repo.Base{}, errors.New("thread has no repo")
 	}
 	name, err := repo.Branch(typ, slug)

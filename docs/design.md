@@ -42,11 +42,16 @@ never a dependency.
   messages, runs and event files. Memory it saved stays, with its source. *Memory outlives the Bot
   that wrote it; a Bot's history does not.*
 
-**Chief.** Created on first launch. It has the "Can manage the platform" switch on: tools to create
-and edit Bots (including model and look), skills and repos, and to attach connections, served as
-Reef's own MCP tools. A model must be one the Bot's provider lists while signed in; an unknown model
-or look fails with the valid ones named, and so does a repo id in a Bot's repo access that no
-registered repo has (REST answers 400 with the same text). Sign-ins stay with the user. Every change shows in the thread with undo. Other Bots can get the switch later.
+**Chief.** Created on first launch. It has no repo access at all times: `PUT` and its own
+`edit_bot` refuse to give it repos, its Bot settings and empty thread offer none, and a launch moves
+an older install's Chief to none. It does no code work. It has the "Can manage the platform" switch
+on: tools to create and edit Bots (including model and look), skills and repos, and to attach
+connections, served as Reef's own MCP tools; read tools list Bots, skills, connections, repos and
+signed-in models and record no change.
+A model must be one the Bot's provider lists while signed in; an unknown model or look fails with
+the valid ones named, and so does a repo id in a Bot's repo access that no
+registered repo has (REST answers 400 with the same text). Sign-ins stay with the user. Every change shows in the thread with undo.
+Other Bots can get the switch later.
 Undo: each change stores the entity before and after; Undo writes `before` back, or removes an entity
 the change created, and keeps the record marked undone. *Records survive restart; no undo of undo.*
 Undo of a repo registration is refused while a thread uses the repo.
@@ -98,6 +103,10 @@ Undo of a repo registration is refused while a thread uses the repo.
 
 - Repos are registered once. A thread works in one repo.
 - A repo registers without a commit; a thread on it is refused until it has one.
+- Access is checked when the thread is created and at every run. When the Bot's repo access no
+  longer allows the thread's repo, its runs work as in a thread with no repo: the thread folder, no
+  repo block, no worktree, no `start_work`. The thread says the Bot no longer has access. Existing
+  worktrees stay where they are.
 - A thread gets a worktree on its first edit, at `~/Reef/worktrees/<repo>/<branch-folder>` (root is
   a setting). Read-only threads use a clean checkout.
 - The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs) at first edit; the app makes it
@@ -133,7 +142,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   as T3 Code; Bot sessions stay out of the user's own history.*
 - Every run also sets:
   - Claude Code: `--strict-mcp-config` with only Reef's servers, `ENABLE_CLAUDEAI_MCP_SERVERS=false`,
-    `disableAllHooks`.
+    `disableAllHooks`, `disableBundledSkills` and `skillOverrides` turning off `design`, `doctor`,
+    `plugin-authoring` (the bundled skills that survive `disableBundledSkills`).
   - Codex: `skills.bundled.enabled=false`; plugins, remote plugins and apps off; each skill in
     `~/.agents/skills` disabled by the path of its `SKILL.md`, since a skill's name can differ from
     its folder (Codex finds that folder through `HOME`).
@@ -176,8 +186,9 @@ Undo of a repo registration is refused while a thread uses the repo.
 - Skills: one library in standard `SKILL.md`, created in the app; each Bot picks its skills. Each run
   gets read-only copies of its Bot's skills in its own folder under the provider's Atoll folder
   (`runs/<run id>`), removed when the run ends: Claude through `--add-dir` (copies in
-  `.claude/skills`), Codex through `skills/extraRoots/set` before the thread starts, with
-  `allowed-tools` and `context` stripped. *Shared `<config dir>/skills` would leak one Bot's skills into
+  `.claude/skills`), Codex through `skills/extraRoots/set` before the thread starts. Every copy drops
+  `disable-model-invocation` (a Bot cannot type slash commands, so the flag would only hide the
+  skill); Codex copies also drop `allowed-tools` and `context`. *Shared `<config dir>/skills` would leak one Bot's skills into
   an overlapping run and change files a live run reads.* A provider without skills gets a list in the
   prompt and reads the file on demand. Never written into the repo. Skills the repo commits itself (`.claude/skills`,
   `.agents/skills`) still load, like its CLAUDE.md.
@@ -199,10 +210,21 @@ Undo of a repo registration is refused while a thread uses the repo.
 
 | Where | Content |
 | --- | --- |
-| System prompt | Provider's own prompt, untouched, then the platform prompt, then the persona |
+| System prompt | Provider's own prompt, untouched, then the platform prompt (shared core, code part, platform block), then the persona |
 | First message | Up to 8 memory items picked by relevance to the message across scopes (ties: rules first), with ids; a count line `Memory: repo 42, user 9, bot 6. Use recall.`; repo, worktree, branch; the message |
 | Each resumed message | Relevant memory items the session has not seen; the message |
 
+- The platform prompt has three parts. The shared core (How you talk, Memory, Finish) goes to every
+  Bot. The code part (How you work, with the branch rule) goes to a Bot whose repo access is All or
+  a non-empty list. The platform block (Managing Reef) goes to a Bot with "Can manage the platform".
+  The code part sits between How you talk and Memory; the platform block sits after Finish.
+- The platform block holds the Reef guide (so Chief answers without reading a file), the ask-first
+  rule for creates (it overrides the core's "ask only when two real readings") and Chief's voice.
+  The voice lives here, not in the persona; only a Bot with the switch has it.
+- Importing a local skill needs no new tool. Chief reads the agent file and each skill's `SKILL.md`
+  with the provider's own file tool, imports with `create_skill`, attaches through `create_bot`, and
+  keeps `~/.claude` paths out of the persona. A skill's other files are not imported; Chief says so
+  before creating anything.
 - Relevance counts distinct non-stop-word message words matching body or why; ties favor convention, decision, lesson, finding, fact, then newer items.
 - In prompts a body is cut to 400 bytes and a why to 200, at a rune boundary, then `…`.
 - Seen items are tracked per provider session id, marked once the turn ends without error.
@@ -212,10 +234,11 @@ Undo of a repo registration is refused while a thread uses the repo.
   may not load a tool's description until it searches for the tool; without the line, Bots
   branched in the clean checkout.*
 
-Budget: platform prompt about 500 tokens; everything Reef adds under about 3–4k. *Less context
-recalls better; load the rest just in time.*
+Budget per part: core and memory about 250 tokens, platform block about 500 (the e2e cap is 2000
+bytes); everything Reef adds under about 3–4k. *Less context recalls better; load the rest just in
+time.*
 
-Platform prompt (draft):
+Platform prompt (draft; the code part is `How you work`, the platform block follows `Finish`):
 
 ```
 You are {bot}, a Bot in Reef. {user} talks to you in a thread; you do the work and bring back the result.
@@ -240,6 +263,32 @@ Memory
 
 Finish
 - End every run with finish_run: done, tried and failed, blocked on, next. Then reply in 2-3 lines.
+
+Managing Reef
+- You manage Reef's Bots, skills, repos and connections with your platform tools. Check the list tools before you change.
+- You do no code work and have no repo access. For a code change, offer to create or suggest a Bot with repo access.
+
+Reef guide
+- A Bot has a persona, model, skills, connections, repo access, look, platform switch. A thread is a chat; each message is a run.
+- Repos are registered once. A thread works in one repo, in its own worktree.
+- Providers are Claude Code and Codex, signed in from Settings > Providers.
+- A connection is a signed-in service (GitLab) whose token Reef holds and gives a Bot's CLI or MCP server. MCP is how tools reach a Bot: Reef serves its own tools (memory, finish_run, platform) over MCP. Bots never see the provider's own MCP servers. Importing MCP servers is not supported.
+- Skills are SKILL.md files in one library, picked per Bot. Only SKILL.md is stored.
+- Memory: decisions and findings Bots save, per user, repo or Bot.
+- Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
+
+Ask first
+- To create a Bot or skill, ask in ONE message for every missing item (Bot: model, repo access, skills, connections), each with a proposed default. Create nothing in that run. "ok" means use the defaults. This overrides "ask only when two real readings".
+- Small edits (rename, persona tweak, look) need no question.
+
+Import a local skill
+- For a Bot from a local agent file (~/.claude/agents/<name>.md): read it and each SKILL.md it names, import each with create_skill, attach the ids in create_bot. Ask first applies.
+- The persona keeps the agent's expertise, never a ~/.claude path.
+- Before creating anything, say that files besides SKILL.md (scripts, playbooks) are not imported.
+
+Voice
+- A calm, dry reef keeper. At most one sea word per reply.
+- Questions, errors and undo messages stay plain.
 ```
 
 ## App and UI
@@ -331,6 +380,14 @@ Finish
   first open.*
 - Provider sign-in state is cached: checked on start, before each run, on Refresh and when a
   sign-in finishes, never on the sidebar's poll.
+- A run that fails because its provider refused the sign-in (Claude `authentication_failed`, Codex
+  `unauthorized`) is stored with `error_kind: "signed_out"` and the run's `provider`, and marks that
+  provider signed out. The mark stays, whatever the CLI's status check says (a revoked token may
+  still look signed in locally), until a sign-in of that provider finishes or Refresh runs. The
+  thread shows "Claude sign-in expired" (or Codex) for the run's provider, with Sign in again, which
+  runs the provider's sign-in from the thread; Retry then sends the same message.
+- Chief's `list_models` and the model check of `create_bot` and `edit_bot` read the same cached
+  provider state as `GET /api/providers`; they start no provider process.
 - Names: the UI says Reef. Repo, Go module, binary and bundle ID (`dev.atoll.desktop`) say
   `atoll`; app data lives in `~/Library/Application Support/Atoll`. *Runs beside the old Reef;
   rename when it retires.*
@@ -365,7 +422,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 ## Queue
 
 Delegation, GitHub and Slack connections, browser pane, background processes pane, the platform
-switch for Bots other than Chief, importing local skills and MCP servers, desktop Linux, mobile,
+switch for Bots other than Chief, importing MCP servers and a skill's extra files, desktop Linux, mobile,
 memory pins (up to about 5 items always in the prompt), routines (scheduled, repeating runs),
 more provider adapters.
 

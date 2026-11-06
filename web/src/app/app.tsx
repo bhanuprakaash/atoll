@@ -10,11 +10,14 @@ import {
   SkillsPage,
 } from '@/app/settings-page';
 import { Shell } from '@/app/shell';
-import { useBots } from '@/modules/bots/api/bots';
+import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { NewBotForm } from '@/modules/bots/components/new-bot-form';
 import { useConnections } from '@/modules/connections/api/connections';
 import { FirstRun } from '@/modules/onboarding/components/first-run';
-import { FirstRunProviders } from '@/modules/providers/components/providers-settings';
+import {
+  FirstRunProviders,
+  SignInExpired,
+} from '@/modules/providers/components/providers-settings';
 import { useSaveSettings, useSettings } from '@/modules/settings/api/settings';
 import { GeneralSettings } from '@/modules/settings/components/general-settings';
 import { SavedMemory } from '@/modules/memory/components/saved-memory';
@@ -28,6 +31,9 @@ import { useCreateThread, useThread } from '@/modules/threads/api/threads';
 import { DraftThread, ThreadView } from '@/modules/threads/components/thread-view';
 
 const queryClient = new QueryClient();
+
+const allowedRepos = <R extends { id: string }>(bot: Bot | undefined, repos: R[]) =>
+  bot?.repo_access === 'all' ? repos : repos.filter((r) => bot?.repo_access.includes(r.id));
 
 function NewBotPage() {
   const navigate = useNavigate();
@@ -57,6 +63,10 @@ function ThreadPage() {
   const { data: bots = [] } = useBots();
   const repoName = repos.find((r) => r.id === thread?.repo_id)?.name;
   const botNames = Object.fromEntries(bots.map((b) => [b.id, b.name]));
+  const bot = bots.find((b) => b.id === botId);
+  const allowed = allowedRepos(bot, repos);
+  const lostRepo =
+    thread?.repo_id && bot && !allowed.some((r) => r.id === thread.repo_id) ? repoName : undefined;
   return (
     <ThreadView
       key={threadId}
@@ -64,9 +74,11 @@ function ThreadPage() {
       botId={botId}
       botName={bots.find((b) => b.id === botId)?.name ?? ''}
       look={bots.find((b) => b.id === botId)?.look}
-      repos={repos}
-      bot={bots.find((b) => b.id === botId)}
+      repos={allowed}
+      bot={bot}
       repoName={repoName}
+      lostRepo={lostRepo}
+      signedOut={(provider) => <SignInExpired provider={provider} />}
       afterRun={(runId) => (
         <>
           <SavedMemory runId={runId} botNames={botNames} />
@@ -89,7 +101,7 @@ function DraftThreadPage() {
       botName={bot?.name ?? ''}
       look={bot?.look}
       bot={bot}
-      repos={repos}
+      repos={allowedRepos(bot, repos)}
     />
   );
 }

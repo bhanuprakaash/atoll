@@ -74,6 +74,16 @@ func login(dir, file string, withCode bool, lines []string) error {
 	return nil
 }
 
+// Refused reports whether the login in dir/file is one the provider's server refuses: a file
+// holding {"fake":"revoked"}. The fake has no server, so the file stands in for a token revoked
+// there. Like a real CLI whose token its server revoked, the fake finds out only when a turn
+// calls the model, and keeps the file: its status still reports signed in, and every later turn
+// fails the same way.
+func Refused(dir, file string) bool {
+	b, err := os.ReadFile(filepath.Join(dir, file))
+	return err == nil && Directive(b) == "revoked"
+}
+
 // Pause is the "pause" directive: {"fake":"pause","ms":1500} holds a tool call that long, so a
 // client can see each step of a run.
 func Pause(ms int) {

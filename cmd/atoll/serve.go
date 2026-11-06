@@ -63,12 +63,19 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 			return err
 		}
 	}
-	if _, err := st.Bot(ctx, "chief"); err != nil {
-		chief := store.Bot{
+	chief, err := st.Bot(ctx, "chief")
+	if err != nil {
+		chief = store.Bot{
 			ID: "chief", Name: "Chief", Persona: "I help configure Reef.",
-			Provider: chiefProvider(ctx), Look: "jellyfish", CanManagePlatform: true,
+			Provider: chiefProvider(ctx), Look: "jellyfish", CanManagePlatform: true, RepoAccess: []string{},
 		}
 		if _, err := st.EnsureBot(ctx, chief); err != nil {
+			return err
+		}
+	}
+	if chief.RepoAccess == nil || len(chief.RepoAccess) > 0 {
+		chief.RepoAccess = []string{}
+		if _, err := st.UpdateBot(ctx, chief); err != nil {
 			return err
 		}
 	}
@@ -106,6 +113,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 			return launch(ctx, name)
 		},
 		Available:    providers.available,
+		SignedOut:    providers.signOut,
 		MCPURL:       url + server.MCPPath,
 		DataDir:      data,
 		WorktreeRoot: filepath.Join(home, "Reef", "worktrees"),

@@ -82,12 +82,13 @@ type (
 		IsError bool     `json:"is_error"`
 		Result  string   `json:"result"`
 		Errors  []string `json:"errors"`
+		Error   string   `json:"error"`
 	}
 
 	// state is what parse keeps between lines. A message that starts after text in the same turn
 	// has its first text delta begin a new paragraph.
 	state struct {
-		wrote, breakNext bool
+		wrote, breakNext, signedOut bool
 	}
 
 	// tail keeps the last 4 KB written to it, for claude's stderr.
@@ -287,7 +288,7 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 		"--verbose",
 		"--include-partial-messages",
 		"--strict-mcp-config",
-		"--settings", `{"disableAllHooks":true}`,
+		"--settings", `{"disableAllHooks":true,"disableBundledSkills":true,"skillOverrides":{"design":"off","doctor":"off","plugin-authoring":"off"}}`,
 	}
 	if cfg.Model != "" {
 		args = append(args, "--model", cfg.Model)
@@ -374,6 +375,7 @@ func parse(line []byte, st *state) []provider.Event {
 			return []provider.Event{{Kind: provider.KindSession, SessionID: l.SessionID}}
 		}
 	case "assistant":
+		st.signedOut = st.signedOut || l.Error == "authentication_failed"
 		var evs []provider.Event
 		for _, c := range l.Message.Content {
 			if c.Type == "tool_use" {
@@ -396,11 +398,11 @@ func parse(line []byte, st *state) []provider.Event {
 			return []provider.Event{{Kind: provider.KindText, Text: text}}
 		}
 	case "result":
-		wrote := st.wrote
+		wrote, signedOut := st.wrote, st.signedOut
 		*st = state{}
 		if l.IsError {
 			text := strings.Join(append([]string{l.Result}, l.Errors...), "\n")
-			return []provider.Event{{Kind: provider.KindError, Text: strings.TrimSpace(text)}}
+			return []provider.Event{{Kind: provider.KindError, Text: strings.TrimSpace(text), SignedOut: signedOut}}
 		}
 		if !wrote && l.Result != "" {
 			return []provider.Event{{Kind: provider.KindText, Text: l.Result}, {Kind: provider.KindTurnEnd}}

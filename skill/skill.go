@@ -50,13 +50,15 @@ func Place(dir, providerName string, skills []store.Skill) (string, error) {
 	return dir, nil
 }
 
-// Strip returns the skill text a provider gets. allowed-tools and context are Claude invocation
-// controls, so Codex copies drop their lines; every other byte stays.
+// Strip returns the skill text a provider gets. A Bot cannot type slash commands, so
+// disable-model-invocation would only hide the skill: every provider's copy drops its line.
+// allowed-tools and context are Claude invocation controls, so Codex copies drop those too; every
+// other byte stays.
 func Strip(content, providerName string) string {
-	if providerName != "codex" ||
-		(!strings.HasPrefix(content, "---\n") && !strings.HasPrefix(content, "---\r\n")) {
+	if !strings.HasPrefix(content, "---\n") && !strings.HasPrefix(content, "---\r\n") {
 		return content
 	}
+	codex := providerName == "codex"
 	var out strings.Builder
 	inFront, dropping, closed := false, false, false
 	for line := range strings.Lines(content) {
@@ -67,7 +69,8 @@ func Strip(content, providerName string) string {
 			inFront = true
 		case text == "---":
 			closed = true
-		case strings.HasPrefix(text, "allowed-tools:") || strings.HasPrefix(text, "context:"):
+		case strings.HasPrefix(text, "disable-model-invocation:") ||
+			codex && (strings.HasPrefix(text, "allowed-tools:") || strings.HasPrefix(text, "context:")):
 			dropping = true
 			continue
 		case dropping && (strings.HasPrefix(text, " ") || strings.HasPrefix(text, "\t") ||
