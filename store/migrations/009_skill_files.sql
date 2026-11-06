@@ -1,0 +1,10 @@
+ALTER TABLE skills ADD COLUMN source TEXT NOT NULL DEFAULT '';
+ALTER TABLE skills ADD COLUMN imported TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE skill_files (
+ skill_id TEXT NOT NULL REFERENCES skills (id) ON DELETE CASCADE,
+ path TEXT NOT NULL,
+ content TEXT NOT NULL,
+ executable INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY (skill_id, path)
+);

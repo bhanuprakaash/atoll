@@ -5,17 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"atoll/provider"
 	"atoll/repo"
 	"atoll/run"
+	"atoll/skill"
 	"atoll/store"
 )
 
@@ -210,11 +214,11 @@ func (a *api) deleteBot(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) createSkill(w http.ResponseWriter, r *http.Request) {
 	var sk store.Skill
-	if json.NewDecoder(r.Body).Decode(&sk) != nil || sk.Name == "" {
-		fail(w, http.StatusBadRequest, "name is required")
+	if err := readSkill(r, &sk); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sk, err := a.st.CreateSkill(r.Context(), sk.Name, sk.Content)
+	sk, err := a.st.CreateSkill(r.Context(), sk)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -246,11 +250,10 @@ func (a *api) putSkill(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	if json.NewDecoder(r.Body).Decode(&sk) != nil || sk.Name == "" {
-		fail(w, http.StatusBadRequest, "invalid skill")
+	if err := readSkill(r, &sk); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sk.ID = r.PathValue("id")
 	sk, err = a.st.UpdateSkill(r.Context(), sk)
 	if err != nil {
 		a.fail(w, r, err)
@@ -282,6 +285,7 @@ const _platformTools = `[
 {"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"}},"required":["id"]}},
 {"name":"create_skill","description":"Create a skill.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"}},"required":["name","content"]}},
 {"name":"edit_skill","description":"Edit a skill.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"content":{"type":"string"}},"required":["id"]}},
+{"name":"import_skill","description":"Import a local skill folder (SKILL.md and its text files), or update the skill imported from it. Returns what it added, changed, removed and skipped.","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"replace":{"type":"boolean","description":"Overwrite edits made in Reef. Only after the user agreed."}},"required":["path"]}},
 {"name":"register_repo","description":"Register a local Git repository.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"path":{"type":"string"}},"required":["name","path"]}},
 {"name":"attach_connection","description":"Attach a connected account to a Bot.","inputSchema":{"type":"object","properties":{"bot_id":{"type":"string"},"connection_id":{"type":"string"}},"required":["bot_id","connection_id"]}},
 {"name":"list_bots","description":"List every Bot.","inputSchema":{"type":"object","properties":{}}},
@@ -319,7 +323,8 @@ var _readTools = []string{
 func isPlatformTool(name string) bool {
 	return slices.Contains(_readTools, name) || slices.Contains([]string{
 		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
-		provider.ToolEditSkill, provider.ToolRegisterRepo, provider.ToolAttachConnection,
+		provider.ToolEditSkill, provider.ToolImportSkill, provider.ToolRegisterRepo,
+		provider.ToolAttachConnection,
 	}, name)
 }
 
@@ -389,7 +394,7 @@ func (a *api) platformCall(
 	if slices.Contains(_readTools, name) {
 		return a.readCall(ctx, name)
 	}
-	var before, after any
+	var before, after, reply any
 	var entity, id, action string
 	action = store.ActionEdit
 	switch name {
@@ -440,10 +445,10 @@ func (a *api) platformCall(
 		after, entity, id = b, store.EntityBot, in.ID
 	case provider.ToolCreateSkill:
 		var sk store.Skill
-		if json.Unmarshal(args, &sk) != nil || sk.Name == "" {
-			return nil, &rpcError{Code: _invalidParams, Message: "invalid skill"}
+		if derr := decodeSkill(args, &sk); derr != nil {
+			return nil, &rpcError{Code: _invalidParams, Message: derr.Error()}
 		}
-		sk, err = a.st.CreateSkill(ctx, sk.Name, sk.Content)
+		sk, err = a.st.CreateSkill(ctx, sk)
 		after, entity, id, action = sk, store.EntitySkill, sk.ID, store.ActionCreate
 	case provider.ToolEditSkill:
 		var in struct {
@@ -456,13 +461,33 @@ func (a *api) platformCall(
 		sk, err = a.st.Skill(ctx, in.ID)
 		if err == nil {
 			before = sk
-			if json.Unmarshal(args, &sk) != nil || sk.Name == "" {
-				return nil, &rpcError{Code: _invalidParams, Message: "invalid skill"}
+			if derr := decodeSkill(args, &sk); derr != nil {
+				return nil, &rpcError{Code: _invalidParams, Message: derr.Error()}
 			}
 			sk.ID = in.ID
 			sk, err = a.st.UpdateSkill(ctx, sk)
 		}
 		after, entity, id = sk, store.EntitySkill, in.ID
+	case provider.ToolImportSkill:
+		var in struct {
+			Path    string `json:"path"`
+			Replace bool   `json:"replace"`
+		}
+		if json.Unmarshal(args, &in) != nil || in.Path == "" {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid path"}
+		}
+		var res importResult
+		var prev, sk store.Skill
+		res, prev, sk, err = a.importSkill(ctx, in.Path, in.Replace)
+		if err == nil && (res.Status == _importUnchanged || res.Status == _importConfirm) {
+			return a.jsonText(res)
+		}
+		reply, after, entity, id = res, sk, store.EntitySkill, sk.ID
+		if res.Status == _importCreated {
+			action = store.ActionCreate
+		} else {
+			before = prev
+		}
 	case provider.ToolRegisterRepo:
 		var rp store.Repo
 		if json.Unmarshal(args, &rp) != nil {
@@ -516,7 +541,10 @@ func (a *api) platformCall(
 		return nil, a.toolError(err)
 	}
 	a.runs.Changed(token, change)
-	return a.jsonText(after)
+	if reply == nil {
+		reply = after
+	}
+	return a.jsonText(reply)
 }
 
 // botChoiceError rejects a repo id no registered repo has, a model the Bot's provider does not list,
@@ -596,4 +624,132 @@ func validateRepo(ctx context.Context, rp store.Repo) error {
 		return errors.New("path must be the top level of a git repo")
 	}
 	return nil
+}
+
+// Statuses of an import.
+const (
+	_importCreated   = "created"
+	_importReplaced  = "replaced"
+	_importUnchanged = "unchanged"
+	_importConfirm   = "confirm"
+)
+
+// importResult is what import_skill answers: the paths it added, changed and removed against the
+// skill it replaces, and what it left out of the folder.
+type importResult struct {
+	Status    string          `json:"status"`
+	Skill     *importedSkill  `json:"skill,omitempty"`
+	Added     []string        `json:"added"`
+	Changed   []string        `json:"changed"`
+	Removed   []string        `json:"removed"`
+	Skipped   []skill.Skipped `json:"skipped"`
+	HomePaths []string        `json:"home_paths"`
+	Warning   string          `json:"warning,omitempty"`
+}
+
+type importedSkill struct {
+	ID     string         `json:"id"`
+	Name   string         `json:"name"`
+	Source string         `json:"source"`
+	Files  []importedFile `json:"files"`
+}
+
+type importedFile struct {
+	Path       string `json:"path"`
+	Executable bool   `json:"executable"`
+}
+
+// importSkill reads the local skill folder at path into the library. It updates the skill imported
+// from the same folder, or a skill of the same name made in Reef, and asks for replace before it
+// overwrites edits made in Reef. It returns the stored skill before and after.
+func (a *api) importSkill(
+	ctx context.Context, path string, replace bool,
+) (res importResult, prev, next store.Skill, err error) {
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return res, prev, next, fmt.Errorf("find home: %w", err)
+		}
+		path = filepath.Join(home, rest)
+	}
+	if !filepath.IsAbs(path) {
+		return res, prev, next, errors.New("path must be absolute or start with ~/")
+	}
+	imp, err := skill.Read(filepath.Clean(path))
+	if err != nil {
+		return res, prev, next, err
+	}
+	next = imp.Skill
+	next.Imported = skill.Hash(next)
+	res = importResult{
+		Status: _importCreated, Added: []string{}, Changed: []string{}, Removed: []string{},
+		Skipped: orEmpty(imp.Skipped), HomePaths: orEmpty(imp.HomePaths),
+	}
+	skills, err := a.st.Skills(ctx)
+	if err != nil {
+		return res, prev, next, err
+	}
+	i := slices.IndexFunc(skills, func(sk store.Skill) bool { return sk.Source == next.Source })
+	if i < 0 {
+		i = slices.IndexFunc(skills, func(sk store.Skill) bool {
+			return sk.Source == "" && sk.Name == next.Name
+		})
+	}
+	if i < 0 {
+		next, err = a.st.CreateSkill(ctx, next)
+		res.Skill = summarize(next)
+		return res, prev, next, err
+	}
+	prev = skills[i]
+	next.ID = prev.ID
+	res.Added, res.Changed, res.Removed = skill.Diff(prev, next)
+	switch {
+	case len(res.Added)+len(res.Changed)+len(res.Removed) == 0:
+		res.Status, res.Skill = _importUnchanged, summarize(prev)
+		return res, prev, prev, nil
+	case skill.Hash(prev) != prev.Imported && !replace:
+		res.Status = _importConfirm
+		res.Warning = "The skill was edited in Reef since its last import; those Reef edits will be " +
+			"overwritten. Ask the user, then call import_skill again with replace: true."
+		return res, prev, prev, nil
+	}
+	next, err = a.st.UpdateSkill(ctx, next)
+	res.Status, res.Skill = _importReplaced, summarize(next)
+	return res, prev, next, err
+}
+
+func summarize(sk store.Skill) *importedSkill {
+	out := &importedSkill{ID: sk.ID, Name: sk.Name, Source: sk.Source,
+		Files: make([]importedFile, len(sk.Files))}
+	for i, f := range sk.Files {
+		out.Files[i] = importedFile{Path: f.Path, Executable: f.Executable}
+	}
+	return out
+}
+
+// readSkill decodes a skill request body over sk.
+func readSkill(r *http.Request, sk *store.Skill) error {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return fmt.Errorf("read body: %w", err)
+	}
+	return decodeSkill(body, sk)
+}
+
+// decodeSkill decodes a skill over sk and checks it. Absent or null files keep sk's files. JSON
+// decoding turns invalid UTF-8 into U+FFFD, so the raw body is checked first.
+func decodeSkill(body []byte, sk *store.Skill) error {
+	if !utf8.Valid(body) {
+		return errors.New("skill is not UTF-8 text")
+	}
+	id, source, files := sk.ID, sk.Source, sk.Files
+	sk.Files = nil
+	if json.Unmarshal(body, sk) != nil || sk.Name == "" {
+		return errors.New("invalid skill: name is required")
+	}
+	sk.ID, sk.Source = id, source
+	if sk.Files == nil {
+		sk.Files = files
+	}
+	return skill.Check(sk.Files)
 }

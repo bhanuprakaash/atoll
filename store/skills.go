@@ -17,11 +17,23 @@ const (
 	ActionEdit   = "edit"
 )
 
-// Skill is a reusable instruction in the library.
+// Skill is a reusable instruction in the library: SKILL.md as Content, plus its other text files.
+// Source is the folder it was imported from, or "". Imported is the hash of its files as last
+// imported, so an edit made in Reef since then shows as a mismatch.
 type Skill struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Content string `json:"content"`
+	ID       string      `json:"id"`
+	Name     string      `json:"name"`
+	Content  string      `json:"content"`
+	Source   string      `json:"source"`
+	Files    []SkillFile `json:"files"`
+	Imported string      `json:"-"`
+}
+
+// SkillFile is one file of a skill besides SKILL.md, at a slash-separated path inside its folder.
+type SkillFile struct {
+	Path       string `json:"path"`
+	Content    string `json:"content"`
+	Executable bool   `json:"executable"`
 }
 
 // Change records a platform modification and its source.
@@ -53,6 +65,15 @@ func normalizeBot(b Bot) Bot {
 func (b Bot) MarshalJSON() ([]byte, error) {
 	type botJSON Bot
 	return json.Marshal(botJSON(normalizeBot(b)))
+}
+
+// MarshalJSON encodes empty files as an array.
+func (sk Skill) MarshalJSON() ([]byte, error) {
+	type skillJSON Skill
+	if sk.Files == nil {
+		sk.Files = []SkillFile{}
+	}
+	return json.Marshal(skillJSON(sk))
 }
 
 func botArgs(b Bot) ([]any, error) {
@@ -126,54 +147,123 @@ func (s *Store) UpdateBot(ctx context.Context, b Bot) (Bot, error) {
 	return b, nil
 }
 
-// CreateSkill adds a skill to the library.
-func (s *Store) CreateSkill(ctx context.Context, name, content string) (Skill, error) {
-	sk := Skill{ID: newID(), Name: name, Content: content}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO skills (id, name, content) VALUES (?, ?, ?)",
-		sk.ID, sk.Name, sk.Content)
+// CreateSkill adds a skill and its files to the library.
+func (s *Store) CreateSkill(ctx context.Context, sk Skill) (Skill, error) {
+	sk.ID = newID()
+	err := s.tx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx,
+			"INSERT INTO skills (id, name, content, source, imported) VALUES (?, ?, ?, ?, ?)",
+			sk.ID, sk.Name, sk.Content, sk.Source, sk.Imported)
+		if err != nil {
+			return fmt.Errorf("insert skill: %w", err)
+		}
+		return insertSkillFiles(ctx, tx, sk)
+	})
 	if err != nil {
-		return Skill{}, fmt.Errorf("insert skill: %w", err)
+		return Skill{}, err
 	}
-	return sk, nil
+	return s.Skill(ctx, sk.ID)
 }
+
+const _skillColumns = "id, name, content, source, imported"
 
 func scanSkill(r *sql.Rows) (sk Skill, err error) {
-	return sk, r.Scan(&sk.ID, &sk.Name, &sk.Content)
+	return sk, r.Scan(&sk.ID, &sk.Name, &sk.Content, &sk.Source, &sk.Imported)
 }
 
-// Skill returns the skill with id.
+type skillFileRow struct {
+	skillID string
+	file    SkillFile
+}
+
+func scanSkillFile(r *sql.Rows) (f skillFileRow, err error) {
+	return f, r.Scan(&f.skillID, &f.file.Path, &f.file.Content, &f.file.Executable)
+}
+
+// Skill returns the skill with id and its files.
 func (s *Store) Skill(ctx context.Context, id string) (Skill, error) {
-	rows, err := query(ctx, s.db,
-		"SELECT id, name, content FROM skills WHERE id = ?", scanSkill, id)
+	skills, err := s.skills(ctx, id)
 	if err != nil {
 		return Skill{}, fmt.Errorf("read skill %s: %w", id, err)
 	}
-	if len(rows) == 0 {
+	if len(skills) == 0 {
 		return Skill{}, fmt.Errorf("skill %s: %w", id, ErrNotFound)
 	}
-	return rows[0], nil
+	return skills[0], nil
 }
 
-// Skills lists skills in creation order.
+// Skills lists skills with their files in creation order.
 func (s *Store) Skills(ctx context.Context) ([]Skill, error) {
-	return query(ctx, s.db, "SELECT id, name, content FROM skills ORDER BY rowid", scanSkill)
+	return s.skills(ctx, "")
 }
 
+// skills reads the skill with id, or every skill when id is "".
+func (s *Store) skills(ctx context.Context, id string) ([]Skill, error) {
+	skillsWhere, filesWhere, args := "", "", []any{}
+	if id != "" {
+		skillsWhere, filesWhere, args = " WHERE id = ?", " WHERE skill_id = ?", []any{id}
+	}
+	skills, err := query(ctx, s.db,
+		"SELECT "+_skillColumns+" FROM skills"+skillsWhere+" ORDER BY rowid", scanSkill, args...)
+	if err != nil || len(skills) == 0 {
+		return skills, err
+	}
+	files, err := query(ctx, s.db,
+		"SELECT skill_id, path, content, executable FROM skill_files"+filesWhere+" ORDER BY path",
+		scanSkillFile, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read skill files: %w", err)
+	}
+	byID := make(map[string]int, len(skills))
+	for i, sk := range skills {
+		byID[sk.ID] = i
+	}
+	for _, f := range files {
+		i := byID[f.skillID]
+		skills[i].Files = append(skills[i].Files, f.file)
+	}
+	return skills, nil
+}
+
+func insertSkillFiles(ctx context.Context, db execer, sk Skill) error {
+	for _, f := range sk.Files {
+		_, err := db.ExecContext(ctx,
+			"INSERT INTO skill_files (skill_id, path, content, executable) VALUES (?, ?, ?, ?)",
+			sk.ID, f.Path, f.Content, f.Executable)
+		if err != nil {
+			return fmt.Errorf("insert skill file %s: %w", f.Path, err)
+		}
+	}
+	return nil
+}
+
+// updateSkill replaces the name, content and whole file set of a skill. Source and Imported change
+// only when Imported is set, which an import does and an edit does not.
 func updateSkill(ctx context.Context, db execer, sk Skill) error {
-	res, err := db.ExecContext(ctx, "UPDATE skills SET name = ?, content = ? WHERE id = ?",
-		sk.Name, sk.Content, sk.ID)
+	stmt, args := "UPDATE skills SET name = ?, content = ?", []any{sk.Name, sk.Content}
+	if sk.Imported != "" {
+		stmt, args = stmt+", source = ?, imported = ?", append(args, sk.Source, sk.Imported)
+	}
+	res, err := db.ExecContext(ctx, stmt+" WHERE id = ?", append(args, sk.ID)...)
 	if err != nil {
 		return fmt.Errorf("update skill: %w", err)
 	}
-	return found(res, "skill", sk.ID)
+	if err := found(res, "skill", sk.ID); err != nil {
+		return err
+	}
+	if _, err := db.ExecContext(ctx, "DELETE FROM skill_files WHERE skill_id = ?", sk.ID); err != nil {
+		return fmt.Errorf("clear skill files: %w", err)
+	}
+	return insertSkillFiles(ctx, db, sk)
 }
 
-// UpdateSkill replaces the name and content of a skill.
+// UpdateSkill replaces the name, content and files of a skill in one transaction.
 func (s *Store) UpdateSkill(ctx context.Context, sk Skill) (Skill, error) {
-	if err := updateSkill(ctx, s.db, sk); err != nil {
+	err := s.tx(ctx, func(tx *sql.Tx) error { return updateSkill(ctx, tx, sk) })
+	if err != nil {
 		return Skill{}, err
 	}
-	return sk, nil
+	return s.Skill(ctx, sk.ID)
 }
 
 const _changeColumns = "id, entity, entity_id, action, before, after, undone, source_bot_id, " +
