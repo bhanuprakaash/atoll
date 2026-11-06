@@ -135,3 +135,5 @@ The platform prompt split extends these contracts in [prompt-contract.md](prompt
 Importing a local skill extends these contracts in [skill-import-contract.md](skill-import-contract.md).
 
 Skills keeping their scripts, playbooks and references extends these contracts in [skill-files-contract.md](skill-files-contract.md).
+
+The skill editor for every file of a skill extends these contracts in [skill-editor-contract.md](skill-editor-contract.md).

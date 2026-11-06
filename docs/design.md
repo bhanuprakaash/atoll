@@ -375,8 +375,13 @@ Voice
   720px. Add repo opens a dialog (name, path, Choose… for the native folder picker, which the Go
   sidecar opens with `osascript`, so the UI still talks to Go over HTTP only); with no repos yet the
   same form shows inline. New skill opens an empty editor and creates the skill only on Create.
-  A skill opens in a wide right panel: name, when to use it, the `SKILL.md` text and the Bots that
-  use it. Provider cards show version, models, Bots using them and the CLI path as labelled facts,
+  A skill opens in a wide right panel: name, its files (`SKILL.md` first, then by path, scripts
+  marked), the selected file in one editor (when to use it and the `SKILL.md` text, or a file's text
+  with a Script checkbox that follows a leading `#!` until toggled, and Delete file), and the Bots
+  that use it. `+ File` takes a relative path and refuses `..` or a leading `/` inline. One Save
+  sends the whole skill; leaving with unsaved changes asks first. A skill with a source folder has
+  Re-import (`POST /api/skills/{id}/reimport`, the same rules as `import_skill`): it lists added /
+  changed / removed and, when Reef edits would be overwritten, asks Cancel or Confirm. Provider cards show version, models, Bots using them and the CLI path as labelled facts,
   along with sign-in state.
   Sign in runs the provider's own login (`claude auth login`, `codex login`) in Reef's folder for
   it, opens the URL it prints in the browser and updates when it finishes; no Terminal.
