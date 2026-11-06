@@ -269,7 +269,9 @@ Undo of a repo registration is refused while a thread uses the repo.
 - Add by URL with no headers sends the URL one MCP `initialize` request. A `401` whose
   `WWW-Authenticate` has `resource_metadata` means the server needs sign-in: `not_connected`, or
   `needs_app` when its authorization server has no `registration_endpoint`. Any other answer adds
-  the server with no status. Headers are the user's own sign-in: no request.
+  the server with no status. Headers are the user's own sign-in: no request. A `PUT` that changes
+  the URL or the kind deletes the server's tokens and status, so a grant never follows a server to
+  another host; a remote server left with no headers is sent the same request as Add.
 - `POST /api/mcp-servers/{id}/connect` follows the MCP authorization flow: protected-resource
   metadata from the `401`, the first authorization server's
   `/.well-known/oauth-authorization-server`, dynamic client registration (public client,

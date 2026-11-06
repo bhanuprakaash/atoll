@@ -93,3 +93,52 @@ func TestToken(t *testing.T) {
 		})
 	}
 }
+
+func TestReplaceSignIn(t *testing.T) {
+	tests := []struct {
+		name     string
+		in       Input
+		wantKept bool
+	}{
+		{name: "same URL keeps the sign-in", in: Input{Name: "docs", URL: "https://a.example/mcp"}, wantKept: true},
+		{name: "new URL drops it", in: Input{Name: "docs", URL: "https://b.example/mcp"}},
+		{name: "local kind drops it", in: Input{Name: "docs", Command: "npx"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			keyring.MockInit()
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = st.Close() }()
+			ctx := context.Background()
+			s, err := st.CreateMCPServer(ctx, store.MCPServer{Name: "docs", Kind: store.MCPRemote, URL: "https://a.example/mcp"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := errors.Join(saveTokens(s.ID, Tokens{AccessToken: "a"}), st.SetMCPSignIn(ctx, s.ID, store.MCPConnected)); err != nil {
+				t.Fatal(err)
+			}
+			offline := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return nil, errors.New("offline")
+			})}
+
+			if _, err := Replace(ctx, st, offline, s.ID, tt.in); err != nil {
+				t.Fatal(err)
+			}
+			_, tokenErr := keyring.Get("atoll", tokensUser(s.ID))
+			signIns, err := st.MCPSignIns(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kept := tokenErr == nil && signIns[s.ID] == store.MCPConnected; kept != tt.wantKept {
+				t.Errorf("sign-in kept = %t (token error %v, status %q), want %t", kept, tokenErr, signIns[s.ID], tt.wantKept)
+			}
+		})
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

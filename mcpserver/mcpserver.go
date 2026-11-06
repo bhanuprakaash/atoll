@@ -108,8 +108,9 @@ func Add(ctx context.Context, st *store.Store, c *http.Client, in Input) (store.
 	return s, nil
 }
 
-// Replace replaces the user's server id with in.
-func Replace(ctx context.Context, st *store.Store, id string, in Input) (store.MCPServer, error) {
+// Replace replaces the user's server id with in. A new URL or kind drops the sign-in, and a remote
+// server left with no headers is asked once whether it needs sign-in.
+func Replace(ctx context.Context, st *store.Store, c *http.Client, id string, in Input) (store.MCPServer, error) {
 	prev, err := st.MCPServer(ctx, id)
 	if err != nil {
 		return store.MCPServer{}, err
@@ -123,6 +124,18 @@ func Replace(ctx context.Context, st *store.Store, id string, in Input) (store.M
 	}
 	if err := saveSecrets(s, write); err != nil {
 		return store.MCPServer{}, err
+	}
+	if prev.URL != s.URL || prev.Kind != s.Kind {
+		if err := errors.Join(deleteTokens(id), st.DeleteMCPSignIn(ctx, id)); err != nil {
+			return store.MCPServer{}, err
+		}
+		if s.Kind == store.MCPRemote && len(s.HeaderNames) == 0 {
+			if s.Status = probe(ctx, c, s.URL); s.Status != "" {
+				if err := st.SetMCPSignIn(ctx, id, s.Status); err != nil {
+					return store.MCPServer{}, err
+				}
+			}
+		}
 	}
 	kept := secretNames(s)
 	if prev.Kind != s.Kind {

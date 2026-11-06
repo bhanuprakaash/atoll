@@ -104,6 +104,14 @@ func (s *Store) SetMCPSignIn(ctx context.Context, id, status string) error {
 	return nil
 }
 
+// DeleteMCPSignIn drops the sign-in status of the server with id.
+func (s *Store) DeleteMCPSignIn(ctx context.Context, id string) error {
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM mcp_sign_ins WHERE server_id = ?", id); err != nil {
+		return fmt.Errorf("delete MCP sign-in: %w", err)
+	}
+	return nil
+}
+
 // MCPServer returns the user's MCP server with id.
 func (s *Store) MCPServer(ctx context.Context, id string) (MCPServer, error) {
 	rows, err := query(ctx, s.db,

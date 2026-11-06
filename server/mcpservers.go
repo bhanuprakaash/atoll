@@ -97,7 +97,7 @@ func (a *api) putMCPServer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s, err := mcpserver.Replace(r.Context(), a.st, r.PathValue("id"), in)
+	s, err := mcpserver.Replace(r.Context(), a.st, a.http, r.PathValue("id"), in)
 	if err != nil {
 		a.fail(w, r, err)
 		return
