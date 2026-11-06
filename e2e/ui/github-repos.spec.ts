@@ -179,7 +179,7 @@ test("a thread shows the pull request a Bot opened with gh: link and number", as
   git(bare, "init", "--bare", "-b", "main");
   const path = seed("hello", `${githubURL}/octo/hello.git`, bare);
   git(path, "push", bare, "main");
-  await api(m, "POST", "/api/repos", { name: "hello", path });
+  await api(m, "POST", "/api/repos", { name: "scratch-pr", path });
 
   const start = await api(m, "POST", "/api/connections/github/start");
   for (let i = 0; i < 5; i++) {
@@ -194,7 +194,7 @@ test("a thread shows the pull request a Bot opened with gh: link and number", as
 
   await page.goto(m.url);
   await sidebarRow(page, "Octo").click();
-  await choose(page, page.getByRole("combobox", { name: "Repo" }), "hello");
+  await choose(page, page.getByRole("combobox", { name: "Repo" }), "scratch-pr");
   await page.getByRole("textbox", { name: "Message" }).fill(fixPrompt);
   await page.getByRole("button", { name: "Send" }).click();
 
@@ -206,7 +206,7 @@ test("a thread shows the pull request a Bot opened with gh: link and number", as
   await expect(pr).toContainText(prTitle);
   await expect(pr).toContainText("Open");
   const context = page.getByRole("group", { name: "Thread context" });
-  await expect(context).toContainText("hello");
+  await expect(context).toContainText("scratch-pr");
   await expect(context).toContainText("fix/seeded-bug");
   await expect(context).toContainText("#1");
   expect(pulls).toEqual([
