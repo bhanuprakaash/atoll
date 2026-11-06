@@ -10,7 +10,7 @@ export type Provider = {
   signed_in: boolean;
   models: { id: string; name: string }[];
 };
-export type SignInState = { status: string; url: string; error: string };
+export type SignInState = { status: string; url: string; needs_code: boolean; error: string };
 
 export function useProviders() {
   return useQuery({ queryKey: ['providers'], queryFn: () => api<Provider[]>('/providers') });
@@ -48,5 +48,12 @@ export function useSignInState(name: Provider['name'], enabled = true) {
     enabled,
     refetchInterval: (query) =>
       ['starting', 'waiting'].includes(query.state.data?.status ?? '') ? 250 : false,
+  });
+}
+
+export function useSubmitSignInCode(name: Provider['name']) {
+  return useMutation({
+    mutationFn: (code: string) =>
+      api<void>(`/providers/${name}/sign-in/code`, { method: 'POST', body: { code } }),
   });
 }
