@@ -68,7 +68,7 @@ test('message times show today as H:MM in muted 12px text', async ({ page }) => 
   const bot = await newBotAPI(m, 'Times');
   await page.goto(m.url);
   await sidebarRow(page, 'Times').click();
-  await send(page, prompts.keep);
+  await send(page, prompts.working);
   const times = page.getByTestId('message-time');
   await expect(times).toHaveCount(2);
   const [thread] = await api(m, 'GET', `/api/bots/${bot.id}/threads`);
