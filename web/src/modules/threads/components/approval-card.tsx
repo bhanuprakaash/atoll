@@ -12,7 +12,7 @@ export function approvalTarget(input: unknown): string {
 }
 
 export function ApprovalCard({ id, tool, input }: { id: string; tool: string; input: unknown }) {
-  const [answered, setAnswered] = useState<boolean | null>(null);
+  const [answered, setAnswered] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const answer = useAnswerApproval(id);
   const target = approvalTarget(input);
@@ -42,24 +42,13 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
       ? details.old_string.split('\n').length
       : 0;
   const respond = (approve: boolean) =>
-    answer.mutate(approve, { onSuccess: () => setAnswered(approve) });
+    answer.mutate(approve, { onSuccess: () => setAnswered(true) });
+  if (answered) return null;
   return (
     <div className="flex flex-col gap-2 text-sm">
       <div className="flex flex-wrap items-center gap-3">
         <span className="min-w-60 flex-1 text-ink/80">
-          {answered === null
-            ? edit
-              ? 'Wants to edit'
-              : command
-                ? 'Wants to run'
-                : `Wants to use ${tool}`
-            : answered
-              ? edit
-                ? 'Allowed editing'
-                : 'Allowed'
-              : edit
-                ? 'Denied editing'
-                : 'Denied'}{' '}
+          {edit ? 'Wants to edit' : command ? 'Wants to run' : `Wants to use ${tool}`}{' '}
           <span className="font-mono text-[0.88em] text-ink">{target}</span>
           {edit && (added > 0 || removed > 0) && (
             <>
@@ -81,26 +70,24 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
             </>
           )}
         </span>
-        {answered === null && (
-          <span className="flex gap-2">
-            <button
-              type="button"
-              disabled={answer.isPending}
-              onClick={() => respond(true)}
-              className="h-8 rounded-full bg-accent px-4 text-[13.5px] text-accent-ink"
-            >
-              Allow
-            </button>
-            <button
-              type="button"
-              disabled={answer.isPending}
-              onClick={() => respond(false)}
-              className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
-            >
-              Deny
-            </button>
-          </span>
-        )}
+        <span className="flex gap-2">
+          <button
+            type="button"
+            disabled={answer.isPending}
+            onClick={() => respond(true)}
+            className="h-8 rounded-full bg-accent px-4 text-[13.5px] text-accent-ink"
+          >
+            Allow
+          </button>
+          <button
+            type="button"
+            disabled={answer.isPending}
+            onClick={() => respond(false)}
+            className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
+          >
+            Deny
+          </button>
+        </span>
       </div>
       {showDiff && (
         <pre className="rounded-2xl border border-line bg-well p-3 font-mono text-xs whitespace-pre-wrap text-ink/80">

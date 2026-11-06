@@ -137,7 +137,7 @@ function MessageLine({
           </div>
         </article>
         <time
-          className="text-xs text-muted"
+          className="pr-3 text-xs text-muted"
           dateTime={message.created_at}
           data-testid="message-time"
         >
