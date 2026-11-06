@@ -43,6 +43,8 @@ type api struct {
 	log  *slog.Logger
 	http *http.Client // for GitLab sign-in
 
+	providers http.Handler // serves /api/providers; nil when there is none
+
 	mu      sync.Mutex
 	devices map[string]string // device code of each pending sign-in, by connection id
 }
@@ -53,7 +55,7 @@ func New(
 	st *store.Store, mem *memory.Store, runs *run.Manager, log *slog.Logger, providers http.Handler,
 ) http.Handler {
 	a := &api{
-		st: st, mem: mem, runs: runs, log: log,
+		st: st, mem: mem, runs: runs, log: log, providers: providers,
 		http:    &http.Client{Timeout: _signInTimeout},
 		devices: map[string]string{},
 	}

@@ -43,7 +43,9 @@ never a dependency.
   that wrote it; a Bot's history does not.*
 
 **Chief.** Created on first launch. It has the "Can manage the platform" switch on: tools to create
-and edit Bots, skills and repos, and to attach connections, served as Reef's own MCP tools. Sign-ins
+and edit Bots (including model and look), skills and repos, and to attach connections, served as
+Reef's own MCP tools. A model must be one a ready provider lists; an unknown model or look fails
+with the valid ones named. Sign-ins
 stay with the user. Every change shows in the thread with undo. Other Bots can get the switch later.
 Undo: each change stores the entity before and after; Undo writes `before` back, or removes an entity
 the change created, and keeps the record marked undone. *Records survive restart; no undo of undo.*

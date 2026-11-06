@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -247,8 +249,8 @@ func (a *api) listChanges(w http.ResponseWriter, r *http.Request) {
 }
 
 const _platformTools = `[
-{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}}},"required":["name","provider"]}},
-{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}}},"required":["id"]}},
+{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"}},"required":["name","provider"]}},
+{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"}},"required":["id"]}},
 {"name":"create_skill","description":"Create a skill.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"}},"required":["name","content"]}},
 {"name":"edit_skill","description":"Edit a skill.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"content":{"type":"string"}},"required":["id"]}},
 {"name":"register_repo","description":"Register a local Git repository.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"path":{"type":"string"}},"required":["name","path"]}},
@@ -260,6 +262,36 @@ func isPlatformTool(name string) bool {
 		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
 		provider.ToolEditSkill, provider.ToolRegisterRepo, provider.ToolAttachConnection,
 	}, name)
+}
+
+type providerResponse struct {
+	Name     string `json:"name"`
+	Label    string `json:"label"`
+	SignedIn bool   `json:"signed_in"`
+	Models   []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"models"`
+}
+
+// signedInProviders reads what GET /api/providers answers, so Chief sees the New Bot model picker.
+func (a *api) signedInProviders(ctx context.Context) ([]providerResponse, error) {
+	signedIn := []providerResponse{}
+	if a.providers == nil {
+		return signedIn, nil
+	}
+	rec := httptest.NewRecorder()
+	a.providers.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/providers", nil))
+	var all []providerResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &all); err != nil {
+		return nil, err
+	}
+	for _, p := range all {
+		if p.SignedIn {
+			signedIn = append(signedIn, p)
+		}
+	}
+	return signedIn, nil
 }
 
 func (a *api) platformCall(
@@ -278,7 +310,13 @@ func (a *api) platformCall(
 	switch name {
 	case provider.ToolCreateBot:
 		var b store.Bot
-		if json.Unmarshal(args, &b) != nil || !validBot(b) {
+		if json.Unmarshal(args, &b) != nil {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
+		}
+		if rerr := a.botChoiceError(ctx, b, ""); rerr != nil {
+			return nil, rerr
+		}
+		if !validBot(b) {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
 		}
 		b.CanManagePlatform = false
@@ -303,6 +341,9 @@ func (a *api) platformCall(
 				return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
 			}
 			b.ID, b.CanManagePlatform = in.ID, prev.CanManagePlatform
+			if rerr := a.botChoiceError(ctx, b, prev.Model); rerr != nil {
+				return nil, rerr
+			}
 			if !validBot(b) {
 				return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
 			}
@@ -388,6 +429,33 @@ func (a *api) platformCall(
 	}
 	a.runs.Changed(token, change)
 	return a.jsonText(after)
+}
+
+// botChoiceError rejects a look no creature has, and a model no signed-in provider lists unless it
+// is the model the Bot already has.
+func (a *api) botChoiceError(ctx context.Context, b store.Bot, current string) *rpcError {
+	if b.Look != "" && !slices.Contains(_looks, b.Look) {
+		return &rpcError{Code: _invalidParams, Message: fmt.Sprintf(
+			"unknown look %q; looks: %s", b.Look, strings.Join(_looks, ", "))}
+	}
+	if b.Model == "" || b.Model == current {
+		return nil
+	}
+	providers, err := a.signedInProviders(ctx)
+	if err != nil {
+		return a.toolError(err)
+	}
+	var models []string
+	for _, p := range providers {
+		for _, m := range p.Models {
+			models = append(models, m.ID)
+		}
+	}
+	if !slices.Contains(models, b.Model) {
+		return &rpcError{Code: _invalidParams, Message: fmt.Sprintf(
+			"unknown model %q; models: %s", b.Model, strings.Join(models, ", "))}
+	}
+	return nil
 }
 
 func (a *api) registerRepo(ctx context.Context, rp store.Repo) (store.Repo, error) {
