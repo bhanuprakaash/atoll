@@ -46,7 +46,7 @@ type Tokens struct {
 	ClientID     string    `json:"client_id"`
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
-	ExpiresAt    time.Time `json:"expires_at"`
+	ExpiresAt    time.Time `json:"expires_at"` // zero when the server gave no expiry
 }
 
 // Pending is a sign-in that waits for the user to allow it in the browser.
@@ -141,8 +141,11 @@ func Token(ctx context.Context, c *http.Client, st *store.Store, s store.MCPServ
 	if err := json.Unmarshal([]byte(value), &tokens); err != nil {
 		return "", fmt.Errorf("decode sign-in of MCP server %s: %w", s.Name, err)
 	}
-	if time.Until(tokens.ExpiresAt) > _refreshBefore {
+	if tokens.ExpiresAt.IsZero() || time.Until(tokens.ExpiresAt) > _refreshBefore {
 		return tokens.AccessToken, nil
+	}
+	if tokens.RefreshToken == "" {
+		return "", needsSignIn(ctx, st, s)
 	}
 	meta, err := discover(ctx, c, s.URL)
 	if err != nil {
@@ -153,19 +156,27 @@ func Token(ctx context.Context, c *http.Client, st *store.Store, s store.MCPServ
 		"client_id": {tokens.ClientID}, "resource": {s.URL},
 	})
 	if errors.Is(err, errInvalidGrant) {
-		if err := st.SetMCPSignIn(ctx, s.ID, store.MCPNeedsSignIn); err != nil {
-			return "", err
-		}
-		return "", fmt.Errorf("%s %w", s.Name, ErrNeedsSignIn)
+		return "", needsSignIn(ctx, st, s)
 	}
 	if err != nil {
 		return "", fmt.Errorf("refresh sign-in of %s: %w", s.Name, err)
 	}
 	refreshed.ClientID = tokens.ClientID
+	if refreshed.RefreshToken == "" {
+		refreshed.RefreshToken = tokens.RefreshToken
+	}
 	if err := saveTokens(s.ID, refreshed); err != nil {
 		return "", err
 	}
 	return refreshed.AccessToken, nil
+}
+
+// needsSignIn marks s needs_sign_in and returns the error that says so.
+func needsSignIn(ctx context.Context, st *store.Store, s store.MCPServer) error {
+	if err := st.SetMCPSignIn(ctx, s.ID, store.MCPNeedsSignIn); err != nil {
+		return err
+	}
+	return fmt.Errorf("%s %w", s.Name, ErrNeedsSignIn)
 }
 
 // probe is the sign-in status a remote server at serverURL starts with: "" when it needs none or
@@ -260,13 +271,14 @@ func postToken(ctx context.Context, c *http.Client, endpoint string, form url.Va
 	if err := doJSON(c, req, &reply); err != nil {
 		return Tokens{}, err
 	}
-	if reply.AccessToken == "" || reply.RefreshToken == "" || reply.ExpiresIn <= 0 {
-		return Tokens{}, errors.New("token reply has incomplete tokens")
+	if reply.AccessToken == "" {
+		return Tokens{}, errors.New("token reply has no access_token")
 	}
-	return Tokens{
-		AccessToken: reply.AccessToken, RefreshToken: reply.RefreshToken,
-		ExpiresAt: time.Now().UTC().Add(time.Duration(reply.ExpiresIn) * time.Second),
-	}, nil
+	tokens := Tokens{AccessToken: reply.AccessToken, RefreshToken: reply.RefreshToken}
+	if reply.ExpiresIn > 0 {
+		tokens.ExpiresAt = time.Now().UTC().Add(time.Duration(reply.ExpiresIn) * time.Second)
+	}
+	return tokens, nil
 }
 
 func getJSON(ctx context.Context, c *http.Client, endpoint string, result any) error {
