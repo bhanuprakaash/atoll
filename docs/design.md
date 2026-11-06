@@ -175,8 +175,10 @@ Undo of a repo registration is refused while a thread uses the repo.
   - GitHub (v1): OAuth device flow on github.com only (no Enterprise), through Reef's own OAuth App:
     client ID `Ov23li5N8B8tlXHi1Rza`, public, no secret, scopes `repo read:org workflow`. Bots use
     `gh`, git and GitHub's hosted MCP server `api.githubcopilot.com/mcp/`.
-  - Slack (v2): needs a small hosted token exchange. *Its MCP server wants a confidential client;
-    desktop PKCE sign-in cannot get bot scopes and expires in 30 days.*
+  - Slack: through its MCP server in the catalog (see MCP sign-in), with one internal Slack app per
+    workspace and PKCE, not a hosted token exchange. *Slack's MCP server has no dynamic
+    registration and lets in only internal or Marketplace apps.* A Marketplace listing is in the
+    Queue.
 - The device code stays in server memory, so a sign-in pending at restart is started again.
 - A Bot reaches GitLab and GitHub only through a connection Reef gave it, never through the user's
   own logins. Every run gets empty CLI configs and cleared credential helpers; only a connection
@@ -226,7 +228,7 @@ Undo of a repo registration is refused while a thread uses the repo.
 ## MCP servers
 
 - One library, in Settings > MCP servers: a catalog (Context7: remote, no sign-in, no secret; then
-  the hosted servers Notion, Figma and Cloudflare, which need sign-in; always first, not editable)
+  the hosted servers Notion, Figma, Cloudflare and Slack, which need sign-in; always first, not editable)
   and the user's own servers, listed in the order added. A server is
   local (`command`, `args`, `env`; stdio) or remote (`url`, `headers`; streamable HTTP).
   `GET/POST /api/mcp-servers`, `PUT/DELETE /api/mcp-servers/{id}`; a `PUT` replaces the server.
@@ -254,7 +256,7 @@ Undo of a repo registration is refused while a thread uses the repo.
 ### MCP sign-in
 
 - A hosted server that needs sign-in connects with one click. `status` on a server is `not_connected`,
-  `connected`, `needs_sign_in` or `needs_app`; it is absent for a server with no sign-in. The status
+  `connected`, `needs_sign_in`, `needs_app` or `needs_setup`; it is absent for a server with no sign-in. The status
   is in the database (`mcp_sign_ins`, by server id, catalog entries too); the tokens never are.
 - Add by URL with no headers sends the URL one MCP `initialize` request. A `401` whose
   `WWW-Authenticate` has `resource_metadata` means the server needs sign-in: `not_connected`, or
@@ -285,6 +287,21 @@ Undo of a repo registration is refused while a thread uses the repo.
   A token reply may omit `expires_in` (no known expiry: never refreshed before a run) and
   `refresh_token` (near expiry the server goes `needs_sign_in` with no refresh attempt; a refresh
   reply without a new one keeps the old).
+- Slack (`https://mcp.slack.com/mcp`, `ATOLL_SLACK_MCP_URL` in tests) has no
+  `registration_endpoint` and lets in only internal or Marketplace apps, so each workspace uses its
+  own internal Slack app, set up once. It starts as `needs_setup`; Set up in the row opens a dialog
+  with the steps (create the app, add the redirect URL, add the user scopes, turn PKCE on), the
+  fixed redirect and the scopes, and a Client ID field; no secret field. `GET
+  /api/mcp-servers/slack/setup` answers `{redirect_uri, scopes}` (`scopes` is `scopes_supported` of
+  Slack's resource metadata); `POST` takes `{client_id}`, saves it as the OS secret store entry
+  `mcp:slack:client_id` and sets `not_connected`. Any other server's `setup` is `404`. Connect from
+  `needs_setup` is `409`. Otherwise it is the generic flow with the saved Client ID in place of
+  registration and `scope` (the scopes joined by spaces) in the authorize URL: a public client, no
+  `client_secret` on the exchange or the refresh.
+- Slack's token endpoint answers HTTP 200 with `{"ok": ...}`: `ok:false` is a rejection, and
+  `invalid_refresh_token` is `invalid_grant`, so it sets `needs_sign_in`. Access tokens last 12
+  hours; a refresh token is single use, and each refresh reply carries the next one, which is saved
+  with the new access token.
 
 ## Memory
 
@@ -538,7 +555,8 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 
 ## Queue
 
-Delegation, the Slack connection, browser pane, background processes pane, the platform
+Delegation, the Slack connection, a Slack Marketplace listing (one-click Slack for every
+workspace, no per-workspace app), browser pane, background processes pane, the platform
 switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up
 to about 5 items always in the prompt), routines (scheduled, repeating runs), more provider
 adapters.
