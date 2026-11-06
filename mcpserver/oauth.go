@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"atoll/store"
@@ -30,12 +31,10 @@ const (
 )
 
 var (
-	// ErrNeedsApp is returned when a server cannot register clients, so it needs an app registered
-	// by hand.
-	ErrNeedsApp = errors.New("this server needs a registered app")
-	// ErrNeedsSetup is returned when a server needs its Client ID saved before it can sign in.
+	// ErrNeedsApp is returned when the server has no dynamic client registration.
+	ErrNeedsApp   = errors.New("this server needs a registered app")
 	ErrNeedsSetup = errors.New("this server needs its Client ID: set it up first")
-	// ErrNeedsSignIn is wrapped when a server's tokens are rejected: the user must sign in again.
+	// ErrNeedsSignIn is wrapped when a server's tokens are rejected.
 	ErrNeedsSignIn = errors.New("needs sign-in")
 
 	errNoSignIn     = errors.New("server does not ask for sign-in")
@@ -44,9 +43,11 @@ var (
 	_rejectedGrants = []string{"invalid_grant", "invalid_refresh_token", "token_revoked", "token_expired"}
 
 	_resourceMetadata = regexp.MustCompile(`resource_metadata="([^"]+)"`)
+
+	_tokenLocks sync.Map
 )
 
-// Tokens is the sign-in record of one server, kept in the OS secret store.
+// Tokens is the sign-in record of one server.
 type Tokens struct {
 	ClientID     string    `json:"client_id"`
 	AccessToken  string    `json:"access_token"`
@@ -54,9 +55,10 @@ type Tokens struct {
 	ExpiresAt    time.Time `json:"expires_at"` // zero when the server gave no expiry
 }
 
-// Pending is a sign-in that waits for the user to allow it in the browser.
+// Pending is a sign-in waiting for Allow.
 type Pending struct {
 	Server        store.MCPServer
+	Started       time.Time
 	State         string
 	AuthorizeURL  string
 	Verifier      string
@@ -72,9 +74,7 @@ type metadata struct {
 	Scopes                []string `json:"-"` // scopes_supported of the resource metadata
 }
 
-// Begin starts the sign-in of s: it finds the server's authorization server, registers a client
-// whose redirect is redirect (Slack uses the Client ID the user saved, and asks for its scopes),
-// and returns the URL the user opens to allow it.
+// Begin returns the URL the user opens to allow sign-in. Slack registers no clients, so it uses the saved Client ID.
 func Begin(ctx context.Context, c *http.Client, s store.MCPServer, redirect string) (Pending, error) {
 	switch s.Status {
 	case "":
@@ -122,13 +122,12 @@ func Begin(ctx context.Context, c *http.Client, s store.MCPServer, redirect stri
 	}
 	u.RawQuery = q.Encode()
 	return Pending{
-		Server: s, State: state, AuthorizeURL: u.String(), Verifier: verifier, ClientID: clientID,
+		Server: s, Started: time.Now(), State: state, AuthorizeURL: u.String(), Verifier: verifier, ClientID: clientID,
 		Redirect: redirect, TokenEndpoint: meta.TokenEndpoint,
 	}, nil
 }
 
-// Finish trades the code the user's Allow produced for tokens, stores them, and marks the server
-// connected.
+// Finish stores nothing when the server was removed or its URL changed since Begin.
 func Finish(ctx context.Context, c *http.Client, st *store.Store, p Pending, code string) error {
 	tokens, err := postToken(ctx, c, p.TokenEndpoint, url.Values{
 		"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {p.Redirect},
@@ -138,18 +137,27 @@ func Finish(ctx context.Context, c *http.Client, st *store.Store, p Pending, cod
 		return fmt.Errorf("sign in to %s: %w", p.Server.Name, err)
 	}
 	tokens.ClientID = p.ClientID
+	cur, err := Get(ctx, st, p.Server.ID)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	if err != nil || cur.URL != p.Server.URL {
+		return invalid(p.Server.Name + " was removed or changed since the sign-in began")
+	}
 	if err := saveTokens(p.Server.ID, tokens); err != nil {
 		return err
 	}
 	return st.SetMCPSignIn(ctx, p.Server.ID, store.MCPConnected)
 }
 
-// Token returns the access token of the signed-in server s, refreshed first when it expires
-// within ten minutes. A rejected refresh marks the server needs_sign_in.
+// Token refreshes an access token that expires within ten minutes.
 func Token(ctx context.Context, c *http.Client, st *store.Store, s store.MCPServer) (string, error) {
 	if s.Status == store.MCPNeedsSignIn {
 		return "", fmt.Errorf("%s %w", s.Name, ErrNeedsSignIn)
 	}
+	lock, _ := _tokenLocks.LoadOrStore(s.ID, &sync.Mutex{})
+	lock.(*sync.Mutex).Lock()
+	defer lock.(*sync.Mutex).Unlock()
 	value, err := keyring.Get("atoll", tokensUser(s.ID))
 	if err != nil {
 		return "", fmt.Errorf("read sign-in of MCP server %s: %w", s.Name, err)
@@ -188,7 +196,6 @@ func Token(ctx context.Context, c *http.Client, st *store.Store, s store.MCPServ
 	return refreshed.AccessToken, nil
 }
 
-// needsSignIn marks s needs_sign_in and returns the error that says so.
 func needsSignIn(ctx context.Context, st *store.Store, s store.MCPServer) error {
 	if err := st.SetMCPSignIn(ctx, s.ID, store.MCPNeedsSignIn); err != nil {
 		return err
@@ -196,8 +203,7 @@ func needsSignIn(ctx context.Context, st *store.Store, s store.MCPServer) error 
 	return fmt.Errorf("%s %w", s.Name, ErrNeedsSignIn)
 }
 
-// probe is the sign-in status a remote server at serverURL starts with: "" when it needs none or
-// cannot be reached.
+// probe returns "" when the server needs no sign-in or cannot be reached.
 func probe(ctx context.Context, c *http.Client, serverURL string) string {
 	ctx, cancel := context.WithTimeout(ctx, _probeTimeout)
 	defer cancel()
@@ -211,8 +217,7 @@ func probe(ctx context.Context, c *http.Client, serverURL string) string {
 	return store.MCPNotConnected
 }
 
-// discover reads the authorization server metadata a server's 401 points to. It returns
-// errNoSignIn when the server does not answer 401 with a resource_metadata URL.
+// discover returns errNoSignIn unless the 401 carries a resource_metadata URL.
 func discover(ctx context.Context, c *http.Client, serverURL string) (metadata, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, serverURL, strings.NewReader(_initialize))
 	if err != nil {
@@ -316,8 +321,7 @@ func getJSON(ctx context.Context, c *http.Client, endpoint string, result any) e
 	return doJSON(c, req, result)
 }
 
-// doJSON sends req and decodes a 2xx JSON reply into result. An error reply is reduced to its
-// OAuth error code, so no token reaches an error message.
+// doJSON reduces an error reply to its OAuth error code so no token reaches an error message.
 func doJSON(c *http.Client, req *http.Request, result any) error {
 	resp, err := c.Do(req)
 	if err != nil {

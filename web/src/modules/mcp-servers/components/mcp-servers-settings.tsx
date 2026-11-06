@@ -222,10 +222,20 @@ const statusText = {
   needs_setup: 'Needs setup',
 };
 
-function SignInStatus({ server }: { server: McpServer }) {
+function SignInStatus({ server, allowURL }: { server: McpServer; allowURL?: string }) {
   return (
     server.status && (
-      <i className="block text-[12.5px] not-italic text-muted">{statusText[server.status]}</i>
+      <i className="block text-[12.5px] not-italic text-muted">
+        {statusText[server.status]}
+        {allowURL && server.status !== 'connected' && (
+          <>
+            {' · '}
+            <a href={allowURL} target="_blank" rel="noreferrer" className="underline">
+              Open the Allow page
+            </a>
+          </>
+        )}
+      </i>
     )
   );
 }
@@ -256,6 +266,7 @@ export function McpServersSettings() {
   const [dialog, setDialog] = useState<{ kind: 'local' | 'remote'; server?: McpServer }>();
   const [waiting, setWaiting] = useState<McpServer>();
   const [setup, setSetup] = useState<McpServer>();
+  const [allow, setAllow] = useState<{ id: string; url: string }>();
   const connect = useConnectMcpServer();
   const remove = useRemoveMcpServer();
   const { data: servers = [] } = useMcpServers(waiting);
@@ -264,14 +275,14 @@ export function McpServersSettings() {
       setSetup(s);
       return;
     }
-    // The popup opens inside the click, before the authorize URL is known, so it is not blocked.
-    const popup = window.open('about:blank', '_blank');
     setWaiting(s);
+    setAllow(undefined);
     connect.mutate(s.id, {
       onSuccess: ({ authorize_url }) => {
-        if (popup) popup.location.href = authorize_url;
+        setAllow({ id: s.id, url: authorize_url });
+        window.open(authorize_url, '_blank');
       },
-      onError: () => popup?.close(),
+      onError: () => setWaiting(undefined),
     });
   };
   const catalog = servers.filter((s) => s.kind === 'catalog');
@@ -302,9 +313,19 @@ export function McpServersSettings() {
               <ServerIcon />
             </Tile>
             <RowText title={s.name} detail={runs(s)} mono>
-              <SignInStatus server={s} />
+              <SignInStatus server={s} allowURL={allow?.id === s.id ? allow.url : undefined} />
             </RowText>
             <SignInButton server={s} onClick={() => signIn(s)} />
+            {(s.status === 'connected' || s.status === 'needs_sign_in') && (
+              <button
+                type="button"
+                className={outlineButton}
+                disabled={remove.isPending}
+                onClick={() => remove.mutate(s.id)}
+              >
+                Sign out
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -343,7 +364,7 @@ export function McpServersSettings() {
                       {s.kind === 'local' ? 'Env' : 'Headers'}: {names.join(', ')}
                     </i>
                   )}
-                  <SignInStatus server={s} />
+                  <SignInStatus server={s} allowURL={allow?.id === s.id ? allow.url : undefined} />
                 </RowText>
                 <SignInButton server={s} onClick={() => signIn(s)} />
                 <button

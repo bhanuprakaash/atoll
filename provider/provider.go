@@ -82,13 +82,11 @@ type Config struct {
 	GitHubMCPURL string
 	GitHubToken  string
 	// SkillDir is the absolute root of this run's skill copies. Empty runs without them.
-	SkillDir string
-	// MCPServers are the user's servers this run gets next to Atoll's own.
+	SkillDir   string
 	MCPServers []UserMCPServer
 }
 
-// UserMCPServer is a user-added MCP server with its secrets resolved. A local one has Command, Args
-// and Env; a remote one has URL and Headers.
+// UserMCPServer is local with Command, Args and Env, or remote with URL and Headers.
 type UserMCPServer struct {
 	Name    string
 	Command string
