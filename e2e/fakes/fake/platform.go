@@ -3,6 +3,9 @@ package fake
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -93,6 +96,9 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 		}
 		return "Edited the skill, registered the repo and attached the connection.", nil
 	}
+	if mode == "import" {
+		return importAgent(call, prompt)
+	}
 	if mode == "edit" {
 		_, id, _ := strings.Cut(prompt, "bot_id=")
 		fields := strings.Fields(id)
@@ -129,4 +135,66 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 		return "", fmt.Errorf("create_bot result: %v", out)
 	}
 	return "Created reef-greeting and Lagoon.", nil
+}
+
+var (
+	_agentFile  = regexp.MustCompile(`~/\.claude/agents/[^\s/]+\.md`)
+	_localSkill = regexp.MustCompile(`~/\.claude/skills/([^\s/]+)/SKILL\.md`)
+)
+
+// importAgent reads the agent file and its local skills from HOME as the provider's own file
+// tool would, then imports each skill's SKILL.md and creates the Bot without any ~/.claude path.
+func importAgent(call func(string, any) (map[string]any, error), prompt string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	path := _agentFile.FindString(prompt)
+	if path == "" {
+		return "", fmt.Errorf("import scenario requires ~/.claude/agents/<agent>.md")
+	}
+	b, err := os.ReadFile(filepath.Join(home, strings.TrimPrefix(path, "~/")))
+	if err != nil {
+		return "", err
+	}
+	front, body, ok := strings.Cut(strings.TrimPrefix(string(b), "---\n"), "---\n")
+	if !ok {
+		return "", fmt.Errorf("agent file has no frontmatter: %s", path)
+	}
+	name := ""
+	for line := range strings.Lines(front) {
+		if value, ok := strings.CutPrefix(line, "name:"); ok {
+			name = strings.TrimSpace(value)
+		}
+	}
+	persona := strings.TrimSpace(body)
+	var ids, names []string
+	for _, m := range _localSkill.FindAllStringSubmatch(body, -1) {
+		content, err := os.ReadFile(filepath.Join(home, ".claude", "skills", m[1], "SKILL.md"))
+		if err != nil {
+			return "", err
+		}
+		out, err := call("create_skill", map[string]any{"name": m[1], "content": string(content)})
+		if err != nil {
+			return "", err
+		}
+		id, _ := out["id"].(string)
+		if id == "" || out["content"] != string(content) {
+			return "", fmt.Errorf("create_skill result: %v", out)
+		}
+		ids, names = append(ids, id), append(names, m[1])
+		persona = strings.ReplaceAll(persona, m[0], "the "+m[1]+" skill")
+	}
+	provider := "claude"
+	if strings.Contains(prompt, "using codex") {
+		provider = "codex"
+	}
+	out, err := call("create_bot", map[string]any{"name": name, "persona": persona, "provider": provider, "skills": ids})
+	if err != nil {
+		return "", err
+	}
+	if out["id"] == nil || out["name"] != name {
+		return "", fmt.Errorf("create_bot result: %v", out)
+	}
+	return "Imported " + strings.Join(names, ", ") + " and created " + name + ".", nil
 }
