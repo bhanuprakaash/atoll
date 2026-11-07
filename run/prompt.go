@@ -102,6 +102,8 @@ func systemPrompt(bot store.Bot, user string, onBossBranch bool) string {
 const _repoWork = "Before your first edit, call start_work and work in the path it returns. " +
 	"After you open the MR, call track_mr with its URL."
 
+const _repoWorkHelper = "Before your first edit, call start_work and work in the path it returns."
+
 const _repoWorkGitHub = "Before your first edit, call start_work and work in the path it returns. " +
 	"Open the pull request with gh pr create, then call track_mr with its URL."
 
@@ -144,7 +146,10 @@ func messagePrompt(
 				branch = "detached"
 			}
 			work := _repoWork
-			if repo.Host == _hostGitHub {
+			switch {
+			case thread.ParentThreadID != "" && thread.Worktree != "":
+				work = _repoWorkHelper
+			case repo.Host == _hostGitHub:
 				work = _repoWorkGitHub
 			}
 			blocks = append(blocks, fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s\n%s",
