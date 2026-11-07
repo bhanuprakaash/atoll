@@ -25,6 +25,8 @@ const (
 var (
 	// ErrPending is returned by PollToken while the user has not approved the sign-in yet.
 	ErrPending = errors.New("authorization pending")
+	// ErrSlowDown is ErrPending for a poll that came too early: every later poll must wait 5s more.
+	ErrSlowDown = fmt.Errorf("%w: slow down", ErrPending)
 	// ErrNeedsSignIn is returned when GitLab rejects a refresh token.
 	ErrNeedsSignIn = errors.New("GitLab needs sign-in")
 )
@@ -180,8 +182,11 @@ func post(ctx context.Context, c *http.Client, instance, path string, form url.V
 			Error string `json:"error"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&reply); err == nil && reply.Error != "" {
-			if resp.StatusCode == http.StatusBadRequest && (reply.Error == "authorization_pending" || reply.Error == "slow_down") {
+			if resp.StatusCode == http.StatusBadRequest && reply.Error == "authorization_pending" {
 				return ErrPending
+			}
+			if resp.StatusCode == http.StatusBadRequest && reply.Error == "slow_down" {
+				return ErrSlowDown
 			}
 			if resp.StatusCode == http.StatusBadRequest && reply.Error == "invalid_grant" {
 				return _invalidGrant

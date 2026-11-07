@@ -46,11 +46,20 @@ type fakeGitHub struct {
 	tokenForms []url.Values
 	mcp        []githubMCPRequest
 	pushAuth   []string // "user:password" of every git request GitHub accepted
+
+	// slowDownNext answers the next token request slow_down, as github.com does for a poll that
+	// came too early. From then on, like github.com, a poll sooner than interval after the
+	// previous one answers slow_down too, and each slow_down adds 5s to interval.
+	slowDownNext bool
+	slowedDown   bool
+	interval     time.Duration
+	polls        []time.Time
+	slowDowns    int
 }
 
 func newFakeGitHub(t *testing.T) *fakeGitHub {
 	t.Helper()
-	g := &fakeGitHub{tag: strings.ReplaceAll(t.Name(), "/", "-"), root: t.TempDir()}
+	g := &fakeGitHub{tag: strings.ReplaceAll(t.Name(), "/", "-"), root: t.TempDir(), interval: time.Second}
 	gitIn(t, g.root, "init", "--bare", "-b", "main", filepath.Join(g.root, "octo", "hello.git"))
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /login/device/code", g.deviceCode)
@@ -116,6 +125,17 @@ func (g *fakeGitHub) accessToken(w http.ResponseWriter, r *http.Request) {
 	g.tokenForms = append(g.tokenForms, r.Form)
 	if r.Form.Get("device_code") != "fixture-device-code" {
 		githubReply(w, r, map[string]any{"error": "bad_verification_code"})
+		return
+	}
+	now := time.Now()
+	early := g.slowDownNext || g.slowedDown && len(g.polls) > 0 && now.Sub(g.polls[len(g.polls)-1]) < g.interval
+	g.polls = append(g.polls, now)
+	if early {
+		g.slowDownNext, g.slowedDown = false, true
+		g.interval += 5 * time.Second
+		g.slowDowns++
+		githubReply(w, r, map[string]any{"error": "slow_down", "interval": int(g.interval / time.Second),
+			"error_description": "Too many requests have been made in the same timeframe."})
 		return
 	}
 	if !g.approved {

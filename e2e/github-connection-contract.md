@@ -46,6 +46,11 @@ The fake GitHub behaves as the real one does:
 - Both answer form-encoded unless the request has `Accept: application/json`, so the server must send it.
 - Errors come with HTTP 200: before the user approves, the access token request answers
   `{"error":"authorization_pending"}` with status 200, which keeps the connection `pending`.
+- A poll that comes too early answers `{"error":"slow_down","interval":<seconds>}` and adds 5s to
+  the interval for that device code; each later poll sooner than the new interval after the previous
+  one gets `slow_down` again (RFC 8628 §3.5). The server, not the UI, keeps to the interval: after a
+  `slow_down` it adds 5s and answers `pending` to polls that come sooner, without asking GitHub. The
+  fake answers `slow_down` to the next poll when a test asks it to, then enforces the interval.
 - Approval answers `{"access_token", "token_type":"bearer", "scope"}`: no refresh token, no expiry.
   Every approval issues a new token and revokes the previous one.
 - `GET /user` with `Authorization: Bearer <token>` (or `token <token>`) answers
@@ -142,6 +147,7 @@ today), within its existing size limit.
 | A run gets `GH_TOKEN` and the git helper through env; `gh api user` returns the fake user; `git push` authenticates as `x-access-token` | `TestGitHub_RunGetsTheConnection/{claude,codex}` |
 | MCP config has a `github` entry with the Bearer header (Claude, Codex); a scripted provider calls one tool and gets the answer | `TestGitHub_RunGetsTheConnection/{claude,codex}` |
 | A Bot without the connection gets neither env nor MCP entry | `TestGitHub_BotWithoutTheConnectionGetsNothing/{claude,codex}` |
+| Sign-in connects after a `slow_down`, with no early poll after it | `TestGitHub_SignInConnectsAfterSlowDown` |
 | A 401 marks `needs_sign_in`; the run stops before the provider with "GitHub needs sign-in"; Sign in again keeps the id | `TestGitHub_RejectedTokenNeedsSignIn`; `e2e/ui/github-connection.spec.ts` "a rejected token shows Needs sign-in; Sign in again reconnects the same connection" |
 | The card says what Bots get: `gh`, git, GitHub tools | `e2e/ui/github-connection.spec.ts` (card text) |
 | Bot settings has a GitHub switch like GitLab's | `e2e/ui/github-connection.spec.ts` "Bot settings take and drop the GitHub connection like GitLab" |
