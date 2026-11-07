@@ -6,6 +6,7 @@ import {
   rowClass,
   SectionHead,
   solidButton,
+  Tag,
   Tile,
 } from '@/components/settings-ui';
 import { TextField } from '@/components/text-field';
@@ -146,6 +147,7 @@ export function ReposSettings() {
                 </svg>
               </Tile>
               <RowText title={repo.name} detail={repo.path} mono />
+              {repo.host === 'github' && <Tag>GitHub</Tag>}
             </div>
           ))}
         </Box>
