@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { Field } from '@/components/field';
 import { Segmented } from '@/components/segmented';
+import { ServerLogo } from '@/components/server-logo';
 import { outlineButton, solidButton } from '@/components/settings-ui';
 import { Switch } from '@/components/switch';
 import { TextArea, TextField } from '@/components/text-field';
@@ -156,7 +157,10 @@ export function BotSettings({
                   key={server.id}
                   className="flex items-center justify-between gap-3 border-b border-composer-line px-3 py-2.5 text-sm last:border-b-0"
                 >
-                  {server.name}
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <ServerLogo id={server.id} />
+                    {server.name}
+                  </span>
                   <Switch
                     aria-label={server.name}
                     checked={mcpIds.includes(server.id)}
