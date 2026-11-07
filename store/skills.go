@@ -371,6 +371,15 @@ func (s *Store) UndoChange(ctx context.Context, id string) (Change, error) {
 			if err := found(res, c.Entity, c.EntityID); err != nil {
 				return err
 			}
+			if c.Entity == EntityBot {
+				_, err = tx.ExecContext(ctx,
+					"UPDATE bots SET delegates = (SELECT json_group_array(value) FROM "+
+						"json_each(delegates) WHERE value != ?1) WHERE EXISTS "+
+						"(SELECT 1 FROM json_each(delegates) WHERE value = ?1)", c.EntityID)
+				if err != nil {
+					return fmt.Errorf("drop bot %s from delegates: %w", c.EntityID, err)
+				}
+			}
 		case c.Action == ActionEdit && c.Entity == EntityBot:
 			var b Bot
 			if err := json.Unmarshal(c.Before, &b); err != nil {

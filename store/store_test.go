@@ -202,6 +202,34 @@ func TestStore_UndoChange(t *testing.T) {
 	}
 }
 
+func TestStore_UndoCreateBotDropsDelegate(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	made, err := st.CreateBot(ctx, store.Bot{Name: "made", Persona: "p", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boss, err := st.CreateBot(ctx, store.Bot{Name: "boss", Persona: "p", Provider: "claude", Delegates: []string{made.ID, "other"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := st.RecordChange(ctx, store.Change{Entity: store.EntityBot, EntityID: made.ID, Action: store.ActionCreate, Before: json.RawMessage(`null`), After: json.RawMessage(`{}`), SourceThreadID: "thread"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.UndoChange(ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Bot(ctx, boss.ID)
+	if err != nil || !slices.Equal(got.Delegates, []string{"other"}) {
+		t.Fatalf("delegates after undo = %v, %v; want [other]", got.Delegates, err)
+	}
+}
+
 func TestStore_MessageTimestamps(t *testing.T) {
 	ctx := t.Context()
 	st, err := store.Open(t.TempDir())
