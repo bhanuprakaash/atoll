@@ -192,7 +192,10 @@ Undo of a repo registration is refused while a thread uses the repo.
     `gh`, git and GitHub's hosted MCP server `api.githubcopilot.com/mcp/`.
   - Slack (v2): needs a small hosted token exchange. *Its MCP server wants a confidential client;
     desktop PKCE sign-in cannot get bot scopes and expires in 30 days.*
-- The device code stays in server memory, so a sign-in pending at restart is started again.
+- The device code stays in server memory, so a sign-in pending at restart is started again. The
+  server keeps the poll interval with it: a UI poll sooner than that answers `pending` without asking
+  GitHub or GitLab, and a `slow_down` adds 5s to it (RFC 8628). *GitHub answers every poll at the old
+  pace `slow_down` again, so a UI that kept its pace never connected.*
 - A Bot reaches GitLab and GitHub only through a connection Reef gave it, never through the user's
   own logins. Every run gets empty CLI configs and cleared credential helpers; only a connection
   fills them. Concretely, every run gets `GLAB_CONFIG_DIR` and `GH_CONFIG_DIR` set to empty folders

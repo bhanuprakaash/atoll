@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -87,6 +88,38 @@ func TestGitHub_ConnectKeepsTheTokenInTheSecretStore(t *testing.T) {
 	f.s.kill()
 	if bytes.Contains(f.s.log.Bytes(), []byte(token)) {
 		t.Fatalf("server log leaked the token:\n%s", f.s.log)
+	}
+}
+
+// GitHub answers a poll that comes too early with slow_down and adds 5s to the interval; every
+// later poll sooner than that gets slow_down again. Polled as the UI does, at the advertised
+// interval, the sign-in still connects, and no poll after the slow_down is early.
+func TestGitHub_SignInConnectsAfterSlowDown(t *testing.T) {
+	f := newGitHubFixture(t, "claude")
+	var start struct {
+		ID string `json:"id"`
+	}
+	f.s.do(t, "POST", "/api/connections/github/start", nil, &start, 201)
+	f.gh.set(func() { f.gh.slowDownNext, f.gh.approved = true, true })
+	clearGitHubSecretAfter(t, start.ID)
+	var status struct {
+		Status string `json:"status"`
+	}
+	for range 12 {
+		time.Sleep(1100 * time.Millisecond)
+		f.s.do(t, "POST", "/api/connections/"+start.ID+"/poll", nil, &status, 200)
+		if status.Status == "connected" {
+			break
+		}
+	}
+	f.gh.mu.Lock()
+	slowDowns, polls := f.gh.slowDowns, slices.Clone(f.gh.polls)
+	f.gh.mu.Unlock()
+	if status.Status != "connected" || slowDowns != 1 {
+		t.Fatalf("after a slow_down: status %+v, %d slow_down answers to polls at %v; want connected after one", status, slowDowns, polls)
+	}
+	if got := githubSecret(t, start.ID); got != f.gh.currentToken() {
+		t.Fatalf("OS secret store github:%s holds %q, want the access token", start.ID, got)
 	}
 }
 

@@ -29,7 +29,9 @@ const MCPPath = "/mcp/"
 const (
 	_pingEvery     = 15 * time.Second
 	_signInTimeout = 30 * time.Second
-	_chiefID       = "chief"
+	// RFC 8628 §3.2: the interval when the device authorization reply has none.
+	_defaultDeviceInterval = 5 * time.Second
+	_chiefID               = "chief"
 )
 
 //go:embed all:ui
@@ -45,7 +47,16 @@ type api struct {
 	providers Providers // serves /api/providers; nil when there is none
 
 	mu      sync.Mutex
-	devices map[string]string // device code of each pending sign-in, by connection id
+	devices map[string]*device // each pending sign-in, by connection id
+}
+
+// device is a pending sign-in. GitHub and GitLab answer slow_down to a poll sooner than interval
+// after the previous one, and to every later poll at the old pace, so the server keeps the pace
+// for all its callers.
+type device struct {
+	code     string
+	interval time.Duration
+	next     time.Time
 }
 
 // New returns the handler for the API, the MCP tools and the UI. providers, when not nil, serves
@@ -56,7 +67,7 @@ func New(
 	a := &api{
 		st: st, mem: mem, runs: runs, log: log, providers: providers,
 		http:    &http.Client{Timeout: _signInTimeout},
-		devices: map[string]string{},
+		devices: map[string]*device{},
 	}
 	mux := http.NewServeMux()
 	if providers != nil {
