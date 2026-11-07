@@ -18,47 +18,56 @@ type RefusedError string
 
 func (e RefusedError) Error() string { return string(e) }
 
+// Handoff is what a boss is told when its delegate started a helper thread. Branch and Note are set
+// when the helper got a worktree off the boss's branch.
+type Handoff struct {
+	ThreadID string `json:"thread_id"`
+	Branch   string `json:"branch,omitempty"`
+	Note     string `json:"note,omitempty"`
+}
+
 // Delegate starts a helper thread for the Bot botName on the delegate list of the run with token,
 // and sends it the brief. The helper works in the boss thread's repo, else in the registered
-// repo repoName, else in none. It returns the helper thread's id without waiting for its run.
+// repo repoName, else in none; when the boss thread has a worktree, the helper gets one now on a
+// branch off the boss's branch. It returns without waiting for the helper's run.
 func (m *Manager) Delegate(
 	ctx context.Context, token, botName, brief, repoName string,
-) (string, error) {
+) (Handoff, error) {
 	a, err := m.byToken(token)
 	if err != nil {
-		return "", err
+		return Handoff{}, err
 	}
 	m.mu.Lock()
 	boss := a.bot
 	m.mu.Unlock()
 	t, err := m.cfg.Store.Thread(ctx, a.threadID)
 	if err != nil {
-		return "", fmt.Errorf("load thread: %w", err)
+		return Handoff{}, fmt.Errorf("load thread: %w", err)
 	}
 	if t.ParentThreadID != "" {
-		return "", RefusedError("a helper cannot delegate")
+		return Handoff{}, RefusedError("a helper cannot delegate")
 	}
 	helper, err := m.helper(ctx, boss, botName)
 	if err != nil {
-		return "", err
+		return Handoff{}, err
 	}
 	rp, err := m.helperRepo(ctx, t.RepoID, repoName)
 	if err != nil {
-		return "", err
+		return Handoff{}, err
 	}
 	if rp.ID != "" {
 		if !helper.RepoAccess.Allows(rp.ID) {
-			return "", RefusedError(helper.Name + " has no access to " + rp.Name)
+			return Handoff{}, RefusedError(helper.Name + " has no access to " + rp.Name)
 		}
 		if !repo.HasCommit(ctx, rp.Path) {
-			return "", RefusedError(rp.Name + " has no commit yet")
+			return Handoff{}, RefusedError(rp.Name + " has no commit yet")
 		}
 	}
 	m.delegateMu.Lock()
 	defer m.delegateMu.Unlock()
 	helpers, err := m.cfg.Store.HelperThreads(ctx, t.ID)
 	if err != nil {
-		return "", fmt.Errorf("list helper threads: %w", err)
+		return Handoff{}, fmt.Errorf("list helper threads: %w", err)
 	}
 	m.mu.Lock()
 	going := 0
@@ -69,18 +78,39 @@ func (m *Manager) Delegate(
 	}
 	m.mu.Unlock()
 	if going >= _maxHelpers {
-		return "", RefusedError(fmt.Sprintf("%d helpers running. Tell the user, "+
+		return Handoff{}, RefusedError(fmt.Sprintf("%d helpers running. Tell the user, "+
 			"and hand this off when one of them reports back.", _maxHelpers))
+	}
+	var h Handoff
+	first := boss.Name + " delegated this to you; your replies go to " + boss.Name + ".\n\n"
+	var path string
+	if t.Worktree != "" {
+		root, err := m.WorktreeRoot(ctx)
+		if err != nil {
+			return Handoff{}, err
+		}
+		name := t.Branch + "--" + repo.Slug(helper.Name)
+		if path, h.Branch, err = repo.CreateFrom(ctx, rp.Path, root, rp.Name, name, t.Branch); err != nil {
+			return Handoff{}, err
+		}
+		h.Note = "Uncommitted changes in your worktree are not included."
+		first += "Work on branch " + h.Branch + " and commit there. Do not push or open a PR: " +
+			boss.Name + " merges it.\n\n"
 	}
 	ht, err := m.cfg.Store.CreateHelperThread(ctx, t.ID, helper.ID, rp.ID)
 	if err != nil {
-		return "", fmt.Errorf("create helper thread: %w", err)
+		return Handoff{}, fmt.Errorf("create helper thread: %w", err)
 	}
-	first := boss.Name + " delegated this to you; your replies go to " + boss.Name + ".\n\n" + brief
-	if _, _, err := m.Send(ctx, ht.ID, first); err != nil {
-		return "", fmt.Errorf("start helper run: %w", err)
+	h.ThreadID = ht.ID
+	if path != "" {
+		if err := m.cfg.Store.SetWorktree(ctx, ht.ID, h.Branch, path); err != nil {
+			return Handoff{}, err
+		}
 	}
-	return ht.ID, nil
+	if _, _, err := m.Send(ctx, ht.ID, first+brief); err != nil {
+		return Handoff{}, fmt.Errorf("start helper run: %w", err)
+	}
+	return h, nil
 }
 
 // Continue sends message to the helper thread, which only the boss thread of the run with token

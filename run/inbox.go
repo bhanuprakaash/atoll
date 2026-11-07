@@ -81,15 +81,25 @@ func (m *Manager) wake(runID string) {
 	if errors.Is(err, store.ErrNotFound) || err == nil && t.ParentThreadID == "" {
 		return
 	}
+	var boss store.Thread
 	if err == nil {
-		err = m.post(ctx, t.ParentThreadID, bot.ID, wakeText(bot.Name, t.ID, run))
+		boss, err = m.cfg.Store.Thread(ctx, t.ParentThreadID)
+	}
+	if err == nil {
+		merge := ""
+		if boss.Branch != "" && strings.HasPrefix(t.Branch, boss.Branch+"--") {
+			merge = t.Branch
+		}
+		err = m.post(ctx, t.ParentThreadID, bot.ID, wakeText(bot.Name, t.ID, merge, run))
 	}
 	if err != nil {
 		m.cfg.Log.Error("wake boss", "run_id", runID, "error", err)
 	}
 }
 
-func wakeText(helper, threadID string, run store.Run) string {
+// wakeText is the message for the boss. merge is the helper's branch off the boss's branch, if it
+// has one.
+func wakeText(helper, threadID, merge string, run store.Run) string {
 	switch run.Status {
 	case store.StatusDone:
 		var b strings.Builder
@@ -102,6 +112,9 @@ func wakeText(helper, threadID string, run store.Run) string {
 					fmt.Fprintf(&b, "\n%s: %s", f.name, f.text)
 				}
 			}
+		}
+		if merge != "" {
+			fmt.Fprintf(&b, "\nMerge %s into your branch.", merge)
 		}
 		return strings.TrimSpace(b.String())
 	case "stopped":

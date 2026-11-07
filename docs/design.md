@@ -122,7 +122,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   `delegate(bot, brief, repo?)` and `continue(thread, message)` only in runs of a Bot with a
   non-empty delegate list, in a thread that is not a helper thread (depth 1). Continue for the same
   work; start a new one for different work.
-- `delegate` returns `{"thread_id"}` at once; the boss's run ends normally and the helper works in
+- `delegate` returns `{"thread_id"}` at once (plus `branch` and `note` when the helper gets a
+  worktree, below); the boss's run ends normally and the helper works in
   a thread of its own, with `parent_thread_id` set. It uses the boss thread's repo; a boss thread
   with no repo (Chief) may pass a registered repo's name, else the helper has none. The helper
   starts a fresh provider session.
@@ -153,7 +154,19 @@ Undo of a repo registration is refused while a thread uses the repo.
 - A child's questions go to its parent; approvals go to the user. The child's first message is one
   line, then the brief: `{parent} delegated this to you; your replies go to {parent}.`
 - A child works in its own worktree branched from the parent's branch (`<parent-branch>--<bot>`).
-  The parent merges it and opens the MR, and owns the result.
+  The parent merges it and opens the MR, and owns the result. When the boss thread has a worktree,
+  `delegate` makes the helper's worktree at once, on `<boss-branch>--<bot>` (the Bot name slugged
+  as a branch slug) at the boss branch's last commit, and records it on the helper thread, so the
+  helper's `start_work` returns it. The result adds `branch` and `note`: `Uncommitted changes in
+  your worktree are not included.` The helper's first message has, after the handoff line, `Work
+  on branch {branch} and commit there. Do not push or open a PR: {boss} merges it.` It needs no
+  GitHub connection, and the wake for its `done` run adds `Merge {branch} into your branch.` A
+  boss thread with no worktree (still exploring, or Chief) gets none of this: the helper's
+  `start_work` makes its own branch from `origin/HEAD` and it opens its own MR, with the GitHub
+  connection on a GitHub repo.
+- When the boss's MR merges (GitLab), the helpers' worktrees are removed with the boss's, each
+  saved first as for Close, with `worktree_removed` reason `merged`; while a helper's run is going
+  nothing is removed, and the watcher tries again.
 - Children show nested in the parent's thread.
 
 ## Repos and worktrees
@@ -169,6 +182,7 @@ Undo of a repo registration is refused while a thread uses the repo.
 - The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs) at first edit; the app makes it
   lowercase, short and unique (`-2`). Fixed once created.
 - The worktree is removed when the MR merges or the thread closes; uncommitted work is saved first.
+  A helper's worktree goes with its boss's (see Delegation).
 - The read-only checkout is a detached git worktree of the repo's HEAD at `<data>/threads/<id>`,
   outside the worktree root. It is removed when the thread closes.
 - A new branch starts at `origin/HEAD` when it resolves, else HEAD. The server never fetches.

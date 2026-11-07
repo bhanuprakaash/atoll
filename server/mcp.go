@@ -268,13 +268,11 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if err := json.Unmarshal(call.Arguments, &in); err != nil || in.Bot == "" || in.Brief == "" {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		id, err := a.runs.Delegate(r.Context(), token, in.Bot, in.Brief, in.Repo)
+		h, err := a.runs.Delegate(r.Context(), token, in.Bot, in.Brief, in.Repo)
 		if res, rpcErr := a.refusal(err); res != nil || rpcErr != nil {
 			return res, rpcErr
 		}
-		return a.jsonText(struct {
-			ThreadID string `json:"thread_id"`
-		}{id})
+		return a.jsonText(h)
 	case provider.ToolContinue:
 		var in struct {
 			Thread  string `json:"thread"`

@@ -600,7 +600,34 @@ func (m *Manager) check(t store.Thread) error {
 	if t, err = m.cfg.Store.Thread(m.ctx, t.ID); err != nil || t.Worktree == "" {
 		return err
 	}
+	if ok, err := m.releaseHelpers(t.ID, rp); !ok || err != nil {
+		return err
+	}
 	return m.release(m.ctx, t, rp, "merged")
+}
+
+// releaseHelpers releases the worktrees of the helper threads of the thread threadID as its MR
+// merged. It stops and reports false when a helper's run is going; the next tick tries again.
+func (m *Manager) releaseHelpers(threadID string, rp store.Repo) (bool, error) {
+	helpers, err := m.cfg.Store.HelperThreads(m.ctx, threadID)
+	if err != nil {
+		return false, fmt.Errorf("list helper threads: %w", err)
+	}
+	for _, h := range helpers {
+		if h.Worktree == "" {
+			continue
+		}
+		slot := m.reserve(h.ID)
+		if slot == nil {
+			return false, nil
+		}
+		err := m.release(m.ctx, h, rp, "merged")
+		m.drop(slot)
+		if err != nil {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 // mrState asks glab for the state of the MR at url, from inside the repo at dir.
