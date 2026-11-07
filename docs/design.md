@@ -204,7 +204,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   hosted server's URL with `Authorization: Bearer <token>` (Claude `--mcp-config` headers, Codex
   `mcp_servers.github.http_headers`). A GitHub tool call goes to the user as an approval named
   `mcp__github__<tool>`, like every tool that is not Reef's own: the tools can push, merge and close
-  issues. Only Reef's own tools need none. A Bot with GitLab and GitHub gets both helpers, in one `GIT_CONFIG_*` list after
+  issues. Codex gets `default_tools_approval_mode = "prompt"` on it, since its default skips tools
+  that declare themselves read-only. Only Reef's own tools need none. A Bot with GitLab and GitHub gets both helpers, in one `GIT_CONFIG_*` list after
   the clearing entry. The token is never written to a file or log. `ATOLL_GITHUB_URL` and
   `ATOLL_GITHUB_MCP_URL` replace the real URLs for tests.
 - Settings > Connections has a GitHub card ("Bots get gh, git and GitHub tools."). Connect GitHub

@@ -574,6 +574,8 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 			servers[provider.GitHubMCPServer] = map[string]any{
 				"url":          cfg.GitHubMCPURL,
 				"http_headers": map[string]string{"Authorization": "Bearer " + cfg.GitHubToken},
+				// Codex's default mode skips approval for tools that declare readOnlyHint.
+				"default_tools_approval_mode": "prompt",
 			}
 		}
 		for _, m := range cfg.MCPServers {
