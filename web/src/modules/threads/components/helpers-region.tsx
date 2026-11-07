@@ -3,7 +3,7 @@ import type { CreatureLook } from '@/components/creature';
 import type { Thread } from '@/modules/threads/api/threads';
 import { ApprovalCard } from '@/modules/threads/components/approval-card';
 import { HelperCreature } from '@/modules/threads/components/helper-creature';
-import { helperState } from '@/modules/threads/utils/helper-state';
+import { helperState, isLiveHelper } from '@/modules/threads/utils/helper-state';
 
 const stateText = { needs_you: 'Needs you', done: 'Done', failed: 'Failed', stopped: 'Stopped' };
 
@@ -14,7 +14,7 @@ export function HelpersRegion({
   helpers: Thread[];
   bots: Record<string, { name: string; look: CreatureLook }>;
 }) {
-  const open = helpers.filter((h) => !h.closed);
+  const open = helpers.filter(isLiveHelper);
   if (open.length === 0) return null;
   return (
     <section aria-label="Helpers" className="mb-2 flex flex-col gap-2 px-4.5 text-sm">

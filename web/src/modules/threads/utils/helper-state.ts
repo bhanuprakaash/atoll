@@ -12,3 +12,6 @@ export function helperState(helper: Thread): HelperState {
 
 export const helperLabel = (name: string, state: HelperState) =>
   `${name}: ${state.replace('_', ' ')}`;
+
+export const isLiveHelper = (helper: Thread) =>
+  !helper.closed && (helper.run_status === 'running' || helper.run_status === 'waiting');

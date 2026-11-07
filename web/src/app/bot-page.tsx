@@ -13,7 +13,7 @@ import { useSkills } from '@/modules/skills/api/skills';
 import { ThreadsPanel } from '@/modules/threads/components/threads-panel';
 import { useThreads, type Thread } from '@/modules/threads/api/threads';
 import { HelperCreature } from '@/modules/threads/components/helper-creature';
-import { helperState, type HelperState } from '@/modules/threads/utils/helper-state';
+import { helperState, isLiveHelper, type HelperState } from '@/modules/threads/utils/helper-state';
 
 export function BotHeader({
   bot,
@@ -152,7 +152,7 @@ export function BotPage() {
   const navigate = useNavigate();
   const bot = bots.find((item) => item.id === botId);
   const helpers = (threads.find((thread) => thread.id === threadId)?.helpers ?? [])
-    .filter((helper) => !helper.closed)
+    .filter(isLiveHelper)
     .map((helper) => {
       const helperBot = bots.find((item) => item.id === helper.bot_id);
       return {
