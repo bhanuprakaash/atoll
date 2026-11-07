@@ -144,12 +144,22 @@ type (
 
 	// Message is one chat line. A bot message holds a run's reply.
 	Message struct {
-		ID        string    `json:"id"`
-		ThreadID  string    `json:"-"`
-		Role      string    `json:"role"`
-		Text      string    `json:"text"`
-		RunID     string    `json:"run_id"`
+		ID       string `json:"id"`
+		ThreadID string `json:"-"`
+		Role     string `json:"role"`
+		Text     string `json:"text"`
+		RunID    string `json:"run_id"`
+		// FromBotID is the Bot a message came from, empty for the user's own.
+		FromBotID string    `json:"from_bot_id,omitempty"`
 		CreatedAt time.Time `json:"created_at"`
+	}
+
+	// InboxItem is a message for a thread that is not delivered yet.
+	InboxItem struct {
+		ID        string
+		ThreadID  string
+		FromBotID string
+		Text      string
 	}
 
 	// Run is one message handled.
@@ -330,6 +340,7 @@ func (s *Store) DeleteBot(ctx context.Context, id string) ([]string, error) {
 			return fmt.Errorf("list runs of bot %s: %w", id, err)
 		}
 		for _, stmt := range []string{
+			"DELETE FROM inbox WHERE thread_id IN " + threads,
 			"DELETE FROM messages WHERE thread_id IN " + threads,
 			"DELETE FROM runs WHERE thread_id IN " + threads,
 			"DELETE FROM threads WHERE bot_id = ?",
@@ -614,8 +625,20 @@ func (s *Store) SetSession(ctx context.Context, threadID, session string) error 
 
 // StartRun stores the user's message and a running run for it, in one transaction.
 func (s *Store) StartRun(ctx context.Context, threadID, text string) (Message, Run, error) {
+	return s.startRun(ctx, threadID, "", text, "")
+}
+
+// StartRunFrom stores the inbox item as a message from its Bot and a running run for it, and
+// removes the item, in one transaction.
+func (s *Store) StartRunFrom(ctx context.Context, it InboxItem) (Message, Run, error) {
+	return s.startRun(ctx, it.ThreadID, it.FromBotID, it.Text, it.ID)
+}
+
+func (s *Store) startRun(
+	ctx context.Context, threadID, fromBotID, text, inboxID string,
+) (Message, Run, error) {
 	r := Run{ID: newID(), ThreadID: threadID, Status: StatusRunning, StartedAt: time.Now().UTC(), Tools: map[string]int{}}
-	m := Message{ID: newID(), ThreadID: threadID, Role: RoleUser, Text: text, RunID: r.ID}
+	m := Message{ID: newID(), ThreadID: threadID, Role: RoleUser, Text: text, RunID: r.ID, FromBotID: fromBotID}
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx,
 			"INSERT INTO runs (id, thread_id, status, started_at) SELECT ?, id, ?, ? FROM threads WHERE id = ?",
@@ -631,12 +654,55 @@ func (s *Store) StartRun(ctx context.Context, threadID, text string) (Message, R
 			time.Now().UTC().UnixMicro(), firstWords(text), threadID); err != nil {
 			return err
 		}
+		if inboxID != "" {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM inbox WHERE id = ?", inboxID); err != nil {
+				return fmt.Errorf("delete inbox item: %w", err)
+			}
+		}
 		return insertMessage(ctx, tx, m)
 	})
 	if err != nil {
 		return Message{}, Run{}, err
 	}
 	return m, r, nil
+}
+
+// Enqueue holds text for the thread until a run can start for it.
+func (s *Store) Enqueue(ctx context.Context, threadID, fromBotID, text string) error {
+	_, err := s.db.ExecContext(ctx,
+		"INSERT INTO inbox (id, thread_id, from_bot_id, text, created) VALUES (?, ?, ?, ?, ?)",
+		newID(), threadID, fromBotID, text, time.Now().UTC().UnixMicro())
+	if err != nil {
+		return fmt.Errorf("enqueue message: %w", err)
+	}
+	return nil
+}
+
+// OldestInbox returns the oldest message held for the thread. ok is false when there is none.
+func (s *Store) OldestInbox(ctx context.Context, threadID string) (it InboxItem, ok bool, err error) {
+	items, err := query(ctx, s.db,
+		"SELECT id, thread_id, from_bot_id, text FROM inbox WHERE thread_id = ? ORDER BY rowid LIMIT 1",
+		func(r *sql.Rows) (it InboxItem, err error) {
+			return it, r.Scan(&it.ID, &it.ThreadID, &it.FromBotID, &it.Text)
+		}, threadID)
+	if err != nil || len(items) == 0 {
+		return InboxItem{}, false, err
+	}
+	return items[0], true, nil
+}
+
+// DeleteInbox drops the held message with id.
+func (s *Store) DeleteInbox(ctx context.Context, id string) error {
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM inbox WHERE id = ?", id); err != nil {
+		return fmt.Errorf("delete inbox item: %w", err)
+	}
+	return nil
+}
+
+// InboxThreads lists the ids of the threads that have a held message.
+func (s *Store) InboxThreads(ctx context.Context) ([]string, error) {
+	return query(ctx, s.db, "SELECT DISTINCT thread_id FROM inbox ORDER BY thread_id",
+		func(r *sql.Rows) (id string, err error) { return id, r.Scan(&id) })
 }
 
 // Run returns the run with id.
@@ -772,7 +838,7 @@ func (s *Store) FailUnfinished(ctx context.Context, reason string) ([]string, er
 // Messages lists every message in the thread, oldest first.
 func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error) {
 	return s.messages(ctx,
-		`SELECT m.id, m.thread_id, m.role, m.text, m.run_id,
+		`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id,
             CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END
          FROM messages m JOIN runs r ON r.id = m.run_id WHERE m.thread_id = ? ORDER BY m.rowid`,
 		threadID)
@@ -782,7 +848,7 @@ func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error
 func (s *Store) MessagePage(ctx context.Context, threadID, before, after string) ([]Message, error) {
 	if after != "" {
 		return s.messages(ctx,
-			`SELECT m.id, m.thread_id, m.role, m.text, m.run_id,
+			`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id,
                 CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END
              FROM messages m JOIN runs r ON r.id = m.run_id
              WHERE m.thread_id = ? AND m.rowid > (
@@ -791,8 +857,8 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 			threadID, after, threadID)
 	}
 	return s.messages(ctx,
-		`SELECT id, thread_id, role, text, run_id, at FROM (
-            SELECT m.id, m.thread_id, m.role, m.text, m.run_id,
+		`SELECT id, thread_id, role, text, run_id, from_bot_id, at FROM (
+            SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id,
                 CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END AS at,
                 m.rowid
             FROM messages m JOIN runs r ON r.id = m.run_id
@@ -809,7 +875,7 @@ func (s *Store) messages(ctx context.Context, querySQL string, args ...any) ([]M
 	return query(ctx, s.db, querySQL,
 		func(r *sql.Rows) (m Message, err error) {
 			var at int64
-			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &at)
+			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &at)
 			if at != 0 {
 				m.CreatedAt = time.UnixMicro(at).UTC()
 			}
@@ -845,8 +911,8 @@ func firstWords(text string) string {
 
 func insertMessage(ctx context.Context, tx *sql.Tx, m Message) error {
 	_, err := tx.ExecContext(ctx,
-		"INSERT INTO messages (id, thread_id, role, text, run_id) VALUES (?, ?, ?, ?, ?)",
-		m.ID, m.ThreadID, m.Role, m.Text, m.RunID)
+		"INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id) VALUES (?, ?, ?, ?, ?, ?)",
+		m.ID, m.ThreadID, m.Role, m.Text, m.RunID, m.FromBotID)
 	if err != nil {
 		return fmt.Errorf("insert message: %w", err)
 	}

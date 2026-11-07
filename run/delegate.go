@@ -54,6 +54,8 @@ func (m *Manager) Delegate(
 			return "", RefusedError(rp.Name + " has no commit yet")
 		}
 	}
+	m.delegateMu.Lock()
+	defer m.delegateMu.Unlock()
 	helpers, err := m.cfg.Store.HelperThreads(ctx, t.ID)
 	if err != nil {
 		return "", fmt.Errorf("list helper threads: %w", err)
@@ -82,7 +84,7 @@ func (m *Manager) Delegate(
 }
 
 // Continue sends message to the helper thread, which only the boss thread of the run with token
-// may do.
+// may do. A message for a helper whose run is going is held until that run ends.
 func (m *Manager) Continue(ctx context.Context, token, threadID, message string) error {
 	a, err := m.byToken(token)
 	if err != nil {
@@ -98,10 +100,10 @@ func (m *Manager) Continue(ctx context.Context, token, threadID, message string)
 	if t.ParentThreadID != a.threadID {
 		return RefusedError("thread " + threadID + " is not a helper thread of this thread")
 	}
-	if _, _, err := m.Send(ctx, threadID, message); err != nil {
-		return err
+	if t.Closed {
+		return ErrClosed
 	}
-	return nil
+	return m.post(ctx, threadID, "", message)
 }
 
 // helper returns the Bot called name on the boss's delegate list.

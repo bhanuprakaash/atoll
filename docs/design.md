@@ -89,7 +89,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   there is still none, the run ends `done` with `report: null` and a logged warning.
 - One provider process per run, in the thread's folder (`<data>/threads/<id>`): a provider
   resumes a session only in the folder that started it. One run per thread at a time; a message
-  sent while one is going is refused (`409`).
+  the user sends while one is going is refused (`409`); one between a boss and a helper is held
+  (see Delegation).
 - Reef's own MCP tools (`finish_run`, and `approve` as Claude's permission prompt tool) are served
   over streamable HTTP on Reef's own server at `/mcp/<run token>`. *They need live server state
   (open approvals, the run being reported); stdio would need a child that calls back anyway.*
@@ -130,7 +131,23 @@ Undo of a repo registration is refused while a thread uses the repo.
   to atoll`); a repo with no commit; a fourth helper while 3 helper runs of the boss thread are
   going (`3 helpers running. Tell the user, and hand this off when one of them reports back.`).
 - `continue` is accepted only from the helper's boss thread, and gives the helper a run with the
-  message.
+  message. A message for a thread whose run is going is held (the `inbox` table) and delivered
+  when that run ends, oldest first, one run each; `continue` never answers busy. A held message
+  survives a restart: on start, after the going runs are marked `failed`, each thread's held
+  messages are delivered. A message for a closed or deleted thread is dropped.
+- Waking the boss: when a helper's run ends, Reef posts one message into the boss thread from the
+  helper Bot (`from_bot_id` on the message; empty for the user's own) and that starts a boss run,
+  or waits in the inbox while the boss's run is going. The text always holds the helper thread id:
+  - done: `{Helper} reported back from thread {id}.`, then the reply and the report as
+    `Done:`, `Tried:`, `Blocked:`, `Next:` lines;
+  - failed: `{Helper}'s run failed: {error}`; a helper run going at a restart fails with the usual
+    reason and wakes its boss on start;
+  - stopped by the user: `The user stopped {Helper}`;
+  - Bot deleted mid-run: `{Helper} was deleted`.
+  A helper's question is its reply; the boss answers with `continue`.
+- Closing the boss thread stops its helpers' runs (no wake) and closes their threads, saving
+  unfinished work as any close does; deleting a Bot does the same for each of its threads. Stopping
+  the boss's run leaves its helpers going.
 - A helper thread is read-only for the user: `POST /api/threads/{id}/messages` answers 409 `{boss}
   is handling this thread`.
 - A child's questions go to its parent; approvals go to the user. The child's first message is one

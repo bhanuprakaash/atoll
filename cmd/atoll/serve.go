@@ -121,7 +121,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		Log:          log,
 	})
 	pathDirs(ctx) // glab is found on the provider folders' PATH
-	runs.Start()
+	runs.Start(failed)
 	srv := &http.Server{Handler: server.New(st, mem, runs, log, providers), ReadHeaderTimeout: 10 * time.Second}
 	var serveErr error
 	served := make(chan struct{})

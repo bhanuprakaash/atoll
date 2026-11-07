@@ -401,12 +401,14 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if t, err := a.st.Thread(r.Context(), id); err == nil && t.ParentThreadID != "" {
 		boss, err := a.bossName(r.Context(), t.ParentThreadID)
-		if err != nil {
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			a.fail(w, r, err)
 			return
 		}
-		fail(w, http.StatusConflict, boss+" is handling this thread")
-		return
+		if err == nil {
+			fail(w, http.StatusConflict, boss+" is handling this thread")
+			return
+		}
 	}
 	m, ru, err := a.runs.Send(r.Context(), id, body.Text)
 	if err != nil {
