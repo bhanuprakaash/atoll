@@ -5,8 +5,6 @@ import { ApprovalCard } from '@/modules/threads/components/approval-card';
 import { HelperCreature } from '@/modules/threads/components/helper-creature';
 import { helperState, isLiveHelper } from '@/modules/threads/utils/helper-state';
 
-const stateText = { needs_you: 'Needs you', done: 'Done', failed: 'Failed', stopped: 'Stopped' };
-
 export function HelpersRegion({
   helpers,
   bots,
@@ -29,7 +27,7 @@ export function HelpersRegion({
               <span
                 className={`min-w-0 flex-1 truncate ${state === 'needs_you' ? 'text-needs-ink' : 'text-muted'}`}
               >
-                {state === 'working' ? h.step || 'Working' : stateText[state]}
+                {state === 'working' ? h.step || 'Working' : 'Needs you'}
               </span>
               <Link
                 to={`/bots/${h.bot_id}/threads/${h.id}`}

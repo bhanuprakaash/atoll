@@ -4,9 +4,6 @@ import { helperLabel, type HelperState } from '@/modules/threads/utils/helper-st
 const look: Record<HelperState, { state: CreatureState; style: string }> = {
   working: { state: 'working', style: '' },
   needs_you: { state: 'needs_you', style: '' },
-  done: { state: 'idle', style: 'opacity-50' },
-  failed: { state: 'failed', style: 'grayscale' },
-  stopped: { state: 'asleep', style: '' },
 };
 
 export function HelperCreature({
