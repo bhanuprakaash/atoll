@@ -551,7 +551,15 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	}
 	cfg.Model = bot.Model
 	cfg.Mode = bot.Mode
-	cfg.SystemPrompt = systemPrompt(bot, user)
+	onBossBranch := false
+	if thread.ParentThreadID != "" && thread.Branch != "" {
+		boss, err := m.cfg.Store.Thread(a.ctx, thread.ParentThreadID)
+		if err != nil {
+			return "", fmt.Errorf("load boss thread: %w", err)
+		}
+		onBossBranch = boss.Branch != "" && strings.HasPrefix(thread.Branch, boss.Branch+"--")
+	}
+	cfg.SystemPrompt = systemPrompt(bot, user, onBossBranch)
 	skills := make([]store.Skill, 0, len(bot.Skills))
 	for _, id := range bot.Skills {
 		sk, err := m.cfg.Store.Skill(a.ctx, id)
