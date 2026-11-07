@@ -21,6 +21,7 @@ type (
 		userMessage string
 		cwd         string
 		servers     map[string]*fake.MCP
+		prompt      map[string]bool
 		never       bool // approvalPolicy "never": nothing is asked, so everything asked is declined
 		resumed     bool
 	}
@@ -53,7 +54,7 @@ func newTurn(cfg map[string]string, p threadParams, resumed bool, extra []string
 	if policy == "" {
 		policy = all["approval_policy"]
 	}
-	t := &turn{cwd: p.Cwd, servers: map[string]*fake.MCP{}, never: policy == "never", resumed: resumed}
+	t := &turn{cwd: p.Cwd, servers: map[string]*fake.MCP{}, prompt: map[string]bool{}, never: policy == "never", resumed: resumed}
 	for k, value := range all {
 		rest, ok := strings.CutPrefix(k, "mcp_servers.")
 		name, ok2 := strings.CutSuffix(rest, ".url")
@@ -95,6 +96,7 @@ func newTurn(cfg map[string]string, p threadParams, resumed bool, extra []string
 			continue
 		}
 		t.servers[name] = c
+		t.prompt[name] = all["mcp_servers."+name+".default_tools_approval_mode"] == "prompt"
 	}
 
 	var disabled []string
@@ -191,7 +193,7 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
-		case "repo-fix", "repo-question", "repo-uncommitted", "repo-resume":
+		case "repo-fix", "repo-question", "repo-uncommitted", "repo-resume", "repo-github-fix":
 			var err error
 			repoReply, err = fake.RepoStep(t.servers["atoll"], strings.TrimPrefix(e.Fake, "repo-"), t.cwd)
 			if err != nil {
@@ -305,9 +307,11 @@ func (t *turn) ask(req json.RawMessage, in *bufio.Scanner, log *fake.Log) (strin
 }
 
 // mcpUse calls each tool the prompt names on the configured server, as app-server would: an
-// mcpToolCall item starts, Codex asks the client through an elicitation before a server that is not
-// Atoll's runs a tool, then the item completes with the server's answer. A server the config does
-// not hold is not called.
+// mcpToolCall item starts, Codex asks the client through an elicitation when the server's
+// default_tools_approval_mode is "prompt" (the stub tools count as read-only, which Codex runs
+// unasked otherwise), then the item completes with the server's answer. A server the config does
+// not hold is not called. Like the real elicitation, it names the tool only in message: _meta's
+// tool_title is the tool's optional title, which the stub tools lack.
 func (t *turn) mcpUse(in *bufio.Scanner, log *fake.Log) (string, error) {
 	calls, err := fake.MCPCalls(t.userMessage)
 	if err != nil {
@@ -327,15 +331,17 @@ func (t *turn) mcpUse(in *bufio.Scanner, log *fake.Log) (string, error) {
 			fmt.Println(string(b))
 		}
 		emit("item/started")
-		req, _ := json.Marshal(map[string]any{"id": 9000 + i + 1, "method": "mcpServer/elicitation/request", "params": map[string]any{
-			"serverName": call.Server, "mode": "form",
-			"message":         fmt.Sprintf("Allow the %s MCP server to run tool %q?", call.Server, call.Tool),
-			"requestedSchema": map[string]any{"type": "object", "properties": map[string]any{}},
-			"_meta":           map[string]any{"codex_approval_kind": "mcp_tool_call", "tool_title": call.Tool, "tool_params": call.Args},
-		}})
-		answer, err := t.ask(req, in, log)
-		if err != nil {
-			return "", err
+		answer := "allow"
+		if t.prompt[call.Server] {
+			req, _ := json.Marshal(map[string]any{"id": 9000 + i + 1, "method": "mcpServer/elicitation/request", "params": map[string]any{
+				"serverName": call.Server, "mode": "form",
+				"message":         fmt.Sprintf("Allow the %s MCP server to run tool %q?", call.Server, call.Tool),
+				"requestedSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+				"_meta":           map[string]any{"codex_approval_kind": "mcp_tool_call", "tool_params": call.Args},
+			}})
+			if answer, err = t.ask(req, in, log); err != nil {
+				return "", err
+			}
 		}
 		time.Sleep(fake.Pace)
 		text, isErr := "denied", true

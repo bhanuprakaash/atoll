@@ -27,6 +27,7 @@ var _hostedCatalog = []mcpServer{
 	{ID: "notion", Name: "Notion", Kind: "catalog", URL: "https://mcp.notion.com/mcp", Status: "not_connected"},
 	{ID: "figma", Name: "Figma", Kind: "catalog", URL: "https://mcp.figma.com/mcp", Status: "not_connected"},
 	{ID: "cloudflare", Name: "Cloudflare", Kind: "catalog", URL: "https://mcp.cloudflare.com/mcp", Status: "not_connected"},
+	{ID: "slack", Name: "Slack", Kind: "catalog", URL: "https://mcp.slack.com/mcp", Status: "needs_setup"},
 }
 
 type oauthRegistration struct {

@@ -17,7 +17,7 @@ func TestPollToken(t *testing.T) {
 		err    string
 	}{
 		{name: "pending", status: 400, body: `{"error":"authorization_pending"}`, err: "pending"},
-		{name: "slow down", status: 400, body: `{"error":"slow_down"}`, err: "pending"},
+		{name: "slow down", status: 400, body: `{"error":"slow_down"}`, err: "slow down"},
 		{name: "success", status: 200, body: `{"access_token":"secret","refresh_token":"refresh","expires_in":3600}`, want: "secret"},
 		{name: "access denied", status: 400, body: `{"error":"access_denied"}`, err: "access_denied"},
 	}
@@ -37,7 +37,8 @@ func TestPollToken(t *testing.T) {
 			if got.AccessToken != tt.want {
 				t.Errorf("token = %q, want %q", got.AccessToken, tt.want)
 			}
-			if tt.err == "pending" && !errors.Is(err, ErrPending) ||
+			if tt.err == "pending" && (!errors.Is(err, ErrPending) || errors.Is(err, ErrSlowDown)) ||
+				tt.err == "slow down" && !errors.Is(err, ErrSlowDown) ||
 				tt.err == "access_denied" && (err == nil || !strings.Contains(err.Error(), tt.err)) ||
 				tt.err == "" && err != nil {
 				t.Errorf("error = %v, want %q", err, tt.err)

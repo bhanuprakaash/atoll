@@ -36,6 +36,26 @@ func GitHubURL() string {
 	return GitHubInstance
 }
 
+// OnGitHub reports whether a git remote URL, in any form git takes, is on the host of GitHubURL.
+func OnGitHub(remote string) bool {
+	base, err := url.Parse(GitHubURL())
+	if err != nil {
+		return false
+	}
+	host := ""
+	if u, err := url.Parse(remote); err == nil {
+		host = u.Host
+	}
+	if host == "" {
+		_, rest, found := strings.Cut(remote, "@")
+		if !found {
+			rest = remote
+		}
+		host, _, _ = strings.Cut(rest, ":")
+	}
+	return strings.EqualFold(host, base.Host)
+}
+
 // GitHubMCPURL is GitHub's MCP server: ATOLL_GITHUB_MCP_URL, else the hosted one.
 func GitHubMCPURL() string {
 	if u := os.Getenv("ATOLL_GITHUB_MCP_URL"); u != "" {
@@ -143,8 +163,11 @@ func githubPost(ctx context.Context, c *http.Client, path string, form url.Value
 		Error string `json:"error"`
 	}
 	if json.Unmarshal(raw, &failure) == nil && failure.Error != "" {
-		if failure.Error == "authorization_pending" || failure.Error == "slow_down" {
+		switch failure.Error {
+		case "authorization_pending":
 			return ErrPending
+		case "slow_down":
+			return ErrSlowDown
 		}
 		return fmt.Errorf("OAuth error: %s", failure.Error)
 	}

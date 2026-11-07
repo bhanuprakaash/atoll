@@ -8,8 +8,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"atoll/connection"
+	"atoll/run"
 	"atoll/store"
 )
 
@@ -86,6 +88,7 @@ func (a *api) createRepo(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	rp.Host = run.RepoHost(r.Context(), rp.Path)
 	write(w, http.StatusCreated, rp)
 }
 
@@ -94,6 +97,9 @@ func (a *api) listRepos(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.fail(w, r, err)
 		return
+	}
+	for i := range repos {
+		repos[i].Host = run.RepoHost(r.Context(), repos[i].Path)
 	}
 	write(w, http.StatusOK, orEmpty(repos))
 }
@@ -208,7 +214,11 @@ func (a *api) writeDevice(
 		return
 	}
 	a.mu.Lock()
-	a.devices[c.ID] = dev.DeviceCode
+	interval := dev.Interval
+	if interval <= 0 {
+		interval = _defaultDeviceInterval
+	}
+	a.devices[c.ID] = &device{code: dev.DeviceCode, interval: interval}
 	a.mu.Unlock()
 	write(w, http.StatusCreated, struct {
 		ID              string `json:"id"`
@@ -230,21 +240,35 @@ func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.mu.Lock()
-	code, ok := a.devices[c.ID]
+	dev, ok := a.devices[c.ID]
+	early := ok && time.Now().Before(dev.next)
+	if ok && !early {
+		dev.next = time.Now().Add(dev.interval)
+	}
 	a.mu.Unlock()
 	if !ok {
 		fail(w, http.StatusConflict, "this sign-in is not in progress: start it again")
 		return
 	}
+	if early {
+		writeStatus(w, store.ConnectionPending)
+		return
+	}
 	var save func() error
 	if c.Kind == store.KindGitHub {
 		var token string
-		token, err = connection.PollGitHubToken(r.Context(), a.http, code)
+		token, err = connection.PollGitHubToken(r.Context(), a.http, dev.code)
 		save = func() error { return connection.SaveGitHubToken(c.ID, token) }
 	} else {
 		var tokens connection.Tokens
-		tokens, err = connection.PollToken(r.Context(), a.http, c.InstanceURL, code)
+		tokens, err = connection.PollToken(r.Context(), a.http, c.InstanceURL, dev.code)
 		save = func() error { return connection.SaveTokens(c.ID, tokens) }
+	}
+	if errors.Is(err, connection.ErrSlowDown) {
+		a.mu.Lock()
+		dev.interval += 5 * time.Second
+		dev.next = time.Now().Add(dev.interval)
+		a.mu.Unlock()
 	}
 	if errors.Is(err, connection.ErrPending) {
 		writeStatus(w, store.ConnectionPending)

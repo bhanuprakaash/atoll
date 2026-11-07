@@ -16,6 +16,7 @@ import {
   useSaveMcpServer,
   type McpServer,
 } from '@/modules/mcp-servers/api/mcp-servers';
+import { SetupDialog } from '@/modules/mcp-servers/components/setup-dialog';
 
 const listClass = 'divide-y divide-line overflow-hidden rounded-[18px] border border-line bg-box';
 
@@ -218,6 +219,7 @@ const statusText = {
   connected: 'Connected',
   needs_sign_in: 'Needs sign-in',
   needs_app: 'This server needs a registered app',
+  needs_setup: 'Needs setup',
 };
 
 function SignInStatus({ server, allowURL }: { server: McpServer; allowURL?: string }) {
@@ -244,7 +246,9 @@ function SignInButton({ server, onClick }: { server: McpServer; onClick: () => v
       ? 'Connect'
       : server.status === 'needs_sign_in'
         ? 'Sign in again'
-        : undefined;
+        : server.status === 'needs_setup'
+          ? 'Set up'
+          : undefined;
   return (
     label && (
       <button type="button" className={solidButton} onClick={onClick}>
@@ -261,11 +265,16 @@ function runs(s: McpServer) {
 export function McpServersSettings() {
   const [dialog, setDialog] = useState<{ kind: 'local' | 'remote'; server?: McpServer }>();
   const [waiting, setWaiting] = useState<McpServer>();
+  const [setup, setSetup] = useState<McpServer>();
   const [allow, setAllow] = useState<{ id: string; url: string }>();
   const connect = useConnectMcpServer();
   const remove = useRemoveMcpServer();
   const { data: servers = [] } = useMcpServers(waiting);
   const signIn = (s: McpServer) => {
+    if (s.status === 'needs_setup') {
+      setSetup(s);
+      return;
+    }
     setWaiting(s);
     setAllow(undefined);
     connect.mutate(s.id, {
@@ -384,6 +393,7 @@ export function McpServersSettings() {
       )}
       {connect.isError && <p className="text-sm text-danger">{connect.error.message}</p>}
       {remove.isError && <p className="text-sm text-danger">{remove.error.message}</p>}
+      {setup && <SetupDialog server={setup} onClose={() => setSetup(undefined)} />}
       {dialog && (
         <ServerDialog
           key={dialog.server?.id ?? dialog.kind}

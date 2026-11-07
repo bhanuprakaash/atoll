@@ -118,9 +118,9 @@ test('with the connection the page lists GitHub read-only, from the connection',
   await expect(item).toContainText(mcpURL);
   await expect(item).toContainText('from GitHub connection');
   await expect(item.getByRole('button')).toHaveCount(0);
-  await expect(page.getByRole('list', { name: 'Catalog' }).getByRole('listitem')).toHaveCount(4);
+  await expect(page.getByRole('list', { name: 'Catalog' }).getByRole('listitem')).toHaveCount(5);
   await expect(yours(page).getByRole('listitem')).toHaveCount(0);
-  expect((await servers()).map((s) => [s.id, s.name, s.kind]).slice(4)).toEqual([
+  expect((await servers()).map((s) => [s.id, s.name, s.kind]).slice(5)).toEqual([
     ['github', 'GitHub', 'connection'],
   ]);
 });

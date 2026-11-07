@@ -277,8 +277,8 @@ func TestMCPServers_Refusals(t *testing.T) {
 
 	var list []mcpServer
 	f.s.do(t, "GET", "/api/mcp-servers", nil, &list, http.StatusOK)
-	if len(list) != 6 {
-		t.Fatalf("GET /api/mcp-servers lists %d servers after refused requests, want the 4 catalog entries and the 2 added", len(list))
+	if len(list) != 7 {
+		t.Fatalf("GET /api/mcp-servers lists %d servers after refused requests, want the 5 catalog entries and the 2 added", len(list))
 	}
 	for _, id := range []string{"context7", "mcp_nowhere"} {
 		f.s.do(t, "PUT", "/api/mcp-servers/"+id, map[string]any{"name": "x", "command": "/bin/true"}, nil, http.StatusNotFound)
@@ -462,8 +462,8 @@ func TestMCPFixtures_ProviderScenarios(t *testing.T) {
 						{"id": 1, "method": "initialize", "params": map[string]any{}},
 						{"id": 2, "method": "thread/start", "params": map[string]any{"config": map[string]any{"mcp_servers": map[string]any{
 							"atoll":       map[string]any{"url": atoll.URL},
-							"docs-local":  map[string]any{"command": stdio, "args": []string{"--tag", "one"}, "env": map[string]string{_mcpEnvName: _mcpEnvSecret}},
-							"docs-remote": map[string]any{"url": remote.url(), "http_headers": map[string]string{_mcpHeaderName: _mcpHeaderSecret}},
+							"docs-local":  map[string]any{"command": stdio, "args": []string{"--tag", "one"}, "env": map[string]string{_mcpEnvName: _mcpEnvSecret}, "default_tools_approval_mode": "prompt"},
+							"docs-remote": map[string]any{"url": remote.url(), "http_headers": map[string]string{_mcpHeaderName: _mcpHeaderSecret}, "default_tools_approval_mode": "prompt"},
 						}}}},
 						{"id": 3, "method": "turn/start", "params": map[string]any{"input": []map[string]string{{"type": "text", "text": prompt}}}},
 						{"id": 9001, "result": map[string]string{"action": action}},

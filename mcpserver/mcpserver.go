@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -35,6 +36,10 @@ var _catalog = []store.MCPServer{
 	{
 		ID: "cloudflare", Name: "Cloudflare", Kind: store.MCPCatalog,
 		URL: "https://mcp.cloudflare.com/mcp", Status: store.MCPNotConnected,
+	},
+	{
+		ID: SlackID, Name: "Slack", Kind: store.MCPCatalog, URL: "https://mcp.slack.com/mcp",
+		Status: store.MCPNeedsSetup,
 	},
 }
 
@@ -64,6 +69,9 @@ func List(ctx context.Context, st *store.Store) ([]store.MCPServer, error) {
 	for i, s := range servers {
 		if status, ok := signIns[s.ID]; ok {
 			servers[i].Status = status
+		}
+		if u := os.Getenv("ATOLL_SLACK_MCP_URL"); s.ID == SlackID && u != "" {
+			servers[i].URL = u
 		}
 	}
 	return servers, nil

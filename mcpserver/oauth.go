@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -32,11 +33,15 @@ const (
 var (
 	// ErrNeedsApp is returned when the server has no dynamic client registration.
 	ErrNeedsApp = errors.New("this server needs a registered app")
+	// ErrNeedsSetup is returned when the server has no saved Client ID.
+	ErrNeedsSetup = errors.New("this server needs its Client ID: set it up first")
 	// ErrNeedsSignIn is wrapped when a server's tokens are rejected.
 	ErrNeedsSignIn = errors.New("needs sign-in")
 
 	errNoSignIn     = errors.New("server does not ask for sign-in")
 	errInvalidGrant = errors.New("invalid_grant")
+
+	_rejectedGrants = []string{"invalid_grant", "invalid_refresh_token", "token_revoked", "token_expired"}
 
 	_resourceMetadata = regexp.MustCompile(`resource_metadata="([^"]+)"`)
 
@@ -64,18 +69,21 @@ type Pending struct {
 }
 
 type metadata struct {
-	AuthorizationEndpoint string `json:"authorization_endpoint"`
-	TokenEndpoint         string `json:"token_endpoint"`
-	RegistrationEndpoint  string `json:"registration_endpoint"`
+	AuthorizationEndpoint string   `json:"authorization_endpoint"`
+	TokenEndpoint         string   `json:"token_endpoint"`
+	RegistrationEndpoint  string   `json:"registration_endpoint"`
+	Scopes                []string `json:"-"`
 }
 
-// Begin returns the URL the user opens to allow sign-in.
+// Begin returns the URL the user opens to allow sign-in. Slack registers no clients, so it uses the saved Client ID.
 func Begin(ctx context.Context, c *http.Client, s store.MCPServer, redirect string) (Pending, error) {
 	switch s.Status {
 	case "":
 		return Pending{}, invalid(s.Name + " needs no sign-in")
 	case store.MCPNeedsApp:
 		return Pending{}, ErrNeedsApp
+	case store.MCPNeedsSetup:
+		return Pending{}, ErrNeedsSetup
 	}
 	meta, err := discover(ctx, c, s.URL)
 	if errors.Is(err, errNoSignIn) {
@@ -84,16 +92,21 @@ func Begin(ctx context.Context, c *http.Client, s store.MCPServer, redirect stri
 	if err != nil {
 		return Pending{}, fmt.Errorf("find sign-in of %s: %w", s.Name, err)
 	}
-	if meta.RegistrationEndpoint == "" {
+	var clientID string
+	switch {
+	case s.ID == SlackID:
+		clientID, err = savedClientID(s.ID)
+	case meta.RegistrationEndpoint == "":
 		return Pending{}, ErrNeedsApp
+	default:
+		clientID, err = register(ctx, c, meta.RegistrationEndpoint, redirect)
 	}
-	clientID, err := register(ctx, c, meta.RegistrationEndpoint, redirect)
 	var status statusError
 	if errors.As(err, &status) && (status.code == http.StatusUnauthorized || status.code == http.StatusForbidden) {
 		return Pending{}, ErrNeedsApp
 	}
 	if err != nil {
-		return Pending{}, fmt.Errorf("register with %s: %w", s.Name, err)
+		return Pending{}, fmt.Errorf("client of %s: %w", s.Name, err)
 	}
 	verifier, state := randomText(), randomText()
 	sum := sha256.Sum256([]byte(verifier))
@@ -109,6 +122,9 @@ func Begin(ctx context.Context, c *http.Client, s store.MCPServer, redirect stri
 	q.Set("code_challenge_method", "S256")
 	q.Set("state", state)
 	q.Set("resource", s.URL)
+	if s.ID == SlackID {
+		q.Set("scope", strings.Join(meta.Scopes, " "))
+	}
 	u.RawQuery = q.Encode()
 	return Pending{
 		Server: s, Started: time.Now(), State: state, AuthorizeURL: u.String(), Verifier: verifier, ClientID: clientID,
@@ -132,6 +148,11 @@ func Finish(ctx context.Context, c *http.Client, st *store.Store, p Pending, cod
 	}
 	if err != nil || cur.URL != p.Server.URL {
 		return invalid(p.Server.Name + " was removed or changed since the sign-in began")
+	}
+	if p.Server.ID == SlackID {
+		if saved, err := savedClientID(SlackID); err != nil || saved != p.ClientID {
+			return invalid(p.Server.Name + " was set up again since the sign-in began")
+		}
 	}
 	if err := saveTokens(p.Server.ID, tokens); err != nil {
 		return err
@@ -225,6 +246,7 @@ func discover(ctx context.Context, c *http.Client, serverURL string) (metadata, 
 	}
 	var resource struct {
 		AuthorizationServers []string `json:"authorization_servers"`
+		ScopesSupported      []string `json:"scopes_supported"`
 	}
 	if err := getJSON(ctx, c, found[1], &resource); err != nil {
 		return metadata{}, err
@@ -239,6 +261,7 @@ func discover(ctx context.Context, c *http.Client, serverURL string) (metadata, 
 	wellKnown := issuer.Scheme + "://" + issuer.Host + "/.well-known/oauth-authorization-server" +
 		strings.TrimRight(issuer.Path, "/")
 	var meta metadata
+	meta.Scopes = resource.ScopesSupported
 	return meta, getJSON(ctx, c, wellKnown, &meta)
 }
 
@@ -278,9 +301,17 @@ func postToken(ctx context.Context, c *http.Client, endpoint string, form url.Va
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
 		ExpiresIn    int    `json:"expires_in"`
+		OK           *bool  `json:"ok"` // Slack answers a rejection with HTTP 200 and ok false
+		Error        string `json:"error"`
 	}
 	if err := doJSON(c, req, &reply); err != nil {
 		return Tokens{}, err
+	}
+	if reply.OK != nil && !*reply.OK {
+		if slices.Contains(_rejectedGrants, reply.Error) {
+			return Tokens{}, errInvalidGrant
+		}
+		return Tokens{}, fmt.Errorf("%s rejected the request: %s", req.URL.Host, reply.Error)
 	}
 	if reply.AccessToken == "" {
 		return Tokens{}, errors.New("token reply has no access_token")

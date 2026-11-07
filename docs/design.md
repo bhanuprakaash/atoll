@@ -128,7 +128,20 @@ Undo of a repo registration is refused while a thread uses the repo.
   failed save removes nothing and leaves the thread open.
 - A thread's cwd moves from the checkout to its worktree. Claude resumes only the sessions of its own
   cwd, so the Claude adapter copies the session file into the new cwd's project folder first.
-- Atoll checks each MR with `glab mr view` every minute (`ATOLL_REPO_POLL_INTERVAL`, a Go duration).
+- A repo is on GitHub when the host (with port) of its `origin` URL, in any form git takes, equals
+  the host of the GitHub base URL (`github.com`, or `ATOLL_GITHUB_URL`); anything else, including no
+  origin, is handled as GitLab. `GET` and `POST /api/repos` give each repo `host`: `github` or
+  `gitlab`, read with `git remote get-url origin` and not stored; Settings > Repos tags a GitHub
+  repo `GitHub`. The first message's repo block tells the Bot of a GitHub repo to open the pull
+  request with `gh pr create`.
+- A Bot with a connected GitHub connection pushes (SSH GitHub remotes too, through the connection) and
+  runs `gh pr create` in its worktree with the connection's env. `start_work` on a GitHub repo for a Bot without one is a tool error, "give this
+  Bot the GitHub connection", with no worktree made, so the Bot says what to do and the user never
+  meets a git auth error. A question in the repo needs no connection.
+- `track_mr` takes the PR URL (`<github>/<owner>/<repo>/pull/<n>`) like an MR URL; the thread shows
+  it as `#<n>` where an MR shows `!<iid>`. PR state is not polled: the watcher never runs `glab`
+  for a GitHub repo's thread, the state stays `opened`, and the worktree goes when the thread closes.
+- Atoll checks each GitLab MR with `glab mr view` every minute (`ATOLL_REPO_POLL_INTERVAL`, a Go duration).
   A merged MR with a worktree is cleaned up like a closed thread, but only while no run is going in
   the thread. One watcher runs inside the server and resumes after a restart.
 
@@ -177,9 +190,14 @@ Undo of a repo registration is refused while a thread uses the repo.
   - GitHub (v1): OAuth device flow on github.com only (no Enterprise), through Reef's own OAuth App:
     client ID `Ov23li5N8B8tlXHi1Rza`, public, no secret, scopes `repo read:org workflow`. Bots use
     `gh`, git and GitHub's hosted MCP server `api.githubcopilot.com/mcp/`.
-  - Slack (v2): needs a small hosted token exchange. *Its MCP server wants a confidential client;
-    desktop PKCE sign-in cannot get bot scopes and expires in 30 days.*
-- The device code stays in server memory, so a sign-in pending at restart is started again.
+  - Slack: through its MCP server in the catalog (see MCP sign-in), with one internal Slack app per
+    workspace and PKCE, not a hosted token exchange. *Slack's MCP server has no dynamic
+    registration and lets in only internal or Marketplace apps.* A Marketplace listing is in the
+    Queue.
+- The device code stays in server memory, so a sign-in pending at restart is started again. The
+  server keeps the poll interval with it: a UI poll sooner than that after the last one answers
+  `pending` without asking GitHub or GitLab, and a `slow_down` adds 5s to it (RFC 8628). *GitHub
+  answers every poll at the old pace `slow_down` again, so a UI that kept its pace never connected.*
 - A Bot reaches GitLab and GitHub only through a connection Reef gave it, never through the user's
   own logins. Every run gets empty CLI configs and cleared credential helpers; only a connection
   fills them. Concretely, every run gets `GLAB_CONFIG_DIR` and `GH_CONFIG_DIR` set to empty folders
@@ -201,7 +219,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   hosted server's URL with `Authorization: Bearer <token>` (Claude `--mcp-config` headers, Codex
   `mcp_servers.github.http_headers`). A GitHub tool call goes to the user as an approval named
   `mcp__github__<tool>`, like every tool that is not Reef's own: the tools can push, merge and close
-  issues. Only Reef's own tools need none. A Bot with GitLab and GitHub gets both helpers, in one `GIT_CONFIG_*` list after
+  issues. Codex gets `default_tools_approval_mode = "prompt"` on it, since its default skips tools
+  that declare themselves read-only. Only Reef's own tools need none. A Bot with GitLab and GitHub gets both helpers, in one `GIT_CONFIG_*` list after
   the clearing entry. The token is never written to a file or log. `ATOLL_GITHUB_URL` and
   `ATOLL_GITHUB_MCP_URL` replace the real URLs for tests.
 - Settings > Connections has a GitHub card ("Bots get gh, git and GitHub tools."). Connect GitHub
@@ -237,7 +256,7 @@ Undo of a repo registration is refused while a thread uses the repo.
 ## MCP servers
 
 - One library, in Settings > MCP servers: a catalog (Context7: remote, no sign-in, no secret; then
-  the hosted servers Notion, Figma and Cloudflare, which need sign-in; always first, not editable)
+  the hosted servers Notion, Figma, Cloudflare and Slack, which need sign-in; always first, not editable)
   and the user's own servers, listed in the order added. A server is
   local (`command`, `args`, `env`; stdio) or remote (`url`, `headers`; streamable HTTP).
   `GET/POST /api/mcp-servers`, `PUT/DELETE /api/mcp-servers/{id}`; a `PUT` replaces the server.
@@ -266,16 +285,18 @@ Undo of a repo registration is refused while a thread uses the repo.
   `--strict-mcp-config`), Codex through `mcp_servers` in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
   Remove apply from the next run; a live run keeps its config. *A Bot that picks nothing gets none.*
 - A tool call to a user-added server is an approval in the thread, like any other tool. Claude's
-  allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex's
-  `mcpServer/elicitation/request` for any server but Reef's becomes an approval, answered
-  `{action: "accept"}` or `{action: "decline"}`. Reef's own tools need none.
+  allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex gets
+  `default_tools_approval_mode = "prompt"` on every server but Reef's, since its default skips
+  tools that declare themselves read-only; its `mcpServer/elicitation/request` becomes an approval,
+  named by the `mcpToolCall` item it follows, answered `{action: "accept"}` or
+  `{action: "decline"}`. Reef's own tools need none.
 - Importing servers from `~/.claude.json` or Codex's config and a per-server "always allow" are not
   built.
 
 ### MCP sign-in
 
 - A hosted server that needs sign-in connects with one click. `status` on a server is `not_connected`,
-  `connected`, `needs_sign_in` or `needs_app`; it is absent for a server with no sign-in. The status
+  `connected`, `needs_sign_in`, `needs_app` or `needs_setup`; it is absent for a server with no sign-in. The status
   is in the database (`mcp_sign_ins`, by server id, catalog entries too); the tokens never are.
 - Add by URL with no headers sends the URL one MCP `initialize` request. A `401` whose
   `WWW-Authenticate` has `resource_metadata` means the server needs sign-in: `not_connected`, or
@@ -305,8 +326,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   run their own MCP OAuth.* A run gets the server as a remote entry with
   `Authorization: Bearer <access token>` (Claude `headers`, Codex `http_headers`), and Claude stays
   `--strict-mcp-config`.
-- `DELETE /api/mcp-servers/{id}` on a catalog server with a sign-in (Notion, Figma, Cloudflare) is
-  Sign out: it deletes the `mcp:<id>:oauth` entry and sets `not_connected`; on Context7 it is `404`.
+- `DELETE /api/mcp-servers/{id}` on a catalog server with a sign-in (Notion, Figma, Cloudflare,
+  Slack) is Sign out: it deletes the `mcp:<id>:oauth` entry and sets `not_connected`; on Context7 it
+  is `404`. Slack keeps its saved Client ID: the app still exists, and Set up again replaces it.
   Settings shows Sign out on a catalog row that is `connected` or `needs_sign_in`.
 - Before a run uses a connected server, an access token that expires within ten minutes is
   refreshed (`grant_type=refresh_token`, same client). A rejected refresh (`invalid_grant`) sets
@@ -317,6 +339,23 @@ Undo of a repo registration is refused while a thread uses the repo.
   A token reply may omit `expires_in` (no known expiry: never refreshed before a run) and
   `refresh_token` (near expiry the server goes `needs_sign_in` with no refresh attempt; a refresh
   reply without a new one keeps the old).
+- Slack (`https://mcp.slack.com/mcp`, `ATOLL_SLACK_MCP_URL` in tests) has no
+  `registration_endpoint` and lets in only internal or Marketplace apps, so each workspace uses its
+  own internal Slack app, set up once. It starts as `needs_setup`; Set up in the row opens a dialog
+  with the steps (create the app, add the redirect URL, add the user scopes, turn PKCE on), the
+  fixed redirect and the scopes, and a Client ID field; no secret field. `GET
+  /api/mcp-servers/slack/setup` answers `{redirect_uri, scopes}` (`scopes` is `scopes_supported` of
+  Slack's resource metadata); `POST` takes `{client_id}`, saves it as the OS secret store entry
+  `mcp:slack:client_id`, deletes the stored tokens of the old app and sets `not_connected`. Any other server's `setup` is `404`. Connect from
+  `needs_setup` is `409`. Otherwise it is the generic flow with the saved Client ID in place of
+  registration and `scope` (the scopes joined by spaces) in the authorize URL: a public client, no
+  `client_secret` on the exchange or the refresh.
+  Before it stores tokens the callback also checks that the saved Client ID is the one the sign-in
+  started with: a Client ID saved mid-flow ends it (`400`, nothing stored).
+- Slack's token endpoint answers HTTP 200 with `{"ok": ...}`: `ok:false` is a rejection.
+  On a refresh, `invalid_grant`, `invalid_refresh_token`, `token_revoked` and `token_expired` set
+  `needs_sign_in`; any other code is a plain failure. Access tokens last 12 hours; a refresh token is single use, and each refresh reply carries the next one, which is saved
+  with the new access token.
 
 ## Memory
 
@@ -562,7 +601,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 | Providers | Claude Code and Codex: Providers page, own folders, isolation, transports |
 | Bots | Create and edit; Chief with platform tools |
 | Threads | Chat, runs, resume, `finish_run`, live tool calls, approvals in the thread |
-| Repos | Register, worktree per thread, MR via `glab` |
+| Repos | Register, worktree per thread, MR via `glab`, PR via `gh` |
 | Connections | GitLab, GitHub |
 | Skills | Library, picked per Bot |
 | MCP servers | Catalog, local and remote servers, one-click sign-in for hosted ones, picked per Bot, approvals |
@@ -570,7 +609,8 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 
 ## Queue
 
-Delegation, the Slack connection, browser pane, background processes pane, the platform
+Delegation, a Slack Marketplace listing (one-click Slack for every
+workspace, no per-workspace app), browser pane, background processes pane, the platform
 switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up
 to about 5 items always in the prompt), routines (scheduled, repeating runs), more provider
 adapters.

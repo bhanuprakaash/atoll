@@ -132,14 +132,17 @@ server's name, with the `Allow` and `Deny` buttons of any other approval.
 - Scenario `mcp-use` (both fakes, recordings `mcp-use`): the prompt `Use MCP tools. ` followed by a
   JSON array of `{server, tool, args}`. For each call on a server the config holds, the fake prints
   the tool call, asks (Claude: the `--permission-prompt-tool`; Codex: an elicitation request, ids
-  `9001`...), and on allow calls the server and prints its answer; on deny it prints `denied`.
+  `9001`..., only for a server whose `mcp_servers.<name>.default_tools_approval_mode` is `prompt`;
+  otherwise it calls unasked, as real Codex does for read-only tools), and on allow calls the
+  server and prints its answer; on deny it prints `denied`.
   A server the config lacks is not called. The reply is one line per call:
   `<server>/<tool>: <answer>` (`denied`, or `unavailable` for a missing server).
 - `TestMCPFixtures_ProviderScenarios/{claude,codex}/{allow,deny}` drives the fakes by hand against
   stub servers, so the fakes are proven before the product writes any MCP config. The Codex
   elicitation shape (`serverName`, `message`, `_meta.codex_approval_kind: "mcp_tool_call"`,
-  `_meta.tool_title`) is the fake's reading of the real app-server, not observed: check it against a
-  real Codex before relying on it.
+  `_meta.tool_params`) matches real codex-cli 0.165.0. Real Codex names the tool only in `message`
+  and in the `mcpToolCall` item it starts just before; `_meta.tool_title` is the tool's optional
+  MCP `title` (Context7: "Resolve Context7 Library ID"), so the fake leaves it out.
 
 ## From connections (after #62)
 
