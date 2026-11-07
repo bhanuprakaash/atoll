@@ -94,6 +94,7 @@ type (
 		Connections       []string   `json:"connections"`
 		Skills            []string   `json:"skills"`
 		MCPServers        []string   `json:"mcp_servers"`
+		Delegates         []string   `json:"delegates"`
 		CanManagePlatform bool       `json:"can_manage_platform"`
 	}
 
@@ -176,7 +177,7 @@ type (
 
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
-		"can_manage_platform, look, model, mcp_servers, mode"
+		"can_manage_platform, look, model, mcp_servers, mode, delegates"
 	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title"
 	_messagePageSize = 50
 )
@@ -270,7 +271,7 @@ func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 		return Bot{}, err
 	}
 	_, err = s.db.ExecContext(ctx,
-		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", args...)
+		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", args...)
 	if err != nil {
 		return Bot{}, fmt.Errorf("insert bot: %w", err)
 	}
@@ -340,7 +341,16 @@ func (s *Store) DeleteBot(ctx context.Context, id string) ([]string, error) {
 		if err != nil {
 			return fmt.Errorf("delete bot %s: %w", id, err)
 		}
-		return found(res, "bot", id)
+		if err := found(res, "bot", id); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx,
+			"UPDATE bots SET delegates = (SELECT json_group_array(value) FROM json_each(delegates) "+
+				"WHERE value != ?1) WHERE EXISTS (SELECT 1 FROM json_each(delegates) WHERE value = ?1)", id)
+		if err != nil {
+			return fmt.Errorf("drop bot %s from delegates: %w", id, err)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -863,9 +873,9 @@ func scanThread(r *sql.Rows) (Thread, error) {
 func scanBot(r *sql.Rows) (Bot, error) {
 	var b Bot
 	var access sql.NullString
-	var conns, skills, mcp string
+	var conns, skills, mcp, delegates string
 	err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills,
-		&b.CanManagePlatform, &b.Look, &b.Model, &mcp, &b.Mode, &b.Pinned)
+		&b.CanManagePlatform, &b.Look, &b.Model, &mcp, &b.Mode, &delegates, &b.Pinned)
 	if err != nil {
 		return Bot{}, err
 	}
@@ -882,6 +892,9 @@ func scanBot(r *sql.Rows) (Bot, error) {
 	}
 	if err := json.Unmarshal([]byte(mcp), &b.MCPServers); err != nil {
 		return Bot{}, fmt.Errorf("decode MCP servers of bot %s: %w", b.ID, err)
+	}
+	if err := json.Unmarshal([]byte(delegates), &b.Delegates); err != nil {
+		return Bot{}, fmt.Errorf("decode delegates of bot %s: %w", b.ID, err)
 	}
 	return normalizeBot(b), nil
 }

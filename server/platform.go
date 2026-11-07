@@ -195,6 +195,7 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, msg)
 		return
 	}
+	b.ID = r.PathValue("id")
 	msg, err := a.unknownPicks(r.Context(), b)
 	if err != nil {
 		a.fail(w, r, err)
@@ -204,7 +205,6 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, msg)
 		return
 	}
-	b.ID = r.PathValue("id")
 	if chiefHasRepos(b) {
 		fail(w, http.StatusBadRequest, _chiefRepoRefusal)
 		return
@@ -324,8 +324,8 @@ func (a *api) listChanges(w http.ResponseWriter, r *http.Request) {
 }
 
 const _platformTools = `[
-{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"},"mode":{"type":"string","enum":["auto","ask","full"]}},"required":["name","provider"]}},
-{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"},"mode":{"type":"string","enum":["auto","ask","full"]}},"required":["id"]}},
+{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"},"mode":{"type":"string","enum":["auto","ask","full"]},"delegates":{"type":"array","items":{"type":"string"}}},"required":["name","provider"]}},
+{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"},"mode":{"type":"string","enum":["auto","ask","full"]},"delegates":{"type":"array","items":{"type":"string"}}},"required":["id"]}},
 {"name":"create_skill","description":"Create a skill.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"}},"required":["name","content"]}},
 {"name":"edit_skill","description":"Edit a skill.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"content":{"type":"string"}},"required":["id"]}},
 {"name":"import_skill","description":"Import a local skill folder (SKILL.md and its text files), or update the skill imported from it. Returns what it added, changed, removed and skipped.","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"replace":{"type":"boolean","description":"Overwrite edits made in Reef. Only after the user agreed."}},"required":["path"]}},
@@ -473,6 +473,7 @@ func (a *api) platformCall(
 			b.Skills = slices.Clone(prev.Skills)
 			b.Connections = slices.Clone(prev.Connections)
 			b.MCPServers = slices.Clone(prev.MCPServers)
+			b.Delegates = slices.Clone(prev.Delegates)
 			b.RepoAccess = slices.Clone(prev.RepoAccess)
 			if json.Unmarshal(args, &b) != nil {
 				return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
@@ -632,7 +633,41 @@ func (a *api) unknownPicks(ctx context.Context, b store.Bot) (string, error) {
 	if err != nil || msg != "" {
 		return msg, err
 	}
-	return a.unknownMCPServers(ctx, b.MCPServers)
+	msg, err = a.unknownMCPServers(ctx, b.MCPServers)
+	if err != nil || msg != "" {
+		return msg, err
+	}
+	return a.unknownDelegates(ctx, b)
+}
+
+// unknownDelegates is the message for delegate ids that are the Bot itself or that no Bot has, or
+// "" when there are none.
+func (a *api) unknownDelegates(ctx context.Context, b store.Bot) (string, error) {
+	if len(b.Delegates) == 0 {
+		return "", nil
+	}
+	bots, err := a.st.Bots(ctx)
+	if err != nil {
+		return "", err
+	}
+	var ids, others []string
+	for _, o := range bots {
+		if o.ID != b.ID {
+			ids = append(ids, o.ID)
+			others = append(others, fmt.Sprintf("%s (%s)", o.Name, o.ID))
+		}
+	}
+	var unknown []string
+	for _, id := range b.Delegates {
+		if !slices.Contains(ids, id) {
+			unknown = append(unknown, strconv.Quote(id))
+		}
+	}
+	if len(unknown) == 0 {
+		return "", nil
+	}
+	return fmt.Sprintf("unknown delegate ids %s; Bots: %s",
+		strings.Join(unknown, ", "), strings.Join(others, ", ")), nil
 }
 
 // unknownRepos is the message for repo ids no registered repo has, or "" when there are none.

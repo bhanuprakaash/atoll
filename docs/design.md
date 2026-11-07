@@ -47,6 +47,12 @@ never a dependency.
   never calls the permission prompt tool, so risky steps would run unseen and never reach the
   thread.* Full access never asks, even to delete files or push, so Bot settings says so when it is
   picked; it is for Bots that run in a VM.
+- Delegate list (`delegates`, Bot ids; `[]` by default): the Bots this one may hand work to, picked
+  in Bot settings under "Can hand work to" (Add Bot, listing the other Bots) with the line "<Bot>
+  can start up to 3 helper threads at once with these Bots". A list naming the Bot itself or an id
+  no Bot has is refused (REST `400`, same text as Chief's failure) with the other Bots named; a
+  `PUT` that leaves it out keeps it. Deleting a Bot drops its id from every list in the same
+  transaction. Chief may have a list.
 - Bot settings changed mid-run apply from the next run.
 - Delete Bot (confirmed in the UI; not for Chief) stops its running run, closes its threads (their
   worktrees are removed, unfinished work saved as for Close) and hard-deletes the Bot, its threads,
@@ -56,7 +62,7 @@ never a dependency.
 **Chief.** Created on first launch. It has no repo access at all times: `PUT` and its own
 `edit_bot` refuse to give it repos, its Bot settings and empty thread offer none, and a launch moves
 an older install's Chief to none. It does no code work. It has the "Can manage the platform" switch
-on: tools to create and edit Bots (including model, look and Mode), skills and repos, and to attach
+on: tools to create and edit Bots (including model, look, Mode and delegates), skills and repos, and to attach
 connections, served as Reef's own MCP tools; read tools list Bots, skills, connections, repos, MCP
 servers and signed-in models and record no change.
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
@@ -108,7 +114,8 @@ Undo of a repo registration is refused while a thread uses the repo.
 
 ## Delegation (v2)
 
-- A Bot may delegate only to Bots on its delegate list. Depth 1: a delegated run cannot delegate.
+- A Bot may delegate only to Bots on its delegate list: empty by default, set in Bot settings or by
+  Chief; deleting a Bot removes it from every list. Depth 1: a delegated run cannot delegate.
   *Cycles become impossible.*
 - A delegation is a thread where the parent Bot is the asker: `delegate(bot, brief)`,
   `continue(thread, message)`. Continue for the same work; start a new one for different work.

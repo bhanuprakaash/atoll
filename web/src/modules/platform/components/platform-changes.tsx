@@ -60,6 +60,7 @@ function Change({
     'skills',
     'connections',
     'repo_access',
+    'delegates',
     'content',
   ] as const;
   const display = (value: unknown, key: string) => {
@@ -71,7 +72,9 @@ function Change({
           ? connectionNames
           : key === 'repo_access'
             ? names.repos
-            : [];
+            : key === 'delegates'
+              ? names.bots
+              : [];
     return value.map((id: string) => nameOf(id, list)).join(', ');
   };
   const attached =

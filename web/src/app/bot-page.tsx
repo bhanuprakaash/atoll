@@ -178,6 +178,7 @@ export function BotPage() {
           memory={<BotMemory botId={bot.id} />}
           onClose={() => setSettingsOpen(false)}
           repos={repos}
+          bots={bots}
           skills={skills}
           connections={connections}
           mcpServers={mcpServers.filter((s) => s.kind !== 'connection')}
