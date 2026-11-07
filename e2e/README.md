@@ -147,3 +147,5 @@ MCP servers (a library, a pick per Bot, secrets in the OS store) extend these co
 GitHub repos (a repo on GitHub: push and open a pull request with `gh`) extends these contracts in [github-repos-contract.md](github-repos-contract.md).
 
 MCP sign-in for hosted servers (Connect, tokens in the OS secret store, refresh) extends these contracts in [mcp-oauth-contract.md](mcp-oauth-contract.md).
+
+Approval cards that close and links that leave the app extend these contracts in [approvals-contract.md](approvals-contract.md).
