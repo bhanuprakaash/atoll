@@ -24,7 +24,7 @@ func (m *Manager) flush(ctx context.Context, threadID string) error {
 		if err != nil || !ok {
 			return err
 		}
-		_, _, err = m.send(ctx, it)
+		_, _, err = m.sendHeld(ctx, it)
 		switch {
 		case err == nil, errors.Is(err, ErrBusy):
 			return nil
@@ -38,6 +38,28 @@ func (m *Manager) flush(ctx context.Context, threadID string) error {
 		}
 	}
 	return nil
+}
+
+// sendHeld starts the run for a held message. A message for a helper thread stays held while its
+// boss has _maxHelpers helper runs going: it returns ErrBusy.
+func (m *Manager) sendHeld(ctx context.Context, it store.InboxItem) (store.Message, store.Run, error) {
+	t, err := m.cfg.Store.Thread(ctx, it.ThreadID)
+	if err != nil {
+		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
+	}
+	if t.ParentThreadID == "" {
+		return m.send(ctx, it)
+	}
+	m.delegateMu.Lock()
+	defer m.delegateMu.Unlock()
+	going, err := m.helpersGoing(ctx, t.ParentThreadID)
+	if err != nil {
+		return store.Message{}, store.Run{}, err
+	}
+	if going >= _maxHelpers {
+		return store.Message{}, store.Run{}, ErrBusy
+	}
+	return m.send(ctx, it)
 }
 
 func (m *Manager) flushLog(threadID string) {
@@ -54,6 +76,22 @@ func (m *Manager) flushBoss(threadID string) {
 		m.cfg.Log.Error("wake boss", "thread_id", threadID, "error", err)
 	default:
 		m.flushLog(t.ParentThreadID)
+		m.flushHelpers(t.ParentThreadID, threadID)
+	}
+}
+
+// flushHelpers delivers the messages held for the helper threads of bossID, except skip: a slot
+// just freed.
+func (m *Manager) flushHelpers(bossID, skip string) {
+	helpers, err := m.cfg.Store.HelperThreads(context.Background(), bossID)
+	if err != nil {
+		m.cfg.Log.Error("list helper threads", "thread_id", bossID, "error", err)
+		return
+	}
+	for _, h := range helpers {
+		if h.ID != skip {
+			m.flushLog(h.ID)
+		}
 	}
 }
 

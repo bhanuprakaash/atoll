@@ -106,7 +106,8 @@ type (
 		cancel context.CancelFunc
 		wg     sync.WaitGroup
 
-		// inboxMu and delegateMu make take-start-remove and count-start atomic. Neither is taken under mu.
+		// inboxMu and delegateMu make take-start-remove and count-start atomic. Neither is taken under
+		// mu; delegateMu is taken under inboxMu, never the reverse.
 		inboxMu    sync.Mutex
 		delegateMu sync.Mutex
 

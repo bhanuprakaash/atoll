@@ -60,18 +60,10 @@ func (m *Manager) Delegate(
 	}
 	m.delegateMu.Lock()
 	defer m.delegateMu.Unlock()
-	helpers, err := m.cfg.Store.HelperThreads(ctx, t.ID)
+	going, err := m.helpersGoing(ctx, t.ID)
 	if err != nil {
-		return Handoff{}, fmt.Errorf("list helper threads: %w", err)
+		return Handoff{}, err
 	}
-	m.mu.Lock()
-	going := 0
-	for _, h := range helpers {
-		if _, ok := m.runs[h.ID]; ok {
-			going++
-		}
-	}
-	m.mu.Unlock()
 	if going >= _maxHelpers {
 		return Handoff{}, RefusedError(fmt.Sprintf("%d helpers running. Tell the user, "+
 			"and hand this off when one of them reports back.", _maxHelpers))
@@ -102,7 +94,7 @@ func (m *Manager) Delegate(
 			return Handoff{}, err
 		}
 	}
-	if _, _, err := m.Send(ctx, ht.ID, first+brief); err != nil {
+	if _, _, err := m.send(ctx, store.InboxItem{ThreadID: ht.ID, Text: first + brief}); err != nil {
 		return Handoff{}, fmt.Errorf("start helper run: %w", err)
 	}
 	return h, nil
@@ -128,6 +120,22 @@ func (m *Manager) Continue(ctx context.Context, token, threadID, message string)
 		return ErrClosed
 	}
 	return m.post(ctx, threadID, "", message)
+}
+
+func (m *Manager) helpersGoing(ctx context.Context, bossID string) (int, error) {
+	helpers, err := m.cfg.Store.HelperThreads(ctx, bossID)
+	if err != nil {
+		return 0, fmt.Errorf("list helper threads: %w", err)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	going := 0
+	for _, h := range helpers {
+		if _, ok := m.runs[h.ID]; ok {
+			going++
+		}
+	}
+	return going, nil
 }
 
 func (m *Manager) helper(ctx context.Context, boss store.Bot, name string) (store.Bot, error) {
