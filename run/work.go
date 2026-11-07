@@ -219,28 +219,28 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 	if err != nil {
 		return err
 	}
-	var stoppedHelpers []store.Thread
+	var wakes []store.InboxItem
 	for _, t := range threads {
 		stopped, err := m.stopQuietly(ctx, t.ID)
 		if err != nil {
 			return err
 		}
 		if stopped && t.ParentThreadID != "" {
-			stoppedHelpers = append(stoppedHelpers, t)
+			wakes = append(wakes, store.InboxItem{
+				ThreadID: t.ParentThreadID, FromBotID: botID,
+				Text: fmt.Sprintf("%s was deleted\n(thread %s)", bot.Name, t.ID),
+			})
 		}
 		if err := m.CloseThread(ctx, t.ID); err != nil {
 			return err
 		}
 	}
-	runIDs, err := m.cfg.Store.DeleteBot(ctx, botID)
+	runIDs, err := m.cfg.Store.DeleteBot(ctx, botID, wakes)
 	if err != nil {
 		return err
 	}
-	for _, t := range stoppedHelpers {
-		text := fmt.Sprintf("%s was deleted\n(thread %s)", bot.Name, t.ID)
-		if err := m.post(ctx, t.ParentThreadID, botID, text); err != nil {
-			m.cfg.Log.Error("wake boss", "thread_id", t.ID, "error", err)
-		}
+	for _, w := range wakes {
+		m.flushLog(w.ThreadID)
 	}
 	for _, id := range runIDs {
 		if err := os.Remove(filepath.Join(m.cfg.DataDir, "runs", id+".jsonl")); err != nil &&

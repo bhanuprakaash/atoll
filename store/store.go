@@ -325,10 +325,17 @@ func (s *Store) SetPinned(ctx context.Context, id string, pinned bool) error {
 }
 
 // DeleteBot removes the Bot with its threads, messages and runs, and returns the ids of the runs.
-func (s *Store) DeleteBot(ctx context.Context, id string) ([]string, error) {
+// In the same transaction it holds each of wakes for its thread; one for a thread the Bot owns goes
+// with it.
+func (s *Store) DeleteBot(ctx context.Context, id string, wakes []InboxItem) ([]string, error) {
 	var runIDs []string
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		const threads = "(SELECT id FROM threads WHERE bot_id = ?)"
+		for _, w := range wakes {
+			if err := insertInbox(ctx, tx, w.ThreadID, w.FromBotID, w.Text); err != nil {
+				return err
+			}
+		}
 		var err error
 		runIDs, err = query(ctx, tx, "SELECT id FROM runs WHERE thread_id IN "+threads,
 			func(r *sql.Rows) (string, error) {
