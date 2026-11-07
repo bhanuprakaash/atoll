@@ -58,27 +58,38 @@ func (m *Manager) Delegate(
 			return Handoff{}, RefusedError(rp.Name + " has no commit yet")
 		}
 	}
+	h, path, err := m.startHelper(ctx, boss, helper, t, rp, brief)
+	if err != nil {
+		m.abandonHelper(ctx, rp, h, path)
+		return Handoff{}, err
+	}
+	return h, nil
+}
+
+// startHelper makes the helper's worktree and thread and starts its run. On an error it returns
+// what it made so far.
+func (m *Manager) startHelper(
+	ctx context.Context, boss, helper store.Bot, t store.Thread, rp store.Repo, brief string,
+) (h Handoff, path string, err error) {
 	m.delegateMu.Lock()
 	defer m.delegateMu.Unlock()
 	going, err := m.helpersGoing(ctx, t.ID)
 	if err != nil {
-		return Handoff{}, err
+		return h, "", err
 	}
 	if going >= _maxHelpers {
-		return Handoff{}, RefusedError(fmt.Sprintf("%d helpers running. Tell the user, "+
+		return h, "", RefusedError(fmt.Sprintf("%d helpers running. Tell the user, "+
 			"and hand this off when one of them reports back.", _maxHelpers))
 	}
-	var h Handoff
 	first := boss.Name + " delegated this to you; your replies go to " + boss.Name + ".\n\n"
-	var path string
 	if t.Worktree != "" {
 		root, err := m.WorktreeRoot(ctx)
 		if err != nil {
-			return Handoff{}, err
+			return h, "", err
 		}
 		name := t.Branch + "--" + repo.Slug(helper.Name)
 		if path, h.Branch, err = repo.CreateFrom(ctx, rp.Path, root, rp.Name, name, t.Branch); err != nil {
-			return Handoff{}, err
+			return h, "", err
 		}
 		h.Note = "Uncommitted changes in your worktree are not included."
 		first += "Work on branch " + h.Branch + " and commit there. Do not push or open a PR: " +
@@ -86,18 +97,39 @@ func (m *Manager) Delegate(
 	}
 	ht, err := m.cfg.Store.CreateHelperThread(ctx, t.ID, helper.ID, rp.ID)
 	if err != nil {
-		return Handoff{}, fmt.Errorf("create helper thread: %w", err)
+		return h, path, fmt.Errorf("create helper thread: %w", err)
 	}
 	h.ThreadID = ht.ID
 	if path != "" {
 		if err := m.cfg.Store.SetWorktree(ctx, ht.ID, h.Branch, path); err != nil {
-			return Handoff{}, err
+			return h, path, err
 		}
 	}
 	if _, _, err := m.send(ctx, store.InboxItem{ThreadID: ht.ID, Text: first + brief}); err != nil {
-		return Handoff{}, fmt.Errorf("start helper run: %w", err)
+		return h, path, fmt.Errorf("start helper run: %w", err)
 	}
-	return h, nil
+	return h, path, nil
+}
+
+// abandonHelper undoes a delegate that failed: it closes the helper thread, if one was made, and
+// removes the worktree and branch.
+func (m *Manager) abandonHelper(ctx context.Context, rp store.Repo, h Handoff, path string) {
+	ctx = context.WithoutCancel(ctx)
+	if h.ThreadID != "" {
+		if err := m.CloseThread(ctx, h.ThreadID); err != nil {
+			m.cfg.Log.Error("close helper thread", "thread_id", h.ThreadID, "error", err)
+		}
+	}
+	if path == "" {
+		return
+	}
+	if err := repo.Remove(ctx, rp.Path, path); err != nil {
+		m.cfg.Log.Error("remove helper worktree", "path", path, "error", err)
+		return
+	}
+	if err := repo.DeleteBranch(ctx, rp.Path, h.Branch); err != nil {
+		m.cfg.Log.Error("delete helper branch", "branch", h.Branch, "error", err)
+	}
 }
 
 // Continue sends message to a helper thread of the boss run with token.

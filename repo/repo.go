@@ -209,6 +209,14 @@ func Remove(ctx context.Context, repoPath, dir string) error {
 	return nil
 }
 
+// DeleteBranch force-deletes branch of repoPath.
+func DeleteBranch(ctx context.Context, repoPath, branch string) error {
+	if _, err := git(context.WithoutCancel(ctx), repoPath, nil, "branch", "-D", branch); err != nil {
+		return fmt.Errorf("delete branch: %w", err)
+	}
+	return nil
+}
+
 // IsRepo reports whether path is the top level of a git work tree.
 func IsRepo(ctx context.Context, path string) bool {
 	top, err := git(ctx, path, nil, "rev-parse", "--show-toplevel")
