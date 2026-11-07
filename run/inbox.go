@@ -46,12 +46,29 @@ func (m *Manager) flush(ctx context.Context, threadID string) error {
 	return nil
 }
 
-// recoverInbox wakes the boss of every helper run that was failed at start, then delivers the held
-// messages of every thread.
-func (m *Manager) recoverInbox(failed []string) {
-	for _, id := range failed {
-		m.wake(id)
+// flushLog is flush for a caller that has no error to return.
+func (m *Manager) flushLog(threadID string) {
+	if err := m.flush(context.Background(), threadID); err != nil {
+		m.cfg.Log.Error("deliver held message", "thread_id", threadID, "error", err)
 	}
+}
+
+// flushBoss delivers what the thread's boss holds, as the wake of a helper run that just ended.
+// A thread with no boss has none.
+func (m *Manager) flushBoss(threadID string) {
+	t, err := m.cfg.Store.Thread(context.Background(), threadID)
+	switch {
+	case errors.Is(err, store.ErrNotFound), err == nil && t.ParentThreadID == "":
+	case err != nil:
+		m.cfg.Log.Error("wake boss", "thread_id", threadID, "error", err)
+	default:
+		m.flushLog(t.ParentThreadID)
+	}
+}
+
+// recoverInbox delivers the held messages of every thread, among them the wakes of the helper
+// runs the restart failed.
+func (m *Manager) recoverInbox() {
 	ctx := context.Background()
 	ids, err := m.cfg.Store.InboxThreads(ctx)
 	if err != nil {
@@ -65,41 +82,14 @@ func (m *Manager) recoverInbox(failed []string) {
 	}
 }
 
-// wake tells the boss of a helper thread that its run runID ended, as a message from the helper's
-// Bot. A run of any other thread has no boss to tell.
-func (m *Manager) wake(runID string) {
-	ctx := context.Background()
-	run, err := m.cfg.Store.Run(ctx, runID)
-	var t store.Thread
-	if err == nil {
-		t, err = m.cfg.Store.Thread(ctx, run.ThreadID)
+// WakeText is the message for the boss of the helper run w. A helper's branch off the boss's
+// branch is named for the boss to merge.
+func WakeText(w store.Wake) string {
+	helper, threadID, run := w.Helper, w.ThreadID, w.Run
+	merge := ""
+	if w.BossBranch != "" && strings.HasPrefix(w.Branch, w.BossBranch+"--") {
+		merge = w.Branch
 	}
-	var bot store.Bot
-	if err == nil && t.ParentThreadID != "" {
-		bot, err = m.cfg.Store.Bot(ctx, t.BotID)
-	}
-	if errors.Is(err, store.ErrNotFound) || err == nil && t.ParentThreadID == "" {
-		return
-	}
-	var boss store.Thread
-	if err == nil {
-		boss, err = m.cfg.Store.Thread(ctx, t.ParentThreadID)
-	}
-	if err == nil {
-		merge := ""
-		if boss.Branch != "" && strings.HasPrefix(t.Branch, boss.Branch+"--") {
-			merge = t.Branch
-		}
-		err = m.post(ctx, t.ParentThreadID, bot.ID, wakeText(bot.Name, t.ID, merge, run))
-	}
-	if err != nil {
-		m.cfg.Log.Error("wake boss", "run_id", runID, "error", err)
-	}
-}
-
-// wakeText is the message for the boss. merge is the helper's branch off the boss's branch, if it
-// has one.
-func wakeText(helper, threadID, merge string, run store.Run) string {
 	switch run.Status {
 	case store.StatusDone:
 		var b strings.Builder

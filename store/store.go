@@ -670,13 +670,7 @@ func (s *Store) startRun(
 
 // Enqueue holds text for the thread until a run can start for it.
 func (s *Store) Enqueue(ctx context.Context, threadID, fromBotID, text string) error {
-	_, err := s.db.ExecContext(ctx,
-		"INSERT INTO inbox (id, thread_id, from_bot_id, text, created) VALUES (?, ?, ?, ?, ?)",
-		newID(), threadID, fromBotID, text, time.Now().UTC().UnixMicro())
-	if err != nil {
-		return fmt.Errorf("enqueue message: %w", err)
-	}
-	return nil
+	return insertInbox(ctx, s.db, threadID, fromBotID, text)
 }
 
 // OldestInbox returns the oldest message held for the thread. ok is false when there is none.
@@ -786,9 +780,22 @@ type RunResult struct {
 	Provider  string // the provider the run used
 }
 
+// Wake is a helper run that ended, with what the message that tells its boss is made of. Run
+// holds only its status, reply, error and report.
+type Wake struct {
+	Helper     string // the helper Bot's name
+	ThreadID   string // the helper's thread
+	Branch     string // the helper thread's branch
+	BossBranch string // the boss thread's branch
+	Run        Run
+}
+
 // FinishRun ends a run with res. A non-empty reply also becomes the thread's bot message, in the
-// same transaction.
-func (s *Store) FinishRun(ctx context.Context, runID string, res RunResult) error {
+// same transaction. When wake is not nil and the run is a helper's, the message wake returns is
+// held for the boss thread in the same transaction.
+func (s *Store) FinishRun(
+	ctx context.Context, runID string, res RunResult, wake func(Wake) string,
+) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		var threadID string
 		err := tx.QueryRowContext(ctx, "SELECT thread_id FROM runs WHERE id = ?", runID).
@@ -810,6 +817,9 @@ func (s *Store) FinishRun(ctx context.Context, runID string, res RunResult) erro
 		if err != nil {
 			return fmt.Errorf("touch thread: %w", err)
 		}
+		if err := enqueueWake(ctx, tx, runID, wake); err != nil {
+			return err
+		}
 		if res.Reply == "" {
 			return nil
 		}
@@ -818,9 +828,12 @@ func (s *Store) FinishRun(ctx context.Context, runID string, res RunResult) erro
 	})
 }
 
-// FailUnfinished marks every running or waiting run failed with reason and returns their ids.
-// Called once at start: no run outlives the process that ran it.
-func (s *Store) FailUnfinished(ctx context.Context, reason string) ([]string, error) {
+// FailUnfinished marks every running or waiting run failed with reason and returns their ids. When
+// wake is not nil, a failed helper run also holds the message wake returns for its boss thread, in
+// the same transaction. Called once at start: no run outlives the process that ran it.
+func (s *Store) FailUnfinished(
+	ctx context.Context, reason string, wake func(Wake) string,
+) ([]string, error) {
 	var ids []string
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		var err error
@@ -828,12 +841,51 @@ func (s *Store) FailUnfinished(ctx context.Context, reason string) ([]string, er
 			"UPDATE runs SET status = ?, error = ? WHERE status IN (?, ?) RETURNING id",
 			func(r *sql.Rows) (id string, err error) { return id, r.Scan(&id) },
 			StatusFailed, reason, StatusRunning, StatusWaiting)
-		return err
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if err := enqueueWake(ctx, tx, id, wake); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("fail unfinished runs: %w", err)
 	}
 	return ids, nil
+}
+
+// enqueueWake holds the message wake returns for the boss thread of the helper thread that ran
+// runID. A run of a thread with no boss, or whose Bot or boss is gone, has none.
+func enqueueWake(ctx context.Context, tx *sql.Tx, runID string, wake func(Wake) string) error {
+	if wake == nil {
+		return nil
+	}
+	w := Wake{Run: Run{ID: runID}}
+	var botID, bossID string
+	var report sql.NullString
+	err := tx.QueryRowContext(ctx,
+		`SELECT b.id, b.name, t.id, t.branch, p.id, p.branch, r.status, r.reply, r.error, r.report
+		 FROM runs r JOIN threads t ON t.id = r.thread_id
+		 JOIN bots b ON b.id = t.bot_id AND b.removed = 0
+		 JOIN threads p ON p.id = t.parent_thread_id
+		 WHERE r.id = ?`, runID).
+		Scan(&botID, &w.Helper, &w.ThreadID, &w.Branch, &bossID, &w.BossBranch,
+			&w.Run.Status, &w.Run.Reply, &w.Run.Error, &report)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read helper run %s: %w", runID, err)
+	}
+	if report.Valid {
+		if err := json.Unmarshal([]byte(report.String), &w.Run.Report); err != nil {
+			return fmt.Errorf("decode report of run %s: %w", runID, err)
+		}
+	}
+	return insertInbox(ctx, tx, bossID, botID, wake(w))
 }
 
 // Messages lists every message in the thread, oldest first.
@@ -908,6 +960,16 @@ func firstWords(text string) string {
 		words[len(words)-1] = strings.TrimRight(words[len(words)-1], ".,;:!?")
 	}
 	return strings.Join(words, " ")
+}
+
+func insertInbox(ctx context.Context, db execer, threadID, fromBotID, text string) error {
+	_, err := db.ExecContext(ctx,
+		"INSERT INTO inbox (id, thread_id, from_bot_id, text, created) VALUES (?, ?, ?, ?, ?)",
+		newID(), threadID, fromBotID, text, time.Now().UTC().UnixMicro())
+	if err != nil {
+		return fmt.Errorf("enqueue message: %w", err)
+	}
+	return nil
 }
 
 func insertMessage(ctx context.Context, tx *sql.Tx, m Message) error {

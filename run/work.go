@@ -66,10 +66,9 @@ func RepoHost(ctx context.Context, path string) string {
 }
 
 // Start begins checking the MR of every thread that has one and a worktree, at once and then
-// every PollInterval, until Close. It wakes the boss of every helper run in failed, the runs the
-// restart failed, and delivers the messages held for threads. Call it once.
-func (m *Manager) Start(failed []string) {
-	m.recoverInbox(failed)
+// every PollInterval, until Close, and delivers the messages held for threads. Call it once.
+func (m *Manager) Start() {
+	m.recoverInbox()
 	m.wg.Add(1)
 	go m.watch()
 }
@@ -182,7 +181,7 @@ func (m *Manager) CloseThread(ctx context.Context, threadID string) error {
 	if slot == nil {
 		return ErrBusy
 	}
-	defer m.drop(slot)
+	defer m.free(slot)
 	t, err := m.cfg.Store.Thread(ctx, threadID)
 	if err != nil {
 		return fmt.Errorf("close thread: %w", err)
@@ -596,7 +595,7 @@ func (m *Manager) check(t store.Thread) error {
 	if slot == nil {
 		return nil
 	}
-	defer m.drop(slot)
+	defer m.free(slot)
 	if t, err = m.cfg.Store.Thread(m.ctx, t.ID); err != nil || t.Worktree == "" {
 		return err
 	}
@@ -622,7 +621,7 @@ func (m *Manager) releaseHelpers(threadID string, rp store.Repo) (bool, error) {
 			return false, nil
 		}
 		err := m.release(m.ctx, h, rp, "merged")
-		m.drop(slot)
+		m.free(slot)
 		if err != nil {
 			return false, err
 		}

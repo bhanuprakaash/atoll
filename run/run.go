@@ -219,7 +219,11 @@ func New(cfg Config) *Manager {
 // Send stores text as the user's message and starts a run for it. It returns ErrBusy when the
 // thread has a run going and wraps store.ErrNotFound for an unknown thread.
 func (m *Manager) Send(ctx context.Context, threadID, text string) (store.Message, store.Run, error) {
-	return m.send(ctx, store.InboxItem{ThreadID: threadID, Text: text})
+	msg, run, err := m.send(ctx, store.InboxItem{ThreadID: threadID, Text: text})
+	if err != nil && !errors.Is(err, ErrBusy) {
+		m.flushLog(threadID)
+	}
+	return msg, run, err
 }
 
 // send starts a run for the message it, which comes from its Bot when FromBotID is set and which
@@ -473,11 +477,16 @@ func (m *Manager) execute(a *active, text string) {
 	if a.stopped {
 		res = store.RunResult{Status: "stopped"}
 	}
+	quiet := a.quiet
 	m.mu.Unlock()
 	res.Provider = a.bot.Provider
+	wake := WakeText
+	if quiet {
+		wake = nil
+	}
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
-		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, res)
+		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, res, wake)
 		if err == nil {
 			break
 		}
@@ -491,14 +500,9 @@ func (m *Manager) execute(a *active, text string) {
 	// Dropped before run_finished: a client may send the next message the moment it sees it.
 	m.drop(a)
 	m.publish(a, EventRunFinished, Finished{RunID: a.run.ID, Status: res.Status, Error: res.Error})
-	m.mu.Lock()
-	quiet := a.quiet
-	m.mu.Unlock()
 	if !quiet {
-		m.wake(a.run.ID)
-		if err := m.flush(context.Background(), a.threadID); err != nil {
-			m.cfg.Log.Error("deliver held message", "thread_id", a.threadID, "error", err)
-		}
+		m.flushBoss(a.threadID)
+		m.flushLog(a.threadID)
 	}
 }
 
@@ -874,6 +878,12 @@ func (m *Manager) drop(a *active) {
 	delete(m.runs, a.threadID)
 	delete(m.tokens, a.token)
 	m.mu.Unlock()
+}
+
+// free gives back a slot taken with reserve and delivers what the thread held while it was taken.
+func (m *Manager) free(a *active) {
+	m.drop(a)
+	m.flushLog(a.threadID)
 }
 
 func randHex(n int) string {

@@ -100,7 +100,7 @@ func TestStore_FailUnfinished(t *testing.T) {
 				case "waiting":
 					err = st.SetStatus(ctx, r.ID, store.StatusWaiting)
 				case "done", "failed":
-					err = st.FinishRun(ctx, r.ID, store.RunResult{Status: status})
+					err = st.FinishRun(ctx, r.ID, store.RunResult{Status: status}, nil)
 				}
 				if err != nil {
 					t.Fatal(err)
@@ -108,7 +108,7 @@ func TestStore_FailUnfinished(t *testing.T) {
 				byStatus[status] = r.ID
 			}
 
-			got, err := st.FailUnfinished(ctx, "restart")
+			got, err := st.FailUnfinished(ctx, "restart", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -221,7 +221,7 @@ func TestStore_MessageTimestamps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}); err != nil {
+	if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	finished, err := st.Run(ctx, run.ID)
@@ -270,7 +270,7 @@ func TestStore_MessagePage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}); err != nil {
+		if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -358,6 +358,59 @@ func TestStore_ThreadDetails(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.got != tt.want {
 				t.Errorf("got %v, want %v", tt.got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStore_HelperRunWake(t *testing.T) {
+	tests := []struct {
+		name   string
+		helper bool
+		finish bool
+		want   string
+	}{
+		{"finished helper run wakes its boss", true, true, "done: reply"},
+		{"failed at restart wakes its boss", true, false, "failed: restart"},
+		{"run of a thread with no boss wakes nothing", false, true, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			boss, _ := st.CreateBot(ctx, store.Bot{Name: "boss", Persona: "p", Provider: "claude"})
+			bot, _ := st.CreateBot(ctx, store.Bot{Name: "Tester", Persona: "p", Provider: "claude"})
+			bt, err := st.CreateThread(ctx, boss.ID, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			th, err := st.CreateThread(ctx, bot.ID, "")
+			if tt.helper {
+				th, err = st.CreateHelperThread(ctx, bt.ID, bot.ID, "")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, r, err := st.StartRun(ctx, th.ID, "hi")
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := func(w store.Wake) string { return w.Run.Status + ": " + w.Run.Reply + w.Run.Error }
+			if tt.finish {
+				err = st.FinishRun(ctx, r.ID,
+					store.RunResult{Status: store.StatusDone, Reply: "reply"}, text)
+			} else {
+				_, err = st.FailUnfinished(ctx, "restart", text)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			it, ok, err := st.OldestInbox(ctx, bt.ID)
+			if err != nil || ok != (tt.want != "") || it.Text != tt.want || ok && it.FromBotID != bot.ID {
+				t.Fatalf("inbox = %+v, %v, %v; want %q from %s", it, ok, err, tt.want, bot.ID)
 			}
 		})
 	}

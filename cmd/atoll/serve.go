@@ -83,7 +83,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	failed, err := st.FailUnfinished(ctx, _restartReason)
+	failed, err := st.FailUnfinished(ctx, _restartReason, threadrun.WakeText)
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		Log:          log,
 	})
 	pathDirs(ctx) // glab is found on the provider folders' PATH
-	runs.Start(failed)
+	runs.Start()
 	srv := &http.Server{Handler: server.New(st, mem, runs, log, providers), ReadHeaderTimeout: 10 * time.Second}
 	var serveErr error
 	served := make(chan struct{})
