@@ -310,8 +310,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   `token_endpoint_auth_method: none`), then an authorize URL with PKCE (S256), `state` and
   `resource` (the server's URL). It answers `{authorize_url}`; the UI calls `window.open` on it once
   it has it (the Mac app sends a new window's first URL to the default browser, so no blank window
-  first) and also shows it as a link on the row. Reef opens nothing itself. A server with no `registration_endpoint` answers `409`: it needs an app
-  registered by hand.
+  first) and also shows it as a link on the row. Reef opens nothing itself. A server with no `registration_endpoint`, or one whose
+  registration answers `401` or `403` (Figma's, for a client it has not approved), answers `409`
+  and becomes `needs_app`: it needs an app registered by hand.
 - The redirect is fixed: `http://127.0.0.1:<Reef port>/oauth/callback`, a route of Reef's own server
   (no other listener). The callback accepts a `state` it issued, once, trades the code for tokens,
   stores them and answers a page; the UI polls the list until the status changes or Connect fails.

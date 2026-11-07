@@ -26,7 +26,7 @@ const _oauthAnswer = "oauth-answer-42"
 var _hostedCatalog = []mcpServer{
 	{ID: "notion", Name: "Notion", Kind: "catalog", URL: "https://mcp.notion.com/mcp", Status: "not_connected"},
 	{ID: "figma", Name: "Figma", Kind: "catalog", URL: "https://mcp.figma.com/mcp", Status: "not_connected"},
-	{ID: "cloudflare", Name: "Cloudflare", Kind: "catalog", URL: "https://observability.mcp.cloudflare.com/mcp", Status: "not_connected"},
+	{ID: "cloudflare", Name: "Cloudflare", Kind: "catalog", URL: "https://mcp.cloudflare.com/mcp", Status: "not_connected"},
 	{ID: "slack", Name: "Slack", Kind: "catalog", URL: "https://mcp.slack.com/mcp", Status: "needs_setup"},
 }
 
@@ -55,6 +55,7 @@ type oauthMCP struct {
 
 	mu            sync.Mutex
 	registration  bool // advertises registration_endpoint
+	refuse        bool // registration_endpoint answers 403, as Figma's does for an unapproved client
 	requireAuth   bool // false: answers every request, as a server with no sign-in does
 	ttl           int  // expires_in of the tokens a code grant issues
 	refreshTTL    int  // expires_in of the tokens a refresh issues
@@ -63,6 +64,7 @@ type oauthMCP struct {
 	clients       map[string]string // client id -> its redirect URI
 	codes         map[string]oauthCode
 	registrations []oauthRegistration
+	refusals      int // registrations answered 403
 	authorizes    []url.Values
 	exchanges     int
 	refreshes     []url.Values
@@ -167,6 +169,11 @@ func (o *oauthMCP) serveAuth(w http.ResponseWriter, r *http.Request) {
 		if len(reg.RedirectURIs) != 1 {
 			o.t.Errorf("registration redirect_uris %v, want exactly one", reg.RedirectURIs)
 		}
+		if o.refuse {
+			o.refusals++
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
+			return
+		}
 		reg.clientID = fmt.Sprintf("fake-oauth-client-%s-%d", o.tag, len(o.registrations)+1)
 		o.registrations = append(o.registrations, reg)
 		if len(reg.RedirectURIs) > 0 {
@@ -256,6 +263,12 @@ func (o *oauthMCP) registered() []oauthRegistration {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return slices.Clone(o.registrations)
+}
+
+func (o *oauthMCP) refused() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.refusals
 }
 
 // seen is how many MCP requests had no Authorization header, a wrong one, and a right tools/call.

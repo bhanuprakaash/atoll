@@ -11,9 +11,11 @@ import {
 
 export type OAuthMCP = {
   url: string;
-  // registration: advertise registration_endpoint; requireAuth: false answers every request.
+  // registration: advertise registration_endpoint; refuse: it answers 403, as Figma's does for an
+  // unapproved client; requireAuth: false answers every request.
   config: {
     registration: boolean;
+    refuse: boolean;
     requireAuth: boolean;
     ttl: number;
     reject: boolean;
@@ -40,7 +42,13 @@ export async function startOAuthMCP(): Promise<OAuthMCP> {
   >();
   const o: OAuthMCP = {
     url: "",
-    config: { registration: true, requireAuth: true, ttl: 7200, reject: false },
+    config: {
+      registration: true,
+      refuse: false,
+      requireAuth: true,
+      ttl: 7200,
+      reject: false,
+    },
     registrations: [],
     authorizes: [],
     refreshes: [],
@@ -92,6 +100,10 @@ export async function startOAuthMCP(): Promise<OAuthMCP> {
         token_endpoint_auth_methods_supported: ["none"],
       });
     } else if (url.pathname === "/register" && req.method === "POST") {
+      if (o.config.refuse) {
+        json(res, 403, { error: "Forbidden" });
+        return;
+      }
       const reg = JSON.parse(body);
       o.registrations.push(reg);
       const client = `fake-oauth-client-ui-${o.registrations.length}`;

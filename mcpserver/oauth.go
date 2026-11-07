@@ -101,6 +101,10 @@ func Begin(ctx context.Context, c *http.Client, s store.MCPServer, redirect stri
 	default:
 		clientID, err = register(ctx, c, meta.RegistrationEndpoint, redirect)
 	}
+	var status statusError
+	if errors.As(err, &status) && (status.code == http.StatusUnauthorized || status.code == http.StatusForbidden) {
+		return Pending{}, ErrNeedsApp
+	}
 	if err != nil {
 		return Pending{}, fmt.Errorf("client of %s: %w", s.Name, err)
 	}
@@ -342,13 +346,20 @@ func doJSON(c *http.Client, req *http.Request, result any) error {
 		if json.NewDecoder(body).Decode(&reply) == nil && reply.Error == errInvalidGrant.Error() {
 			return errInvalidGrant
 		}
-		return fmt.Errorf("%s answered %d", req.URL.Host, resp.StatusCode)
+		return statusError{host: req.URL.Host, code: resp.StatusCode}
 	}
 	if err := json.NewDecoder(body).Decode(result); err != nil {
 		return fmt.Errorf("decode reply of %s: %w", req.URL.Host, err)
 	}
 	return nil
 }
+
+type statusError struct {
+	host string
+	code int
+}
+
+func (e statusError) Error() string { return fmt.Sprintf("%s answered %d", e.host, e.code) }
 
 func randomText() string {
 	b := make([]byte, 32)

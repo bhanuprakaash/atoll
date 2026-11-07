@@ -79,7 +79,7 @@ test("the catalog lists Context7, Notion, Figma and Cloudflare; the hosted ones 
   for (const [name, url] of [
     ["Notion", "https://mcp.notion.com/mcp"],
     ["Figma", "https://mcp.figma.com/mcp"],
-    ["Cloudflare", "https://observability.mcp.cloudflare.com/mcp"],
+    ["Cloudflare", "https://mcp.cloudflare.com/mcp"],
   ]) {
     const item = catalogItem(page, name);
     await expect(item).toContainText(url);
@@ -158,6 +158,22 @@ test("a server that answers 200 is added without Connect; one with no registrati
     ["docs-open", ""],
     ["docs-app", "needs_app"],
   ]);
+});
+
+test("Connect to a server that refuses registration says on its row that it needs a registered app", async ({
+  page,
+}) => {
+  const refusing = await fake({ refuse: true });
+  await openPage(page);
+  await addByURL(page, "docs-refused", refusing.url);
+  const r = row(page, "docs-refused");
+  await connect(r).click();
+  await expect(r.getByText(/this server needs a registered app/i)).toBeVisible();
+  await expect(connect(r)).toHaveCount(0);
+  await expect(page.getByText(/internal error/i)).toHaveCount(0);
+  expect(
+    (await servers()).find((s) => s.name === "docs-refused")?.status,
+  ).toBe("needs_app");
 });
 
 test("a rejected refresh shows Needs sign-in; Sign in again reconnects the same server", async ({
