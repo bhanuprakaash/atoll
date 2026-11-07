@@ -23,10 +23,12 @@ export function useThreadEvents(threadId: string) {
   const [worktreeRemoved, setWorktreeRemoved] = useState(false);
   const runsRef = useRef(runs);
   runsRef.current = runs;
+  const closedApprovals = useRef(new Set<string>());
   useEffect(() => {
     setMr(null);
     setWorktreeRemoved(false);
     setRuns({});
+    closedApprovals.current.clear();
     let reconnecting = false;
     const source = new EventSource(`/api/threads/${threadId}/events`);
     const refresh = () => {
@@ -69,7 +71,9 @@ export function useThreadEvents(threadId: string) {
           if (active_run)
             setRuns((prev) => ({
               ...prev,
-              [active_run.id]: (approvals ?? []).reduce(withApproval, prev[active_run.id] ?? empty),
+              [active_run.id]: (approvals ?? [])
+                .filter((a) => !closedApprovals.current.has(a.id))
+                .reduce(withApproval, prev[active_run.id] ?? empty),
             }));
         })
         .catch(() => {});
@@ -84,10 +88,10 @@ export function useThreadEvents(threadId: string) {
       tool: { kind: d.kind, target: d.target, name: d.name, verb: d.verb },
     }));
     on<{ id: string; tool: string; input: unknown }>('approval', (d, run) => withApproval(run, d));
-    on<{ id: string }>('approval_closed', (d, run) => ({
-      ...run,
-      approvals: run.approvals.filter((x) => x.id !== d.id),
-    }));
+    on<{ id: string }>('approval_closed', (d, run) => {
+      closedApprovals.current.add(d.id);
+      return { ...run, approvals: run.approvals.filter((x) => x.id !== d.id) };
+    });
     on<{ status: string; error: string; blocked?: string }>('run_finished', (d, run) => ({
       ...run,
       finished: d,
