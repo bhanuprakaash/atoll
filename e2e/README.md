@@ -155,3 +155,5 @@ Bot mode (Auto, Ask or Full access, and what each gives Claude and Codex) extend
 The delegate list (who a Bot may hand work to) extends these contracts in [delegates-contract.md](delegates-contract.md).
 
 Delegate and continue (a Bot hands work to a helper thread) extend these contracts in [delegation-contract.md](delegation-contract.md).
+
+Waking the boss (a helper's reply and report start a boss run) extends these contracts in [wake-contract.md](wake-contract.md).
