@@ -41,6 +41,7 @@ const (
 	ToolListConnections  = "list_connections"
 	ToolListRepos        = "list_repos"
 	ToolListModels       = "list_models"
+	ToolListMCPServers   = "list_mcp_servers"
 )
 
 // ErrSignedOut is the error of a run that failed because the provider refused its sign-in.
@@ -79,7 +80,18 @@ type Config struct {
 	GitHubMCPURL string
 	GitHubToken  string
 	// SkillDir is the absolute root of this run's skill copies. Empty runs without them.
-	SkillDir string
+	SkillDir   string
+	MCPServers []UserMCPServer
+}
+
+// UserMCPServer is local with Command, Args and Env, or remote with URL and Headers.
+type UserMCPServer struct {
+	Name    string
+	Command string
+	Args    []string
+	Env     map[string]string
+	URL     string
+	Headers map[string]string
 }
 
 // Kind says what an Event carries.

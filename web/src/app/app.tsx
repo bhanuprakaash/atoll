@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from '
 import { BotPage, LatestThread } from '@/app/bot-page';
 import {
   ConnectionsPage,
+  McpServersPage,
   MemoryPage,
   ProvidersPage,
   SettingsPage,
@@ -172,6 +173,7 @@ function AppRoutes() {
           <Route path="repos" element={<ReposSettings />} />
           <Route path="connections" element={<ConnectionsPage />} />
           <Route path="skills" element={<SkillsPage />} />
+          <Route path="mcp-servers" element={<McpServersPage />} />
         </Route>
         <Route path="bots/new" element={<NewBotPage />} />
         <Route path="bots/:botId" element={<BotPage />}>

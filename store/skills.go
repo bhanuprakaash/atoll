@@ -58,10 +58,13 @@ func normalizeBot(b Bot) Bot {
 	if b.Skills == nil {
 		b.Skills = []string{}
 	}
+	if b.MCPServers == nil {
+		b.MCPServers = []string{}
+	}
 	return b
 }
 
-// MarshalJSON encodes empty connections and skills as arrays.
+// MarshalJSON encodes empty connections, skills and MCP servers as arrays.
 func (b Bot) MarshalJSON() ([]byte, error) {
 	type botJSON Bot
 	return json.Marshal(botJSON(normalizeBot(b)))
@@ -94,9 +97,13 @@ func botArgs(b Bot) ([]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encode skills: %w", err)
 	}
+	mcp, err := json.Marshal(b.MCPServers)
+	if err != nil {
+		return nil, fmt.Errorf("encode MCP servers: %w", err)
+	}
 	return []any{
 		b.ID, b.Name, b.Persona, b.Provider, access, string(conns), string(skills),
-		b.CanManagePlatform, b.Look, b.Model,
+		b.CanManagePlatform, b.Look, b.Model, string(mcp),
 	}, nil
 }
 
@@ -107,7 +114,7 @@ func (s *Store) EnsureBot(ctx context.Context, b Bot) (bool, error) {
 		return false, err
 	}
 	res, err := s.db.ExecContext(ctx,
-		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "+
+		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "+
 			"ON CONFLICT(id) DO NOTHING", args...)
 	if err != nil {
 		return false, fmt.Errorf("ensure bot: %w", err)
@@ -131,7 +138,8 @@ func updateBot(ctx context.Context, db execer, b Bot) error {
 	args = append(args[1:], b.ID)
 	res, err := db.ExecContext(ctx,
 		"UPDATE bots SET name = ?, persona = ?, provider = ?, repo_access = ?, connections = ?, "+
-			"skills = ?, can_manage_platform = ?, look = ?, model = ? WHERE id = ? AND removed = 0", args...)
+			"skills = ?, can_manage_platform = ?, look = ?, model = ?, mcp_servers = ? "+
+			"WHERE id = ? AND removed = 0", args...)
 	if err != nil {
 		return fmt.Errorf("update bot: %w", err)
 	}

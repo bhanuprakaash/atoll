@@ -24,6 +24,7 @@ type (
 		denied      map[string]string    // denial message, by tool_use id
 		uses        map[string]toolUse   // tool calls printed so far, by id
 		userMessage string
+		session     string // from the init line
 		started     bool
 	}
 
@@ -32,6 +33,9 @@ type (
 			Type    string            `json:"type"`
 			URL     string            `json:"url"`
 			Headers map[string]string `json:"headers"`
+			Command string            `json:"command"`
+			Args    []string          `json:"args"`
+			Env     map[string]string `json:"env"`
 		} `json:"mcpServers"`
 	}
 
@@ -76,11 +80,17 @@ func newPlayer(args []string) (*player, error) {
 			return nil, fmt.Errorf("--mcp-config %s: %w", v, err)
 		}
 		for name, s := range cfg.MCPServers {
-			if s.Type != "http" || s.URL == "" {
+			var c *fake.MCP
+			var err error
+			switch {
+			case s.Type == "http" && s.URL != "":
+				c, err = fake.Dial(s.URL, s.Headers)
+			case (s.Type == "stdio" || s.Type == "") && s.Command != "":
+				c, err = fake.DialStdio(s.Command, s.Args, s.Env)
+			default:
 				p.failed = append(p.failed, name)
 				continue
 			}
-			c, err := fake.Dial(s.URL, s.Headers)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "fake claude:", err)
 				p.failed = append(p.failed, name)
@@ -117,6 +127,12 @@ func (p *player) play(lines []string) error {
 				return nil
 			})
 			if err != nil {
+				return err
+			}
+			continue
+		case "mcp-use":
+			var err error
+			if repoReply, err = p.mcpUse(); err != nil {
 				return err
 			}
 			continue
@@ -218,6 +234,7 @@ func (p *player) play(lines []string) error {
 		switch typ := str(m["type"]); {
 		case typ == "system" && str(m["subtype"]) == "init" && !p.started:
 			p.started = true
+			p.session = str(m["session_id"])
 			s = p.init(m)
 		case typ == "assistant":
 			for _, u := range p.toolUses(m) {
@@ -235,6 +252,50 @@ func (p *player) play(lines []string) error {
 		fmt.Println(s)
 	}
 	return nil
+}
+
+// mcpUse calls each tool the prompt names on the configured server, as claude would: it prints the
+// tool call, asks the permission prompt tool, then prints the server's answer. A server the config
+// does not hold is not called.
+func (p *player) mcpUse() (string, error) {
+	calls, err := fake.MCPCalls(p.userMessage)
+	if err != nil {
+		return "", err
+	}
+	var lines []string
+	for i, call := range calls {
+		c := p.servers[call.Server]
+		if c == nil {
+			lines = append(lines, fake.MCPLine(call, "unavailable"))
+			continue
+		}
+		use := toolUse{Type: "tool_use", ID: fmt.Sprintf("toolu_mcp_use_%d", i+1), Name: "mcp__" + call.Server + "__" + call.Tool, Input: call.Args}
+		p.uses[use.ID] = use
+		emit := func(l map[string]any) {
+			l["parent_tool_use_id"], l["session_id"] = nil, p.session
+			b, _ := json.Marshal(l)
+			fmt.Println(string(b))
+		}
+		emit(map[string]any{"type": "assistant", "message": map[string]any{"role": "assistant", "type": "message", "content": []toolUse{use}}})
+		answer, err := p.ask(&use)
+		if err != nil {
+			return "", err
+		}
+		time.Sleep(fake.Pace)
+		text, isErr := "denied", true
+		if answer == "allow" {
+			if text, isErr, err = c.Call(call.Tool, call.Args); err != nil {
+				return "", err
+			}
+		}
+		result := map[string]any{"type": "tool_result", "tool_use_id": use.ID, "content": []map[string]string{{"type": "text", "text": text}}}
+		if isErr {
+			result["is_error"] = true
+		}
+		emit(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": []any{result}}})
+		lines = append(lines, fake.MCPLine(call, text))
+	}
+	return strings.Join(lines, "\n"), nil
 }
 
 // init reports the configured MCP servers as connected or failed.

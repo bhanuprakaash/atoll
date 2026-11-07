@@ -18,6 +18,7 @@ export type Bot = {
   connections: string[];
   provider: Provider;
   skills: string[];
+  mcp_servers: string[];
   can_manage_platform: boolean;
 };
 
@@ -62,7 +63,7 @@ export function usePinBot(id: string) {
 export function useUpdateBot(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (changes: Partial<NewBot & Pick<Bot, 'can_manage_platform'>>) =>
+    mutationFn: (changes: Partial<NewBot & Pick<Bot, 'can_manage_platform' | 'mcp_servers'>>) =>
       api<Bot>(`/bots/${id}`, { method: 'PUT', body: changes }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
   });

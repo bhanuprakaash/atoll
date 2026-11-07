@@ -5,6 +5,7 @@ import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { BotMemory } from '@/modules/memory/components/bot-memory';
 import { BotSettings } from '@/modules/bots/components/bot-settings';
 import { useConnections } from '@/modules/connections/api/connections';
+import { useMcpServers } from '@/modules/mcp-servers/api/mcp-servers';
 import { useProviders } from '@/modules/providers/api/providers';
 import { ModelSelect } from '@/modules/providers/components/model-select';
 import { useRepos } from '@/modules/repos/api/repos';
@@ -132,6 +133,7 @@ export function BotPage() {
   const { data: threads = [] } = useThreads(botId);
   const { data: repos = [] } = useRepos();
   const { data: skills = [] } = useSkills();
+  const { data: mcpServers = [] } = useMcpServers();
   const { data: connections = [] } = useConnections();
   const { data: providers = [] } = useProviders();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -178,6 +180,7 @@ export function BotPage() {
           repos={repos}
           skills={skills}
           connections={connections}
+          mcpServers={mcpServers}
           modelControl={(provider, model, onChange) => (
             <ModelSelect
               providers={providers}
