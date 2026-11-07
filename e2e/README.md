@@ -143,3 +143,5 @@ Run login isolation (a Bot uses only the logins Reef gives it) extends these con
 GitHub connection (gh, git and GitHub's MCP server from one sign-in) extends these contracts in [github-connection-contract.md](github-connection-contract.md).
 
 MCP servers (a library, a pick per Bot, secrets in the OS store) extend these contracts in [mcp-servers-contract.md](mcp-servers-contract.md).
+
+GitHub repos (a repo on GitHub: push and open a pull request with `gh`) extends these contracts in [github-repos-contract.md](github-repos-contract.md).

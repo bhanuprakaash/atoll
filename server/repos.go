@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"atoll/connection"
+	"atoll/run"
 	"atoll/store"
 )
 
@@ -87,6 +88,7 @@ func (a *api) createRepo(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	rp.Host = run.RepoHost(r.Context(), rp.Path)
 	write(w, http.StatusCreated, rp)
 }
 
@@ -95,6 +97,9 @@ func (a *api) listRepos(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.fail(w, r, err)
 		return
+	}
+	for i := range repos {
+		repos[i].Host = run.RepoHost(r.Context(), repos[i].Path)
 	}
 	write(w, http.StatusOK, orEmpty(repos))
 }
