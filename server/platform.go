@@ -116,7 +116,6 @@ func (a *api) botSummary(
 	return b
 }
 
-// needsYou is the sidebar line for a Bot that waits on the user's answer to ap.
 func needsYou(ap run.Approval) string {
 	kind, target := run.ToolKind(ap.Tool, ap.Input)
 	verb := "use"
@@ -654,8 +653,6 @@ func (a *api) unknownPicks(ctx context.Context, b store.Bot) (string, error) {
 	return a.unknownDelegates(ctx, b)
 }
 
-// unknownDelegates is the message for delegate ids that are the Bot itself or that no Bot has, or
-// "" when there are none.
 func (a *api) unknownDelegates(ctx context.Context, b store.Bot) (string, error) {
 	if len(b.Delegates) == 0 {
 		return "", nil

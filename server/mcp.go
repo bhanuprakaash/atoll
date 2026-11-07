@@ -316,7 +316,6 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 	return nil, &rpcError{Code: _invalidParams, Message: "unknown tool: " + call.Name}
 }
 
-// delegateTools are the tools of a Bot with delegates, whose description names them.
 func (a *api) delegateTools(ctx context.Context, bot store.Bot) ([]json.RawMessage, error) {
 	var names []string
 	for _, id := range bot.Delegates {
@@ -362,8 +361,6 @@ func (a *api) delegateTools(ctx context.Context, bot store.Bot) ([]json.RawMessa
 	return out, nil
 }
 
-// refusal turns a refused delegate or continue into a tool error, so the run goes on. It returns
-// nothing for a nil err.
 func (a *api) refusal(err error) (any, *rpcError) {
 	var refused run.RefusedError
 	switch {

@@ -9,9 +9,6 @@ import (
 	"atoll/store"
 )
 
-// post holds text for the thread as a message from the Bot fromBotID (empty for the user), and
-// starts a run for it when the thread has none going. Held messages go in order, one run each, as
-// runs end; they survive a restart.
 func (m *Manager) post(ctx context.Context, threadID, fromBotID, text string) error {
 	if err := m.cfg.Store.Enqueue(ctx, threadID, fromBotID, text); err != nil {
 		return err
@@ -19,9 +16,6 @@ func (m *Manager) post(ctx context.Context, threadID, fromBotID, text string) er
 	return m.flush(ctx, threadID)
 }
 
-// flush starts a run for the thread's oldest held message. It does nothing when a run is going
-// (that run's end flushes again) or Atoll is stopping. A message for a closed or gone thread is
-// dropped.
 func (m *Manager) flush(ctx context.Context, threadID string) error {
 	m.inboxMu.Lock()
 	defer m.inboxMu.Unlock()
@@ -46,15 +40,12 @@ func (m *Manager) flush(ctx context.Context, threadID string) error {
 	return nil
 }
 
-// flushLog is flush for a caller that has no error to return.
 func (m *Manager) flushLog(threadID string) {
 	if err := m.flush(context.Background(), threadID); err != nil {
 		m.cfg.Log.Error("deliver held message", "thread_id", threadID, "error", err)
 	}
 }
 
-// flushBoss delivers what the thread's boss holds, as the wake of a helper run that just ended.
-// A thread with no boss has none.
 func (m *Manager) flushBoss(threadID string) {
 	t, err := m.cfg.Store.Thread(context.Background(), threadID)
 	switch {
@@ -66,8 +57,6 @@ func (m *Manager) flushBoss(threadID string) {
 	}
 }
 
-// recoverInbox delivers the held messages of every thread, among them the wakes of the helper
-// runs the restart failed.
 func (m *Manager) recoverInbox() {
 	ctx := context.Background()
 	ids, err := m.cfg.Store.InboxThreads(ctx)
@@ -82,8 +71,7 @@ func (m *Manager) recoverInbox() {
 	}
 }
 
-// WakeText is the message for the boss of the helper run w. A helper's branch off the boss's
-// branch is named for the boss to merge.
+// WakeText is the message that tells a boss its helper's run ended.
 func WakeText(w store.Wake) string {
 	helper, threadID, run := w.Helper, w.ThreadID, w.Run
 	merge := ""

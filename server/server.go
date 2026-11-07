@@ -219,8 +219,6 @@ func (a *api) botList(ctx context.Context) ([]botResponse, error) {
 	return responses, nil
 }
 
-// threadRuns groups the threads that have a run by their Bot, and the helper threads by the Bot
-// of the thread they help.
 func (a *api) threadRuns(ctx context.Context) (threads, helpers map[string][]store.ThreadRun, err error) {
 	runs, err := a.st.ThreadRuns(ctx, "")
 	if err != nil {
@@ -303,9 +301,7 @@ type threadSummary struct {
 	Verb      string        `json:"verb"`
 	UpdatedAt time.Time     `json:"updated_at"`
 
-	// Step is the active run's latest tool call with its command, as a helper's line shows it.
-	Step string `json:"step"`
-	// ParentBotID is the Bot of the thread this one helps; Helpers are the threads that help it.
+	Step        string          `json:"step"`
 	ParentBotID string          `json:"parent_bot_id"`
 	Helpers     []threadSummary `json:"helpers"`
 }
@@ -364,7 +360,6 @@ func (a *api) liveVerb(threadID string) string {
 	return strings.TrimSpace(tool.Verb + " " + tool.Target)
 }
 
-// liveStep is liveVerb with the command a command call runs, and empty before any tool call.
 func (a *api) liveStep(threadID string) string {
 	tool := a.runs.ActiveTool(threadID)
 	target := tool.Target

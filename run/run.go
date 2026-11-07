@@ -106,9 +106,7 @@ type (
 		cancel context.CancelFunc
 		wg     sync.WaitGroup
 
-		// inboxMu serializes delivery of held messages: one message is taken, its run started
-		// and the message removed before another delivery looks. delegateMu does the same for
-		// counting a boss's helpers and starting one more. Neither is taken under mu.
+		// inboxMu and delegateMu make take-start-remove and count-start atomic. Neither is taken under mu.
 		inboxMu    sync.Mutex
 		delegateMu sync.Mutex
 
@@ -175,7 +173,7 @@ type (
 		Input json.RawMessage `json:"input"`
 	}
 
-	// ApprovalClosed says the approval id is no longer open: answered, or its run or request ended.
+	// ApprovalClosed says an approval is no longer open.
 	ApprovalClosed struct {
 		RunID string `json:"run_id"`
 		ID    string `json:"id"`
@@ -226,8 +224,6 @@ func (m *Manager) Send(ctx context.Context, threadID, text string) (store.Messag
 	return msg, run, err
 }
 
-// send starts a run for the message it, which comes from its Bot when FromBotID is set and which
-// is removed from the inbox in the same step when it has an ID.
 func (m *Manager) send(ctx context.Context, it store.InboxItem) (store.Message, store.Run, error) {
 	threadID, text := it.ThreadID, it.Text
 	runCtx, cancel := context.WithCancel(m.ctx)
@@ -291,8 +287,7 @@ func (m *Manager) Stop(ctx context.Context, id string) error {
 	return m.stop(ctx, id, false)
 }
 
-// stop is Stop; quiet says Reef stops the run: a helper's boss is not told and the thread's held
-// messages wait.
+// quiet: Reef stops the run, so the boss is not told and held messages wait.
 func (m *Manager) stop(ctx context.Context, id string, quiet bool) error {
 	ru, err := m.cfg.Store.Run(ctx, id)
 	if err != nil {
@@ -883,7 +878,6 @@ func (m *Manager) drop(a *active) {
 	m.mu.Unlock()
 }
 
-// free gives back a slot taken with reserve and delivers what the thread held while it was taken.
 func (m *Manager) free(a *active) {
 	m.drop(a)
 	m.flushLog(a.threadID)

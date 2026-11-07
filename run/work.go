@@ -66,7 +66,7 @@ func RepoHost(ctx context.Context, path string) string {
 }
 
 // Start begins checking the MR of every thread that has one and a worktree, at once and then
-// every PollInterval, until Close, and delivers the messages held for threads. Call it once.
+// every PollInterval, until Close, and delivers held messages. Call it once.
 func (m *Manager) Start() {
 	m.recoverInbox()
 	m.wg.Add(1)
@@ -173,9 +173,9 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 	return nil
 }
 
-// CloseThread closes the thread and its helper threads: it stops their runs, then saves the
-// unfinished work of its worktree, removes the worktree and the read-only checkout, and refuses new messages. It returns ErrBusy while a run
-// is going. When the save fails nothing is removed and the thread stays open.
+// CloseThread closes the thread and its helper threads: it saves the unfinished work of its
+// worktree, removes the worktree and the read-only checkout, and refuses new messages. It returns
+// ErrBusy while a run is going. When the save fails nothing is removed and the thread stays open.
 func (m *Manager) CloseThread(ctx context.Context, threadID string) error {
 	slot := m.reserve(threadID)
 	if slot == nil {
@@ -209,9 +209,7 @@ func (m *Manager) CloseThread(ctx context.Context, threadID string) error {
 	return m.cfg.Store.SetClosed(ctx, threadID)
 }
 
-// DeleteBot stops the runs of the Bot's threads, closes the threads (and their helper threads),
-// and deletes the Bot with its threads, runs and event files. The boss of a helper run it stopped
-// is told the Bot was deleted. Memory the Bot saved stays.
+// DeleteBot deletes the Bot with its threads, runs and event files. Memory the Bot saved stays.
 func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 	bot, err := m.cfg.Store.Bot(ctx, botID)
 	if err != nil {
@@ -221,14 +219,14 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 	if err != nil {
 		return err
 	}
-	var cut []store.Thread // helper threads whose run was stopped: their boss hears of the delete
+	var stoppedHelpers []store.Thread
 	for _, t := range threads {
 		stopped, err := m.stopQuietly(ctx, t.ID)
 		if err != nil {
 			return err
 		}
 		if stopped && t.ParentThreadID != "" {
-			cut = append(cut, t)
+			stoppedHelpers = append(stoppedHelpers, t)
 		}
 		if err := m.CloseThread(ctx, t.ID); err != nil {
 			return err
@@ -238,7 +236,7 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 	if err != nil {
 		return err
 	}
-	for _, t := range cut {
+	for _, t := range stoppedHelpers {
 		text := fmt.Sprintf("%s was deleted\n(thread %s)", bot.Name, t.ID)
 		if err := m.post(ctx, t.ParentThreadID, botID, text); err != nil {
 			m.cfg.Log.Error("wake boss", "thread_id", t.ID, "error", err)
@@ -258,8 +256,6 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 	return nil
 }
 
-// closeHelpers stops the runs of the helper threads of the thread threadID and closes them. The
-// boss is not told: its thread is going.
 func (m *Manager) closeHelpers(ctx context.Context, threadID string) error {
 	helpers, err := m.cfg.Store.HelperThreads(ctx, threadID)
 	if err != nil {
@@ -276,8 +272,6 @@ func (m *Manager) closeHelpers(ctx context.Context, threadID string) error {
 	return nil
 }
 
-// stopQuietly stops the thread's run, if one is going, as Reef's own doing: it reports whether
-// it stopped one.
 func (m *Manager) stopQuietly(ctx context.Context, threadID string) (bool, error) {
 	runID, _, ok := m.Active(threadID)
 	if !ok {
@@ -605,8 +599,6 @@ func (m *Manager) check(t store.Thread) error {
 	return m.release(m.ctx, t, rp, "merged")
 }
 
-// releaseHelpers releases the worktrees of the helper threads of the thread threadID as its MR
-// merged. It stops and reports false when a helper's run is going; the next tick tries again.
 func (m *Manager) releaseHelpers(threadID string, rp store.Repo) (bool, error) {
 	helpers, err := m.cfg.Store.HelperThreads(m.ctx, threadID)
 	if err != nil {

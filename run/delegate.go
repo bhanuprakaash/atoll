@@ -10,26 +10,21 @@ import (
 	"atoll/store"
 )
 
-// _maxHelpers is how many helper runs one boss thread may have going.
 const _maxHelpers = 3
 
-// RefusedError is a delegate or continue the Bot is told about as a tool error, so its run goes on.
+// RefusedError is a tool error the Bot sees, so its run goes on.
 type RefusedError string
 
 func (e RefusedError) Error() string { return string(e) }
 
-// Handoff is what a boss is told when its delegate started a helper thread. Branch and Note are set
-// when the helper got a worktree off the boss's branch.
+// Handoff is the boss's result for a delegate.
 type Handoff struct {
 	ThreadID string `json:"thread_id"`
 	Branch   string `json:"branch,omitempty"`
 	Note     string `json:"note,omitempty"`
 }
 
-// Delegate starts a helper thread for the Bot botName on the delegate list of the run with token,
-// and sends it the brief. The helper works in the boss thread's repo, else in the registered
-// repo repoName, else in none; when the boss thread has a worktree, the helper gets one now on a
-// branch off the boss's branch. It returns without waiting for the helper's run.
+// Delegate starts a helper thread for the Bot botName and sends it the brief.
 func (m *Manager) Delegate(
 	ctx context.Context, token, botName, brief, repoName string,
 ) (Handoff, error) {
@@ -113,8 +108,7 @@ func (m *Manager) Delegate(
 	return h, nil
 }
 
-// Continue sends message to the helper thread, which only the boss thread of the run with token
-// may do. A message for a helper whose run is going is held until that run ends.
+// Continue sends message to a helper thread of the boss run with token.
 func (m *Manager) Continue(ctx context.Context, token, threadID, message string) error {
 	a, err := m.byToken(token)
 	if err != nil {
@@ -136,7 +130,6 @@ func (m *Manager) Continue(ctx context.Context, token, threadID, message string)
 	return m.post(ctx, threadID, "", message)
 }
 
-// helper returns the Bot called name on the boss's delegate list.
 func (m *Manager) helper(ctx context.Context, boss store.Bot, name string) (store.Bot, error) {
 	var names []string
 	for _, id := range boss.Delegates {
@@ -156,7 +149,6 @@ func (m *Manager) helper(ctx context.Context, boss store.Bot, name string) (stor
 		name, strings.Join(names, ", ")))
 }
 
-// helperRepo is the boss thread's repo, else the registered repo called name, else no repo.
 func (m *Manager) helperRepo(ctx context.Context, bossRepoID, name string) (store.Repo, error) {
 	if bossRepoID != "" {
 		rp, err := m.cfg.Store.Repo(ctx, bossRepoID)

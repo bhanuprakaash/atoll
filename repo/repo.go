@@ -39,8 +39,7 @@ func Branch(typ, slug string) (string, error) {
 	return typ + "/" + s, nil
 }
 
-// Slug lowercases s, turns every run of characters outside [a-z0-9] into "-", trims the ends of
-// "-" and cuts it to 40 characters.
+// Slug lowercases s, turns runs of characters outside [a-z0-9] into "-" and cuts it to 40.
 func Slug(s string) string {
 	s = strings.Trim(_nonSlug.ReplaceAllString(strings.ToLower(s), "-"), "-")
 	if len(s) > _maxSlug {
@@ -79,7 +78,7 @@ func Create(
 	return path, used, base, err
 }
 
-// CreateFrom is Create for a branch that starts at the last commit of the local branch from.
+// CreateFrom is Create for a branch that starts at the local branch from.
 func CreateFrom(
 	ctx context.Context, repoPath, root, repoName, branch, from string,
 ) (path, used string, err error) {

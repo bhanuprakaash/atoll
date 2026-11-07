@@ -144,17 +144,16 @@ type (
 
 	// Message is one chat line. A bot message holds a run's reply.
 	Message struct {
-		ID       string `json:"id"`
-		ThreadID string `json:"-"`
-		Role     string `json:"role"`
-		Text     string `json:"text"`
-		RunID    string `json:"run_id"`
-		// FromBotID is the Bot a message came from, empty for the user's own.
+		ID        string    `json:"id"`
+		ThreadID  string    `json:"-"`
+		Role      string    `json:"role"`
+		Text      string    `json:"text"`
+		RunID     string    `json:"run_id"`
 		FromBotID string    `json:"from_bot_id,omitempty"`
 		CreatedAt time.Time `json:"created_at"`
 	}
 
-	// InboxItem is a message for a thread that is not delivered yet.
+	// InboxItem is a held message.
 	InboxItem struct {
 		ID        string
 		ThreadID  string
@@ -467,7 +466,7 @@ func (s *Store) CreateThread(ctx context.Context, botID, repoID string) (Thread,
 	return s.createThread(ctx, botID, repoID, "")
 }
 
-// CreateHelperThread starts a thread with the Bot botID that helps the thread parentID.
+// CreateHelperThread starts a thread that helps parentID.
 func (s *Store) CreateHelperThread(
 	ctx context.Context, parentID, botID, repoID string,
 ) (Thread, error) {
@@ -513,7 +512,7 @@ func (s *Store) Threads(ctx context.Context, botID string) ([]Thread, error) {
 		scanThread, botID)
 }
 
-// HelperThreads lists the threads that help the thread parentID, oldest first.
+// HelperThreads lists the threads that help parentID, oldest first.
 func (s *Store) HelperThreads(ctx context.Context, parentID string) ([]Thread, error) {
 	return query(ctx, s.db,
 		"SELECT "+_threadColumns+" FROM threads WHERE parent_thread_id = ? ORDER BY rowid",
@@ -629,8 +628,7 @@ func (s *Store) StartRun(ctx context.Context, threadID, text string) (Message, R
 	return s.startRun(ctx, threadID, "", text, "")
 }
 
-// StartRunFrom stores the inbox item as a message from its Bot and a running run for it, and
-// removes the item, in one transaction.
+// StartRunFrom is StartRun for an inbox item, removing it in the same transaction.
 func (s *Store) StartRunFrom(ctx context.Context, it InboxItem) (Message, Run, error) {
 	return s.startRun(ctx, it.ThreadID, it.FromBotID, it.Text, it.ID)
 }
@@ -668,12 +666,12 @@ func (s *Store) startRun(
 	return m, r, nil
 }
 
-// Enqueue holds text for the thread until a run can start for it.
+// Enqueue holds text for the thread until a run can start.
 func (s *Store) Enqueue(ctx context.Context, threadID, fromBotID, text string) error {
 	return insertInbox(ctx, s.db, threadID, fromBotID, text)
 }
 
-// OldestInbox returns the oldest message held for the thread. ok is false when there is none.
+// OldestInbox returns the oldest held message; ok is false when none.
 func (s *Store) OldestInbox(ctx context.Context, threadID string) (it InboxItem, ok bool, err error) {
 	items, err := query(ctx, s.db,
 		"SELECT id, thread_id, from_bot_id, text FROM inbox WHERE thread_id = ? ORDER BY rowid LIMIT 1",
@@ -694,7 +692,7 @@ func (s *Store) DeleteInbox(ctx context.Context, id string) error {
 	return nil
 }
 
-// InboxThreads lists the ids of the threads that have a held message.
+// InboxThreads lists the threads that have a held message.
 func (s *Store) InboxThreads(ctx context.Context) ([]string, error) {
 	return query(ctx, s.db, "SELECT DISTINCT thread_id FROM inbox ORDER BY thread_id",
 		func(r *sql.Rows) (id string, err error) { return id, r.Scan(&id) })
@@ -780,8 +778,7 @@ type RunResult struct {
 	Provider  string // the provider the run used
 }
 
-// Wake is a helper run that ended, with what the message that tells its boss is made of. Run
-// holds only its status, reply, error and report.
+// Wake is a finished helper run with what the boss's message is made of.
 type Wake struct {
 	Helper     string // the helper Bot's name
 	ThreadID   string // the helper's thread
@@ -857,8 +854,6 @@ func (s *Store) FailUnfinished(
 	return ids, nil
 }
 
-// enqueueWake holds the message wake returns for the boss thread of the helper thread that ran
-// runID. A run of a thread with no boss, or whose Bot or boss is gone, has none.
 func enqueueWake(ctx context.Context, tx *sql.Tx, runID string, wake func(Wake) string) error {
 	if wake == nil {
 		return nil
