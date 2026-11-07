@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Field } from '@/components/field';
+import { ServerLogo } from '@/components/server-logo';
 import {
   outlineButton,
   RowText,
@@ -30,23 +31,6 @@ function pairs(text: string, separator: string) {
     out[name] = at < 0 ? '' : line.slice(at + 1).trimStart();
   }
   return out;
-}
-
-function ServerIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--color-ink)"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 5h16v6H4zM4 13h16v6H4zM8 8h.01M8 16h.01" />
-    </svg>
-  );
 }
 
 const withoutSlash = (url: string) => url.trim().replace(/\/$/, '');
@@ -310,7 +294,7 @@ export function McpServersSettings() {
         {catalog.map((s) => (
           <li key={s.id} className={rowClass}>
             <Tile>
-              <ServerIcon />
+              <ServerLogo id={s.id} />
             </Tile>
             <RowText title={s.name} detail={runs(s)} mono>
               <SignInStatus server={s} allowURL={allow?.id === s.id ? allow.url : undefined} />
@@ -336,7 +320,7 @@ export function McpServersSettings() {
             {fromConnections.map((s) => (
               <li key={s.id} className={rowClass}>
                 <Tile>
-                  <ServerIcon />
+                  <ServerLogo id={s.id} />
                 </Tile>
                 <RowText title={s.name} detail={runs(s)} mono>
                   <i className="block text-[12.5px] not-italic text-muted">
@@ -356,7 +340,7 @@ export function McpServersSettings() {
             return (
               <li key={s.id} className={rowClass}>
                 <Tile>
-                  <ServerIcon />
+                  <ServerLogo id={s.id} />
                 </Tile>
                 <RowText title={s.name} detail={runs(s)} mono>
                   {names.length > 0 && (
