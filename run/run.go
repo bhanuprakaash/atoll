@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"atoll/connection"
 	"atoll/memory"
 	"atoll/provider"
 	"atoll/skill"
@@ -32,6 +33,9 @@ var (
 	ErrClosed = errors.New("thread is closed")
 	// ErrNotFound is wrapped when an approval id or run token matches nothing open.
 	ErrNotFound = errors.New("not found")
+	// ErrNoGitHubConnection means the Bot has no GitHub connection.
+	ErrNoGitHubConnection = errors.New("this repo is on GitHub and this Bot has no GitHub connection: " +
+		"give this Bot the GitHub connection in its settings, then ask again")
 )
 
 // Event types on a thread's stream.
@@ -497,6 +501,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		if rp, err = m.cfg.Store.Repo(a.ctx, thread.RepoID); err != nil {
 			return "", fmt.Errorf("load repo: %w", err)
 		}
+		rp.Host = RepoHost(a.ctx, rp.Path)
 	}
 	if cfg.Cwd, err = m.workdir(thread, rp); err != nil {
 		return "", err
@@ -521,6 +526,9 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if cfg.SkillDir, err = skill.Place(skillDir, bot.Provider, skills); err != nil {
 		return "", fmt.Errorf("place skills: %w", err)
 	}
+	if cfg.MCPServers, err = m.mcpServers(a.ctx, bot); err != nil {
+		return "", err
+	}
 	var items []memory.Item
 	var counts memory.Counts
 	if m.cfg.Memory != nil {
@@ -543,9 +551,16 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		}
 	}
 	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
-	cfg.Env, err = m.gitlabEnv(a.ctx, bot)
+	var githubToken string
+	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {
 		return "", err
+	}
+	if githubToken != "" {
+		cfg.GitHubMCPURL, cfg.GitHubToken = connection.GitHubMCPURL(), githubToken
+		cfg.MCPServers = slices.DeleteFunc(cfg.MCPServers, func(s provider.UserMCPServer) bool {
+			return strings.TrimSuffix(s.URL, "/") == strings.TrimSuffix(cfg.GitHubMCPURL, "/")
+		})
 	}
 	cfg.MCPURL = m.cfg.MCPURL + a.token
 	if thread.Session != "" {
@@ -933,7 +948,7 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
 		provider.ToolEditSkill, provider.ToolImportSkill, provider.ToolRegisterRepo,
 		provider.ToolAttachConnection, provider.ToolListBots, provider.ToolListSkills, provider.ToolListConnections,
-		provider.ToolListRepos, provider.ToolListModels,
+		provider.ToolListRepos, provider.ToolListModels, provider.ToolListMCPServers,
 	}, name) {
 		return "platform", v.Name
 	}

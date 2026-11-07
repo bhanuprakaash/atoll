@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"atoll/mcpserver"
 	"atoll/memory"
 	"atoll/repo"
 	"atoll/run"
@@ -29,7 +30,10 @@ const MCPPath = "/mcp/"
 const (
 	_pingEvery     = 15 * time.Second
 	_signInTimeout = 30 * time.Second
-	_chiefID       = "chief"
+	_signInExpiry  = 10 * time.Minute
+	// RFC 8628 §3.2: the interval when the device authorization reply has none.
+	_defaultDeviceInterval = 5 * time.Second
+	_chiefID               = "chief"
 )
 
 //go:embed all:ui
@@ -40,12 +44,22 @@ type api struct {
 	mem  *memory.Store
 	runs *run.Manager
 	log  *slog.Logger
-	http *http.Client // for GitLab sign-in
+	http *http.Client
 
 	providers Providers // serves /api/providers; nil when there is none
 
 	mu      sync.Mutex
-	devices map[string]string // device code of each pending sign-in, by connection id
+	devices map[string]*device
+	signIns map[string]mcpserver.Pending
+}
+
+// device is a pending sign-in. GitHub and GitLab answer slow_down to a poll sooner than interval
+// after the previous one, and to every later poll at the old pace, so the server keeps the pace
+// for all its callers.
+type device struct {
+	code     string
+	interval time.Duration
+	next     time.Time
 }
 
 // New returns the handler for the API, the MCP tools and the UI. providers, when not nil, serves
@@ -56,7 +70,8 @@ func New(
 	a := &api{
 		st: st, mem: mem, runs: runs, log: log, providers: providers,
 		http:    &http.Client{Timeout: _signInTimeout},
-		devices: map[string]string{},
+		devices: map[string]*device{},
+		signIns: map[string]mcpserver.Pending{},
 	}
 	mux := http.NewServeMux()
 	if providers != nil {
@@ -74,6 +89,8 @@ func New(
 	mux.HandleFunc("GET /api/connections", a.listConnections)
 	mux.HandleFunc("POST /api/connections/gitlab/start", a.startGitLab)
 	mux.HandleFunc("POST /api/connections/gitlab", a.startGitLab)
+	mux.HandleFunc("POST /api/connections/github/start", a.startGitHub)
+	mux.HandleFunc("POST /api/connections/github", a.startGitHub)
 	mux.HandleFunc("POST /api/connections/{id}/poll", a.pollConnection)
 	mux.HandleFunc("GET /api/connections/{id}", a.getConnection)
 	mux.HandleFunc("POST /api/bots", a.createBot)
@@ -88,6 +105,14 @@ func New(
 	mux.HandleFunc("GET /api/skills/{id}", a.getSkill)
 	mux.HandleFunc("PUT /api/skills/{id}", a.putSkill)
 	mux.HandleFunc("POST /api/skills/{id}/reimport", a.reimportSkill)
+	mux.HandleFunc("GET /api/mcp-servers", a.listMCPServers)
+	mux.HandleFunc("POST /api/mcp-servers", a.createMCPServer)
+	mux.HandleFunc("PUT /api/mcp-servers/{id}", a.putMCPServer)
+	mux.HandleFunc("DELETE /api/mcp-servers/{id}", a.deleteMCPServer)
+	mux.HandleFunc("POST /api/mcp-servers/{id}/connect", a.connectMCPServer)
+	mux.HandleFunc("GET /api/mcp-servers/{id}/setup", a.mcpServerSetup)
+	mux.HandleFunc("POST /api/mcp-servers/{id}/setup", a.saveMCPServerSetup)
+	mux.HandleFunc("GET /oauth/callback", a.oauthCallback)
 	mux.HandleFunc("POST /api/platform/changes/{id}/undo", a.undoChange)
 	mux.HandleFunc("GET /api/threads/{id}/changes", a.listChanges)
 	mux.HandleFunc("POST /api/bots/{id}/threads", a.createThread)
@@ -152,7 +177,7 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "name is required and provider must be claude or codex")
 		return
 	}
-	msg, err := a.unknownRepos(r.Context(), b.RepoAccess)
+	msg, err := a.unknownPicks(r.Context(), b)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -474,7 +499,7 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, store.ErrNotFound), errors.Is(err, run.ErrNotFound),
 		errors.Is(err, memory.ErrNotFound):
 		fail(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, memory.ErrInvalid):
+	case errors.Is(err, memory.ErrInvalid), errors.Is(err, mcpserver.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed),
 		errors.Is(err, store.ErrExists), errors.Is(err, store.ErrUndone),

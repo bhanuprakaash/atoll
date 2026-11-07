@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 )
 
 // Atoll's own MCP server, as every provider's config names it, and its tools.
 const (
-	MCPServer = "atoll"
+	MCPServer       = "atoll"
+	GitHubMCPServer = "github"
 	// ToolFinishRun takes the run's report: {done, tried, blocked, next}.
 	ToolFinishRun = "finish_run"
 	// ToolApprove is Claude's permission prompt tool: it answers once the user does.
@@ -39,6 +41,7 @@ const (
 	ToolListConnections  = "list_connections"
 	ToolListRepos        = "list_repos"
 	ToolListModels       = "list_models"
+	ToolListMCPServers   = "list_mcp_servers"
 )
 
 // ErrSignedOut is the error of a run that failed because the provider refused its sign-in.
@@ -73,8 +76,22 @@ type Config struct {
 	// MCPURL is Atoll's MCP server for this run. Empty runs without it, and without approvals:
 	// nobody is there to answer them.
 	MCPURL string
+	// Empty GitHubMCPURL runs without GitHub's MCP server.
+	GitHubMCPURL string
+	GitHubToken  string
 	// SkillDir is the absolute root of this run's skill copies. Empty runs without them.
-	SkillDir string
+	SkillDir   string
+	MCPServers []UserMCPServer
+}
+
+// UserMCPServer is local with Command, Args and Env, or remote with URL and Headers.
+type UserMCPServer struct {
+	Name    string
+	Command string
+	Args    []string
+	Env     map[string]string
+	URL     string
+	Headers map[string]string
 }
 
 // Kind says what an Event carries.
@@ -102,16 +119,23 @@ type Event struct {
 }
 
 // Env returns the parent environment without the variables that carry a provider's credentials or
-// session state (ANTHROPIC_*, CLAUDE*, OPENAI_*, CODEX_*) or the user's own GitLab token
-// (GITLAB_TOKEN, GITLAB_ACCESS_TOKEN: glab would prefer it to a Bot's OAUTH_TOKEN), followed by kv.
+// session state (ANTHROPIC_*, CLAUDE*, OPENAI_*, CODEX_*) or the user's own GitLab and GitHub
+// tokens (GITLAB_TOKEN, GITLAB_ACCESS_TOKEN, GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN,
+// GITHUB_ENTERPRISE_TOKEN: the CLIs would prefer them to a Bot's own login), the settings that
+// carry a login (OAUTH_TOKEN, GITLAB_HOST, GIT_CONFIG_PARAMETERS, SSH_AUTH_SOCK), followed by kv.
 func Env(kv ...string) []string {
 	var env []string
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "ANTHROPIC_") && !strings.HasPrefix(e, "CLAUDE") &&
 			!strings.HasPrefix(e, "OPENAI_") && !strings.HasPrefix(e, "CODEX_") &&
-			!strings.HasPrefix(e, "GITLAB_TOKEN=") && !strings.HasPrefix(e, "GITLAB_ACCESS_TOKEN=") {
+			!slices.ContainsFunc(_loginTokens, func(name string) bool { return strings.HasPrefix(e, name+"=") }) {
 			env = append(env, e)
 		}
 	}
 	return append(env, kv...)
+}
+
+var _loginTokens = []string{
+	"GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+	"OAUTH_TOKEN", "GITLAB_HOST", "GIT_CONFIG_PARAMETERS", "SSH_AUTH_SOCK",
 }

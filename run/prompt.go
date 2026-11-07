@@ -51,7 +51,7 @@ Reef guide
 - A Bot has a persona, model, skills, connections, repo access, look, platform switch. A thread is a chat; each message is a run.
 - Repos are registered once. A thread works in one repo, in its own worktree.
 - Providers are Claude Code and Codex, signed in from Settings > Providers.
-- A connection is a signed-in service (GitLab) whose token Reef holds and gives a Bot's CLI or MCP server. MCP is how tools reach a Bot: Reef serves its own tools (memory, finish_run, platform) over MCP. Bots never see the provider's own MCP servers. Importing MCP servers is not supported.
+- A connection is a signed-in service (GitLab, GitHub) whose token Reef holds and gives a Bot's CLI or MCP. MCP is how tools reach a Bot: Reef serves its own tools (memory, finish_run, platform) over MCP. Bots get only the MCP servers picked for them. Importing MCP servers is not supported.
 - A skill is a folder (SKILL.md plus text files) in one library, picked per Bot.
 - Memory: decisions and findings Bots save, per user, repo or Bot.
 - Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
@@ -93,6 +93,9 @@ func systemPrompt(bot store.Bot, user string) string {
 const _repoWork = "Before your first edit, call start_work and work in the path it returns. " +
 	"After you open the MR, call track_mr with its URL."
 
+const _repoWorkGitHub = "Before your first edit, call start_work and work in the path it returns. " +
+	"Open the pull request with gh pr create, then call track_mr with its URL."
+
 func cut(s string, limit int) string {
 	if len(s) <= limit {
 		return s
@@ -131,8 +134,12 @@ func messagePrompt(
 			if branch == "" {
 				branch = "detached"
 			}
+			work := _repoWork
+			if repo.Host == _hostGitHub {
+				work = _repoWorkGitHub
+			}
 			blocks = append(blocks, fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s\n%s",
-				repo.Name, repo.ID, path, branch, _repoWork))
+				repo.Name, repo.ID, path, branch, work))
 		}
 	}
 	blocks = append(blocks, "Message:\n"+text)

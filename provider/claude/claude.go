@@ -297,9 +297,19 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 		args = append(args, "--append-system-prompt", cfg.SystemPrompt)
 	}
 	if cfg.MCPURL != "" {
-		servers, err := json.Marshal(map[string]any{"mcpServers": map[string]any{
-			provider.MCPServer: map[string]string{"type": "http", "url": cfg.MCPURL},
-		}})
+		mcpServers := map[string]any{
+			provider.MCPServer: map[string]any{"type": "http", "url": cfg.MCPURL},
+		}
+		if cfg.GitHubMCPURL != "" {
+			mcpServers[provider.GitHubMCPServer] = map[string]any{
+				"type": "http", "url": cfg.GitHubMCPURL,
+				"headers": map[string]string{"Authorization": "Bearer " + cfg.GitHubToken},
+			}
+		}
+		for _, m := range cfg.MCPServers {
+			mcpServers[m.Name] = userServer(m)
+		}
+		servers, err := json.Marshal(map[string]any{"mcpServers": mcpServers})
 		if err != nil {
 			return nil, err
 		}
@@ -314,6 +324,23 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 		args = append(args, "--add-dir", cfg.SkillDir)
 	}
 	return append(args, extra...), nil
+}
+
+func userServer(m provider.UserMCPServer) map[string]any {
+	e := map[string]any{"type": "http", "url": m.URL}
+	if m.Command != "" {
+		e = map[string]any{"type": "stdio", "command": m.Command}
+	}
+	if len(m.Args) > 0 {
+		e["args"] = m.Args
+	}
+	if len(m.Env) > 0 {
+		e["env"] = m.Env
+	}
+	if len(m.Headers) > 0 {
+		e["headers"] = m.Headers
+	}
+	return e
 }
 
 func (s *Session) read(stdout io.Reader) {

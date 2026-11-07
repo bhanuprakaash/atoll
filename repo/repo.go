@@ -205,6 +205,15 @@ func IsRepo(ctx context.Context, path string) bool {
 	return err == nil && got == want
 }
 
+// Origin is empty when the repo has no origin remote.
+func Origin(ctx context.Context, path string) string {
+	url, err := git(ctx, path, nil, "remote", "get-url", "origin")
+	if err != nil {
+		return ""
+	}
+	return url
+}
+
 // HasCommit reports whether the repo at path has a commit to branch from.
 func HasCommit(ctx context.Context, path string) bool {
 	_, err := git(ctx, path, nil, "rev-parse", "--verify", "--quiet", "HEAD")

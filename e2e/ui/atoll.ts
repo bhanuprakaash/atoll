@@ -10,14 +10,14 @@ import { expect, type Locator, type Page } from '@playwright/test';
 
 export const e2e = resolve(import.meta.dirname, '..');
 
-type Fake = 'claude' | 'codex' | 'glab';
+type Fake = 'claude' | 'codex' | 'glab' | 'gh';
 
 // build compiles atoll and the fakes into a fresh folder and returns it.
 export function build(): string {
   const out = mkdtempSync(join(tmpdir(), 'atoll-ui-build-'));
   const go = (...args: string[]) => execFileSync('go', args, { cwd: e2e, stdio: 'inherit' });
   go('build', '-o', join(out, 'atoll'), 'atoll/cmd/atoll');
-  for (const fake of ['claude', 'codex', 'glab']) {
+  for (const fake of ['claude', 'codex', 'glab', 'gh', 'mcpstdio']) {
     go(
       'build',
       '-o',
@@ -69,6 +69,13 @@ export async function startAtoll(opts: Options = {}): Promise<Machine> {
   const dir = mkdtempSync(join(tmpdir(), 'atoll-ui-'));
   const [home, data, bin] = ['home', 'data', 'bin'].map((d) => join(dir, d));
   for (const d of [home, data, bin]) mkdirSync(d, { recursive: true });
+  if (process.platform === 'darwin') {
+    // atoll's secrets go to the keychains under $HOME; without one there macOS asks the user.
+    const security = (...args: string[]) =>
+      execFileSync('/usr/bin/security', args, { env: { HOME: home } });
+    security('create-keychain', '-p', 'atoll-e2e', 'login.keychain');
+    security('set-keychain-settings', join(home, 'Library', 'Keychains', 'login.keychain-db'));
+  }
   for (const fake of fakes) copyFileSync(join(out, fake), join(bin, fake));
   for (const p of signedIn) {
     mkdirSync(join(data, 'providers', p), { recursive: true });

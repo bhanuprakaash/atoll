@@ -3,6 +3,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,10 +27,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	args := strings.Join(os.Args[1:], " ")
+	if args == "auth status" {
+		return authStatus()
+	}
 	if err := checkOAuthConfig(os.Getenv("GLAB_CONFIG_DIR")); err != nil {
 		return err
 	}
-	args := strings.Join(os.Args[1:], " ")
 	switch {
 	case strings.HasPrefix(args, "mr create"):
 		fmt.Println(fake.MRURL)
@@ -73,4 +77,33 @@ func checkOAuthConfig(dir string) error {
 		return fmt.Errorf("could not parse \"\" as an expiry date")
 	}
 	return nil
+}
+
+// authStatus looks for a login where real glab does: a token in the env, else a token in
+// config.yml of $GLAB_CONFIG_DIR, else $XDG_CONFIG_HOME/glab-cli, else ~/.config/glab-cli.
+func authStatus() error {
+	for _, key := range []string{"GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "OAUTH_TOKEN"} {
+		if os.Getenv(key) != "" {
+			fmt.Println("gitlab.com\n  Logged in to gitlab.com as fake-user (" + key + ")")
+			return nil
+		}
+	}
+	dir := os.Getenv("GLAB_CONFIG_DIR")
+	if dir == "" {
+		if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+			dir = filepath.Join(xdg, "glab-cli")
+		} else {
+			home, _ := os.UserHomeDir()
+			dir = filepath.Join(home, ".config", "glab-cli")
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "config.yml")); err == nil {
+		for line := range strings.Lines(string(b)) {
+			if key, value, _ := strings.Cut(strings.TrimSpace(line), ":"); key == "token" && strings.Trim(strings.TrimSpace(value), `"'`) != "" {
+				fmt.Println("gitlab.com\n  Logged in to gitlab.com as fake-user (" + filepath.Join(dir, "config.yml") + ")")
+				return nil
+			}
+		}
+	}
+	return errors.New("no token found for gitlab.com: run glab auth login")
 }

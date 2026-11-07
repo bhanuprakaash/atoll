@@ -32,7 +32,7 @@ export function BotPreview({
   model: string;
   look: CreatureLook;
   skills: Named[];
-  connections: { id: string; instance_url: string }[];
+  connections: { id: string; kind: 'gitlab' | 'github'; instance_url: string }[];
   repos: Named[] | 'all';
 }) {
   const chip =
@@ -107,7 +107,7 @@ export function BotPreview({
             ? [
                 ...connections.slice(0, shown).map((connection) => (
                   <span key={connection.id} className={`${chip} min-w-0`}>
-                    <BrandLogo brand="gitlab" className="size-3.5 flex-none" />
+                    <BrandLogo brand={connection.kind} className="size-3.5 flex-none" />
                     <span className="truncate">
                       {connection.instance_url.replace(/^https?:\/\//, '')}
                     </span>
