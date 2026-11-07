@@ -593,28 +593,37 @@ func (m *Manager) check(t store.Thread) error {
 	if t, err = m.cfg.Store.Thread(m.ctx, t.ID); err != nil || t.Worktree == "" {
 		return err
 	}
-	if ok, err := m.releaseHelpers(t.ID, rp); !ok || err != nil {
+	if ok, err := m.releaseHelpers(t, rp); !ok || err != nil {
 		return err
 	}
 	return m.release(m.ctx, t, rp, "merged")
 }
 
-func (m *Manager) releaseHelpers(threadID string, rp store.Repo) (bool, error) {
-	helpers, err := m.cfg.Store.HelperThreads(m.ctx, threadID)
+func (m *Manager) releaseHelpers(boss store.Thread, rp store.Repo) (bool, error) {
+	helpers, err := m.cfg.Store.HelperThreads(m.ctx, boss.ID)
 	if err != nil {
 		return false, fmt.Errorf("list helper threads: %w", err)
 	}
+	var slots []*active
+	defer func() {
+		for _, slot := range slots {
+			m.free(slot)
+		}
+	}()
+	var owned []store.Thread
 	for _, h := range helpers {
-		if h.Worktree == "" {
+		if h.Worktree == "" || !strings.HasPrefix(h.Branch, boss.Branch+"--") {
 			continue
 		}
 		slot := m.reserve(h.ID)
 		if slot == nil {
 			return false, nil
 		}
-		err := m.release(m.ctx, h, rp, "merged")
-		m.free(slot)
-		if err != nil {
+		slots = append(slots, slot)
+		owned = append(owned, h)
+	}
+	for _, h := range owned {
+		if err := m.release(m.ctx, h, rp, "merged"); err != nil {
 			return false, err
 		}
 	}
