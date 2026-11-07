@@ -68,6 +68,12 @@ const (
 
 const _promptItems = 8
 
+// Whether stop tells the boss and lets held messages start: a user's stop does, Reef's does not.
+const (
+	_stopByUser = false
+	_stopByReef = true
+)
+
 // Whether stream shows the turn's text as the reply.
 const (
 	_hideText = false
@@ -285,10 +291,9 @@ func (m *Manager) Available(ctx context.Context, name string) bool {
 
 // Stop ends an active run for the user and waits for its provider to exit.
 func (m *Manager) Stop(ctx context.Context, id string) error {
-	return m.stop(ctx, id, false)
+	return m.stop(ctx, id, _stopByUser)
 }
 
-// quiet: Reef stops the run, so the boss is not told and held messages wait.
 func (m *Manager) stop(ctx context.Context, id string, quiet bool) error {
 	ru, err := m.cfg.Store.Run(ctx, id)
 	if err != nil {

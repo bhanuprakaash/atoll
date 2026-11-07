@@ -277,7 +277,7 @@ func (m *Manager) stopQuietly(ctx context.Context, threadID string) (bool, error
 	if !ok {
 		return false, nil
 	}
-	err := m.stop(ctx, runID, true)
+	err := m.stop(ctx, runID, _stopByReef)
 	if errors.Is(err, ErrBusy) {
 		return false, nil
 	}
