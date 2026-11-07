@@ -153,3 +153,5 @@ Approval cards that close and links that leave the app extend these contracts in
 Bot mode (Auto, Ask or Full access, and what each gives Claude and Codex) extends these contracts in [bot-mode-contract.md](bot-mode-contract.md).
 
 The delegate list (who a Bot may hand work to) extends these contracts in [delegates-contract.md](delegates-contract.md).
+
+Delegate and continue (a Bot hands work to a helper thread) extend these contracts in [delegation-contract.md](delegation-contract.md).
