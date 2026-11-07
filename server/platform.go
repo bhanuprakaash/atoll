@@ -27,7 +27,7 @@ import (
 
 var _looks = []string{"jellyfish", "whale", "penguin", "shark", "starfish", "anglerfish", "sand_dollar", "sponge", "kelp", "shell", "wave", "island", "sun", "sailboat"}
 
-var _modes = []string{"auto", "ask", "full"}
+var _modes = []string{provider.ModeAuto, provider.ModeAsk, provider.ModeFull}
 
 func (a *api) createWithLook(ctx context.Context, b store.Bot) (store.Bot, error) {
 	if b.Look == "" {
