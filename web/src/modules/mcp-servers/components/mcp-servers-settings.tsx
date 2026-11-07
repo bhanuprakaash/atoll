@@ -10,6 +10,7 @@ import {
 } from '@/components/settings-ui';
 import { TextArea, TextField } from '@/components/text-field';
 import {
+  useConnectMcpServer,
   useMcpServers,
   useRemoveMcpServer,
   useSaveMcpServer,
@@ -47,15 +48,20 @@ function ServerIcon() {
   );
 }
 
+const withoutSlash = (url: string) => url.trim().replace(/\/$/, '');
+
 function ServerDialog({
   kind,
   server,
+  githubURL,
   onClose,
 }: {
   kind: 'local' | 'remote';
   server?: McpServer;
+  githubURL?: string;
   onClose: () => void;
 }) {
+  const [asking, setAsking] = useState(false);
   const [name, setName] = useState(server?.name ?? '');
   const [command, setCommand] = useState(server?.command ?? '');
   const [args, setArgs] = useState((server?.args ?? []).join('\n'));
@@ -70,14 +76,17 @@ function ServerDialog({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
+  const add = () =>
     save.mutate(
       kind === 'local'
         ? { name, command, args: lines(args), env: pairs(env, '=') }
         : { name, url, headers: pairs(headers, ':') },
       { onSuccess: onClose },
     );
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!server && githubURL && withoutSlash(url) === withoutSlash(githubURL)) setAsking(true);
+    else add();
   };
   const title = server ? `Edit ${server.name}` : kind === 'local' ? 'Add local' : 'Add by URL';
   return (
@@ -173,18 +182,75 @@ function ServerDialog({
               </Field>
             </>
           )}
+          {asking && (
+            <p className="text-sm text-muted">
+              GitHub has a connection. Use it instead, or add this server as well.
+            </p>
+          )}
           {save.isError && <p className="text-sm text-danger">{save.error.message}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" className={outlineButton} onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" disabled={save.isPending} className={solidButton}>
-              {server ? 'Save' : 'Add'}
-            </button>
+            {asking ? (
+              <>
+                <button type="button" className={outlineButton} onClick={add}>
+                  Add anyway
+                </button>
+                <button type="button" className={solidButton} onClick={onClose}>
+                  Use connection
+                </button>
+              </>
+            ) : (
+              <button type="submit" disabled={save.isPending} className={solidButton}>
+                {server ? 'Save' : 'Add'}
+              </button>
+            )}
           </div>
         </form>
       </section>
     </div>
+  );
+}
+
+const statusText = {
+  not_connected: 'Not connected',
+  connected: 'Connected',
+  needs_sign_in: 'Needs sign-in',
+  needs_app: 'This server needs a registered app',
+};
+
+function SignInStatus({ server, allowURL }: { server: McpServer; allowURL?: string }) {
+  return (
+    server.status && (
+      <i className="block text-[12.5px] not-italic text-muted">
+        {statusText[server.status]}
+        {allowURL && server.status !== 'connected' && (
+          <>
+            {' · '}
+            <a href={allowURL} target="_blank" rel="noreferrer" className="underline">
+              Open the Allow page
+            </a>
+          </>
+        )}
+      </i>
+    )
+  );
+}
+
+function SignInButton({ server, onClick }: { server: McpServer; onClick: () => void }) {
+  const label =
+    server.status === 'not_connected'
+      ? 'Connect'
+      : server.status === 'needs_sign_in'
+        ? 'Sign in again'
+        : undefined;
+  return (
+    label && (
+      <button type="button" className={solidButton} onClick={onClick}>
+        {label}
+      </button>
+    )
   );
 }
 
@@ -194,10 +260,25 @@ function runs(s: McpServer) {
 
 export function McpServersSettings() {
   const [dialog, setDialog] = useState<{ kind: 'local' | 'remote'; server?: McpServer }>();
-  const { data: servers = [] } = useMcpServers();
+  const [waiting, setWaiting] = useState<McpServer>();
+  const [allow, setAllow] = useState<{ id: string; url: string }>();
+  const connect = useConnectMcpServer();
   const remove = useRemoveMcpServer();
+  const { data: servers = [] } = useMcpServers(waiting);
+  const signIn = (s: McpServer) => {
+    setWaiting(s);
+    setAllow(undefined);
+    connect.mutate(s.id, {
+      onSuccess: ({ authorize_url }) => {
+        setAllow({ id: s.id, url: authorize_url });
+        window.open(authorize_url, '_blank');
+      },
+      onError: () => setWaiting(undefined),
+    });
+  };
   const catalog = servers.filter((s) => s.kind === 'catalog');
-  const own = servers.filter((s) => s.kind !== 'catalog');
+  const fromConnections = servers.filter((s) => s.kind === 'connection');
+  const own = servers.filter((s) => s.kind === 'local' || s.kind === 'remote');
   return (
     <>
       <SectionHead
@@ -222,10 +303,42 @@ export function McpServersSettings() {
             <Tile>
               <ServerIcon />
             </Tile>
-            <RowText title={s.name} detail={runs(s)} mono />
+            <RowText title={s.name} detail={runs(s)} mono>
+              <SignInStatus server={s} allowURL={allow?.id === s.id ? allow.url : undefined} />
+            </RowText>
+            <SignInButton server={s} onClick={() => signIn(s)} />
+            {(s.status === 'connected' || s.status === 'needs_sign_in') && (
+              <button
+                type="button"
+                className={outlineButton}
+                disabled={remove.isPending}
+                onClick={() => remove.mutate(s.id)}
+              >
+                Sign out
+              </button>
+            )}
           </li>
         ))}
       </ul>
+      {fromConnections.length > 0 && (
+        <>
+          <h3 className="-mb-2 text-xs tracking-wide text-label">From connections</h3>
+          <ul aria-label="From connections" className={listClass}>
+            {fromConnections.map((s) => (
+              <li key={s.id} className={rowClass}>
+                <Tile>
+                  <ServerIcon />
+                </Tile>
+                <RowText title={s.name} detail={runs(s)} mono>
+                  <i className="block text-[12.5px] not-italic text-muted">
+                    from GitHub connection
+                  </i>
+                </RowText>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <h3 className="-mb-2 text-xs tracking-wide text-label">Your servers</h3>
       {own.length > 0 ? (
         <ul aria-label="Your servers" className={listClass}>
@@ -242,7 +355,9 @@ export function McpServersSettings() {
                       {s.kind === 'local' ? 'Env' : 'Headers'}: {names.join(', ')}
                     </i>
                   )}
+                  <SignInStatus server={s} allowURL={allow?.id === s.id ? allow.url : undefined} />
                 </RowText>
+                <SignInButton server={s} onClick={() => signIn(s)} />
                 <button
                   type="button"
                   className={outlineButton}
@@ -267,12 +382,14 @@ export function McpServersSettings() {
       ) : (
         <p className="text-[13.5px] text-muted">No servers of your own yet.</p>
       )}
+      {connect.isError && <p className="text-sm text-danger">{connect.error.message}</p>}
       {remove.isError && <p className="text-sm text-danger">{remove.error.message}</p>}
       {dialog && (
         <ServerDialog
           key={dialog.server?.id ?? dialog.kind}
           kind={dialog.kind}
           server={dialog.server}
+          githubURL={fromConnections[0]?.url}
           onClose={() => setDialog(undefined)}
         />
       )}

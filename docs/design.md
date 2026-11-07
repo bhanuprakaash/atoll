@@ -253,12 +253,24 @@ Undo of a repo registration is refused while a thread uses the repo.
 
 ## MCP servers
 
-- One library, in Settings > MCP servers: a catalog (Context7 now: remote, no sign-in, no secret;
-  always first, not editable) and the user's own servers, listed in the order added. A server is
+- One library, in Settings > MCP servers: a catalog (Context7: remote, no sign-in, no secret; then
+  the hosted servers Notion, Figma and Cloudflare, which need sign-in; always first, not editable)
+  and the user's own servers, listed in the order added. A server is
   local (`command`, `args`, `env`; stdio) or remote (`url`, `headers`; streamable HTTP).
   `GET/POST /api/mcp-servers`, `PUT/DELETE /api/mcp-servers/{id}`; a `PUT` replaces the server.
+- While a GitHub connection exists (`connected` or `needs_sign_in`, not `pending`), the list has one
+  more item after the catalog: `{id: "github", name: "GitHub", kind: "connection", url: <GitHub's MCP
+  URL>}`, shown read-only as "from GitHub connection". It is computed from the connection when the
+  list is read, never stored, and `list_mcp_servers` returns the same list. `PUT` and `DELETE` of it
+  are `400`, and a Bot cannot pick it: it gets `github` through its connection.
+- Add by URL checks the typed URL against GitHub's MCP URL (ignoring spaces and one trailing `/`)
+  while that connection exists. On a match it shows "GitHub has a connection" with Use connection
+  (adds nothing) and Add anyway. The API does not check. A run whose Bot has the GitHub connection
+  drops its picked servers at that URL (same comparison), so the config holds only `github`; the
+  pick stays on the Bot.
 - The name is the key in the provider's config and shows in tool names (`mcp__<name>__<tool>`): it
-  is `[A-Za-z0-9_-]+` with no `__`, unique among the user's servers and the catalog, and never `atoll`.
+  is `[A-Za-z0-9_-]+` with no `__`, unique among the user's servers and the catalog, and never `atoll` or
+  `github` (the keys of Reef's own server and of the GitHub connection's).
 - Env and header values go to the OS secret store (`mcp:<id>:env:<NAME>`, `mcp:<id>:header:<Name>`),
   never the database, a file, a log or an API reply. The database and the API hold names only. A
   `PUT` that leaves `env` or `headers` out keeps every stored secret; when present it is the whole
@@ -266,9 +278,9 @@ Undo of a repo registration is refused while a thread uses the repo.
 - Each Bot picks its servers (`mcp_servers`, library ids; Bot settings shows one switch per server).
   Chief's `create_bot` and `edit_bot` take them, and its read tool `list_mcp_servers` lists the
   library. An unknown id fails with the known ones named. Remove drops the server from every Bot.
-- A run gets Atoll's own server plus exactly its Bot's servers, read from the library when the run
-  starts: Claude through `--mcp-config` (still `--strict-mcp-config`), Codex through `mcp_servers`
-  in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
+- A run gets Atoll's own server, `github` when the Bot has a GitHub connection, and exactly its
+  Bot's servers, read from the library when the run starts: Claude through `--mcp-config` (still
+  `--strict-mcp-config`), Codex through `mcp_servers` in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
   Remove apply from the next run; a live run keeps its config. *A Bot that picks nothing gets none.*
 - A tool call to a user-added server is an approval in the thread, like any other tool. Claude's
   allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex gets
@@ -276,8 +288,53 @@ Undo of a repo registration is refused while a thread uses the repo.
   tools that declare themselves read-only; its `mcpServer/elicitation/request` becomes an approval,
   named by the `mcpToolCall` item it follows, answered `{action: "accept"}` or
   `{action: "decline"}`. Reef's own tools need none.
-- Importing servers from `~/.claude.json` or Codex's config, OAuth sign-in for remote servers and a
-  per-server "always allow" are not built.
+- Importing servers from `~/.claude.json` or Codex's config and a per-server "always allow" are not
+  built.
+
+### MCP sign-in
+
+- A hosted server that needs sign-in connects with one click. `status` on a server is `not_connected`,
+  `connected`, `needs_sign_in` or `needs_app`; it is absent for a server with no sign-in. The status
+  is in the database (`mcp_sign_ins`, by server id, catalog entries too); the tokens never are.
+- Add by URL with no headers sends the URL one MCP `initialize` request. A `401` whose
+  `WWW-Authenticate` has `resource_metadata` means the server needs sign-in: `not_connected`, or
+  `needs_app` when its authorization server has no `registration_endpoint`. Any other answer adds
+  the server with no status. Headers are the user's own sign-in: no request. A `PUT` that changes
+  the URL or the kind deletes the server's tokens and status, so a grant never follows a server to
+  another host; a remote server left with no headers is sent the same request as Add.
+- `POST /api/mcp-servers/{id}/connect` follows the MCP authorization flow: protected-resource
+  metadata from the `401`, the first authorization server's
+  `/.well-known/oauth-authorization-server`, dynamic client registration (public client,
+  `token_endpoint_auth_method: none`), then an authorize URL with PKCE (S256), `state` and
+  `resource` (the server's URL). It answers `{authorize_url}`; the UI calls `window.open` on it once
+  it has it (the Mac app sends a new window's first URL to the default browser, so no blank window
+  first) and also shows it as a link on the row. Reef opens nothing itself. A server with no `registration_endpoint` answers `409`: it needs an app
+  registered by hand.
+- The redirect is fixed: `http://127.0.0.1:<Reef port>/oauth/callback`, a route of Reef's own server
+  (no other listener). The callback accepts a `state` it issued, once, trades the code for tokens,
+  stores them and answers a page; the UI polls the list until the status changes or Connect fails.
+  Before it stores tokens it checks that the server still exists with the same URL, else the page
+  answers `400` and nothing is stored. A pending sign-in older than ten minutes is dropped when a
+  new one starts. *The Allow page must come back to a URL registered at registration; a second
+  listener would add a port to allow.*
+- The client ID, access token, refresh token and expiry are one OS secret store entry,
+  `mcp:<id>:oauth`: never the database, a file, a log or an API reply (the authorize URL names the
+  client and is the one exception). Remove deletes the entry. *Reef owns the tokens; providers never
+  run their own MCP OAuth.* A run gets the server as a remote entry with
+  `Authorization: Bearer <access token>` (Claude `headers`, Codex `http_headers`), and Claude stays
+  `--strict-mcp-config`.
+- `DELETE /api/mcp-servers/{id}` on a catalog server with a sign-in (Notion, Figma, Cloudflare) is
+  Sign out: it deletes the `mcp:<id>:oauth` entry and sets `not_connected`; on Context7 it is `404`.
+  Settings shows Sign out on a catalog row that is `connected` or `needs_sign_in`.
+- Before a run uses a connected server, an access token that expires within ten minutes is
+  refreshed (`grant_type=refresh_token`, same client). A rejected refresh (`invalid_grant`) sets
+  `needs_sign_in`; the run fails before the provider starts with `<name> needs sign-in`. Sign in again
+  is Connect again: the server keeps its id and every Bot's pick. Nothing refreshes without a run.
+  Reads and refreshes of one server's tokens run one at a time (refresh tokens are single-use), and
+  each re-reads the record first, so a run that waited uses the tokens the other saved.
+  A token reply may omit `expires_in` (no known expiry: never refreshed before a run) and
+  `refresh_token` (near expiry the server goes `needs_sign_in` with no refresh attempt; a refresh
+  reply without a new one keeps the old).
 
 ## Memory
 
@@ -526,13 +583,14 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 | Repos | Register, worktree per thread, MR via `glab`, PR via `gh` |
 | Connections | GitLab, GitHub |
 | Skills | Library, picked per Bot |
-| MCP servers | Catalog, local and remote servers, picked per Bot, approvals |
+| MCP servers | Catalog, local and remote servers, one-click sign-in for hosted ones, picked per Bot, approvals |
 | Memory | Three scopes, four tools, saves shown in the thread |
 
 ## Queue
 
 Delegation, the Slack connection, browser pane, background processes pane, the platform
-switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up to
-about 5 items always in the prompt), routines (scheduled, repeating runs), more provider adapters.
+switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up
+to about 5 items always in the prompt), routines (scheduled, repeating runs), more provider
+adapters.
 
 An item moves into the build when its absence hurts in daily use.

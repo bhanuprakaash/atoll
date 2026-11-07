@@ -144,6 +144,65 @@ server's name, with the `Allow` and `Deny` buttons of any other approval.
   and in the `mcpToolCall` item it starts just before; `_meta.tool_title` is the tool's optional
   MCP `title` (Context7: "Resolve Context7 Library ID"), so the fake leaves it out.
 
+## From connections (after #62)
+
+Tests: Go `mcp_github_test.go` (with the fake GitHub of `github_fixtures_test.go`, env
+`ATOLL_GITHUB_URL` and `ATOLL_GITHUB_MCP_URL` as in [github-connection-contract.md](github-connection-contract.md))
+and `ui/mcp-github.spec.ts`. "GitHub's MCP URL" below is `ATOLL_GITHUB_MCP_URL`, default
+`https://api.githubcopilot.com/mcp/`.
+
+A GitHub connection **exists** when `GET /api/connections` lists one of kind `github` with status
+`connected` or `needs_sign_in`. A `pending` one (device flow started, not finished) does not count.
+
+**The row.** While one exists, `GET /api/mcp-servers` and `list_mcp_servers` list one more item,
+after the catalog and before the user's servers:
+
+```json
+{"id": "github", "name": "GitHub", "kind": "connection", "url": "<GitHub's MCP URL>"}
+```
+
+Fields a kind does not use are `""`/`[]` or absent, and `status` is absent, as for a user server. The
+row is not a library server the user owns:
+
+- `PUT /api/mcp-servers/github` and `DELETE /api/mcp-servers/github` are `400` with `error` text
+  while the connection exists, and nothing changes; with no connection `github` is an unknown id
+  (`404`, as for any). The user's own servers never have the id `github` (ids are generated).
+- A Bot cannot pick it: `mcp_servers: ["github"]` is `400` (the error names `github`). A Bot gets the
+  server through its `connections` (see below). Bot settings shows no `switch` named `GitHub` under
+  `MCP servers`.
+- It follows the connection: no row before the sign-in finishes, the row once `connected`, and the
+  row stays while the connection `needs_sign_in`.
+
+**Settings UI.** While the connection exists, the page has a `list` named `From connections`, after
+`Catalog` and before `Your servers`, with one `listitem` containing `GitHub`, the URL and the text
+`from GitHub connection` (its own element), and no button in it. With no connection there is no
+`From connections` list and no such text. The catalog and `Your servers` lists are unchanged (the
+row is in neither).
+
+**"GitHub has a connection".** The API does not dedupe: `POST /api/mcp-servers` with a remote at
+GitHub's MCP URL is `201` as any other. The check is in the `Add by URL` dialog: when `Add` is
+pressed and the typed URL equals GitHub's MCP URL, ignoring surrounding spaces and one trailing `/`,
+while the connection exists, the page sends no request and the dialog stays open showing the text
+`GitHub has a connection` with buttons `Use connection` and `Add anyway`.
+
+- `Use connection` closes the dialog and adds nothing: no `POST /api/mcp-servers`, no new item.
+- `Add anyway` sends the `POST` as typed (name, URL as typed, headers), closes the dialog and shows the
+  new item in `Your servers`.
+- With no connection, or any other URL, `Add` sends the `POST` at once and shows no such text.
+
+**A Bot with both.** A Bot's `connections` holds the GitHub connection (`connected`) and its
+`mcp_servers` picks a user server whose URL equals GitHub's MCP URL (the same comparison as the
+dialog's; the tests use the identical string). Its run's provider config then holds exactly one
+entry for that URL: the connection's `github` (the Bearer token of the connection, as
+[github-connection-contract.md](github-connection-contract.md) says). The user's server is left out
+of the config altogether: no entry for its name and none of its headers sent. Proof: the fake provider's view
+of its config (Claude's `--mcp-config`, Codex's `thread/start` config) names `github` and `atoll`
+only, and the fake GitHub MCP server sees only `Authorization: Bearer <the connection's token>`
+(one `get_me` call from the `github-probe` scenario) and never the user server's header. The pick
+itself is kept: `GET /api/bots/{id}` still lists it. A Bot that picks the same user server **without**
+the GitHub connection gets it as the user made it (its own name, URL and headers, and no `github`
+entry): the dedupe is only against the connection's entry in the same run.
+
 ## Acceptance mapping (#64)
 
 | Acceptance | Tests |
@@ -154,13 +213,16 @@ server's name, with the `Allow` and `Deny` buttons of any other approval.
 | A run with a stdio and an HTTP (header) server gets both, Claude and Codex; the fake calls each; a Bot without them gets neither | Go `TestMCPServers_RunGetsExactlyThePickedServers/{claude,codex}` (config proven by the answers: the env value, the args, the header; no start and no request for the Bot with none) |
 | A call to a user-added server is an approval; Reef's own tools need none | Same test (exactly 3 approvals for 3 calls), `TestMCPServers_DeniedCallDoesNotReachTheServer/{claude,codex}`; UI `Bot settings lists ...` (Allow button) |
 | Edit and Remove apply from the next run; a live run keeps its config | Go `TestMCPServers_EditAndRemoveApplyFromTheNextRun/{claude,codex}`; UI `Edit keeps the secrets it is not given, and Remove drops the server from every Bot` |
+| The GitHub row, read-only "from GitHub connection", only while that connection exists | Go `TestMCPGitHub_RowFollowsTheConnection` (none, pending, connected, needs sign-in; order), `TestMCPGitHub_RowIsReadOnly` (`PUT`, `DELETE`, a pick); UI `without a GitHub connection there is no GitHub row ...`, `with the connection the page lists GitHub read-only, from the connection` |
+| A server at GitHub's MCP URL shows "GitHub has a connection" with Use connection / Add anyway | UI `a server at the GitHub MCP URL shows GitHub has a connection; Use connection adds nothing, Add anyway adds it` (no `POST` for Use connection, one for Add anyway, a trailing slash, another URL); Go `TestMCPGitHub_RowIsReadOnly` (the API still adds it) |
+| A Bot with both gets only the connection's entry | Go `TestMCPGitHub_BotWithBothGetsOnlyTheConnectionsEntry/{claude,codex}` (config, the fake GitHub's requests, a Bot without the connection keeps the user's entry) |
 
 ## Not covered
 
-- After #62 (the GitHub connection): the `From connections` row for GitHub, read-only; a user server
-  whose URL is GitHub's MCP URL showing `GitHub has a connection` with `Use connection` / `Add
-  anyway`; a Bot with both getting only the connection's entry. These two lines are left out of
-  this commit on purpose and go into a later test commit once #62 is on the branch.
+- From connections: a user server named `github` (it would share the key of the connection's
+  entry), a signed-out or deleted GitHub connection (no route for it), a Bot with both whose user
+  server spells the URL with a trailing `/` difference, `list_mcp_servers` showing the row (same JSON
+  as `GET`, not asserted), and the absence of a `GitHub` switch in Bot settings.
 - `docs/design.md` and "the tests land first" (not software-checkable here).
 - A real stdio server, a real remote server, real Claude and real Codex reading the config, and
   Context7 itself (no network). A Bot picking `context7` is tested through the API only.

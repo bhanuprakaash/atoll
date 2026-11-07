@@ -59,8 +59,8 @@ func TestMCPServers_LibraryKeepsSecretsInTheOSStore(t *testing.T) {
 	if f.local.ID == "" || f.remote.ID == "" || f.local.ID == f.remote.ID || f.local.ID == "context7" {
 		t.Fatalf("ids %q and %q, want two distinct ids of Atoll's own", f.local.ID, f.remote.ID)
 	}
-	if want := []mcpServer{norm(_context7), wantLocal, wantRemote}; !reflect.DeepEqual(normAll(list), want) {
-		t.Fatalf("GET /api/mcp-servers:\n%+v\nwant the catalog entry, then the user's servers in the order added:\n%+v", list, want)
+	if want := slices.Concat([]mcpServer{norm(_context7)}, normAll(_hostedCatalog), []mcpServer{wantLocal, wantRemote}); !reflect.DeepEqual(normAll(list), want) {
+		t.Fatalf("GET /api/mcp-servers:\n%+v\nwant the catalog entries, then the user's servers in the order added:\n%+v", list, want)
 	}
 	if !reflect.DeepEqual(norm(f.local), wantLocal) || !reflect.DeepEqual(norm(f.remote), wantRemote) {
 		t.Fatalf("POST replies %+v and %+v, want the server as listed", f.local, f.remote)
@@ -277,8 +277,8 @@ func TestMCPServers_Refusals(t *testing.T) {
 
 	var list []mcpServer
 	f.s.do(t, "GET", "/api/mcp-servers", nil, &list, http.StatusOK)
-	if len(list) != 3 {
-		t.Fatalf("GET /api/mcp-servers lists %d servers after refused requests, want the catalog entry and the 2 added", len(list))
+	if len(list) != 6 {
+		t.Fatalf("GET /api/mcp-servers lists %d servers after refused requests, want the 4 catalog entries and the 2 added", len(list))
 	}
 	for _, id := range []string{"context7", "mcp_nowhere"} {
 		f.s.do(t, "PUT", "/api/mcp-servers/"+id, map[string]any{"name": "x", "command": "/bin/true"}, nil, http.StatusNotFound)

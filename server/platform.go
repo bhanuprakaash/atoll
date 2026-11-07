@@ -18,7 +18,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"atoll/mcpserver"
 	"atoll/provider"
 	"atoll/repo"
 	"atoll/run"
@@ -397,7 +396,7 @@ func (a *api) readCall(ctx context.Context, name string) (any, *rpcError) {
 	case provider.ToolListModels:
 		v = a.signedInProviders(ctx)
 	case provider.ToolListMCPServers:
-		v, err = mcpserver.List(ctx, a.st)
+		v, err = a.mcpLibrary(ctx)
 	}
 	if err != nil {
 		return nil, a.toolError(err)

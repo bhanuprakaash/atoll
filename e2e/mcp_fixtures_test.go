@@ -37,6 +37,7 @@ type mcpServer struct {
 	URL         string   `json:"url"`
 	EnvNames    []string `json:"env_names"`
 	HeaderNames []string `json:"header_names"`
+	Status      string   `json:"status"`
 }
 
 type mcpBot struct {

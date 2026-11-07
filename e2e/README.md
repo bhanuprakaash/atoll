@@ -145,3 +145,5 @@ GitHub connection (gh, git and GitHub's MCP server from one sign-in) extends the
 MCP servers (a library, a pick per Bot, secrets in the OS store) extend these contracts in [mcp-servers-contract.md](mcp-servers-contract.md).
 
 GitHub repos (a repo on GitHub: push and open a pull request with `gh`) extends these contracts in [github-repos-contract.md](github-repos-contract.md).
+
+MCP sign-in for hosted servers (Connect, tokens in the OS secret store, refresh) extends these contracts in [mcp-oauth-contract.md](mcp-oauth-contract.md).

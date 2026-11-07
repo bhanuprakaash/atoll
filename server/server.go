@@ -30,6 +30,7 @@ const MCPPath = "/mcp/"
 const (
 	_pingEvery     = 15 * time.Second
 	_signInTimeout = 30 * time.Second
+	_signInExpiry  = 10 * time.Minute
 	// RFC 8628 §3.2: the interval when the device authorization reply has none.
 	_defaultDeviceInterval = 5 * time.Second
 	_chiefID               = "chief"
@@ -48,7 +49,8 @@ type api struct {
 	providers Providers // serves /api/providers; nil when there is none
 
 	mu      sync.Mutex
-	devices map[string]*device // each pending sign-in, by connection id
+	devices map[string]*device
+	signIns map[string]mcpserver.Pending
 }
 
 // device is a pending sign-in. GitHub and GitLab answer slow_down to a poll sooner than interval
@@ -69,6 +71,7 @@ func New(
 		st: st, mem: mem, runs: runs, log: log, providers: providers,
 		http:    &http.Client{Timeout: _signInTimeout},
 		devices: map[string]*device{},
+		signIns: map[string]mcpserver.Pending{},
 	}
 	mux := http.NewServeMux()
 	if providers != nil {
@@ -106,6 +109,8 @@ func New(
 	mux.HandleFunc("POST /api/mcp-servers", a.createMCPServer)
 	mux.HandleFunc("PUT /api/mcp-servers/{id}", a.putMCPServer)
 	mux.HandleFunc("DELETE /api/mcp-servers/{id}", a.deleteMCPServer)
+	mux.HandleFunc("POST /api/mcp-servers/{id}/connect", a.connectMCPServer)
+	mux.HandleFunc("GET /oauth/callback", a.oauthCallback)
 	mux.HandleFunc("POST /api/platform/changes/{id}/undo", a.undoChange)
 	mux.HandleFunc("GET /api/threads/{id}/changes", a.listChanges)
 	mux.HandleFunc("POST /api/bots/{id}/threads", a.createThread)

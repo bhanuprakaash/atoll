@@ -558,6 +558,9 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	}
 	if githubToken != "" {
 		cfg.GitHubMCPURL, cfg.GitHubToken = connection.GitHubMCPURL(), githubToken
+		cfg.MCPServers = slices.DeleteFunc(cfg.MCPServers, func(s provider.UserMCPServer) bool {
+			return strings.TrimSuffix(s.URL, "/") == strings.TrimSuffix(cfg.GitHubMCPURL, "/")
+		})
 	}
 	cfg.MCPURL = m.cfg.MCPURL + a.token
 	if thread.Session != "" {
