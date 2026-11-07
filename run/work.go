@@ -137,8 +137,9 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 		thread, threadErr := m.cfg.Store.Thread(ctx, a.threadID)
 		if threadErr == nil && thread.RepoID != "" {
 			if rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID); repoErr == nil {
-				env, _ := m.gitlabEnv(ctx, a.bot)
-				_, title, _ = m.mrState(rp.Path, url, env)
+				if env, envErr := m.runEnv(ctx, a.bot); envErr == nil {
+					_, title, _ = m.mrState(rp.Path, url, env)
+				}
 			}
 		}
 	}
@@ -282,10 +283,30 @@ func (m *Manager) threadDir(threadID string) string {
 	return filepath.Join(m.cfg.DataDir, "threads", threadID)
 }
 
-// gitlabEnv is the environment that lets git and glab act as the Bot's first connected GitLab
-// connection: the token as OAUTH_TOKEN with a glab config marking the host OAuth, and a git
-// credential helper that passes it. It is empty when the
-// Bot has none. The token goes only into the environment.
+// runEnv empties the glab and gh config folders and the git credential helper list, so neither CLI
+// finds the user's own login, and gives git's ssh no key, agent or config; each connection then
+// adds a helper scoped to its URL.
+func (m *Manager) runEnv(ctx context.Context, b store.Bot) ([]string, error) {
+	env := []string{
+		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
+		"GIT_SSH_COMMAND=ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityFile=/dev/null -o IdentityAgent=none",
+	}
+	for _, cli := range []struct{ name, file string }{{"glab", "config.yml"}, {"gh", "hosts.yml"}} {
+		dir := filepath.Join(m.cfg.DataDir, "empty", cli.name)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, fmt.Errorf("create empty %s config folder: %w", cli.name, err)
+		}
+		if err := writeFileAtomic(filepath.Join(dir, cli.file), nil); err != nil {
+			return nil, fmt.Errorf("write empty %s config: %w", cli.name, err)
+		}
+		env = append(env, strings.ToUpper(cli.name)+"_CONFIG_DIR="+dir)
+	}
+	conn, err := m.gitlabEnv(ctx, b)
+	return append(env, conn...), err
+}
+
+// gitlabEnv makes glab act as the Bot's first GitLab connection. The token goes only into the
+// environment.
 func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, error) {
 	for _, id := range b.Connections {
 		c, err := m.cfg.Store.Connection(ctx, id)
@@ -312,16 +333,25 @@ func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, error) 
 		if err != nil {
 			return nil, err
 		}
+		u, err := url.Parse(c.InstanceURL)
+		if err != nil {
+			return nil, fmt.Errorf("instance URL %q: %w", c.InstanceURL, err)
+		}
+		rewrite := "url." + strings.TrimRight(c.InstanceURL, "/") + "/.insteadOf"
 		return []string{
 			"OAUTH_TOKEN=" + token,
 			"GLAB_CONFIG_DIR=" + dir,
 			"GITLAB_HOST=" + c.InstanceURL,
-			"GIT_CONFIG_COUNT=2",
+			"GIT_CONFIG_COUNT=4",
 			"GIT_CONFIG_KEY_0=credential.helper",
 			"GIT_CONFIG_VALUE_0=",
 			"GIT_CONFIG_KEY_1=credential." + c.InstanceURL + ".helper",
 			`GIT_CONFIG_VALUE_1=!f() { test "$1" = get && echo username=oauth2 && ` +
 				`echo "password=$OAUTH_TOKEN"; }; f`,
+			"GIT_CONFIG_KEY_2=" + rewrite,
+			"GIT_CONFIG_VALUE_2=git@" + u.Hostname() + ":",
+			"GIT_CONFIG_KEY_3=" + rewrite,
+			"GIT_CONFIG_VALUE_3=ssh://git@" + u.Hostname() + "/",
 		}, nil
 	}
 	return nil, nil
@@ -341,7 +371,7 @@ func (m *Manager) glabConfig(id, instance string) (string, error) {
 	}
 	body := fmt.Sprintf("hosts:\n  %s:\n    is_oauth2: \"true\"\n    oauth2_expiry_date: %q\n    api_protocol: %s\n    git_protocol: %s\n",
 		u.Host, time.Now().UTC().Add(24*time.Hour).Format(time.RFC3339), u.Scheme, u.Scheme)
-	if err := os.WriteFile(filepath.Join(dir, "config.yml"), []byte(body), 0o600); err != nil {
+	if err := writeFileAtomic(filepath.Join(dir, "config.yml"), []byte(body)); err != nil {
 		return "", fmt.Errorf("write glab config: %w", err)
 	}
 	return dir, nil
@@ -390,7 +420,7 @@ func (m *Manager) check(t store.Thread) error {
 	if err != nil {
 		return err
 	}
-	env, err := m.gitlabEnv(m.ctx, bot)
+	env, err := m.runEnv(m.ctx, bot)
 	if err != nil {
 		return err
 	}
@@ -446,4 +476,22 @@ func (m *Manager) mrState(dir, url string, env []string) (string, string, error)
 		return "", "", fmt.Errorf("glab mr view: no state in %q", out)
 	}
 	return mr.State, mr.Title, nil
+}
+
+// writeFileAtomic replaces path in one rename, so a CLI reading the file never sees it half
+// written.
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	_, err = tmp.Write(data)
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
