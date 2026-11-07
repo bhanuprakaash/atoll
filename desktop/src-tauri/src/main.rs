@@ -66,8 +66,10 @@ fn main() {
                 {
                     return true;
                 }
-                if let Err(err) = Command::new("open").arg(url.as_str()).spawn() {
-                    eprintln!("open {url}: {err}");
+                if matches!(url.scheme(), "http" | "https" | "mailto") {
+                    if let Err(err) = Command::new("open").arg(url.as_str()).spawn() {
+                        eprintln!("open {url}: {err}");
+                    }
                 }
                 false
             })
