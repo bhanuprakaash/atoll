@@ -143,8 +143,11 @@ func githubPost(ctx context.Context, c *http.Client, path string, form url.Value
 		Error string `json:"error"`
 	}
 	if json.Unmarshal(raw, &failure) == nil && failure.Error != "" {
-		if failure.Error == "authorization_pending" || failure.Error == "slow_down" {
+		switch failure.Error {
+		case "authorization_pending":
 			return ErrPending
+		case "slow_down":
+			return ErrSlowDown
 		}
 		return fmt.Errorf("OAuth error: %s", failure.Error)
 	}
