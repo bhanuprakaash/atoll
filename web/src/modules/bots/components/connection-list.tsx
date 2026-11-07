@@ -6,6 +6,7 @@ import { ChoiceList } from '@/modules/bots/components/choice-list';
 
 type Connection = {
   id: string;
+  kind: 'gitlab' | 'github';
   instance_url: string;
   status: 'pending' | 'connected' | 'needs_sign_in';
 };
@@ -50,8 +51,8 @@ export function ConnectionList({
         singular="connection"
         choices={connections.map((c) => ({
           id: c.id,
-          name: `GitLab · ${c.instance_url.replace(/^https?:\/\//, '')}`,
-          brand: 'gitlab' as const,
+          name: `${c.kind === 'github' ? 'GitHub' : 'GitLab'} · ${c.instance_url.replace(/^https?:\/\//, '')}`,
+          brand: c.kind,
         }))}
         selected={selected}
         onChange={onChange}
@@ -65,7 +66,7 @@ export function ConnectionList({
         }
       />
       {connections
-        .filter((c) => selected.includes(c.id) && c.status !== 'connected')
+        .filter((c) => c.kind === 'gitlab' && selected.includes(c.id) && c.status !== 'connected')
         .map((c) => (
           <button
             key={c.id}

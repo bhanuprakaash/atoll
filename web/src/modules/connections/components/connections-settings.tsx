@@ -17,7 +17,9 @@ import {
   pollConnection,
   useConnections,
   useSignInAgain,
+  useStartGithub,
   useStartGitlab,
+  type Connection,
   type DeviceFlow,
 } from '@/modules/connections/api/connections';
 
@@ -28,11 +30,17 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
   const [instance, setInstance] = useState('https://gitlab.com');
   const [adding, setAdding] = useState(false);
   const [flow, setFlow] = useState<DeviceFlow | null>(null);
-  const [pollError, setPollError] = useState('');
+  const [pollFailure, setPollFailure] = useState<{ id: string; message: string } | null>(null);
   const { data: connections = [] } = useConnections();
   const start = useStartGitlab();
+  const startGithub = useStartGithub();
   const signInAgain = useSignInAgain();
-  const showForm = adding || !!flow || connections.length === 0;
+  const gitlab = connections.filter((c) => c.kind === 'gitlab');
+  const github = connections.find((c) => c.kind === 'github');
+  const githubUsers = bots.filter((b) => github && b.connections?.includes(github.id));
+  const githubError = github && pollFailure?.id === github.id ? pollFailure.message : '';
+  const gitlabError = pollFailure && pollFailure.id !== github?.id ? pollFailure.message : '';
+  const showForm = adding || !!flow || gitlab.length === 0;
 
   useEffect(() => {
     if (!flow) return;
@@ -46,7 +54,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
         },
         (err: Error) => {
           setFlow(null);
-          setPollError(err.message);
+          setPollFailure({ id: flow.id, message: err.message });
         },
       );
     }, flow.interval_ms);
@@ -55,7 +63,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    setPollError('');
+    setPollFailure(null);
     start.mutate(instance, {
       onSuccess: (started) => {
         setFlow(started);
@@ -64,11 +72,41 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
     });
   };
 
+  const statusTag = (c: Connection) => (
+    <Tag tone={c.status === 'connected' ? 'ok' : 'warn'}>
+      {c.status === 'connected'
+        ? 'Connected'
+        : c.status === 'needs_sign_in'
+          ? 'Needs sign-in'
+          : 'Pending'}
+    </Tag>
+  );
+
+  const signInAgainButton = (c: Connection) =>
+    (c.status === 'needs_sign_in' || (c.kind === 'github' && c.status === 'pending' && !flow)) && (
+      <button
+        type="button"
+        disabled={signInAgain.isPending || !!flow}
+        onClick={() => {
+          setPollFailure(null);
+          signInAgain.mutate(c, {
+            onSuccess: (started) => {
+              setFlow(started);
+              void queryClient.invalidateQueries({ queryKey: ['connections'] });
+            },
+          });
+        }}
+        className={solidButton}
+      >
+        Sign in again
+      </button>
+    );
+
   return (
     <>
       <SectionHead title="Connections" lead="Sign in once. Each Bot picks which ones it gets." />
       <Box>
-        {connections.map((c) => {
+        {gitlab.map((c) => {
           const users = bots.filter((b) => b.connections?.includes(c.id));
           return (
             <div key={c.id} className={rowClass}>
@@ -77,35 +115,12 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
               </Tile>
               <RowText title="GitLab" detail={c.instance_url.replace(/^https?:\/\//, '')} />
               {users.length > 0 && <UsedBy bots={users} />}
-              <Tag tone={c.status === 'connected' ? 'ok' : 'warn'}>
-                {c.status === 'connected'
-                  ? 'Connected'
-                  : c.status === 'needs_sign_in'
-                    ? 'Needs sign-in'
-                    : 'Pending'}
-              </Tag>
-              {c.status === 'needs_sign_in' && (
-                <button
-                  type="button"
-                  disabled={signInAgain.isPending || !!flow}
-                  onClick={() => {
-                    setPollError('');
-                    signInAgain.mutate(c.id, {
-                      onSuccess: (started) => {
-                        setFlow(started);
-                        void queryClient.invalidateQueries({ queryKey: ['connections'] });
-                      },
-                    });
-                  }}
-                  className={solidButton}
-                >
-                  Sign in again
-                </button>
-              )}
+              {statusTag(c)}
+              {signInAgainButton(c)}
             </div>
           );
         })}
-        {connections.length === 0 && (
+        {gitlab.length === 0 && (
           <div className={rowClass}>
             <Tile className="bg-gitlab-bg">
               <BrandLogo brand="gitlab" className="size-[22px]" />
@@ -114,12 +129,33 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
             <Tag tone="warn">Not connected</Tag>
           </div>
         )}
-        <div className={`${rowClass} text-muted`}>
+        <div className={rowClass}>
           <Tile className="bg-line">
             <BrandLogo brand="github" className="size-5" />
           </Tile>
-          <RowText title="GitHub" detail="Coming later" />
-          <Tag>Later</Tag>
+          <RowText title="GitHub" detail="Bots get gh, git and GitHub tools." />
+          {githubUsers.length > 0 && <UsedBy bots={githubUsers} />}
+          {github ? statusTag(github) : <Tag tone="warn">Not connected</Tag>}
+          {github && signInAgainButton(github)}
+          {!github && (
+            <button
+              type="button"
+              disabled={startGithub.isPending || !!flow}
+              onClick={() => {
+                setPollFailure(null);
+                startGithub.mutate(undefined, {
+                  onSuccess: (started) => {
+                    window.open(started.verification_uri, '_blank');
+                    setFlow(started);
+                    void queryClient.invalidateQueries({ queryKey: ['connections'] });
+                  },
+                });
+              }}
+              className={solidButton}
+            >
+              Connect GitHub
+            </button>
+          )}
         </div>
         <div className={`${rowClass} text-muted`}>
           <Tile className="bg-line">
@@ -144,7 +180,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
           {signInAgain.isError && (
             <p className="text-sm text-danger">{signInAgain.error.message}</p>
           )}
-          {pollError && <p className="text-sm text-danger">{pollError}</p>}
+          {gitlabError && <p className="text-sm text-danger">{gitlabError}</p>}
           <button
             type="submit"
             disabled={start.isPending || !!flow}
@@ -162,6 +198,8 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
           Add a GitLab instance
         </button>
       )}
+      {startGithub.isError && <p className="text-sm text-danger">{startGithub.error.message}</p>}
+      {githubError && <p className="text-sm text-danger">{githubError}</p>}
       {flow && (
         <div className="flex flex-col gap-1 rounded-2xl border border-line bg-box p-4 text-sm">
           <p>

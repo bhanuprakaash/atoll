@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"atoll/connection"
 	"atoll/memory"
 	"atoll/provider"
 	"atoll/skill"
@@ -546,9 +547,13 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		}
 	}
 	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
-	cfg.Env, err = m.runEnv(a.ctx, bot)
+	var githubToken string
+	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {
 		return "", err
+	}
+	if githubToken != "" {
+		cfg.GitHubMCPURL, cfg.GitHubToken = connection.GitHubMCPURL(), githubToken
 	}
 	cfg.MCPURL = m.cfg.MCPURL + a.token
 	if thread.Session != "" {

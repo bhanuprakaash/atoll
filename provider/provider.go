@@ -13,7 +13,8 @@ import (
 
 // Atoll's own MCP server, as every provider's config names it, and its tools.
 const (
-	MCPServer = "atoll"
+	MCPServer       = "atoll"
+	GitHubMCPServer = "github"
 	// ToolFinishRun takes the run's report: {done, tried, blocked, next}.
 	ToolFinishRun = "finish_run"
 	// ToolApprove is Claude's permission prompt tool: it answers once the user does.
@@ -75,6 +76,9 @@ type Config struct {
 	// MCPURL is Atoll's MCP server for this run. Empty runs without it, and without approvals:
 	// nobody is there to answer them.
 	MCPURL string
+	// Empty GitHubMCPURL runs without GitHub's MCP server.
+	GitHubMCPURL string
+	GitHubToken  string
 	// SkillDir is the absolute root of this run's skill copies. Empty runs without them.
 	SkillDir   string
 	MCPServers []UserMCPServer

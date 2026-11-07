@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -137,7 +138,7 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 		thread, threadErr := m.cfg.Store.Thread(ctx, a.threadID)
 		if threadErr == nil && thread.RepoID != "" {
 			if rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID); repoErr == nil {
-				if env, envErr := m.runEnv(ctx, a.bot); envErr == nil {
+				if env, _, envErr := m.runEnv(ctx, a.bot, false); envErr == nil {
 					_, title, _ = m.mrState(rp.Path, url, env)
 				}
 			}
@@ -283,38 +284,79 @@ func (m *Manager) threadDir(threadID string) string {
 	return filepath.Join(m.cfg.DataDir, "threads", threadID)
 }
 
+type gitHelper struct {
+	url, script string
+	ssh         []string
+}
+
 // runEnv empties the glab and gh config folders and the git credential helper list, so neither CLI
 // finds the user's own login, and gives git's ssh no key, agent or config; each connection then
-// adds a helper scoped to its URL.
-func (m *Manager) runEnv(ctx context.Context, b store.Bot) ([]string, error) {
+// adds a helper scoped to its URL and maps its host's SSH remotes to it. GitHub's connection joins
+// only when github is set, so the MR watcher never depends on GitHub. It also returns the GitHub
+// token, empty when there is none.
+func (m *Manager) runEnv(ctx context.Context, b store.Bot, github bool) ([]string, string, error) {
 	env := []string{
-		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
 		"GIT_SSH_COMMAND=ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityFile=/dev/null -o IdentityAgent=none",
 	}
 	for _, cli := range []struct{ name, file string }{{"glab", "config.yml"}, {"gh", "hosts.yml"}} {
 		dir := filepath.Join(m.cfg.DataDir, "empty", cli.name)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return nil, fmt.Errorf("create empty %s config folder: %w", cli.name, err)
+			return nil, "", fmt.Errorf("create empty %s config folder: %w", cli.name, err)
 		}
 		if err := writeFileAtomic(filepath.Join(dir, cli.file), nil); err != nil {
-			return nil, fmt.Errorf("write empty %s config: %w", cli.name, err)
+			return nil, "", fmt.Errorf("write empty %s config: %w", cli.name, err)
 		}
 		env = append(env, strings.ToUpper(cli.name)+"_CONFIG_DIR="+dir)
 	}
-	conn, err := m.gitlabEnv(ctx, b)
-	return append(env, conn...), err
+	var helpers []gitHelper
+	gitlab, helper, err := m.gitlabEnv(ctx, b)
+	if err != nil {
+		return nil, "", err
+	}
+	env = append(env, gitlab...)
+	if helper.url != "" {
+		helpers = append(helpers, helper)
+	}
+	var token string
+	if github {
+		githubEnv, githubToken, err := m.githubEnv(ctx, b)
+		if err != nil {
+			return nil, "", err
+		}
+		env, token = append(env, githubEnv...), githubToken
+		if token != "" {
+			ssh, err := sshRemotes(connection.GitHubURL())
+			if err != nil {
+				return nil, "", err
+			}
+			helpers = append(helpers, gitHelper{connection.GitHubURL(), _githubHelper, ssh})
+		}
+	}
+	config := [][2]string{{"credential.helper", ""}}
+	for _, h := range helpers {
+		config = append(config, [2]string{"credential." + h.url + ".helper", h.script})
+		for _, remote := range h.ssh {
+			config = append(config, [2]string{"url." + strings.TrimRight(h.url, "/") + "/.insteadOf", remote})
+		}
+	}
+	env = append(env, "GIT_CONFIG_COUNT="+strconv.Itoa(len(config)))
+	for i, kv := range config {
+		n := strconv.Itoa(i)
+		env = append(env, "GIT_CONFIG_KEY_"+n+"="+kv[0], "GIT_CONFIG_VALUE_"+n+"="+kv[1])
+	}
+	return env, token, nil
 }
 
 // gitlabEnv makes glab act as the Bot's first GitLab connection. The token goes only into the
 // environment.
-func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, error) {
+func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, gitHelper, error) {
 	for _, id := range b.Connections {
 		c, err := m.cfg.Store.Connection(ctx, id)
 		if err != nil || c.Kind != store.KindGitLab {
 			continue
 		}
 		if c.Status == store.ConnectionNeedsSignIn {
-			return nil, connection.ErrNeedsSignIn
+			return nil, gitHelper{}, connection.ErrNeedsSignIn
 		}
 		if c.Status != store.ConnectionConnected {
 			continue
@@ -322,39 +364,73 @@ func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, error) 
 		token, err := connection.UsableToken(ctx, &http.Client{Timeout: 30 * time.Second}, c.InstanceURL, id)
 		if errors.Is(err, connection.ErrNeedsSignIn) {
 			if setErr := m.cfg.Store.SetConnectionStatus(ctx, id, store.ConnectionNeedsSignIn); setErr != nil {
-				return nil, fmt.Errorf("set GitLab connection needs sign-in: %w", setErr)
+				return nil, gitHelper{}, fmt.Errorf("set GitLab connection needs sign-in: %w", setErr)
 			}
-			return nil, err
+			return nil, gitHelper{}, err
 		}
 		if err != nil {
-			return nil, fmt.Errorf("read GitLab connection token: %w", err)
+			return nil, gitHelper{}, fmt.Errorf("read GitLab connection token: %w", err)
 		}
 		dir, err := m.glabConfig(id, c.InstanceURL)
 		if err != nil {
-			return nil, err
+			return nil, gitHelper{}, err
 		}
-		u, err := url.Parse(c.InstanceURL)
+		ssh, err := sshRemotes(c.InstanceURL)
 		if err != nil {
-			return nil, fmt.Errorf("instance URL %q: %w", c.InstanceURL, err)
+			return nil, gitHelper{}, err
 		}
-		rewrite := "url." + strings.TrimRight(c.InstanceURL, "/") + "/.insteadOf"
 		return []string{
 			"OAUTH_TOKEN=" + token,
 			"GLAB_CONFIG_DIR=" + dir,
 			"GITLAB_HOST=" + c.InstanceURL,
-			"GIT_CONFIG_COUNT=4",
-			"GIT_CONFIG_KEY_0=credential.helper",
-			"GIT_CONFIG_VALUE_0=",
-			"GIT_CONFIG_KEY_1=credential." + c.InstanceURL + ".helper",
-			`GIT_CONFIG_VALUE_1=!f() { test "$1" = get && echo username=oauth2 && ` +
-				`echo "password=$OAUTH_TOKEN"; }; f`,
-			"GIT_CONFIG_KEY_2=" + rewrite,
-			"GIT_CONFIG_VALUE_2=git@" + u.Hostname() + ":",
-			"GIT_CONFIG_KEY_3=" + rewrite,
-			"GIT_CONFIG_VALUE_3=ssh://git@" + u.Hostname() + "/",
-		}, nil
+		}, gitHelper{c.InstanceURL, `!f() { test "$1" = get && echo username=oauth2 && ` +
+			`echo "password=$OAUTH_TOKEN"; }; f`, ssh}, nil
 	}
-	return nil, nil
+	return nil, gitHelper{}, nil
+}
+
+func sshRemotes(rawURL string) ([]string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("URL %q: %w", rawURL, err)
+	}
+	return []string{"git@" + u.Hostname() + ":", "ssh://git@" + u.Hostname() + "/"}, nil
+}
+
+const _githubHelper = `!f() { test "$1" = get && echo username=x-access-token && ` +
+	`echo "password=$GH_TOKEN"; }; f`
+
+// githubEnv makes gh act as the Bot's first GitHub connection. It checks the token before every run
+// and marks a rejected one needs sign-in.
+func (m *Manager) githubEnv(ctx context.Context, b store.Bot) ([]string, string, error) {
+	for _, id := range b.Connections {
+		c, err := m.cfg.Store.Connection(ctx, id)
+		if err != nil || c.Kind != store.KindGitHub {
+			continue
+		}
+		if c.Status == store.ConnectionNeedsSignIn {
+			return nil, "", connection.ErrGitHubNeedsSignIn
+		}
+		if c.Status != store.ConnectionConnected {
+			continue
+		}
+		token, err := connection.GitHubToken(id)
+		if err != nil {
+			return nil, "", fmt.Errorf("read GitHub connection token: %w", err)
+		}
+		err = connection.CheckGitHubToken(ctx, &http.Client{Timeout: 30 * time.Second}, token)
+		if errors.Is(err, connection.ErrGitHubNeedsSignIn) {
+			if setErr := m.cfg.Store.SetConnectionStatus(ctx, id, store.ConnectionNeedsSignIn); setErr != nil {
+				return nil, "", fmt.Errorf("set GitHub connection needs sign-in: %w", setErr)
+			}
+			return nil, "", err
+		}
+		if err != nil {
+			return nil, "", fmt.Errorf("check GitHub connection token: %w", err)
+		}
+		return []string{"GH_TOKEN=" + token}, token, nil
+	}
+	return nil, "", nil
 }
 
 // glabConfig writes the glab config folder of connection id and returns it. It holds no token: it
@@ -420,7 +496,7 @@ func (m *Manager) check(t store.Thread) error {
 	if err != nil {
 		return err
 	}
-	env, err := m.runEnv(m.ctx, bot)
+	env, _, err := m.runEnv(m.ctx, bot, false)
 	if err != nil {
 		return err
 	}

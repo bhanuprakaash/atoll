@@ -48,7 +48,7 @@ function Change({
   const names = useChangeNames();
   const connectionNames = names.connections.map((c) => ({
     id: c.id,
-    name: c.kind === 'gitlab' ? 'GitLab' : c.kind,
+    name: c.kind === 'gitlab' ? 'GitLab' : c.kind === 'github' ? 'GitHub' : c.kind,
   }));
   const fields = [
     'name',

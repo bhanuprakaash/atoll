@@ -300,6 +300,12 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 		mcpServers := map[string]any{
 			provider.MCPServer: map[string]any{"type": "http", "url": cfg.MCPURL},
 		}
+		if cfg.GitHubMCPURL != "" {
+			mcpServers[provider.GitHubMCPServer] = map[string]any{
+				"type": "http", "url": cfg.GitHubMCPURL,
+				"headers": map[string]string{"Authorization": "Bearer " + cfg.GitHubToken},
+			}
+		}
 		for _, m := range cfg.MCPServers {
 			mcpServers[m.Name] = userServer(m)
 		}

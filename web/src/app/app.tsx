@@ -13,7 +13,7 @@ import {
 import { Shell } from '@/app/shell';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { NewBotForm } from '@/modules/bots/components/new-bot-form';
-import { useConnections } from '@/modules/connections/api/connections';
+import { useConnections, type Connection } from '@/modules/connections/api/connections';
 import { FirstRun } from '@/modules/onboarding/components/first-run';
 import {
   FirstRunProviders,
@@ -35,6 +35,18 @@ const queryClient = new QueryClient();
 
 const allowedRepos = <R extends { id: string }>(bot: Bot | undefined, repos: R[]) =>
   bot?.repo_access === 'all' ? repos : repos.filter((r) => bot?.repo_access.includes(r.id));
+
+const withConnectionNames = <B extends { connections: string[] }>(
+  bot: B | undefined,
+  connections: Connection[],
+) =>
+  bot && {
+    ...bot,
+    connections: (bot.connections ?? []).flatMap((id) => {
+      const kind = connections.find((c) => c.id === id)?.kind;
+      return kind ? [kind === 'github' ? 'GitHub' : 'GitLab'] : [];
+    }),
+  };
 
 function NewBotPage() {
   const navigate = useNavigate();
@@ -62,6 +74,7 @@ function ThreadPage() {
   const { data: thread } = useThread(threadId);
   const { data: repos = [] } = useRepos();
   const { data: bots = [] } = useBots();
+  const { data: connections = [] } = useConnections();
   const repoName = repos.find((r) => r.id === thread?.repo_id)?.name;
   const botNames = Object.fromEntries(bots.map((b) => [b.id, b.name]));
   const botLooks = Object.fromEntries(bots.map((b) => [b.id, b.look]));
@@ -77,7 +90,7 @@ function ThreadPage() {
       botName={bots.find((b) => b.id === botId)?.name ?? ''}
       look={bots.find((b) => b.id === botId)?.look}
       repos={allowed}
-      bot={bot}
+      bot={withConnectionNames(bot, connections)}
       repoName={repoName}
       lostRepo={lostRepo}
       signedOut={(provider) => <SignInExpired provider={provider} />}
@@ -95,6 +108,7 @@ function DraftThreadPage() {
   const { botId = '' } = useParams();
   const { data: repos = [] } = useRepos();
   const { data: bots = [] } = useBots();
+  const { data: connections = [] } = useConnections();
   const bot = bots.find((b) => b.id === botId);
   return (
     <DraftThread
@@ -102,7 +116,7 @@ function DraftThreadPage() {
       botId={botId}
       botName={bot?.name ?? ''}
       look={bot?.look}
-      bot={bot}
+      bot={withConnectionNames(bot, connections)}
       repos={allowedRepos(bot, repos)}
     />
   );
