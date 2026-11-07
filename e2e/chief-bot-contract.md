@@ -14,8 +14,9 @@ Extends the platform tools of [skills-contract.md](skills-contract.md). Tests: `
 - `create_bot` without `model` behaves as today: the Bot's `model` is `""`.
 - `create_bot` with a `model` no ready provider lists fails, and its text contains the `id` of every
   model the ready providers list. No Bot is created and no change is recorded.
-- `look` is one of `jellyfish`, `whale`, `penguin`, `shark`, `octopus`, `turtle`, `seahorse`,
-  `otter`, `clownfish`, `manta`. Any other value fails on both tools, and its text contains all ten.
+- `look` is one of `jellyfish`, `whale`, `penguin`, `shark`, `starfish`, `anglerfish`,
+  `sand_dollar`, `sponge`, `kelp`, `shell`, `wave`, `island`, `sun`, `sailboat`. Any other value
+  fails on both tools, and its text contains all fourteen.
   Nothing is created or changed and no change is recorded.
 - An `edit_bot` that changes `model` or `look` records one `edit` change (`platform_changed`), and
   its Undo restores the previous value.

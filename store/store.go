@@ -180,8 +180,14 @@ const (
 	_messagePageSize = 50
 )
 
-// Open opens dir/atoll.db, creating dir and the file if needed, and applies any migration the
-// file lacks.
+// _retireLooks moves Bots off the creatures the design dropped onto the nearest new one by colour.
+const _retireLooks = `UPDATE bots SET look = CASE look
+	WHEN 'octopus' THEN 'shell' WHEN 'turtle' THEN 'kelp' WHEN 'seahorse' THEN 'sun'
+	WHEN 'otter' THEN 'sand_dollar' WHEN 'clownfish' THEN 'starfish' WHEN 'manta' THEN 'wave' END
+	WHERE look IN ('octopus', 'turtle', 'seahorse', 'otter', 'clownfish', 'manta')`
+
+// Open opens dir/atoll.db, creating dir and the file if needed, applies any migration the file
+// lacks, and moves Bots off retired looks.
 func Open(dir string) (*Store, error) { return OpenWrapped(dir, nil) }
 
 // OpenWrapped is Open with the database's connector passed through wrap when it is not nil.
@@ -213,6 +219,10 @@ func OpenWrapped(dir string, wrap func(driver.Connector) driver.Connector) (*Sto
 	if err := migrate(context.Background(), db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	if _, err := db.Exec(_retireLooks); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("retire looks: %w", err)
 	}
 	return &Store{db: db}, nil
 }

@@ -145,183 +145,275 @@ const drawings = {
       </>
     ),
   },
-  octopus: {
+  starfish: {
     motion: 'c-bob',
-    colors: { body: 'var(--color-octopus)', ...none },
+    colors: { body: 'var(--color-starfish)', ...none },
     eyes: [
-      [29, 20, 30, 27],
-      [38, 19, 39, 26],
+      [28, 29, 29, 35],
+      [36, 29, 37, 35],
     ],
     shapes: (p) => (
-      <>
-        {[
-          'M16 36 q-7 11 2 18',
-          'M26 40 q-3 11 4 16',
-          'M38 40 q3 11 -4 16',
-          'M48 36 q7 11 -2 18',
-        ].map((d, i) => (
-          <path
-            key={d}
-            className={['c-sway', 'c-sway-1', 'c-sway-2', 'c-sway-1'][i]}
-            d={d}
-            fill="none"
-            stroke={p.body}
-            strokeWidth="6"
-            strokeLinecap="round"
-          />
-        ))}
-        <ellipse cx="32" cy="27" rx="21" ry="20" fill={p.body} />
-      </>
+      <polygon
+        points="32,10 38.5,27.1 56.7,28 42.5,39.4 47.3,57 32,47 16.7,57 21.5,39.4 7.3,28 25.5,27.1"
+        fill={p.body}
+        stroke={p.body}
+        strokeWidth="6"
+        strokeLinejoin="round"
+      />
     ),
   },
-  turtle: {
-    motion: 'c-peek',
-    colors: {
-      body: 'var(--color-turtle)',
-      light: 'var(--color-turtle-light)',
-      accent: '',
-      white: '',
-    },
-    eyes: [
-      [28, 11, 28.5, 17],
-      [36, 11, 36.5, 17],
-    ],
-    shapes: (p) => (
-      <>
-        <g className="c-paddle">
-          <ellipse cx="11" cy="34" rx="7" ry="4.5" transform="rotate(-30 11 34)" fill={p.body} />
-        </g>
-        <g className="c-paddle-1">
-          <ellipse cx="53" cy="34" rx="7" ry="4.5" transform="rotate(30 53 34)" fill={p.body} />
-        </g>
-        <ellipse cx="14" cy="56" rx="6" ry="4" fill={p.body} />
-        <ellipse cx="50" cy="56" rx="6" ry="4" fill={p.body} />
-        <circle cx="32" cy="15" r="11" fill={p.body} />
-        <ellipse cx="32" cy="42" rx="23" ry="18" fill={p.body} />
-        <path d="M32 30 l8 5 v9 l-8 5 l-8 -5 v-9 z" fill={p.light} />
-      </>
-    ),
-  },
-  seahorse: {
-    motion: 'c-hover',
-    colors: { body: 'var(--color-seahorse)', ...none },
-    eyes: [
-      [36, 11, 36.5, 17],
-      [43, 11, 43.5, 17],
-    ],
-    shapes: (p) => (
-      <>
-        <path
-          d="M34 25 C22 31 24 45 34 49 C42 53 37 62 29 58"
-          fill="none"
-          stroke={p.body}
-          strokeWidth="12"
-          strokeLinecap="round"
-        />
-        <path
-          className="c-flutter"
-          d="M22 32 l-8 -4 l2 10 z"
-          fill={p.body}
-          stroke={p.body}
-          strokeWidth="2"
-          strokeLinejoin="round"
-        />
-        <rect x="42" y="14" width="14" height="7" rx="3.5" fill={p.body} />
-        <circle cx="37" cy="16" r="12" fill={p.body} />
-        <path d="M30 6 l3 -5 l3 5" fill={p.body} />
-      </>
-    ),
-  },
-  otter: {
-    motion: 'c-rock',
-    colors: {
-      body: 'var(--color-otter)',
-      light: 'var(--color-otter-light)',
-      accent: 'var(--color-eye)',
-      white: '',
-    },
-    eyes: [
-      [24, 25, 24.5, 31],
-      [40, 25, 40.5, 31],
-    ],
-    shapes: (p) => (
-      <>
-        <circle cx="13" cy="15" r="7" fill={p.body} />
-        <circle cx="51" cy="15" r="7" fill={p.body} />
-        <circle cx="32" cy="35" r="25" fill={p.body} />
-        <ellipse cx="32" cy="44" rx="12" ry="9" fill={p.light} />
-        <ellipse cx="32" cy="39.5" rx="3.5" ry="2.4" fill={p.accent} />
-      </>
-    ),
-  },
-  clownfish: {
+  anglerfish: {
     motion: 'c-swim',
     scale: 0.85,
-    colors: { body: 'var(--color-danger)', light: '', accent: '', white: 'var(--color-white)' },
+    colors: {
+      body: 'var(--color-anglerfish)',
+      light: '',
+      accent: 'var(--color-sun)',
+      white: 'var(--color-white)',
+    },
     eyes: [
-      [45, 27, 45.5, 33],
-      [51, 26, 51.5, 32],
+      [36, 27, 37, 33],
+      [43, 27, 44, 33],
     ],
     shapes: (p) => (
       <>
         <path
           className="c-tail"
-          d="M12 34 L0 22 Q8 34 0 46 Z"
+          d="M10 38 L1 28 Q4 38 1 48 Z"
           fill={p.body}
           stroke={p.body}
           strokeWidth="3"
           strokeLinejoin="round"
         />
-        <path d="M24 20 q8 -10 16 0 z" fill={p.body} />
-        <ellipse cx="33" cy="35" rx="24" ry="17" fill={p.body} />
         <path
-          d="M24 20 q-4 15 0 30 M38 18.5 q4 16 0 33"
-          fill="none"
-          stroke={p.white}
-          strokeWidth="5"
-        />
-      </>
-    ),
-  },
-  manta: {
-    motion: 'c-glide',
-    scale: 0.85,
-    colors: { body: 'var(--color-manta)', ...none },
-    eyes: [
-      [26, 20, 26.5, 26],
-      [38, 20, 38.5, 26],
-    ],
-    shapes: (p) => (
-      <>
-        <path
-          className="c-tailwave"
-          d="M33 46 q4 10 12 14"
+          d="M30 21 Q32 5 48 7"
           fill="none"
           stroke={p.body}
           strokeWidth="3"
           strokeLinecap="round"
         />
+        <circle cx="50" cy="9" r="5" fill={p.accent} />
+        <ellipse cx="31" cy="38" rx="22" ry="18" fill={p.body} />
         <path
-          className="c-wing"
-          d="M2 30 Q18 10 32 14 Q46 10 62 30 Q46 34 38 44 Q32 50 26 44 Q18 34 2 30 Z"
-          fill={p.body}
+          d="M38 45 l2 3 l2 -3 l2 3 l2 -3 l2 3"
+          fill="none"
+          stroke={p.white}
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
+      </>
+    ),
+  },
+  sand_dollar: {
+    motion: 'c-bob',
+    colors: {
+      body: 'var(--color-sand-dollar)',
+      light: '',
+      accent: 'var(--color-sand-dollar-accent)',
+      white: '',
+    },
+    eyes: [
+      [27, 39, 28, 45],
+      [36, 39, 37, 45],
+    ],
+    shapes: (p) => (
+      <>
+        <circle cx="32" cy="34" r="25" fill={p.body} />
+        {[0, 72, 144, 216, 288].map((deg) => (
+          <ellipse
+            key={deg}
+            cx="32"
+            cy="16"
+            rx="2.6"
+            ry="6"
+            transform={`rotate(${deg} 32 23)`}
+            fill={p.accent}
+          />
+        ))}
+      </>
+    ),
+  },
+  sponge: {
+    motion: 'c-bob',
+    colors: {
+      body: 'var(--color-sponge)',
+      light: '',
+      accent: 'var(--color-sponge-accent)',
+      white: '',
+    },
+    eyes: [
+      [29, 31, 30, 37],
+      [36, 31, 37, 37],
+    ],
+    shapes: (p) => (
+      <>
+        <rect x="7" y="24" width="15" height="35" rx="7.5" fill={p.body} />
+        <rect x="24" y="9" width="17" height="50" rx="8.5" fill={p.body} />
+        <rect x="43" y="19" width="15" height="40" rx="7.5" fill={p.body} />
+        <ellipse cx="14.5" cy="28" rx="4" ry="2.5" fill={p.accent} />
+        <ellipse cx="32.5" cy="14" rx="5" ry="3" fill={p.accent} />
+        <ellipse cx="50.5" cy="23" rx="4" ry="2.5" fill={p.accent} />
+      </>
+    ),
+  },
+  kelp: {
+    motion: 'c-sway',
+    colors: { body: 'var(--color-kelp)', ...none },
+    eyes: [
+      [29, 10, 30, 16],
+      [37, 10, 38, 16],
+    ],
+    shapes: (p) => (
+      <>
         <path
-          d="M24 15 q-2 -6 2 -9 M40 15 q2 -6 -2 -9"
+          d="M32 62 C28 46 38 34 32 20"
           fill="none"
           stroke={p.body}
-          strokeWidth="4"
+          strokeWidth="5"
           strokeLinecap="round"
         />
+        <ellipse cx="23" cy="48" rx="10" ry="4.5" transform="rotate(-30 23 48)" fill={p.body} />
+        <ellipse cx="42" cy="38" rx="10" ry="4.5" transform="rotate(30 42 38)" fill={p.body} />
+        <ellipse cx="24" cy="30" rx="8" ry="4" transform="rotate(-35 24 30)" fill={p.body} />
+        <circle cx="33" cy="14" r="11" fill={p.body} />
+      </>
+    ),
+  },
+  shell: {
+    motion: 'c-bob',
+    colors: {
+      body: 'var(--color-shell)',
+      light: '',
+      accent: 'var(--color-shell-accent)',
+      white: '',
+    },
+    eyes: [
+      [26.75, 28, 27.75, 34],
+      [36.75, 28, 37.75, 34],
+    ],
+    shapes: (p) => (
+      <>
+        <path
+          d="M32 58 L8 30 Q10 10 32 8 Q54 10 56 30 Z"
+          fill={p.body}
+          stroke={p.body}
+          strokeWidth="3"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M32 54 L32 10 M32 54 L18 14 M32 54 L46 14 M32 54 L10 28 M32 54 L54 28"
+          fill="none"
+          stroke={p.accent}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+        <rect x="25" y="53" width="14" height="7" rx="2" fill={p.body} />
+      </>
+    ),
+  },
+  wave: {
+    motion: 'c-bob',
+    colors: { body: 'var(--color-wave)', ...none },
+    eyes: [
+      [21, 32, 22, 38],
+      [29, 31, 30, 37],
+    ],
+    shapes: (p) => (
+      <path
+        d="M4 56 C4 34 18 18 38 18 C52 18 60 28 58 38 C54 30 44 30 42 38 C40 46 50 50 56 48 L60 56 Z"
+        fill={p.body}
+        stroke={p.body}
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  island: {
+    motion: 'c-bob',
+    colors: {
+      body: 'var(--color-island)',
+      light: 'var(--color-kelp)',
+      accent: 'var(--color-wood)',
+      white: '',
+    },
+    eyes: [
+      [20, 46, 21, 52],
+      [28, 45, 29, 51],
+    ],
+    shapes: (p) => (
+      <>
+        <path
+          d="M35 46 Q30 30 36 16"
+          fill="none"
+          stroke={p.accent}
+          strokeWidth="5"
+          strokeLinecap="round"
+        />
+        <path
+          d="M36 16 q-10 -6 -20 2 M36 16 q10 -8 20 0 M36 16 q-4 -10 -14 -12 M36 16 q6 -10 16 -10"
+          fill="none"
+          stroke={p.light}
+          strokeWidth="5"
+          strokeLinecap="round"
+        />
+        <path d="M2 58 Q32 22 62 58 Z" fill={p.body} />
+      </>
+    ),
+  },
+  sun: {
+    motion: 'c-bob',
+    colors: { body: 'var(--color-sun)', ...none },
+    eyes: [
+      [27, 27, 28, 33],
+      [36, 27, 37, 33],
+    ],
+    shapes: (p) => (
+      <>
+        <path
+          d="M32 5 v5 M32 54 v5 M5 32 h5 M54 32 h5 M13 13 l4 4 M47 47 l4 4 M51 13 l-4 4 M13 51 l4 -4"
+          fill="none"
+          stroke={p.body}
+          strokeWidth="5"
+          strokeLinecap="round"
+        />
+        <circle cx="32" cy="32" r="17" fill={p.body} />
+      </>
+    ),
+  },
+  sailboat: {
+    motion: 'c-rock',
+    colors: {
+      body: 'var(--color-sailboat)',
+      light: '',
+      accent: 'var(--color-wood)',
+      white: '',
+    },
+    eyes: [
+      [27.75, 47, 28.75, 53],
+      [35.75, 47, 36.75, 53],
+    ],
+    shapes: (p) => (
+      <>
+        <path d="M32 6 V44" stroke={p.body} strokeWidth="3" strokeLinecap="round" />
+        <path
+          d="M34 8 L54 40 H34 Z M30 16 L14 40 H30 Z"
+          fill={p.body}
+          stroke={p.body}
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path d="M6 43 H58 Q52 57 41 57 H23 Q12 57 6 43 Z" fill={p.accent} />
       </>
     ),
   },
 } satisfies Record<string, Drawing>;
 
 export type CreatureLook = keyof typeof drawings;
+const lookName = (look: string) => look[0].toUpperCase() + look.slice(1).replace('_', ' ');
 export const creatureLooks = (Object.keys(drawings) as CreatureLook[]).map((look) => ({
   look,
-  name: look[0].toUpperCase() + look.slice(1),
+  name: lookName(look),
   colour: drawings[look].colors.body,
 }));
 
@@ -356,7 +448,7 @@ export function Creature({
       height={size}
       viewBox="0 0 64 64"
       role="img"
-      aria-label={`${look[0].toUpperCase() + look.slice(1)}, ${state.replace('_', ' ')}`}
+      aria-label={`${lookName(look)}, ${state.replace('_', ' ')}`}
       className="shrink-0 overflow-visible"
     >
       <g
