@@ -106,7 +106,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   left. `POST /api/approvals/{id}` on a closed approval answers `404`, and the card then leaves
   without an error.
 - Claude cancels an MCP tool call after 60 s unless `MCP_TOOL_TIMEOUT` says otherwise, and the
-  permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes).
+  permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes). *The
+  variable covers every MCP server of the run, not only Reef's: Claude Code has no per-server
+  timeout, so a hung user tool also waits up to 30 minutes.*
 - Processes a Bot starts (dev server, watcher, browser) belong to the thread and outlive the run.
   When the thread closes or the app quits, the app asks whether to stop them.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
@@ -133,7 +135,9 @@ Undo of a repo registration is refused while a thread uses the repo.
 - `continue` is accepted only from the helper's boss thread, and gives the helper a run with the
   message. A message for a thread whose run is going is held (the `inbox` table) and delivered
   when that run ends, oldest first, one run each (a run the user stopped starts none: they wait
-  for that thread's next run to end); `continue` never answers busy. A held message
+  for that thread's next run to end); `continue` never answers busy. A message for a helper
+  thread is also held while its boss has 3 helper runs going, and goes out when one of them ends,
+  so `continue` never takes a boss past 3. A held message
   survives a restart: on start, after the going runs are marked `failed`, each thread's held
   messages are delivered. A message for a closed or deleted thread is dropped.
 - Waking the boss: when a helper's run ends, Reef posts one message into the boss thread from the
@@ -163,9 +167,11 @@ Undo of a repo registration is refused while a thread uses the repo.
   boss thread with no worktree (still exploring, or Chief) gets none of this: the helper's
   `start_work` makes its own branch from `origin/HEAD` and it opens its own MR, with the GitHub
   connection on a GitHub repo.
-- When the boss's MR merges (GitLab), the helpers' worktrees are removed with the boss's, each
-  saved first as for Close, with `worktree_removed` reason `merged`; while a helper's run is going
-  nothing is removed, and the watcher tries again.
+- When the boss's MR merges (GitLab), the worktrees of the helpers on the boss's branch
+  (`<boss-branch>--…`) are removed with the boss's, each saved first as for Close, with
+  `worktree_removed` reason `merged`; a helper on its own branch keeps its worktree and its own MR.
+  While any of those helpers' runs is going nothing is removed, and the watcher tries again. A
+  `delegate` that fails part way removes the helper worktree, branch and thread it made.
 - Helpers show in the boss's thread (App and UI).
 
 ## Repos and worktrees
@@ -595,15 +601,16 @@ Voice
   thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message.
 - Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` region sits between
-  the chat and the composer with one quiet line per open helper thread: creature, Bot name, state
-  and `Open`. The state comes from the helper's latest run: the live step while it works
-  ("Running make build", else "Working"), "Needs you" with an open approval, "Done", "Failed" or
-  "Stopped". A helper's open approval shows under its line in the usual inline form; Allow and Deny
+  the chat and the composer with one quiet line per helper whose run is going or waiting on an
+  approval: creature, Bot name, state
+  and `Open`. The state is the live step while it works ("Running make build", else "Working"), or
+  "Needs you" with an open approval; the line leaves when the run ends, and the report in the chat
+  says how it went. A helper's open approval shows under its line in the usual inline form; Allow and Deny
   there answer it, and answering it in either thread removes it from both (`approval_closed`). The
   chat keeps one line where work was handed off, after the message that led to it ("Handed off to
   Tester and Reviewer"); a helper's report is a message from the helper Bot, an article named after
-  it with its creature, not the user's bubble. The island shows one small creature per open helper
-  after the boss's name (`Tester: working`, `needs you`, `done`, `failed`; a red dot, faded, grey),
+  it with its creature, not the user's bubble. The island shows one small creature per such helper
+  after the boss's name (`Tester: working`, `needs you` with a red dot),
   the red count includes helper approvals, and the boss's sidebar row says "Needs you" while a
   helper waits. A helper thread is listed in its Bot's thread list tagged `from {boss}`; the
   composer is replaced by "{Boss} is handling this thread. Talk to {Boss} to change it.", `Open
@@ -651,7 +658,8 @@ Voice
   SIGTERM; an occupied port stops retries and shows an error. The page shows Reconnecting meanwhile.
   A page's `window.open` (provider sign-in) opens in the default browser (`on_new_window`), and so
   does any navigation of the window to a URL that is not Reef's own server (`on_navigation`), which
-  is cancelled in the app. Links in chat replies carry `target="_blank"`. *A fixed address lets the
+  is cancelled in the app. Only `http`, `https` and `mailto` URLs are handed to the browser; any
+  other scheme is cancelled. Links in chat replies carry `target="_blank"`. *A fixed address lets the
   open page reconnect to a restarted sidecar.*
 - The dmg is ad-hoc signed (`signingIdentity: "-"`), not notarized, as old Reef was: free, and a
   web download opens after System Settings → Privacy & Security → Open Anyway once. CI's `dmg` job
