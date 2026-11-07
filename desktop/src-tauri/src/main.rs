@@ -55,8 +55,10 @@ fn main() {
             .inner_size(1200.0, 800.0)
             .min_inner_size(700.0, 500.0)
             .on_new_window(|url, _| {
-                if let Err(err) = Command::new("open").arg(url.as_str()).spawn() {
-                    eprintln!("open {url}: {err}");
+                if matches!(url.scheme(), "http" | "https" | "mailto") {
+                    if let Err(err) = Command::new("open").arg(url.as_str()).spawn() {
+                        eprintln!("open {url}: {err}");
+                    }
                 }
                 NewWindowResponse::Deny
             })
