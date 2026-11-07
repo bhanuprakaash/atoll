@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Thread } from '@/modules/threads/api/threads';
 import { approvalTarget } from '@/modules/threads/components/approval-card';
+import { mrRef } from '@/modules/threads/utils/mr-ref';
 import { relativeTime } from '@/utils/time';
 
 export function ThreadsPanel({
@@ -76,7 +77,7 @@ export function ThreadsPanel({
                         label === 'Running' ? t.verb : repos.find((r) => r.id === t.repo_id)?.name,
                         t.branch,
                         t.mr_url &&
-                          `!${t.mr_url.match(/(?:merge_requests|merge-requests)\/(\d+)/)?.[1] ?? 'MR'}${t.mr_state ? ` ${t.mr_state}` : ''}`,
+                          `${mrRef(t.mr_url) ?? '!MR'}${t.mr_state ? ` ${t.mr_state}` : ''}`,
                         label !== 'Running' && t.run_status,
                       ]
                         .filter(Boolean)

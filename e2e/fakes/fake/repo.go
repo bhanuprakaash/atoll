@@ -12,7 +12,9 @@ import (
 // MRURL is returned by the offline glab fixture.
 const MRURL = "https://gitlab.example/fixtures/seeded/-/merge_requests/1"
 
-// RepoStep performs real local git operations; only the provider and GitLab CLI are fakes.
+// RepoStep performs real local git operations; only the provider and the GitLab and GitHub CLIs
+// are fakes. Mode github-fix is fix for a GitHub repo: it opens the pull request with gh, gives
+// track_mr the title too, and when start_work fails replies with the error text.
 func RepoStep(c *MCP, mode, cwd string) (string, error) {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
@@ -48,6 +50,9 @@ func RepoStep(c *MCP, mode, cwd string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if bad && mode == "github-fix" {
+		return "start_work failed: " + out, nil
+	}
 	if bad {
 		return "", fmt.Errorf("start_work: %s", out)
 	}
@@ -77,13 +82,19 @@ func RepoStep(c *MCP, mode, cwd string) (string, error) {
 		}
 	}
 	cmd := exec.Command("glab", "mr", "create", "--title", "fix: correct seeded answer", "--description", "Correct the fixture answer.", "--source-branch", work.Branch)
+	trackArgs := map[string]string{}
+	if mode == "github-fix" {
+		cmd = exec.Command("gh", "pr", "create", "--head", work.Branch, "--base", "main", "--title", "fix: correct seeded answer", "--body", "Correct the fixture answer.")
+		trackArgs["title"] = "fix: correct seeded answer"
+	}
 	cmd.Dir = work.Path
 	b, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("glab mr create: %w: %s", err, b)
+		return "", fmt.Errorf("%s: %w: %s", strings.Join(cmd.Args[:3], " "), err, b)
 	}
 	url := strings.TrimSpace(string(b))
-	args, _ := json.Marshal(map[string]string{"url": url})
+	trackArgs["url"] = url
+	args, _ := json.Marshal(trackArgs)
 	out, bad, err = c.Call("track_mr", args)
 	if err != nil {
 		return "", err

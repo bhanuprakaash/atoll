@@ -193,7 +193,7 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
-		case "repo-fix", "repo-question", "repo-uncommitted", "repo-resume":
+		case "repo-fix", "repo-question", "repo-uncommitted", "repo-resume", "repo-github-fix":
 			var err error
 			repoReply, err = fake.RepoStep(t.servers["atoll"], strings.TrimPrefix(e.Fake, "repo-"), t.cwd)
 			if err != nil {

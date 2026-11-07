@@ -26,6 +26,8 @@ const (
 	_snapshotRefPrefix   = "refs/atoll/unfinished/"
 	_mrOpened            = "opened"
 	_mrMerged            = "merged"
+	_hostGitHub          = "github"
+	_hostGitLab          = "gitlab"
 )
 
 type (
@@ -54,6 +56,14 @@ type (
 		SnapshotRef string `json:"snapshot_ref"`
 	}
 )
+
+// RepoHost is github or gitlab.
+func RepoHost(ctx context.Context, path string) string {
+	if connection.OnGitHub(repo.Origin(ctx, path)) {
+		return _hostGitHub
+	}
+	return _hostGitLab
+}
 
 // Start begins checking the MR of every thread that has one and a worktree, at once and then
 // every PollInterval, until Close. Call it once.
@@ -100,8 +110,9 @@ func (m *Manager) StartWork(
 		return t.Worktree, t.Branch, repo.Base{}, nil
 	}
 	m.mu.Lock()
-	access := a.bot.RepoAccess
+	bot := a.bot
 	m.mu.Unlock()
+	access := bot.RepoAccess
 	if t.RepoID == "" || !access.Allows(t.RepoID) {
 		return "", "", repo.Base{}, errors.New("thread has no repo")
 	}
@@ -112,6 +123,15 @@ func (m *Manager) StartWork(
 	rp, err := m.cfg.Store.Repo(ctx, t.RepoID)
 	if err != nil {
 		return "", "", repo.Base{}, fmt.Errorf("load repo: %w", err)
+	}
+	if RepoHost(ctx, rp.Path) == _hostGitHub {
+		_, token, err := m.githubEnv(ctx, bot)
+		if err != nil {
+			return "", "", repo.Base{}, err
+		}
+		if token == "" {
+			return "", "", repo.Base{}, ErrNoGitHubConnection
+		}
 	}
 	root, err := m.WorktreeRoot(ctx)
 	if err != nil {
@@ -137,7 +157,8 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 	if title == "" {
 		thread, threadErr := m.cfg.Store.Thread(ctx, a.threadID)
 		if threadErr == nil && thread.RepoID != "" {
-			if rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID); repoErr == nil {
+			rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID)
+			if repoErr == nil && RepoHost(ctx, rp.Path) == _hostGitLab {
 				if env, _, envErr := m.runEnv(ctx, a.bot, false); envErr == nil {
 					_, title, _ = m.mrState(rp.Path, url, env)
 				}
@@ -495,6 +516,9 @@ func (m *Manager) check(t store.Thread) error {
 	rp, err := m.cfg.Store.Repo(m.ctx, t.RepoID)
 	if err != nil {
 		return err
+	}
+	if RepoHost(m.ctx, rp.Path) == _hostGitHub {
+		return nil
 	}
 	env, _, err := m.runEnv(m.ctx, bot, false)
 	if err != nil {

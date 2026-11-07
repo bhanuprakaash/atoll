@@ -105,6 +105,8 @@ type (
 		ID   string `json:"id"`
 		Name string `json:"name"`
 		Path string `json:"path"`
+		// Host is github or gitlab. It is not stored: the API fills it from the repo's origin.
+		Host string `json:"host,omitempty"`
 	}
 
 	// Connection is a sign-in to an external service.

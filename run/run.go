@@ -33,6 +33,9 @@ var (
 	ErrClosed = errors.New("thread is closed")
 	// ErrNotFound is wrapped when an approval id or run token matches nothing open.
 	ErrNotFound = errors.New("not found")
+	// ErrNoGitHubConnection means the Bot has no GitHub connection.
+	ErrNoGitHubConnection = errors.New("this repo is on GitHub and this Bot has no GitHub connection: " +
+		"give this Bot the GitHub connection in its settings, then ask again")
 )
 
 // Event types on a thread's stream.
@@ -498,6 +501,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		if rp, err = m.cfg.Store.Repo(a.ctx, thread.RepoID); err != nil {
 			return "", fmt.Errorf("load repo: %w", err)
 		}
+		rp.Host = RepoHost(a.ctx, rp.Path)
 	}
 	if cfg.Cwd, err = m.workdir(thread, rp); err != nil {
 		return "", err
