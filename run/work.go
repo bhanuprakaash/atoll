@@ -189,9 +189,6 @@ func (m *Manager) CloseThread(ctx context.Context, threadID string) error {
 	if t.Closed {
 		return nil
 	}
-	if err := m.closeHelpers(ctx, threadID); err != nil {
-		return err
-	}
 	if t.RepoID != "" {
 		rp, err := m.cfg.Store.Repo(ctx, t.RepoID)
 		if err != nil {
@@ -205,6 +202,9 @@ func (m *Manager) CloseThread(ctx context.Context, threadID string) error {
 		if err := repo.Remove(ctx, rp.Path, m.threadDir(t.ID)); err != nil {
 			return err
 		}
+	}
+	if err := m.closeHelpers(ctx, threadID); err != nil {
+		return err
 	}
 	return m.cfg.Store.SetClosed(ctx, threadID)
 }
