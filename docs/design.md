@@ -107,7 +107,7 @@ Undo of a repo registration is refused while a thread uses the repo.
   left. `POST /api/approvals/{id}` on a closed approval answers `404`, and the card then leaves
   without an error.
 - Claude cancels an MCP tool call after 60 s unless `MCP_TOOL_TIMEOUT` says otherwise, and the
-  permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=600000` (10 minutes).
+  permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes).
 - Processes a Bot starts (dev server, watcher, browser) belong to the thread and outlive the run.
   When the thread closes or the app quits, the app asks whether to stop them.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
@@ -133,11 +133,12 @@ Undo of a repo registration is refused while a thread uses the repo.
   going (`3 helpers running. Tell the user, and hand this off when one of them reports back.`).
 - `continue` is accepted only from the helper's boss thread, and gives the helper a run with the
   message. A message for a thread whose run is going is held (the `inbox` table) and delivered
-  when that run ends, oldest first, one run each; `continue` never answers busy. A held message
+  when that run ends, oldest first, one run each (a run the user stopped starts none: they wait
+  for that thread's next run to end); `continue` never answers busy. A held message
   survives a restart: on start, after the going runs are marked `failed`, each thread's held
   messages are delivered. A message for a closed or deleted thread is dropped.
 - Waking the boss: when a helper's run ends, Reef posts one message into the boss thread from the
-  helper Bot (`from_bot_id` on the message; empty for the user's own) and that starts a boss run,
+  helper Bot (`from_bot_id` on the message; empty for the user's and for the boss's `delegate` and `continue` messages in a helper thread) and that starts a boss run,
   or waits in the inbox while the boss's run is going. The text always holds the helper thread id:
   - done: `{Helper} reported back from thread {id}.`, then the reply and the report as
     `Done:`, `Tried:`, `Blocked:`, `Next:` lines;

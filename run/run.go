@@ -502,7 +502,10 @@ func (m *Manager) execute(a *active, text string) {
 	m.publish(a, EventRunFinished, Finished{RunID: a.run.ID, Status: res.Status, Error: res.Error})
 	if !quiet {
 		m.flushBoss(a.threadID)
-		m.flushLog(a.threadID)
+		// A user's Stop must not start the next held message at once.
+		if res.Status != "stopped" {
+			m.flushLog(a.threadID)
+		}
 	}
 }
 

@@ -173,8 +173,8 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 	return nil
 }
 
-// CloseThread closes the thread and its helper threads: it stops their runs, then saves the unfinished work of its worktree, removes the
-// worktree and the read-only checkout, and refuses new messages. It returns ErrBusy while a run
+// CloseThread closes the thread and its helper threads: it stops their runs, then saves the
+// unfinished work of its worktree, removes the worktree and the read-only checkout, and refuses new messages. It returns ErrBusy while a run
 // is going. When the save fails nothing is removed and the thread stays open.
 func (m *Manager) CloseThread(ctx context.Context, threadID string) error {
 	slot := m.reserve(threadID)
@@ -317,7 +317,7 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 }
 
 // reserve takes the thread's run slot for work that must not overlap a run. It returns nil when
-// a run is going or the Manager is closing; give the slot back with drop.
+// a run is going or the Manager is closing; give the slot back with free.
 func (m *Manager) reserve(threadID string) *active {
 	m.mu.Lock()
 	defer m.mu.Unlock()
