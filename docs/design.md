@@ -153,9 +153,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   is handling this thread`.
 - A child's questions go to its parent; approvals go to the user. The child's first message is one
   line, then the brief: `{parent} delegated this to you; your replies go to {parent}.`
-- A child works in its own worktree branched from the parent's branch (`<parent-branch>--<bot>`).
-  The parent merges it and opens the MR, and owns the result. When the boss thread has a worktree,
-  `delegate` makes the helper's worktree at once, on `<boss-branch>--<bot>` (the Bot name slugged
+- When the boss thread has a worktree, the helper works on a branch off it and the boss merges
+  it, opens the MR and owns the result: `delegate` makes the helper's worktree at once, on `<boss-branch>--<bot>` (the Bot name slugged
   as a branch slug) at the boss branch's last commit, and records it on the helper thread, so the
   helper's `start_work` returns it. The result adds `branch` and `note`: `Uncommitted changes in
   your worktree are not included.` The helper's first message has, after the handoff line, `Work
@@ -167,7 +166,7 @@ Undo of a repo registration is refused while a thread uses the repo.
 - When the boss's MR merges (GitLab), the helpers' worktrees are removed with the boss's, each
   saved first as for Close, with `worktree_removed` reason `merged`; while a helper's run is going
   nothing is removed, and the watcher tries again.
-- Children show nested in the parent's thread.
+- Helpers show in the boss's thread (App and UI).
 
 ## Repos and worktrees
 
