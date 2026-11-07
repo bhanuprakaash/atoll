@@ -137,3 +137,5 @@ Importing a local skill extends these contracts in [skill-import-contract.md](sk
 Skills keeping their scripts, playbooks and references extends these contracts in [skill-files-contract.md](skill-files-contract.md).
 
 The skill editor for every file of a skill extends these contracts in [skill-editor-contract.md](skill-editor-contract.md).
+
+Run login isolation (a Bot uses only the logins Reef gives it) extends these contracts in [login-isolation-contract.md](login-isolation-contract.md).
