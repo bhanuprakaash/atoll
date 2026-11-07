@@ -324,6 +324,16 @@ func (s *Store) SetPinned(ctx context.Context, id string, pinned bool) error {
 	return found(res, "bot", id)
 }
 
+func dropDelegate(ctx context.Context, tx *sql.Tx, id string) error {
+	_, err := tx.ExecContext(ctx,
+		"UPDATE bots SET delegates = (SELECT json_group_array(value) FROM json_each(delegates) "+
+			"WHERE value != ?1) WHERE EXISTS (SELECT 1 FROM json_each(delegates) WHERE value = ?1)", id)
+	if err != nil {
+		return fmt.Errorf("drop bot %s from delegates: %w", id, err)
+	}
+	return nil
+}
+
 // DeleteBot removes the Bot with its threads, messages and runs, and returns the ids of the runs.
 // In the same transaction it holds each of wakes for its thread; one for a thread the Bot owns goes
 // with it.
@@ -362,13 +372,7 @@ func (s *Store) DeleteBot(ctx context.Context, id string, wakes []InboxItem) ([]
 		if err := found(res, "bot", id); err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx,
-			"UPDATE bots SET delegates = (SELECT json_group_array(value) FROM json_each(delegates) "+
-				"WHERE value != ?1) WHERE EXISTS (SELECT 1 FROM json_each(delegates) WHERE value = ?1)", id)
-		if err != nil {
-			return fmt.Errorf("drop bot %s from delegates: %w", id, err)
-		}
-		return nil
+		return dropDelegate(ctx, tx, id)
 	})
 	if err != nil {
 		return nil, err
