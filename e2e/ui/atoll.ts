@@ -69,6 +69,13 @@ export async function startAtoll(opts: Options = {}): Promise<Machine> {
   const dir = mkdtempSync(join(tmpdir(), 'atoll-ui-'));
   const [home, data, bin] = ['home', 'data', 'bin'].map((d) => join(dir, d));
   for (const d of [home, data, bin]) mkdirSync(d, { recursive: true });
+  if (process.platform === 'darwin') {
+    // atoll's secrets go to the keychains under $HOME; without one there macOS asks the user.
+    const security = (...args: string[]) =>
+      execFileSync('/usr/bin/security', args, { env: { HOME: home } });
+    security('create-keychain', '-p', 'atoll-e2e', 'login.keychain');
+    security('set-keychain-settings', join(home, 'Library', 'Keychains', 'login.keychain-db'));
+  }
   for (const fake of fakes) copyFileSync(join(out, fake), join(bin, fake));
   for (const p of signedIn) {
     mkdirSync(join(data, 'providers', p), { recursive: true });
