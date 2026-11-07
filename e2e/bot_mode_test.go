@@ -183,9 +183,13 @@ func checkMode(t *testing.T, p, mode string, c *call) {
 	if p == "claude" {
 		pm, prompt := flagValue(c.argv, "--permission-mode"), flagValue(c.argv, "--permission-prompt-tool")
 		switch mode {
-		case "auto", "ask":
+		case "auto":
+			if pm != "auto" || prompt != "mcp__atoll__approve" {
+				t.Errorf("claude on auto: --permission-mode %q, --permission-prompt-tool %q; want auto and mcp__atoll__approve", pm, prompt)
+			}
+		case "ask":
 			if (pm != "" && pm != "default") || prompt != "mcp__atoll__approve" {
-				t.Errorf("claude on %s: --permission-mode %q, --permission-prompt-tool %q; want the default mode and mcp__atoll__approve", mode, pm, prompt)
+				t.Errorf("claude on ask: --permission-mode %q, --permission-prompt-tool %q; want the default mode and mcp__atoll__approve", pm, prompt)
 			}
 		case "full":
 			if pm != "bypassPermissions" {

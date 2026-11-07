@@ -18,13 +18,13 @@ then launches.
 
 ## What reaches the provider
 
-Claude's auto mode never calls the permission prompt tool in headless `-p` (spike: 6 real runs, 0
-calls), so a Claude Bot on Auto runs exactly as on Ask.
+Claude on Auto runs Claude Code's auto mode: its classifier lets safe steps run and blocks risky
+ones, and Claude reports a block back. Explicit ask rules still reach the permission prompt tool.
 
 | Mode | Claude argv | Codex `thread/start` / `thread/resume` |
 | --- | --- | --- |
-| `auto` | no `--permission-mode`, or `--permission-mode default`; `--permission-prompt-tool mcp__atoll__approve` | `sandbox: workspace-write`, `approvalPolicy: on-request` |
-| `ask` | same as `auto` | `approvalPolicy: untrusted`; sandbox not `danger-full-access` |
+| `auto` | `--permission-mode auto`; `--permission-prompt-tool mcp__atoll__approve` | `sandbox: workspace-write`, `approvalPolicy: on-request` |
+| `ask` | no `--permission-mode`, or `--permission-mode default`; `--permission-prompt-tool mcp__atoll__approve` | `approvalPolicy: untrusted`; sandbox not `danger-full-access` |
 | `full` | `--permission-mode bypassPermissions` | `sandbox: danger-full-access`, `approvalPolicy: never` |
 
 Codex may carry them as params or in `config` (`sandbox_mode`, `approval_policy`). A mode changed
