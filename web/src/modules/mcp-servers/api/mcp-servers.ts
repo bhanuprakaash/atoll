@@ -31,9 +31,11 @@ export function useMcpServers(signingIn?: McpServer) {
 }
 
 export function useConnectMcpServer() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       api<{ authorize_url: string }>(`/mcp-servers/${id}/connect`, { method: 'POST' }),
+    onError: () => queryClient.invalidateQueries({ queryKey: ['mcp-servers'] }),
   });
 }
 

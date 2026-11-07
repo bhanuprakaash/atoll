@@ -34,7 +34,7 @@ var _catalog = []store.MCPServer{
 	},
 	{
 		ID: "cloudflare", Name: "Cloudflare", Kind: store.MCPCatalog,
-		URL: "https://observability.mcp.cloudflare.com/mcp", Status: store.MCPNotConnected,
+		URL: "https://mcp.cloudflare.com/mcp", Status: store.MCPNotConnected,
 	},
 }
 
