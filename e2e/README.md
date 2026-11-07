@@ -149,3 +149,5 @@ GitHub repos (a repo on GitHub: push and open a pull request with `gh`) extends 
 MCP sign-in for hosted servers (Connect, tokens in the OS secret store, refresh) extends these contracts in [mcp-oauth-contract.md](mcp-oauth-contract.md).
 
 Approval cards that close and links that leave the app extend these contracts in [approvals-contract.md](approvals-contract.md).
+
+Bot mode (Auto, Ask or Full access, and what each gives Claude and Codex) extends these contracts in [bot-mode-contract.md](bot-mode-contract.md).
