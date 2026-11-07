@@ -28,6 +28,10 @@ const (
 	ToolRecall       = "recall"
 	ToolReadMemory   = "read_memory"
 	ToolRetireMemory = "retire_memory"
+	// ToolDelegate takes {bot, brief, repo?} and returns {thread_id}; ToolContinue takes
+	// {thread, message}.
+	ToolDelegate = "delegate"
+	ToolContinue = "continue"
 	// Platform tools modify platform configuration.
 	ToolCreateBot        = "create_bot"
 	ToolEditBot          = "edit_bot"

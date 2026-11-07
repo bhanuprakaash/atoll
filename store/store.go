@@ -125,6 +125,7 @@ type (
 	Thread struct {
 		ID              string     `json:"id"`
 		BotID           string     `json:"bot_id"`
+		ParentThreadID  string     `json:"parent_thread_id"`
 		Title           string     `json:"title"`
 		Session         string     `json:"-"`
 		RepoID          string     `json:"repo_id"`
@@ -178,7 +179,7 @@ type (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id"
 	_messagePageSize = 50
 )
 
@@ -452,14 +453,25 @@ func (s *Store) SetConnectionStatus(ctx context.Context, id, status string) erro
 
 // CreateThread starts a thread with the Bot botID, in the repo repoID when it is not empty.
 func (s *Store) CreateThread(ctx context.Context, botID, repoID string) (Thread, error) {
+	return s.createThread(ctx, botID, repoID, "")
+}
+
+// CreateHelperThread starts a thread with the Bot botID that helps the thread parentID.
+func (s *Store) CreateHelperThread(
+	ctx context.Context, parentID, botID, repoID string,
+) (Thread, error) {
+	return s.createThread(ctx, botID, repoID, parentID)
+}
+
+func (s *Store) createThread(ctx context.Context, botID, repoID, parentID string) (Thread, error) {
 	t := Thread{
-		ID: newID(), BotID: botID, RepoID: repoID,
+		ID: newID(), BotID: botID, RepoID: repoID, ParentThreadID: parentID,
 		Created: time.Now().UTC().Truncate(time.Microsecond),
 	}
 	res, err := s.db.ExecContext(ctx,
-		"INSERT INTO threads (id, bot_id, repo_id, created, last_activity) "+
-			"SELECT ?, id, ?, ?, ? FROM bots WHERE id = ? AND removed = 0",
-		t.ID, t.RepoID, t.Created.UnixMicro(), t.Created.UnixMicro(), botID)
+		"INSERT INTO threads (id, bot_id, repo_id, parent_thread_id, created, last_activity) "+
+			"SELECT ?, id, ?, ?, ?, ? FROM bots WHERE id = ? AND removed = 0",
+		t.ID, t.RepoID, t.ParentThreadID, t.Created.UnixMicro(), t.Created.UnixMicro(), botID)
 	if err != nil {
 		return Thread{}, fmt.Errorf("insert thread: %w", err)
 	}
@@ -488,6 +500,13 @@ func (s *Store) Threads(ctx context.Context, botID string) ([]Thread, error) {
 	return query(ctx, s.db,
 		"SELECT "+_threadColumns+" FROM threads WHERE bot_id = ? ORDER BY last_activity DESC, rowid DESC",
 		scanThread, botID)
+}
+
+// HelperThreads lists the threads that help the thread parentID, oldest first.
+func (s *Store) HelperThreads(ctx context.Context, parentID string) ([]Thread, error) {
+	return query(ctx, s.db,
+		"SELECT "+_threadColumns+" FROM threads WHERE parent_thread_id = ? ORDER BY rowid",
+		scanThread, parentID)
 }
 
 // Watched lists the threads with an MR and a worktree: the ones whose MR is polled.
@@ -855,7 +874,7 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	var closedAt sql.NullInt64
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
 		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
-		&t.Title)
+		&t.Title, &t.ParentThreadID)
 	if err != nil {
 		return Thread{}, err
 	}

@@ -1,9 +1,11 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"atoll/memory"
 	"atoll/provider"
@@ -121,17 +123,27 @@ func (a *api) dispatch(r *http.Request, req rpcRequest) (any, *rpcError) {
 			"serverInfo":      map[string]any{"name": "atoll", "version": "0"},
 		}, nil
 	case "tools/list":
-		bot, _, _, err := a.runs.Source(r.PathValue("token"))
-		if err != nil || !bot.CanManagePlatform {
+		bot, thread, _, err := a.runs.Source(r.PathValue("token"))
+		boss := err == nil && len(bot.Delegates) > 0 && thread.ParentThreadID == ""
+		if err != nil || (!bot.CanManagePlatform && !boss) {
 			return json.RawMessage(_tools), nil
 		}
 		var base struct {
 			Tools []json.RawMessage `json:"tools"`
 		}
 		_ = json.Unmarshal([]byte(_tools), &base)
-		var extra []json.RawMessage
-		_ = json.Unmarshal([]byte(_platformTools), &extra)
-		base.Tools = append(base.Tools, extra...)
+		if bot.CanManagePlatform {
+			var extra []json.RawMessage
+			_ = json.Unmarshal([]byte(_platformTools), &extra)
+			base.Tools = append(base.Tools, extra...)
+		}
+		if boss {
+			extra, err := a.delegateTools(r.Context(), bot)
+			if err != nil {
+				return nil, a.toolError(err)
+			}
+			base.Tools = append(base.Tools, extra...)
+		}
 		return base, nil
 	case "tools/call":
 		return a.callTool(r, req.Params)
@@ -247,6 +259,35 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			return nil, a.toolError(err)
 		}
 		return a.jsonText(item)
+	case provider.ToolDelegate:
+		var in struct {
+			Bot   string `json:"bot"`
+			Brief string `json:"brief"`
+			Repo  string `json:"repo"`
+		}
+		if err := json.Unmarshal(call.Arguments, &in); err != nil || in.Bot == "" || in.Brief == "" {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
+		}
+		id, err := a.runs.Delegate(r.Context(), token, in.Bot, in.Brief, in.Repo)
+		if res, rpcErr := a.refusal(err); res != nil || rpcErr != nil {
+			return res, rpcErr
+		}
+		return a.jsonText(struct {
+			ThreadID string `json:"thread_id"`
+		}{id})
+	case provider.ToolContinue:
+		var in struct {
+			Thread  string `json:"thread"`
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(call.Arguments, &in); err != nil || in.Thread == "" || in.Message == "" {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
+		}
+		err := a.runs.Continue(r.Context(), token, in.Thread, in.Message)
+		if res, rpcErr := a.refusal(err); res != nil || rpcErr != nil {
+			return res, rpcErr
+		}
+		return text("Sent."), nil
 	case provider.ToolApprove:
 		var in struct {
 			ToolName  string          `json:"tool_name"`
@@ -275,6 +316,65 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		return text(string(body)), nil
 	}
 	return nil, &rpcError{Code: _invalidParams, Message: "unknown tool: " + call.Name}
+}
+
+// delegateTools are the tools of a Bot with delegates, whose description names them.
+func (a *api) delegateTools(ctx context.Context, bot store.Bot) ([]json.RawMessage, error) {
+	var names []string
+	for _, id := range bot.Delegates {
+		b, err := a.st.Bot(ctx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, b.Name)
+	}
+	str := map[string]string{"type": "string"}
+	tools := []map[string]any{{
+		"name": provider.ToolDelegate,
+		"description": "Hand work to a Bot on your delegate list (" + strings.Join(names, ", ") +
+			"). Returns at once with {\"thread_id\"}; the helper works in a thread of its own and " +
+			"its replies come back to you. The brief must hold everything the helper needs. " +
+			"The helper works in this thread's repo; with no repo here, repo names a registered repo.",
+		"inputSchema": map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"bot": str, "brief": str, "repo": str},
+			"required":   []string{"bot", "brief"},
+		},
+	}, {
+		"name": provider.ToolContinue,
+		"description": "Send a message to a helper thread you started with delegate, for more work " +
+			"on the same task. Start a new delegate for different work.",
+		"inputSchema": map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"thread": str, "message": str},
+			"required":   []string{"thread", "message"},
+		},
+	}}
+	out := make([]json.RawMessage, 0, len(tools))
+	for _, t := range tools {
+		b, err := json.Marshal(t)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, nil
+}
+
+// refusal turns a refused delegate or continue into a tool error, so the run goes on. It returns
+// nothing for a nil err.
+func (a *api) refusal(err error) (any, *rpcError) {
+	var refused run.RefusedError
+	switch {
+	case err == nil:
+		return nil, nil
+	case errors.As(err, &refused), errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed):
+		return failure(err.Error()), nil
+	}
+	return nil, a.toolError(err)
 }
 
 func (a *api) toolError(err error) *rpcError {

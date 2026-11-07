@@ -398,7 +398,17 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "text is required")
 		return
 	}
-	m, ru, err := a.runs.Send(r.Context(), r.PathValue("id"), body.Text)
+	id := r.PathValue("id")
+	if t, err := a.st.Thread(r.Context(), id); err == nil && t.ParentThreadID != "" {
+		boss, err := a.bossName(r.Context(), t.ParentThreadID)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		fail(w, http.StatusConflict, boss+" is handling this thread")
+		return
+	}
+	m, ru, err := a.runs.Send(r.Context(), id, body.Text)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -407,6 +417,15 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 		Message store.Message `json:"message"`
 		Run     store.Run     `json:"run"`
 	}{Message: m, Run: ru})
+}
+
+func (a *api) bossName(ctx context.Context, threadID string) (string, error) {
+	t, err := a.st.Thread(ctx, threadID)
+	if err != nil {
+		return "", err
+	}
+	b, err := a.st.Bot(ctx, t.BotID)
+	return b.Name, err
 }
 
 func (a *api) listMessages(w http.ResponseWriter, r *http.Request) {

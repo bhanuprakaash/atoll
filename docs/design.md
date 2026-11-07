@@ -112,15 +112,29 @@ Undo of a repo registration is refused while a thread uses the repo.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
   into a pane the user can take over (v2).
 
-## Delegation (v2)
+## Delegation
 
 - A Bot may delegate only to Bots on its delegate list: empty by default, set in Bot settings or by
   Chief; deleting a Bot removes it from every list. Depth 1: a delegated run cannot delegate.
   *Cycles become impossible.*
-- A delegation is a thread where the parent Bot is the asker: `delegate(bot, brief)`,
-  `continue(thread, message)`. Continue for the same work; start a new one for different work.
-- A child's questions go to its parent; approvals go to the user. The child gets one line at the
-  start: `{parent} delegated this to you; your replies go to {parent}.`
+- A delegation is a thread where the parent Bot is the asker. Reef's MCP server lists
+  `delegate(bot, brief, repo?)` and `continue(thread, message)` only in runs of a Bot with a
+  non-empty delegate list, in a thread that is not a helper thread (depth 1). Continue for the same
+  work; start a new one for different work.
+- `delegate` returns `{"thread_id"}` at once; the boss's run ends normally and the helper works in
+  a thread of its own, with `parent_thread_id` set. It uses the boss thread's repo; a boss thread
+  with no repo (Chief) may pass a registered repo's name, else the helper has none. The helper
+  starts a fresh provider session.
+- Refusals are tool results with `isError`, so the run goes on: a Bot not on the list (the text
+  names the Bots on it); a helper whose repo access does not allow the repo (`Tester has no access
+  to atoll`); a repo with no commit; a fourth helper while 3 helper runs of the boss thread are
+  going (`3 helpers running. Tell the user, and hand this off when one of them reports back.`).
+- `continue` is accepted only from the helper's boss thread, and gives the helper a run with the
+  message.
+- A helper thread is read-only for the user: `POST /api/threads/{id}/messages` answers 409 `{boss}
+  is handling this thread`.
+- A child's questions go to its parent; approvals go to the user. The child's first message is one
+  line, then the brief: `{parent} delegated this to you; your replies go to {parent}.`
 - A child works in its own worktree branched from the parent's branch (`<parent-branch>--<bot>`).
   The parent merges it and opens the MR, and owns the result.
 - Children show nested in the parent's thread.
@@ -639,7 +653,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 
 ## Queue
 
-Delegation, a Slack Marketplace listing (one-click Slack for every
+A Slack Marketplace listing (one-click Slack for every
 workspace, no per-workspace app), browser pane, background processes pane, the platform
 switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up
 to about 5 items always in the prompt), routines (scheduled, repeating runs), more provider
