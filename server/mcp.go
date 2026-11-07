@@ -366,7 +366,7 @@ func (a *api) refusal(err error) (any, *rpcError) {
 	switch {
 	case err == nil:
 		return nil, nil
-	case errors.As(err, &refused), errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed):
+	case errors.As(err, &refused), errors.Is(err, run.ErrClosed):
 		return failure(err.Error()), nil
 	}
 	return nil, a.toolError(err)
