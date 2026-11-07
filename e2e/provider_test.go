@@ -47,6 +47,14 @@ func newMachine(t *testing.T, providers ...string) *machine {
 	t.Helper()
 	m := &machine{home: t.TempDir(), data: t.TempDir(), bin: t.TempDir()}
 	m.path = m.bin + ":/usr/bin:/bin"
+	if _keychains != "" {
+		if err := os.Mkdir(filepath.Join(m.home, "Library"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(_keychains, filepath.Join(m.home, "Library", "Keychains")); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, p := range providers {
 		installFake(t, p, m.bin)
 	}
