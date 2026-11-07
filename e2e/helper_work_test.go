@@ -327,6 +327,8 @@ func TestHelperWork_CloseOrMergeRemovesHelpers(t *testing.T) {
 			helper, w, run = helping(merging, ev)
 			hev = s.events(t, helper)
 			latest := getThread(t, s, merging.ID).RunID
+			// ev still holds the boss wake run's run_finished; a fresh stream starts after it.
+			ev = s.events(t, merging)
 			writeFile(t, filepath.Join(f.m.bin, "mr-state"), "merged")
 			assertRemoved(t, ev, latest, own.Path, "merged")
 			removed(helper, w, run, "merged", hev)
