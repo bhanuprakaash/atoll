@@ -17,11 +17,11 @@ var _allowed = map[string][]string{
 	},
 	"atoll/server": {
 		"atoll/run", "atoll/provider", "atoll/memory", "atoll/repo", "atoll/skill",
-		"atoll/connection", "atoll/store",
+		"atoll/connection", "atoll/mcpserver", "atoll/store",
 	},
 	"atoll/run": {
 		"atoll/provider", "atoll/memory", "atoll/repo", "atoll/skill", "atoll/connection",
-		"atoll/store",
+		"atoll/mcpserver", "atoll/store",
 	},
 	"atoll/provider":        {},
 	"atoll/provider/claude": {"atoll/provider"},
@@ -30,6 +30,7 @@ var _allowed = map[string][]string{
 	"atoll/repo":            {"atoll/store"},
 	"atoll/skill":           {"atoll/store"},
 	"atoll/connection":      {"atoll/store"},
+	"atoll/mcpserver":       {"atoll/store"},
 	"atoll/store":           {},
 }
 

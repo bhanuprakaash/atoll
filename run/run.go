@@ -526,6 +526,9 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 	if cfg.SkillDir, err = skill.Place(skillDir, bot.Provider, skills); err != nil {
 		return "", fmt.Errorf("place skills: %w", err)
 	}
+	if cfg.MCPServers, err = m.mcpServers(a.ctx, bot); err != nil {
+		return "", err
+	}
 	var items []memory.Item
 	var counts memory.Counts
 	if m.cfg.Memory != nil {
@@ -942,7 +945,7 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
 		provider.ToolEditSkill, provider.ToolImportSkill, provider.ToolRegisterRepo,
 		provider.ToolAttachConnection, provider.ToolListBots, provider.ToolListSkills, provider.ToolListConnections,
-		provider.ToolListRepos, provider.ToolListModels,
+		provider.ToolListRepos, provider.ToolListModels, provider.ToolListMCPServers,
 	}, name) {
 		return "platform", v.Name
 	}

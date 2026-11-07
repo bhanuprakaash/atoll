@@ -53,11 +53,14 @@ type (
 		tools    map[string]string // server to its last started MCP tool, which names an elicitation
 		notes    map[string]bool   // commentary agent message items of the turn; owned by run
 
-		// asks holds the raw request id of each open approval, by event ID.
 		askMu sync.Mutex
-		asks  map[string]json.RawMessage
-		// elicits marks the asks that are MCP tool calls, which take {action} not {decision}.
-		elicits map[string]bool
+		asks  map[string]ask
+	}
+
+	ask struct {
+		id json.RawMessage
+		// elicitation: MCP elicitations answer {action}, other requests {decision}.
+		elicitation bool
 	}
 
 	message struct {
@@ -92,8 +95,7 @@ type (
 func New() *Session {
 	return &Session{
 		events:  make(chan provider.Event, 1),
-		asks:    map[string]json.RawMessage{},
-		elicits: map[string]bool{},
+		asks:    map[string]ask{},
 		notes:   map[string]bool{},
 		changes: map[string]json.RawMessage{},
 		tools:   map[string]string{},
@@ -161,22 +163,20 @@ func (s *Session) Events() <-chan provider.Event { return s.events }
 // Answer replies to the approval request with id. It is safe to call while run reads.
 func (s *Session) Answer(id string, allow bool) error {
 	s.askMu.Lock()
-	raw, ok := s.asks[id]
-	elicit := s.elicits[id]
+	a, ok := s.asks[id]
 	delete(s.asks, id)
-	delete(s.elicits, id)
 	s.askMu.Unlock()
 	if !ok {
 		return fmt.Errorf("no open approval request %s", id)
 	}
-	decision := "decline"
+	reply, answer := "decision", "decline"
+	if a.elicitation {
+		reply = "action"
+	}
 	if allow {
-		decision = "accept"
+		answer = "accept"
 	}
-	if elicit {
-		return s.write(map[string]any{"id": raw, "result": map[string]string{"action": decision}})
-	}
-	return s.write(map[string]any{"id": raw, "result": map[string]string{"decision": decision}})
+	return s.write(map[string]any{"id": a.id, "result": map[string]string{reply: answer}})
 }
 
 // Interrupt stops codex, waits for it, and closes Events. Codex gets SIGTERM so it can stop the
@@ -381,6 +381,7 @@ func (s *Session) read() {
 // request, which nobody is there to answer. It reports whether to keep reading.
 func (s *Session) serverRequest(m message) bool {
 	var name string
+	var elicitation bool
 	switch m.Method {
 	case "item/commandExecution/requestApproval":
 		name = "commandExecution"
@@ -393,14 +394,8 @@ func (s *Session) serverRequest(m message) bool {
 			_ = s.write(map[string]any{"id": m.ID, "result": map[string]any{"action": "accept"}})
 			return true
 		}
-		id := string(m.ID)
-		s.askMu.Lock()
-		s.asks[id] = m.ID
-		s.elicits[id] = true
-		s.askMu.Unlock()
-		return s.emit(provider.Event{
-			Kind: provider.KindApproval, ID: id, Name: "mcp__" + server + "__" + s.tools[server], Input: m.Params,
-		})
+		name = "mcp__" + server + "__" + s.tools[server]
+		elicitation = true
 	default:
 		_ = s.write(map[string]any{
 			"id":    m.ID,
@@ -410,7 +405,7 @@ func (s *Session) serverRequest(m message) bool {
 	}
 	id := string(m.ID)
 	s.askMu.Lock()
-	s.asks[id] = m.ID
+	s.asks[id] = ask{id: m.ID, elicitation: elicitation}
 	s.askMu.Unlock()
 	input := m.Params
 	if name == "fileChange" {
@@ -574,9 +569,7 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 		params["developerInstructions"] = cfg.SystemPrompt
 	}
 	if cfg.MCPURL != "" {
-		servers := map[string]any{
-			provider.MCPServer: map[string]string{"url": cfg.MCPURL},
-		}
+		servers := map[string]any{provider.MCPServer: map[string]string{"url": cfg.MCPURL}}
 		if cfg.GitHubMCPURL != "" {
 			servers[provider.GitHubMCPServer] = map[string]any{
 				"url":          cfg.GitHubMCPURL,
@@ -585,11 +578,33 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 				"default_tools_approval_mode": "prompt",
 			}
 		}
+		for _, m := range cfg.MCPServers {
+			servers[m.Name] = userServer(m)
+		}
 		config["mcp_servers"] = servers
 		params["approvalPolicy"] = "on-request"
 		params["sandbox"] = "workspace-write"
 	}
 	return params, nil
+}
+
+func userServer(m provider.UserMCPServer) map[string]any {
+	e := map[string]any{"url": m.URL}
+	if m.Command != "" {
+		e = map[string]any{"command": m.Command}
+	}
+	// Codex's default mode skips approval for tools that declare readOnlyHint.
+	e["default_tools_approval_mode"] = "prompt"
+	if len(m.Args) > 0 {
+		e["args"] = m.Args
+	}
+	if len(m.Env) > 0 {
+		e["env"] = m.Env
+	}
+	if len(m.Headers) > 0 {
+		e["http_headers"] = m.Headers
+	}
+	return e
 }
 
 // threadConfig turns off everything of the user's that Codex would load besides what CODEX_HOME

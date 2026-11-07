@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"atoll/mcpserver"
 	"atoll/memory"
 	"atoll/repo"
 	"atoll/run"
@@ -101,6 +102,10 @@ func New(
 	mux.HandleFunc("GET /api/skills/{id}", a.getSkill)
 	mux.HandleFunc("PUT /api/skills/{id}", a.putSkill)
 	mux.HandleFunc("POST /api/skills/{id}/reimport", a.reimportSkill)
+	mux.HandleFunc("GET /api/mcp-servers", a.listMCPServers)
+	mux.HandleFunc("POST /api/mcp-servers", a.createMCPServer)
+	mux.HandleFunc("PUT /api/mcp-servers/{id}", a.putMCPServer)
+	mux.HandleFunc("DELETE /api/mcp-servers/{id}", a.deleteMCPServer)
 	mux.HandleFunc("POST /api/platform/changes/{id}/undo", a.undoChange)
 	mux.HandleFunc("GET /api/threads/{id}/changes", a.listChanges)
 	mux.HandleFunc("POST /api/bots/{id}/threads", a.createThread)
@@ -165,7 +170,7 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "name is required and provider must be claude or codex")
 		return
 	}
-	msg, err := a.unknownRepos(r.Context(), b.RepoAccess)
+	msg, err := a.unknownPicks(r.Context(), b)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -487,7 +492,7 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, store.ErrNotFound), errors.Is(err, run.ErrNotFound),
 		errors.Is(err, memory.ErrNotFound):
 		fail(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, memory.ErrInvalid):
+	case errors.Is(err, memory.ErrInvalid), errors.Is(err, mcpserver.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed),
 		errors.Is(err, store.ErrExists), errors.Is(err, store.ErrUndone),

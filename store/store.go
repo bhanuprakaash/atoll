@@ -92,6 +92,7 @@ type (
 		RepoAccess        RepoAccess `json:"repo_access"`
 		Connections       []string   `json:"connections"`
 		Skills            []string   `json:"skills"`
+		MCPServers        []string   `json:"mcp_servers"`
 		CanManagePlatform bool       `json:"can_manage_platform"`
 	}
 
@@ -174,7 +175,7 @@ type (
 
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
-		"can_manage_platform, look, model"
+		"can_manage_platform, look, model, mcp_servers"
 	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title"
 	_messagePageSize = 50
 )
@@ -258,7 +259,7 @@ func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 		return Bot{}, err
 	}
 	_, err = s.db.ExecContext(ctx,
-		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", args...)
+		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", args...)
 	if err != nil {
 		return Bot{}, fmt.Errorf("insert bot: %w", err)
 	}
@@ -851,9 +852,9 @@ func scanThread(r *sql.Rows) (Thread, error) {
 func scanBot(r *sql.Rows) (Bot, error) {
 	var b Bot
 	var access sql.NullString
-	var conns, skills string
+	var conns, skills, mcp string
 	err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills,
-		&b.CanManagePlatform, &b.Look, &b.Model, &b.Pinned)
+		&b.CanManagePlatform, &b.Look, &b.Model, &mcp, &b.Pinned)
 	if err != nil {
 		return Bot{}, err
 	}
@@ -867,6 +868,9 @@ func scanBot(r *sql.Rows) (Bot, error) {
 	}
 	if err := json.Unmarshal([]byte(skills), &b.Skills); err != nil {
 		return Bot{}, fmt.Errorf("decode skills of bot %s: %w", b.ID, err)
+	}
+	if err := json.Unmarshal([]byte(mcp), &b.MCPServers); err != nil {
+		return Bot{}, fmt.Errorf("decode MCP servers of bot %s: %w", b.ID, err)
 	}
 	return normalizeBot(b), nil
 }

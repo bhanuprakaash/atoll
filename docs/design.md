@@ -27,7 +27,7 @@ never a dependency.
 
 ## Bots
 
-- Settings: name, persona, Model, skills, connections, repo access, delegate list, look.
+- Settings: name, persona, Model, skills, connections, MCP servers, repo access, delegate list, look.
 - Persona holds expertise only. Who the Bot talks to comes from the run, not the persona.
 - Model is one field, e.g. `Claude Code · Opus 5.5`, `Codex · GPT-5`, listing only enabled, ready
   providers. The models come from asking each provider.
@@ -46,8 +46,8 @@ never a dependency.
 `edit_bot` refuse to give it repos, its Bot settings and empty thread offer none, and a launch moves
 an older install's Chief to none. It does no code work. It has the "Can manage the platform" switch
 on: tools to create and edit Bots (including model and look), skills and repos, and to attach
-connections, served as Reef's own MCP tools; read tools list Bots, skills, connections, repos and
-signed-in models and record no change.
+connections, served as Reef's own MCP tools; read tools list Bots, skills, connections, repos, MCP
+servers and signed-in models and record no change.
 A model must be one the Bot's provider lists while signed in; an unknown model or look fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
 registered repo has (REST answers 400 with the same text). Sign-ins stay with the user. Every change shows in the thread with undo.
@@ -182,7 +182,7 @@ Undo of a repo registration is refused while a thread uses the repo.
 
 ## Connections and skills
 
-- Bots see only Reef's connections and skills, never the provider's own.
+- Bots see only Reef's connections, skills and MCP servers, never the provider's own.
 - Connections are built in, each with a sign-in flow, no token pasting. Each Bot picks its own. One
   sign-in feeds both the service's MCP server and its CLI (`OAUTH_TOKEN` for `glab`, `GH_TOKEN`).
   - GitLab (v1): OAuth device flow, instance URL (default gitlab.com); Bots use `glab`. *GitLab's own
@@ -250,6 +250,34 @@ Undo of a repo registration is refused while a thread uses the repo.
   an overlapping run and change files a live run reads.* A provider without skills gets a list in the
   prompt and reads the file on demand. Never written into the repo. Skills the repo commits itself (`.claude/skills`,
   `.agents/skills`) still load, like its CLAUDE.md.
+
+## MCP servers
+
+- One library, in Settings > MCP servers: a catalog (Context7 now: remote, no sign-in, no secret;
+  always first, not editable) and the user's own servers, listed in the order added. A server is
+  local (`command`, `args`, `env`; stdio) or remote (`url`, `headers`; streamable HTTP).
+  `GET/POST /api/mcp-servers`, `PUT/DELETE /api/mcp-servers/{id}`; a `PUT` replaces the server.
+- The name is the key in the provider's config and shows in tool names (`mcp__<name>__<tool>`): it
+  is `[A-Za-z0-9_-]+` with no `__`, unique among the user's servers and the catalog, and never `atoll`.
+- Env and header values go to the OS secret store (`mcp:<id>:env:<NAME>`, `mcp:<id>:header:<Name>`),
+  never the database, a file, a log or an API reply. The database and the API hold names only. A
+  `PUT` that leaves `env` or `headers` out keeps every stored secret; when present it is the whole
+  set, and a name with `""` keeps its stored value. Remove deletes the secrets.
+- Each Bot picks its servers (`mcp_servers`, library ids; Bot settings shows one switch per server).
+  Chief's `create_bot` and `edit_bot` take them, and its read tool `list_mcp_servers` lists the
+  library. An unknown id fails with the known ones named. Remove drops the server from every Bot.
+- A run gets Atoll's own server plus exactly its Bot's servers, read from the library when the run
+  starts: Claude through `--mcp-config` (still `--strict-mcp-config`), Codex through `mcp_servers`
+  in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
+  Remove apply from the next run; a live run keeps its config. *A Bot that picks nothing gets none.*
+- A tool call to a user-added server is an approval in the thread, like any other tool. Claude's
+  allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex gets
+  `default_tools_approval_mode = "prompt"` on every server but Reef's, since its default skips
+  tools that declare themselves read-only; its `mcpServer/elicitation/request` becomes an approval,
+  named by the `mcpToolCall` item it follows, answered `{action: "accept"}` or
+  `{action: "decline"}`. Reef's own tools need none.
+- Importing servers from `~/.claude.json` or Codex's config, OAuth sign-in for remote servers and a
+  per-server "always allow" are not built.
 
 ## Memory
 
@@ -337,7 +365,7 @@ Reef guide
 - A Bot has a persona, model, skills, connections, repo access, look, platform switch. A thread is a chat; each message is a run.
 - Repos are registered once. A thread works in one repo, in its own worktree.
 - Providers are Claude Code and Codex, signed in from Settings > Providers.
-- A connection is a signed-in service (GitLab, GitHub) whose token Reef holds and gives a Bot's CLI or MCP. MCP is how tools reach a Bot: Reef serves its own tools (memory, finish_run, platform) over MCP. Bots never see the provider's own MCP servers. Importing MCP servers is not supported.
+- A connection is a signed-in service (GitLab, GitHub) whose token Reef holds and gives a Bot's CLI or MCP. MCP is how tools reach a Bot: Reef serves its own tools (memory, finish_run, platform) over MCP. Bots get only the MCP servers picked for them. Importing MCP servers is not supported.
 - A skill is a folder (SKILL.md plus text files) in one library, picked per Bot.
 - Memory: decisions and findings Bots save, per user, repo or Bot.
 - Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
@@ -498,13 +526,13 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 | Repos | Register, worktree per thread, MR via `glab`, PR via `gh` |
 | Connections | GitLab, GitHub |
 | Skills | Library, picked per Bot |
+| MCP servers | Catalog, local and remote servers, picked per Bot, approvals |
 | Memory | Three scopes, four tools, saves shown in the thread |
 
 ## Queue
 
 Delegation, the Slack connection, browser pane, background processes pane, the platform
-switch for Bots other than Chief, importing MCP servers, a skill's binary files, desktop Linux, mobile,
-memory pins (up to about 5 items always in the prompt), routines (scheduled, repeating runs),
-more provider adapters.
+switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up to
+about 5 items always in the prompt), routines (scheduled, repeating runs), more provider adapters.
 
 An item moves into the build when its absence hurts in daily use.

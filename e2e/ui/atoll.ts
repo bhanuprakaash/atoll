@@ -17,7 +17,7 @@ export function build(): string {
   const out = mkdtempSync(join(tmpdir(), 'atoll-ui-build-'));
   const go = (...args: string[]) => execFileSync('go', args, { cwd: e2e, stdio: 'inherit' });
   go('build', '-o', join(out, 'atoll'), 'atoll/cmd/atoll');
-  for (const fake of ['claude', 'codex', 'glab', 'gh']) {
+  for (const fake of ['claude', 'codex', 'glab', 'gh', 'mcpstdio']) {
     go(
       'build',
       '-o',

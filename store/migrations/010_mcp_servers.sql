@@ -1,0 +1,12 @@
+ALTER TABLE bots ADD COLUMN mcp_servers TEXT NOT NULL DEFAULT '[]';
+
+CREATE TABLE mcp_servers (
+ id TEXT PRIMARY KEY,
+ name TEXT NOT NULL UNIQUE,
+ kind TEXT NOT NULL,
+ command TEXT NOT NULL DEFAULT '',
+ args TEXT NOT NULL DEFAULT '[]',
+ url TEXT NOT NULL DEFAULT '',
+ env_names TEXT NOT NULL DEFAULT '[]',
+ header_names TEXT NOT NULL DEFAULT '[]'
+);
