@@ -127,6 +127,39 @@ func helperSession(t *testing.T, m *machine, p string) *call {
 	}
 }
 
+// quietBoss waits out boss wakes: once n of its helpers' runs have ended, Reef may post n messages
+// from the helper Bot into the boss thread, each starting a boss run, and a message to a thread
+// with a going run is refused. It returns when the thread holds n such messages, or none came in
+// 4*_pace (a server without wakes), and its latest run has ended and stayed latest for 2*_pace.
+func quietBoss(t *testing.T, s *server, boss, helperBot string, n int) {
+	t.Helper()
+	start, deadline := time.Now(), time.Now().Add(30*time.Second)
+	last, since := "", time.Now()
+	for {
+		woke := 0
+		var msgs []struct {
+			FromBotID string `json:"from_bot_id"`
+		}
+		s.do(t, "GET", "/api/threads/"+boss+"/messages", nil, &msgs, http.StatusOK)
+		for _, msg := range msgs {
+			if msg.FromBotID == helperBot {
+				woke++
+			}
+		}
+		th := getThread(t, s, boss)
+		if th.RunID != last || th.RunStatus == "running" || th.RunStatus == "waiting" {
+			last, since = th.RunID, time.Now()
+		}
+		if (woke >= n || woke == 0 && time.Since(start) > 4*_pace) && time.Since(since) > 2*_pace {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("boss thread %s: %d of %d messages from the helper Bot, latest run %s %q after 30s", boss, woke, n, th.RunID, th.RunStatus)
+		}
+		time.Sleep(_pace / 3)
+	}
+}
+
 // TestDelegate_HandsOff: delegate returns {thread_id} at once, the boss's run ends done while the
 // helper still works, and the helper thread has the boss thread as parent, the helper Bot, no
 // repo, the handoff line and brief as its first message, and a fresh provider session.
@@ -289,10 +322,13 @@ func TestDelegate_HelperRepo(t *testing.T) {
 			}
 
 			s.do(t, "PUT", "/api/bots/"+tester.ID, map[string]any{"repo_access": []string{}}, nil, http.StatusOK)
+			// Fresh boss threads: the helpers above may still be waking onRepo and noRepo.
 			const noAccess = "atoll/delegate: Tester has no access to atoll"
+			s.do(t, "POST", "/api/bots/"+poteto.ID+"/threads", map[string]string{"repo_id": byName["atoll"]}, &onRepo, http.StatusCreated)
 			if got := useAtoll(t, s, onRepo, s.events(t, onRepo), delegateCall("Tester", _keepPrompt, "")); !slices.Equal(got, []string{noAccess}) {
 				t.Errorf("Tester without access, boss thread on atoll: reply %q, want %q", got, noAccess)
 			}
+			noRepo = s.newThread(t, poteto)
 			if got := useAtoll(t, s, noRepo, s.events(t, noRepo), delegateCall("Tester", _keepPrompt, "atoll")); !slices.Equal(got, []string{noAccess}) {
 				t.Errorf("Tester without access, repo atoll named: reply %q, want %q", got, noAccess)
 			}
@@ -341,6 +377,7 @@ func TestContinue_OnlyFromBoss(t *testing.T) {
 				}
 			}
 
+			quietBoss(t, s, boss.ID, tester.ID, 1)
 			lines := useAtoll(t, s, boss, ev, continueCall(helper, _askPrompt))
 			if len(lines) != 1 || lines[0] == "atoll/continue: unavailable" || slices.Contains(refusals, lines[0]) {
 				t.Fatalf("continue from the boss thread: reply %q, want it accepted (refusals were %q)", lines, refusals)
