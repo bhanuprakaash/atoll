@@ -481,7 +481,10 @@ export function ThreadView({
         bots[h.bot_id]?.name ?? 'Helper',
       ]);
   }
-  const boss = thread?.parent_thread_id ? (bots[thread.parent_bot_id]?.name ?? 'Its boss') : '';
+  const boss =
+    thread?.parent_thread_id && thread.parent_bot_id && !thread.closed
+      ? (bots[thread.parent_bot_id]?.name ?? 'Its boss')
+      : '';
   const empty = messages.length === 0 && !activeId;
   const firstUserId = messages.find((m) => m.role === 'user')?.id;
   const loadOlder = () => {
