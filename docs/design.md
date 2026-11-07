@@ -219,9 +219,11 @@ Undo of a repo registration is refused while a thread uses the repo.
   in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
   Remove apply from the next run; a live run keeps its config. *A Bot that picks nothing gets none.*
 - A tool call to a user-added server is an approval in the thread, like any other tool. Claude's
-  allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex's
-  `mcpServer/elicitation/request` for any server but Reef's becomes an approval, answered
-  `{action: "accept"}` or `{action: "decline"}`. Reef's own tools need none.
+  allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex gets
+  `default_tools_approval_mode = "prompt"` on every server but Reef's, since its default skips
+  tools that declare themselves read-only; its `mcpServer/elicitation/request` becomes an approval,
+  named by the `mcpToolCall` item it follows, answered `{action: "accept"}` or
+  `{action: "decline"}`. Reef's own tools need none.
 - Importing servers from `~/.claude.json` or Codex's config, OAuth sign-in for remote servers and a
   per-server "always allow" are not built.
 
