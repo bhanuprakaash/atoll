@@ -320,6 +320,9 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 			"--allowedTools", mcp,
 		)
 	}
+	if cfg.Mode == provider.ModeFull {
+		args = append(args, "--permission-mode", "bypassPermissions")
+	}
 	if cfg.SkillDir != "" {
 		args = append(args, "--add-dir", cfg.SkillDir)
 	}

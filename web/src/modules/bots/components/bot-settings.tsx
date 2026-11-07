@@ -22,6 +22,12 @@ import {
   type ModelControl,
 } from '@/modules/bots/components/new-bot-form';
 
+const modes = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'ask', label: 'Ask' },
+  { value: 'full', label: 'Full access' },
+];
+
 export function BotSettings({
   bot,
   onClose,
@@ -43,6 +49,7 @@ export function BotSettings({
   const [look, setLook] = useState(bot.look);
   const [provider, setProvider] = useState(bot.provider);
   const [model, setModel] = useState(bot.model);
+  const [mode, setMode] = useState(bot.mode);
   const [repoAccess, setRepoAccess] = useState(bot.repo_access);
   const [skillIds, setSkillIds] = useState(bot.skills ?? []);
   const [mcpIds, setMcpIds] = useState(bot.mcp_servers ?? []);
@@ -201,6 +208,22 @@ export function BotSettings({
                 />
               )}
             </>
+          )}
+          <Segmented
+            label="Mode"
+            value={mode}
+            onChange={(value) => {
+              const next = value as Bot['mode'];
+              setMode(next);
+              mutate({ mode: next });
+            }}
+            choices={modes}
+          />
+          {mode === 'full' && (
+            <p className="-mt-4 text-xs text-label">
+              Full access: this Bot never asks, even to delete files or push. Use it for Bots that
+              run in a VM.
+            </p>
           )}
           <ConnectionList
             connections={connections}

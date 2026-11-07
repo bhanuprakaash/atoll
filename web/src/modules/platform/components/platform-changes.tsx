@@ -54,6 +54,7 @@ function Change({
     'name',
     'provider',
     'model',
+    'mode',
     'persona',
     'look',
     'skills',

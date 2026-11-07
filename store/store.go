@@ -85,6 +85,7 @@ type (
 		Provider          string     `json:"provider"`
 		Look              string     `json:"look,omitempty"`
 		Model             string     `json:"model,omitempty"`
+		Mode              string     `json:"mode"`
 		Pinned            bool       `json:"pinned,omitempty"`
 		State             string     `json:"state,omitempty"`
 		Activity          string     `json:"activity,omitempty"`
@@ -175,7 +176,7 @@ type (
 
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
-		"can_manage_platform, look, model, mcp_servers"
+		"can_manage_platform, look, model, mcp_servers, mode"
 	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title"
 	_messagePageSize = 50
 )
@@ -269,7 +270,7 @@ func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 		return Bot{}, err
 	}
 	_, err = s.db.ExecContext(ctx,
-		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", args...)
+		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", args...)
 	if err != nil {
 		return Bot{}, fmt.Errorf("insert bot: %w", err)
 	}
@@ -864,7 +865,7 @@ func scanBot(r *sql.Rows) (Bot, error) {
 	var access sql.NullString
 	var conns, skills, mcp string
 	err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills,
-		&b.CanManagePlatform, &b.Look, &b.Model, &mcp, &b.Pinned)
+		&b.CanManagePlatform, &b.Look, &b.Model, &mcp, &b.Mode, &b.Pinned)
 	if err != nil {
 		return Bot{}, err
 	}

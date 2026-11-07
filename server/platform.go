@@ -27,6 +27,8 @@ import (
 
 var _looks = []string{"jellyfish", "whale", "penguin", "shark", "starfish", "anglerfish", "sand_dollar", "sponge", "kelp", "shell", "wave", "island", "sun", "sailboat"}
 
+var _modes = []string{"auto", "ask", "full"}
+
 func (a *api) createWithLook(ctx context.Context, b store.Bot) (store.Bot, error) {
 	if b.Look == "" {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(_looks))))
@@ -38,17 +40,15 @@ func (a *api) createWithLook(ctx context.Context, b store.Bot) (store.Bot, error
 	return a.st.CreateBot(ctx, b)
 }
 
-func validBot(b store.Bot) bool {
-	return botProblem(b) == ""
-}
-
 // botProblem says why b cannot be saved, or "" when it can.
 func botProblem(b store.Bot) string {
 	switch {
 	case b.Name == "" || (b.Provider != "claude" && b.Provider != "codex"):
-		return "invalid bot"
+		return "name is required and provider must be claude or codex"
 	case b.Look != "" && !slices.Contains(_looks, b.Look):
 		return fmt.Sprintf("unknown look %q; looks: %s", b.Look, strings.Join(_looks, ", "))
+	case b.Mode != "" && !slices.Contains(_modes, b.Mode):
+		return fmt.Sprintf("unknown mode %q; modes: %s", b.Mode, strings.Join(_modes, ", "))
 	}
 	return ""
 }
@@ -187,8 +187,12 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	if json.NewDecoder(r.Body).Decode(&b) != nil || !validBot(b) {
+	if json.NewDecoder(r.Body).Decode(&b) != nil {
 		fail(w, http.StatusBadRequest, "invalid bot")
+		return
+	}
+	if msg := botProblem(b); msg != "" {
+		fail(w, http.StatusBadRequest, msg)
 		return
 	}
 	msg, err := a.unknownPicks(r.Context(), b)
@@ -320,8 +324,8 @@ func (a *api) listChanges(w http.ResponseWriter, r *http.Request) {
 }
 
 const _platformTools = `[
-{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"}},"required":["name","provider"]}},
-{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"}},"required":["id"]}},
+{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"},"mode":{"type":"string","enum":["auto","ask","full"]}},"required":["name","provider"]}},
+{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"},"mode":{"type":"string","enum":["auto","ask","full"]}},"required":["id"]}},
 {"name":"create_skill","description":"Create a skill.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"}},"required":["name","content"]}},
 {"name":"edit_skill","description":"Edit a skill.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"content":{"type":"string"}},"required":["id"]}},
 {"name":"import_skill","description":"Import a local skill folder (SKILL.md and its text files), or update the skill imported from it. Returns what it added, changed, removed and skipped.","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"replace":{"type":"boolean","description":"Overwrite edits made in Reef. Only after the user agreed."}},"required":["path"]}},

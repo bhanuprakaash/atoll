@@ -44,6 +44,12 @@ const (
 	ToolListMCPServers   = "list_mcp_servers"
 )
 
+// Bot modes that change how a provider asks.
+const (
+	ModeAsk  = "ask"
+	ModeFull = "full"
+)
+
 // ErrSignedOut is the error of a run that failed because the provider refused its sign-in.
 var ErrSignedOut = errors.New("provider is signed out")
 
@@ -82,6 +88,9 @@ type Config struct {
 	// SkillDir is the absolute root of this run's skill copies. Empty runs without them.
 	SkillDir   string
 	MCPServers []UserMCPServer
+	// Mode is the Bot's mode. ModeAsk and ModeFull change how the provider asks; any other value
+	// runs as auto.
+	Mode string
 }
 
 // UserMCPServer is local with Command, Args and Env, or remote with URL and Headers.

@@ -584,6 +584,13 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 		config["mcp_servers"] = servers
 		params["approvalPolicy"] = "on-request"
 		params["sandbox"] = "workspace-write"
+		switch cfg.Mode {
+		case provider.ModeAsk:
+			params["approvalPolicy"] = "untrusted"
+		case provider.ModeFull:
+			params["approvalPolicy"] = "never"
+			params["sandbox"] = "danger-full-access"
+		}
 	}
 	return params, nil
 }

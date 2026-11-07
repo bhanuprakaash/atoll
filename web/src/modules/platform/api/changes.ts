@@ -9,6 +9,7 @@ type ChangeSnapshot = {
   look?: CreatureLook;
   provider?: 'claude' | 'codex';
   model?: string;
+  mode?: 'auto' | 'ask' | 'full';
   persona?: string;
   skills?: string[];
   repo_access?: 'all' | string[];

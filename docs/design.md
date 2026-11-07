@@ -27,15 +27,26 @@ never a dependency.
 
 ## Bots
 
-- Settings: name, persona, Model, skills, connections, MCP servers, repo access, delegate list, look.
+- Settings: name, persona, Model, skills, connections, MCP servers, repo access, delegate list, look, Mode.
 - Persona holds expertise only. Who the Bot talks to comes from the run, not the persona.
 - Model is one field, e.g. `Claude Code · Opus 5.5`, `Codex · GPT-5`, listing only enabled, ready
   providers. The models come from asking each provider.
 - Repo access: All (default) or Only these. *A block list would silently grant new repos.*
-- Codex runs in its auto mode and Claude in default mode with Reef's permission prompt tool, *so
-  its approvals reach the thread*. No per-tool lists, no platform hard limits. Approval requests
-  from any run, children included, come to the user in the thread. *The provider already decides
-  what needs approval.*
+- Mode: Auto (default), Ask or Full access, set per Bot. Every Bot starts on Auto, and a launch
+  moved the Bots of an older install to it once. Approval requests from any run, children
+  included, come to the user in the thread. *The provider already decides what needs approval.* No
+  per-tool lists, no platform hard limits.
+
+  | Mode | Claude Code | Codex |
+  | --- | --- | --- |
+  | Auto | default mode + Reef's permission prompt tool | `workspace-write` sandbox, `approvalPolicy: on-request` |
+  | Ask | default mode + Reef's permission prompt tool | `approvalPolicy: untrusted` |
+  | Full access | `--permission-mode bypassPermissions` | `danger-full-access` sandbox, `approvalPolicy: never` |
+
+  *Claude Auto runs as Ask: a spike (6 real headless `-p` runs) showed `--permission-mode auto`
+  never calls the permission prompt tool, so risky steps would run unseen and never reach the
+  thread.* Full access never asks, even to delete files or push, so Bot settings says so when it is
+  picked; it is for Bots that run in a VM.
 - Bot settings changed mid-run apply from the next run.
 - Delete Bot (confirmed in the UI; not for Chief) stops its running run, closes its threads (their
   worktrees are removed, unfinished work saved as for Close) and hard-deletes the Bot, its threads,
@@ -45,10 +56,10 @@ never a dependency.
 **Chief.** Created on first launch. It has no repo access at all times: `PUT` and its own
 `edit_bot` refuse to give it repos, its Bot settings and empty thread offer none, and a launch moves
 an older install's Chief to none. It does no code work. It has the "Can manage the platform" switch
-on: tools to create and edit Bots (including model and look), skills and repos, and to attach
+on: tools to create and edit Bots (including model, look and Mode), skills and repos, and to attach
 connections, served as Reef's own MCP tools; read tools list Bots, skills, connections, repos, MCP
 servers and signed-in models and record no change.
-A model must be one the Bot's provider lists while signed in; an unknown model or look fails with
+A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
 registered repo has (REST answers 400 with the same text). Sign-ins stay with the user. Every change shows in the thread with undo.
 Other Bots can get the switch later.
@@ -77,9 +88,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   over streamable HTTP on Reef's own server at `/mcp/<run token>`. *They need live server state
   (open approvals, the run being reported); stdio would need a child that calls back anyway.*
   Reef's own tools are allow-listed, so they never ask the user.
-- Codex runs with `approvalPolicy: on-request` and the `workspace-write` sandbox, its auto mode;
-  approvals come as app-server requests. Claude runs in default mode; approvals come through the
-  permission prompt tool.
+- The run starts the provider with the Bot's Mode as snapshotted at run start (table in Bots).
+  Codex approvals come as app-server requests; Claude approvals come through the permission prompt
+  tool.
 - Each run's event stream is saved to `<data>/runs/<id>.jsonl`. A run left `running` or `waiting`
   when the server starts is marked `failed` with a reason. A thread's SSE stream first replays the
   going run's latest events (text deltas left out), so a page that opens late or reconnects shows

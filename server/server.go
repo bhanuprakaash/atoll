@@ -173,8 +173,8 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if !validBot(b) {
-		fail(w, http.StatusBadRequest, "name is required and provider must be claude or codex")
+	if msg := botProblem(b); msg != "" {
+		fail(w, http.StatusBadRequest, msg)
 		return
 	}
 	msg, err := a.unknownPicks(r.Context(), b)
