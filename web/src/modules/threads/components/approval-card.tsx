@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ApiError } from '@/lib/api-client';
 import { useAnswerApproval } from '@/modules/threads/api/approvals';
 
 export function approvalTarget(input: unknown): string {
@@ -42,7 +43,10 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
       ? details.old_string.split('\n').length
       : 0;
   const respond = (approve: boolean) =>
-    answer.mutate(approve, { onSuccess: () => setAnswered(true) });
+    answer.mutate(approve, {
+      onSuccess: () => setAnswered(true),
+      onError: (err) => err instanceof ApiError && err.status === 404 && setAnswered(true),
+    });
   if (answered) return null;
   return (
     <div className="flex flex-col gap-2 text-sm">

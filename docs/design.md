@@ -83,7 +83,13 @@ Undo of a repo registration is refused while a thread uses the repo.
 - Each run's event stream is saved to `<data>/runs/<id>.jsonl`. A run left `running` or `waiting`
   when the server starts is marked `failed` with a reason. A thread's SSE stream first replays the
   going run's latest events (text deltas left out), so a page that opens late or reconnects shows
-  the current tool and approvals.
+  the current tool and approvals. An approval that is answered, or dropped because its run or the
+  provider's request ended, publishes `approval_closed {run_id, id}`; it is saved and replayed like
+  the rest, so a client drops every approval that has one and the open ones are exactly the cards
+  left. `POST /api/approvals/{id}` on a closed approval answers `404`, and the card then leaves
+  without an error.
+- Claude cancels an MCP tool call after 60 s unless `MCP_TOOL_TIMEOUT` says otherwise, and the
+  permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=600000` (10 minutes).
 - Processes a Bot starts (dev server, watcher, browser) belong to the thread and outlive the run.
   When the thread closes or the app quits, the app asks whether to stop them.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
@@ -562,7 +568,9 @@ Voice
   --exit-on-stdin-close`, keeps its stdin pipe open as the sidecar's lifeline, loads the URL it
   prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
   SIGTERM; an occupied port stops retries and shows an error. The page shows Reconnecting meanwhile.
-  A page's `window.open` (provider sign-in) opens in the default browser. *A fixed address lets the
+  A page's `window.open` (provider sign-in) opens in the default browser (`on_new_window`), and so
+  does any navigation of the window to a URL that is not Reef's own server (`on_navigation`), which
+  is cancelled in the app. Links in chat replies carry `target="_blank"`. *A fixed address lets the
   open page reconnect to a restarted sidecar.*
 - The dmg is ad-hoc signed (`signingIdentity: "-"`), not notarized, as old Reef was: free, and a
   web download opens after System Settings → Privacy & Security → Open Anyway once. CI's `dmg` job

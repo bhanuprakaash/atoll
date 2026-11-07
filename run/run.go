@@ -40,10 +40,11 @@ var (
 
 // Event types on a thread's stream.
 const (
-	EventText        = "text"         // Text: a piece of the reply
-	EventToolCall    = "tool_call"    // ToolCall
-	EventApproval    = "approval"     // Approval
-	EventRunFinished = "run_finished" // Finished
+	EventText        = "text"            // Text: a piece of the reply
+	EventToolCall    = "tool_call"       // ToolCall
+	EventApproval    = "approval"        // Approval
+	EventApprovalEnd = "approval_closed" // ApprovalClosed
+	EventRunFinished = "run_finished"    // Finished
 
 	EventWorktreeCreated = "worktree_created" // WorktreeCreated
 	EventMRUpdated       = "mr_updated"       // MRUpdated
@@ -165,6 +166,12 @@ type (
 		ID    string          `json:"id"`
 		Tool  string          `json:"tool"`
 		Input json.RawMessage `json:"input"`
+	}
+
+	// ApprovalClosed says the approval id is no longer open: answered, or its run or request ended.
+	ApprovalClosed struct {
+		RunID string `json:"run_id"`
+		ID    string `json:"id"`
 	}
 
 	// Prompt is what Atoll sent the provider: its system addition and the message.
@@ -727,6 +734,7 @@ func (m *Manager) resume(ctx context.Context, a *active, id string) {
 	a.open--
 	idle := a.open == 0
 	m.mu.Unlock()
+	m.publish(a, EventApprovalEnd, ApprovalClosed{RunID: a.run.ID, ID: id})
 	if !idle {
 		return
 	}
