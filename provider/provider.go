@@ -50,6 +50,7 @@ const (
 
 // Bot modes that change how a provider asks.
 const (
+	ModeAuto = "auto"
 	ModeAsk  = "ask"
 	ModeFull = "full"
 )
@@ -92,8 +93,8 @@ type Config struct {
 	// SkillDir is the absolute root of this run's skill copies. Empty runs without them.
 	SkillDir   string
 	MCPServers []UserMCPServer
-	// Mode is the Bot's mode. ModeAsk and ModeFull change how the provider asks; any other value
-	// runs as auto.
+	// Mode is the Bot's mode. ModeAuto, ModeAsk and ModeFull change how the provider asks; any
+	// other value runs as the provider's default.
 	Mode string
 }
 

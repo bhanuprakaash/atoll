@@ -39,14 +39,13 @@ never a dependency.
 
   | Mode | Claude Code | Codex |
   | --- | --- | --- |
-  | Auto | default mode + Reef's permission prompt tool | `workspace-write` sandbox, `approvalPolicy: on-request` |
+  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox, `approvalPolicy: on-request` |
   | Ask | default mode + Reef's permission prompt tool | `approvalPolicy: untrusted` |
   | Full access | `--permission-mode bypassPermissions` | `danger-full-access` sandbox, `approvalPolicy: never` |
 
-  *Claude Auto runs as Ask: a spike (6 real headless `-p` runs) showed `--permission-mode auto`
-  never calls the permission prompt tool, so risky steps would run unseen and never reach the
-  thread.* Full access never asks, even to delete files or push, so Bot settings says so when it is
-  picked; it is for Bots that run in a VM.
+  *Claude's auto mode classifier runs safe steps and blocks risky ones (Claude reports the block);
+  explicit ask rules still come to the thread as cards.* Full access never asks, even to delete
+  files or push, so Bot settings says so when it is picked; it is for Bots that run in a VM.
 - Delegate list (`delegates`, Bot ids; `[]` by default): the Bots this one may hand work to, picked
   in Bot settings under "Can hand work to" (Add Bot, listing the other Bots) with the line "<Bot>
   can start up to 3 helper threads at once with these Bots". A list naming the Bot itself or an id
