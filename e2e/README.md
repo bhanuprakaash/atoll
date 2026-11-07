@@ -159,3 +159,5 @@ Delegate and continue (a Bot hands work to a helper thread) extend these contrac
 Waking the boss (a helper's reply and report start a boss run) extends these contracts in [wake-contract.md](wake-contract.md).
 
 Helper code work (helpers branch off their boss; the boss merges) extends these contracts in [helper-work-contract.md](helper-work-contract.md).
+
+Helpers in the UI (above the composer, in the island, a read-only helper thread) extend these contracts in [helpers-ui-contract.md](helpers-ui-contract.md).
