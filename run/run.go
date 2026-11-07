@@ -40,10 +40,11 @@ var (
 
 // Event types on a thread's stream.
 const (
-	EventText        = "text"         // Text: a piece of the reply
-	EventToolCall    = "tool_call"    // ToolCall
-	EventApproval    = "approval"     // Approval
-	EventRunFinished = "run_finished" // Finished
+	EventText        = "text"            // Text: a piece of the reply
+	EventToolCall    = "tool_call"       // ToolCall
+	EventApproval    = "approval"        // Approval
+	EventApprovalEnd = "approval_closed" // ApprovalClosed
+	EventRunFinished = "run_finished"    // Finished
 
 	EventWorktreeCreated = "worktree_created" // WorktreeCreated
 	EventMRUpdated       = "mr_updated"       // MRUpdated
@@ -105,6 +106,12 @@ type (
 		cancel context.CancelFunc
 		wg     sync.WaitGroup
 
+		// inboxMu serializes delivery of held messages: one message is taken, its run started
+		// and the message removed before another delivery looks. delegateMu does the same for
+		// counting a boss's helpers and starting one more. Neither is taken under mu.
+		inboxMu    sync.Mutex
+		delegateMu sync.Mutex
+
 		mu        sync.Mutex
 		runs      map[string]*active                 // by thread id
 		tokens    map[string]*active                 // by run token
@@ -125,6 +132,7 @@ type (
 		cancel   context.CancelFunc
 		done     chan struct{}
 		stopped  bool
+		quiet    bool // stopped by Reef, not by the user: no wake, no held message
 		ending   bool
 		token    string
 		run      store.Run
@@ -167,6 +175,12 @@ type (
 		Input json.RawMessage `json:"input"`
 	}
 
+	// ApprovalClosed says the approval id is no longer open: answered, or its run or request ended.
+	ApprovalClosed struct {
+		RunID string `json:"run_id"`
+		ID    string `json:"id"`
+	}
+
 	// Prompt is what Atoll sent the provider: its system addition and the message.
 	Prompt struct {
 		RunID   string `json:"run_id"`
@@ -205,6 +219,17 @@ func New(cfg Config) *Manager {
 // Send stores text as the user's message and starts a run for it. It returns ErrBusy when the
 // thread has a run going and wraps store.ErrNotFound for an unknown thread.
 func (m *Manager) Send(ctx context.Context, threadID, text string) (store.Message, store.Run, error) {
+	msg, run, err := m.send(ctx, store.InboxItem{ThreadID: threadID, Text: text})
+	if err != nil && !errors.Is(err, ErrBusy) {
+		m.flushLog(threadID)
+	}
+	return msg, run, err
+}
+
+// send starts a run for the message it, which comes from its Bot when FromBotID is set and which
+// is removed from the inbox in the same step when it has an ID.
+func (m *Manager) send(ctx context.Context, it store.InboxItem) (store.Message, store.Run, error) {
+	threadID, text := it.ThreadID, it.Text
 	runCtx, cancel := context.WithCancel(m.ctx)
 	a := &active{threadID: threadID, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
 	m.mu.Lock()
@@ -222,7 +247,7 @@ func (m *Manager) Send(ctx context.Context, threadID, text string) (store.Messag
 	m.wg.Add(1)
 	m.mu.Unlock()
 
-	msg, run, err := m.start(ctx, threadID, text)
+	msg, run, err := m.start(ctx, it)
 	if err != nil {
 		m.drop(a)
 		cancel()
@@ -238,15 +263,15 @@ func (m *Manager) Send(ctx context.Context, threadID, text string) (store.Messag
 }
 
 // start refuses a closed thread, then stores the message and its run.
-func (m *Manager) start(ctx context.Context, threadID, text string) (store.Message, store.Run, error) {
-	t, err := m.cfg.Store.Thread(ctx, threadID)
+func (m *Manager) start(ctx context.Context, it store.InboxItem) (store.Message, store.Run, error) {
+	t, err := m.cfg.Store.Thread(ctx, it.ThreadID)
 	if err != nil {
 		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
 	}
 	if t.Closed {
 		return store.Message{}, store.Run{}, ErrClosed
 	}
-	msg, run, err := m.cfg.Store.StartRun(ctx, threadID, text)
+	msg, run, err := m.cfg.Store.StartRunFrom(ctx, it)
 	if err != nil {
 		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
 	}
@@ -261,8 +286,14 @@ func (m *Manager) Available(ctx context.Context, name string) bool {
 	return m.cfg.Available(ctx, name)
 }
 
-// Stop ends an active run and waits for its provider to exit.
+// Stop ends an active run for the user and waits for its provider to exit.
 func (m *Manager) Stop(ctx context.Context, id string) error {
+	return m.stop(ctx, id, false)
+}
+
+// stop is Stop; quiet says Reef stops the run: a helper's boss is not told and the thread's held
+// messages wait.
+func (m *Manager) stop(ctx context.Context, id string, quiet bool) error {
 	ru, err := m.cfg.Store.Run(ctx, id)
 	if err != nil {
 		return err
@@ -273,7 +304,7 @@ func (m *Manager) Stop(ctx context.Context, id string) error {
 		m.mu.Unlock()
 		return ErrBusy
 	}
-	a.stopped = true
+	a.stopped, a.quiet = true, quiet
 	a.cancel()
 	m.mu.Unlock()
 	<-a.done
@@ -446,11 +477,16 @@ func (m *Manager) execute(a *active, text string) {
 	if a.stopped {
 		res = store.RunResult{Status: "stopped"}
 	}
+	quiet := a.quiet
 	m.mu.Unlock()
 	res.Provider = a.bot.Provider
+	wake := WakeText
+	if quiet {
+		wake = nil
+	}
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
-		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, res)
+		err = m.cfg.Store.FinishRun(context.Background(), a.run.ID, res, wake)
 		if err == nil {
 			break
 		}
@@ -464,6 +500,13 @@ func (m *Manager) execute(a *active, text string) {
 	// Dropped before run_finished: a client may send the next message the moment it sees it.
 	m.drop(a)
 	m.publish(a, EventRunFinished, Finished{RunID: a.run.ID, Status: res.Status, Error: res.Error})
+	if !quiet {
+		m.flushBoss(a.threadID)
+		// A user's Stop must not start the next held message at once.
+		if res.Status != "stopped" {
+			m.flushLog(a.threadID)
+		}
+	}
 }
 
 // drive runs the provider session for one prompt and returns its reply.
@@ -511,6 +554,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		return "", fmt.Errorf("load user name: %w", err)
 	}
 	cfg.Model = bot.Model
+	cfg.Mode = bot.Mode
 	cfg.SystemPrompt = systemPrompt(bot, user)
 	skills := make([]store.Skill, 0, len(bot.Skills))
 	for _, id := range bot.Skills {
@@ -727,6 +771,7 @@ func (m *Manager) resume(ctx context.Context, a *active, id string) {
 	a.open--
 	idle := a.open == 0
 	m.mu.Unlock()
+	m.publish(a, EventApprovalEnd, ApprovalClosed{RunID: a.run.ID, ID: id})
 	if !idle {
 		return
 	}
@@ -836,6 +881,12 @@ func (m *Manager) drop(a *active) {
 	delete(m.runs, a.threadID)
 	delete(m.tokens, a.token)
 	m.mu.Unlock()
+}
+
+// free gives back a slot taken with reserve and delivers what the thread held while it was taken.
+func (m *Manager) free(a *active) {
+	m.drop(a)
+	m.flushLog(a.threadID)
 }
 
 func randHex(n int) string {

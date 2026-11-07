@@ -258,7 +258,7 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	}
 	cmd := exec.Command(cfg.Bin, args...)
 	cmd.Dir = cfg.Cwd
-	cmd.Env = append(configEnv(cfg.Dir), "ENABLE_CLAUDEAI_MCP_SERVERS=false")
+	cmd.Env = append(configEnv(cfg.Dir), "ENABLE_CLAUDEAI_MCP_SERVERS=false", "MCP_TOOL_TIMEOUT=1800000")
 	cmd.Env = append(cmd.Env, cfg.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.WaitDelay = _waitDelay
@@ -319,6 +319,9 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 			"--permission-prompt-tool", mcp+"__"+provider.ToolApprove,
 			"--allowedTools", mcp,
 		)
+	}
+	if cfg.Mode == provider.ModeFull {
+		args = append(args, "--permission-mode", "bypassPermissions")
 	}
 	if cfg.SkillDir != "" {
 		args = append(args, "--add-dir", cfg.SkillDir)

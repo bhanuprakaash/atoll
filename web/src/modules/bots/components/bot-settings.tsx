@@ -22,6 +22,12 @@ import {
   type ModelControl,
 } from '@/modules/bots/components/new-bot-form';
 
+const modes = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'ask', label: 'Ask' },
+  { value: 'full', label: 'Full access' },
+];
+
 export function BotSettings({
   bot,
   onClose,
@@ -30,12 +36,14 @@ export function BotSettings({
   skills,
   connections,
   mcpServers,
+  bots,
   memory,
 }: Choices & {
   bot: Bot;
   onClose: () => void;
   modelControl: ModelControl;
   mcpServers: { id: string; name: string }[];
+  bots: { id: string; name: string }[];
   memory?: ReactNode;
 }) {
   const [name, setName] = useState(bot.name);
@@ -43,8 +51,10 @@ export function BotSettings({
   const [look, setLook] = useState(bot.look);
   const [provider, setProvider] = useState(bot.provider);
   const [model, setModel] = useState(bot.model);
+  const [mode, setMode] = useState(bot.mode);
   const [repoAccess, setRepoAccess] = useState(bot.repo_access);
   const [skillIds, setSkillIds] = useState(bot.skills ?? []);
+  const [delegateIds, setDelegateIds] = useState(bot.delegates ?? []);
   const [mcpIds, setMcpIds] = useState(bot.mcp_servers ?? []);
   const [platform, setPlatform] = useState(bot.can_manage_platform);
   const [connectionIds, setConnectionIds] = useState(bot.connections ?? []);
@@ -75,7 +85,7 @@ export function BotSettings({
       aria-label="Bot settings"
       className="min-h-0 min-w-0 max-w-105 flex-[1_1_400px] overflow-auto border-l border-line bg-bg"
     >
-      <section role="dialog" aria-label="Bot settings" className="p-7">
+      <section role="dialog" aria-label="Bot settings" aria-hidden={confirming} className="p-7">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-lg">Bot settings</h2>
           <button
@@ -202,6 +212,22 @@ export function BotSettings({
               )}
             </>
           )}
+          <Segmented
+            label="Mode"
+            value={mode}
+            onChange={(value) => {
+              const next = value as Bot['mode'];
+              setMode(next);
+              mutate({ mode: next });
+            }}
+            choices={modes}
+          />
+          {mode === 'full' && (
+            <p className="-mt-4 text-xs text-label">
+              Full access: this Bot never asks, even to delete files or push. Use it for Bots that
+              run in a VM.
+            </p>
+          )}
           <ConnectionList
             connections={connections}
             selected={connectionIds}
@@ -210,6 +236,19 @@ export function BotSettings({
               mutate({ connections: value });
             }}
           />
+          <ChoiceList
+            title="Can hand work to"
+            singular="Bot"
+            choices={bots.filter((other) => other.id !== bot.id)}
+            selected={delegateIds}
+            onChange={(value) => {
+              setDelegateIds(value);
+              mutate({ delegates: value });
+            }}
+          />
+          <p className="-mt-4 text-xs text-label">
+            {bot.name} can start up to 3 helper threads at once with these Bots
+          </p>
           {memory}
           {bot.id !== 'chief' && (
             <button

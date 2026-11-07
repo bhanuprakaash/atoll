@@ -27,6 +27,8 @@ import (
 
 var _looks = []string{"jellyfish", "whale", "penguin", "shark", "starfish", "anglerfish", "sand_dollar", "sponge", "kelp", "shell", "wave", "island", "sun", "sailboat"}
 
+var _modes = []string{"auto", "ask", "full"}
+
 func (a *api) createWithLook(ctx context.Context, b store.Bot) (store.Bot, error) {
 	if b.Look == "" {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(_looks))))
@@ -38,17 +40,15 @@ func (a *api) createWithLook(ctx context.Context, b store.Bot) (store.Bot, error
 	return a.st.CreateBot(ctx, b)
 }
 
-func validBot(b store.Bot) bool {
-	return botProblem(b) == ""
-}
-
 // botProblem says why b cannot be saved, or "" when it can.
 func botProblem(b store.Bot) string {
 	switch {
 	case b.Name == "" || (b.Provider != "claude" && b.Provider != "codex"):
-		return "invalid bot"
+		return "name is required and provider must be claude or codex"
 	case b.Look != "" && !slices.Contains(_looks, b.Look):
 		return fmt.Sprintf("unknown look %q; looks: %s", b.Look, strings.Join(_looks, ", "))
+	case b.Mode != "" && !slices.Contains(_modes, b.Mode):
+		return fmt.Sprintf("unknown mode %q; modes: %s", b.Mode, strings.Join(_modes, ", "))
 	}
 	return ""
 }
@@ -66,7 +66,9 @@ func responseBot(b store.Bot) botResponse {
 	return botResponse{Bot: b, Look: b.Look, Model: b.Model, Pinned: b.Pinned, Activity: b.Activity, LastActivity: b.LastActivity}
 }
 
-func (a *api) botSummary(ctx context.Context, b store.Bot, threads []store.ThreadRun) store.Bot {
+func (a *api) botSummary(
+	ctx context.Context, b store.Bot, threads, helpers []store.ThreadRun,
+) store.Bot {
 	latest := ""
 	for _, t := range threads {
 		if latest == "" {
@@ -89,21 +91,17 @@ func (a *api) botSummary(ctx context.Context, b store.Bot, threads []store.Threa
 		}
 		if _, approvals, _ := a.runs.Active(t.ThreadID); len(approvals) > 0 {
 			b.State = "needs_you"
-			kind, target := run.ToolKind(approvals[0].Tool, approvals[0].Input)
-			verb := "use"
-			switch kind {
-			case "search", "read", "edit":
-				verb = kind
-			case "command":
-				verb = "run"
-			}
-			if tool := approvals[0].Tool; tool != "" && unicode.IsUpper([]rune(tool)[0]) {
-				verb = tool
-			}
-			b.Activity = strings.TrimSpace("Needs you: " + verb + " " + target)
+			b.Activity = needsYou(approvals[0])
 			return b
 		}
 		b.State = "working"
+	}
+	for _, h := range helpers {
+		if _, approvals, _ := a.runs.Active(h.ThreadID); len(approvals) > 0 {
+			b.State = "needs_you"
+			b.Activity = needsYou(approvals[0])
+			return b
+		}
 	}
 	if b.State != "" {
 		return b
@@ -116,6 +114,22 @@ func (a *api) botSummary(ctx context.Context, b store.Bot, threads []store.Threa
 		b.State = "idle"
 	}
 	return b
+}
+
+// needsYou is the sidebar line for a Bot that waits on the user's answer to ap.
+func needsYou(ap run.Approval) string {
+	kind, target := run.ToolKind(ap.Tool, ap.Input)
+	verb := "use"
+	switch kind {
+	case "search", "read", "edit":
+		verb = kind
+	case "command":
+		verb = "run"
+	}
+	if tool := ap.Tool; tool != "" && unicode.IsUpper([]rune(tool)[0]) {
+		verb = tool
+	}
+	return strings.TrimSpace("Needs you: " + verb + " " + target)
 }
 
 const _previewLen = 60
@@ -146,12 +160,12 @@ func (a *api) getBot(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	threads, err := a.st.ThreadRuns(r.Context(), b.ID)
+	threads, helpers, err := a.threadRuns(r.Context())
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusOK, responseBot(a.botSummary(r.Context(), b, threads)))
+	write(w, http.StatusOK, responseBot(a.botSummary(r.Context(), b, threads[b.ID], helpers[b.ID])))
 }
 
 func (a *api) pinBot(w http.ResponseWriter, r *http.Request) {
@@ -187,10 +201,15 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	if json.NewDecoder(r.Body).Decode(&b) != nil || !validBot(b) {
+	if json.NewDecoder(r.Body).Decode(&b) != nil {
 		fail(w, http.StatusBadRequest, "invalid bot")
 		return
 	}
+	if msg := botProblem(b); msg != "" {
+		fail(w, http.StatusBadRequest, msg)
+		return
+	}
+	b.ID = r.PathValue("id")
 	msg, err := a.unknownPicks(r.Context(), b)
 	if err != nil {
 		a.fail(w, r, err)
@@ -200,7 +219,6 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, msg)
 		return
 	}
-	b.ID = r.PathValue("id")
 	if chiefHasRepos(b) {
 		fail(w, http.StatusBadRequest, _chiefRepoRefusal)
 		return
@@ -320,8 +338,8 @@ func (a *api) listChanges(w http.ResponseWriter, r *http.Request) {
 }
 
 const _platformTools = `[
-{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"}},"required":["name","provider"]}},
-{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"}},"required":["id"]}},
+{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"},"mode":{"type":"string","enum":["auto","ask","full"]},"delegates":{"type":"array","items":{"type":"string"}}},"required":["name","provider"]}},
+{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"},"mode":{"type":"string","enum":["auto","ask","full"]},"delegates":{"type":"array","items":{"type":"string"}}},"required":["id"]}},
 {"name":"create_skill","description":"Create a skill.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"}},"required":["name","content"]}},
 {"name":"edit_skill","description":"Edit a skill.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"content":{"type":"string"}},"required":["id"]}},
 {"name":"import_skill","description":"Import a local skill folder (SKILL.md and its text files), or update the skill imported from it. Returns what it added, changed, removed and skipped.","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"replace":{"type":"boolean","description":"Overwrite edits made in Reef. Only after the user agreed."}},"required":["path"]}},
@@ -469,6 +487,7 @@ func (a *api) platformCall(
 			b.Skills = slices.Clone(prev.Skills)
 			b.Connections = slices.Clone(prev.Connections)
 			b.MCPServers = slices.Clone(prev.MCPServers)
+			b.Delegates = slices.Clone(prev.Delegates)
 			b.RepoAccess = slices.Clone(prev.RepoAccess)
 			if json.Unmarshal(args, &b) != nil {
 				return nil, &rpcError{Code: _invalidParams, Message: "invalid bot"}
@@ -628,7 +647,41 @@ func (a *api) unknownPicks(ctx context.Context, b store.Bot) (string, error) {
 	if err != nil || msg != "" {
 		return msg, err
 	}
-	return a.unknownMCPServers(ctx, b.MCPServers)
+	msg, err = a.unknownMCPServers(ctx, b.MCPServers)
+	if err != nil || msg != "" {
+		return msg, err
+	}
+	return a.unknownDelegates(ctx, b)
+}
+
+// unknownDelegates is the message for delegate ids that are the Bot itself or that no Bot has, or
+// "" when there are none.
+func (a *api) unknownDelegates(ctx context.Context, b store.Bot) (string, error) {
+	if len(b.Delegates) == 0 {
+		return "", nil
+	}
+	bots, err := a.st.Bots(ctx)
+	if err != nil {
+		return "", err
+	}
+	var ids, others []string
+	for _, o := range bots {
+		if o.ID != b.ID {
+			ids = append(ids, o.ID)
+			others = append(others, fmt.Sprintf("%s (%s)", o.Name, o.ID))
+		}
+	}
+	var unknown []string
+	for _, id := range b.Delegates {
+		if !slices.Contains(ids, id) {
+			unknown = append(unknown, strconv.Quote(id))
+		}
+	}
+	if len(unknown) == 0 {
+		return "", nil
+	}
+	return fmt.Sprintf("unknown delegate ids %s; Bots: %s",
+		strings.Join(unknown, ", "), strings.Join(others, ", ")), nil
 }
 
 // unknownRepos is the message for repo ids no registered repo has, or "" when there are none.

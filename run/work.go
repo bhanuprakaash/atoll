@@ -66,8 +66,9 @@ func RepoHost(ctx context.Context, path string) string {
 }
 
 // Start begins checking the MR of every thread that has one and a worktree, at once and then
-// every PollInterval, until Close. Call it once.
+// every PollInterval, until Close, and delivers the messages held for threads. Call it once.
 func (m *Manager) Start() {
+	m.recoverInbox()
 	m.wg.Add(1)
 	go m.watch()
 }
@@ -172,21 +173,24 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 	return nil
 }
 
-// CloseThread closes the thread: it saves the unfinished work of its worktree, removes the
-// worktree and the read-only checkout, and refuses new messages. It returns ErrBusy while a run
+// CloseThread closes the thread and its helper threads: it stops their runs, then saves the
+// unfinished work of its worktree, removes the worktree and the read-only checkout, and refuses new messages. It returns ErrBusy while a run
 // is going. When the save fails nothing is removed and the thread stays open.
 func (m *Manager) CloseThread(ctx context.Context, threadID string) error {
 	slot := m.reserve(threadID)
 	if slot == nil {
 		return ErrBusy
 	}
-	defer m.drop(slot)
+	defer m.free(slot)
 	t, err := m.cfg.Store.Thread(ctx, threadID)
 	if err != nil {
 		return fmt.Errorf("close thread: %w", err)
 	}
 	if t.Closed {
 		return nil
+	}
+	if err := m.closeHelpers(ctx, threadID); err != nil {
+		return err
 	}
 	if t.RepoID != "" {
 		rp, err := m.cfg.Store.Repo(ctx, t.RepoID)
@@ -205,21 +209,26 @@ func (m *Manager) CloseThread(ctx context.Context, threadID string) error {
 	return m.cfg.Store.SetClosed(ctx, threadID)
 }
 
-// DeleteBot stops the runs of the Bot's threads, closes the threads, and deletes the Bot with its
-// threads, runs and event files. Memory the Bot saved stays.
+// DeleteBot stops the runs of the Bot's threads, closes the threads (and their helper threads),
+// and deletes the Bot with its threads, runs and event files. The boss of a helper run it stopped
+// is told the Bot was deleted. Memory the Bot saved stays.
 func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
-	if _, err := m.cfg.Store.Bot(ctx, botID); err != nil {
+	bot, err := m.cfg.Store.Bot(ctx, botID)
+	if err != nil {
 		return fmt.Errorf("delete bot: %w", err)
 	}
 	threads, err := m.cfg.Store.Threads(ctx, botID)
 	if err != nil {
 		return err
 	}
+	var cut []store.Thread // helper threads whose run was stopped: their boss hears of the delete
 	for _, t := range threads {
-		if runID, _, ok := m.Active(t.ID); ok {
-			if err := m.Stop(ctx, runID); err != nil && !errors.Is(err, ErrBusy) {
-				return err
-			}
+		stopped, err := m.stopQuietly(ctx, t.ID)
+		if err != nil {
+			return err
+		}
+		if stopped && t.ParentThreadID != "" {
+			cut = append(cut, t)
 		}
 		if err := m.CloseThread(ctx, t.ID); err != nil {
 			return err
@@ -228,6 +237,12 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 	runIDs, err := m.cfg.Store.DeleteBot(ctx, botID)
 	if err != nil {
 		return err
+	}
+	for _, t := range cut {
+		text := fmt.Sprintf("%s was deleted\n(thread %s)", bot.Name, t.ID)
+		if err := m.post(ctx, t.ParentThreadID, botID, text); err != nil {
+			m.cfg.Log.Error("wake boss", "thread_id", t.ID, "error", err)
+		}
 	}
 	for _, id := range runIDs {
 		if err := os.Remove(filepath.Join(m.cfg.DataDir, "runs", id+".jsonl")); err != nil &&
@@ -241,6 +256,38 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 		}
 	}
 	return nil
+}
+
+// closeHelpers stops the runs of the helper threads of the thread threadID and closes them. The
+// boss is not told: its thread is going.
+func (m *Manager) closeHelpers(ctx context.Context, threadID string) error {
+	helpers, err := m.cfg.Store.HelperThreads(ctx, threadID)
+	if err != nil {
+		return fmt.Errorf("list helper threads: %w", err)
+	}
+	for _, h := range helpers {
+		if _, err := m.stopQuietly(ctx, h.ID); err != nil {
+			return err
+		}
+		if err := m.CloseThread(ctx, h.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// stopQuietly stops the thread's run, if one is going, as Reef's own doing: it reports whether
+// it stopped one.
+func (m *Manager) stopQuietly(ctx context.Context, threadID string) (bool, error) {
+	runID, _, ok := m.Active(threadID)
+	if !ok {
+		return false, nil
+	}
+	err := m.stop(ctx, runID, true)
+	if errors.Is(err, ErrBusy) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // release saves the unfinished work of the thread's worktree, removes the worktree and tells the
@@ -270,7 +317,7 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 }
 
 // reserve takes the thread's run slot for work that must not overlap a run. It returns nil when
-// a run is going or the Manager is closing; give the slot back with drop.
+// a run is going or the Manager is closing; give the slot back with free.
 func (m *Manager) reserve(threadID string) *active {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -548,11 +595,38 @@ func (m *Manager) check(t store.Thread) error {
 	if slot == nil {
 		return nil
 	}
-	defer m.drop(slot)
+	defer m.free(slot)
 	if t, err = m.cfg.Store.Thread(m.ctx, t.ID); err != nil || t.Worktree == "" {
 		return err
 	}
+	if ok, err := m.releaseHelpers(t.ID, rp); !ok || err != nil {
+		return err
+	}
 	return m.release(m.ctx, t, rp, "merged")
+}
+
+// releaseHelpers releases the worktrees of the helper threads of the thread threadID as its MR
+// merged. It stops and reports false when a helper's run is going; the next tick tries again.
+func (m *Manager) releaseHelpers(threadID string, rp store.Repo) (bool, error) {
+	helpers, err := m.cfg.Store.HelperThreads(m.ctx, threadID)
+	if err != nil {
+		return false, fmt.Errorf("list helper threads: %w", err)
+	}
+	for _, h := range helpers {
+		if h.Worktree == "" {
+			continue
+		}
+		slot := m.reserve(h.ID)
+		if slot == nil {
+			return false, nil
+		}
+		err := m.release(m.ctx, h, rp, "merged")
+		m.free(slot)
+		if err != nil {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 // mrState asks glab for the state of the MR at url, from inside the repo at dir.

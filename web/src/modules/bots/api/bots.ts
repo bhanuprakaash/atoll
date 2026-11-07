@@ -10,6 +10,7 @@ export type Bot = {
   persona: string;
   look: CreatureLook;
   model: string;
+  mode: 'auto' | 'ask' | 'full';
   state: CreatureState;
   pinned: boolean;
   activity: string;
@@ -19,6 +20,7 @@ export type Bot = {
   provider: Provider;
   skills: string[];
   mcp_servers: string[];
+  delegates: string[];
   can_manage_platform: boolean;
 };
 
@@ -63,8 +65,11 @@ export function usePinBot(id: string) {
 export function useUpdateBot(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (changes: Partial<NewBot & Pick<Bot, 'can_manage_platform' | 'mcp_servers'>>) =>
-      api<Bot>(`/bots/${id}`, { method: 'PUT', body: changes }),
+    mutationFn: (
+      changes: Partial<
+        NewBot & Pick<Bot, 'can_manage_platform' | 'mcp_servers' | 'mode' | 'delegates'>
+      >,
+    ) => api<Bot>(`/bots/${id}`, { method: 'PUT', body: changes }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots'] }),
   });
 }

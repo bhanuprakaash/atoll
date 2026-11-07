@@ -84,6 +84,10 @@ export function useThreadEvents(threadId: string) {
       tool: { kind: d.kind, target: d.target, name: d.name, verb: d.verb },
     }));
     on<{ id: string; tool: string; input: unknown }>('approval', (d, run) => withApproval(run, d));
+    on<{ id: string }>('approval_closed', (d, run) => ({
+      ...run,
+      approvals: run.approvals.filter((x) => x.id !== d.id),
+    }));
     on<{ status: string; error: string; blocked?: string }>('run_finished', (d, run) => ({
       ...run,
       finished: d,

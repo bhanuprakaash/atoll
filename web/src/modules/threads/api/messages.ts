@@ -11,6 +11,7 @@ export type Message = {
   role: 'user' | 'bot';
   text: string;
   run_id: string;
+  from_bot_id?: string;
   created_at: string;
 };
 

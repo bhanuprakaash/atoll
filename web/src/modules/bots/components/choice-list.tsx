@@ -82,7 +82,7 @@ export function ChoiceList({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const dialog = useRef<HTMLDivElement>(null);
-  const mono = singular !== 'connection';
+  const mono = singular !== 'connection' && singular !== 'Bot';
   const close = () => {
     setOpen(false);
     setSearch('');
@@ -145,7 +145,7 @@ export function ChoiceList({
             className="pointer-events-auto flex max-h-[min(560px,85vh)] w-full max-w-110 flex-col rounded-[22px] border border-composer-line bg-popover shadow-[0_18px_48px_rgba(0,0,0,.55)]"
           >
             <div className="flex items-center justify-between px-5 pt-4 pb-3">
-              <h2 className="text-base">Add {title.toLowerCase()}</h2>
+              <h2 className="text-base">Add {singular}s</h2>
               <button
                 type="button"
                 aria-label="Close"
@@ -160,7 +160,7 @@ export function ChoiceList({
               <input
                 autoFocus
                 aria-label={`Search ${title}`}
-                placeholder={`Search ${title.toLowerCase()}`}
+                placeholder={`Search ${singular}s`}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-[13.5px] text-ink outline-none placeholder:text-label"
@@ -193,9 +193,7 @@ export function ChoiceList({
               })}
               {shown.length === 0 && (
                 <p className="px-2.5 py-3 text-[13px] text-label">
-                  {search
-                    ? `No ${title.toLowerCase()} match`
-                    : (empty ?? `No ${title.toLowerCase()} yet`)}
+                  {search ? `No ${singular}s match` : (empty ?? `No ${singular}s yet`)}
                 </p>
               )}
             </div>

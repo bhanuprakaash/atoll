@@ -309,9 +309,10 @@ func (t *turn) ask(req json.RawMessage, in *bufio.Scanner, log *fake.Log) (strin
 // mcpUse calls each tool the prompt names on the configured server, as app-server would: an
 // mcpToolCall item starts, Codex asks the client through an elicitation when the server's
 // default_tools_approval_mode is "prompt" (the stub tools count as read-only, which Codex runs
-// unasked otherwise), then the item completes with the server's answer. A server the config does
-// not hold is not called. Like the real elicitation, it names the tool only in message: _meta's
-// tool_title is the tool's optional title, which the stub tools lack.
+// unasked otherwise), then the item completes with the server's answer. A tool the server does
+// not list, or a server the config does not hold, is not called. Like the real elicitation, it
+// names the tool only in message: _meta's tool_title is the tool's optional title, which the stub
+// tools lack.
 func (t *turn) mcpUse(in *bufio.Scanner, log *fake.Log) (string, error) {
 	calls, err := fake.MCPCalls(t.userMessage)
 	if err != nil {
@@ -320,7 +321,7 @@ func (t *turn) mcpUse(in *bufio.Scanner, log *fake.Log) (string, error) {
 	var lines []string
 	for i, call := range calls {
 		c := t.servers[call.Server]
-		if c == nil {
+		if c == nil || !c.Tools[call.Tool] {
 			lines = append(lines, fake.MCPLine(call, "unavailable"))
 			continue
 		}

@@ -60,6 +60,17 @@ fn main() {
                 }
                 NewWindowResponse::Deny
             })
+            .on_navigation(|url| {
+                if url.scheme() == "about"
+                    || (url.host_str() == Some("127.0.0.1") && url.port() == Some(4317))
+                {
+                    return true;
+                }
+                if let Err(err) = Command::new("open").arg(url.as_str()).spawn() {
+                    eprintln!("open {url}: {err}");
+                }
+                false
+            })
             .build()?;
             let binary = std::env::current_exe()?.with_file_name("atoll");
             let handle = thread::spawn(move || {

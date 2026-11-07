@@ -255,8 +255,8 @@ func (p *player) play(lines []string) error {
 }
 
 // mcpUse calls each tool the prompt names on the configured server, as claude would: it prints the
-// tool call, asks the permission prompt tool, then prints the server's answer. A server the config
-// does not hold is not called.
+// tool call, asks the permission prompt tool, then prints the server's answer. A tool the server
+// does not list, or a server the config does not hold, is not called.
 func (p *player) mcpUse() (string, error) {
 	calls, err := fake.MCPCalls(p.userMessage)
 	if err != nil {
@@ -265,7 +265,7 @@ func (p *player) mcpUse() (string, error) {
 	var lines []string
 	for i, call := range calls {
 		c := p.servers[call.Server]
-		if c == nil {
+		if c == nil || !c.Tools[call.Tool] {
 			lines = append(lines, fake.MCPLine(call, "unavailable"))
 			continue
 		}

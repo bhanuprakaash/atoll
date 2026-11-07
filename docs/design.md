@@ -27,15 +27,32 @@ never a dependency.
 
 ## Bots
 
-- Settings: name, persona, Model, skills, connections, MCP servers, repo access, delegate list, look.
+- Settings: name, persona, Model, skills, connections, MCP servers, repo access, delegate list, look, Mode.
 - Persona holds expertise only. Who the Bot talks to comes from the run, not the persona.
 - Model is one field, e.g. `Claude Code · Opus 5.5`, `Codex · GPT-5`, listing only enabled, ready
   providers. The models come from asking each provider.
 - Repo access: All (default) or Only these. *A block list would silently grant new repos.*
-- Codex runs in its auto mode and Claude in default mode with Reef's permission prompt tool, *so
-  its approvals reach the thread*. No per-tool lists, no platform hard limits. Approval requests
-  from any run, children included, come to the user in the thread. *The provider already decides
-  what needs approval.*
+- Mode: Auto (default), Ask or Full access, set per Bot. Every Bot starts on Auto, and a launch
+  moved the Bots of an older install to it once. Approval requests from any run, children
+  included, come to the user in the thread. *The provider already decides what needs approval.* No
+  per-tool lists, no platform hard limits.
+
+  | Mode | Claude Code | Codex |
+  | --- | --- | --- |
+  | Auto | default mode + Reef's permission prompt tool | `workspace-write` sandbox, `approvalPolicy: on-request` |
+  | Ask | default mode + Reef's permission prompt tool | `approvalPolicy: untrusted` |
+  | Full access | `--permission-mode bypassPermissions` | `danger-full-access` sandbox, `approvalPolicy: never` |
+
+  *Claude Auto runs as Ask: a spike (6 real headless `-p` runs) showed `--permission-mode auto`
+  never calls the permission prompt tool, so risky steps would run unseen and never reach the
+  thread.* Full access never asks, even to delete files or push, so Bot settings says so when it is
+  picked; it is for Bots that run in a VM.
+- Delegate list (`delegates`, Bot ids; `[]` by default): the Bots this one may hand work to, picked
+  in Bot settings under "Can hand work to" (Add Bot, listing the other Bots) with the line "<Bot>
+  can start up to 3 helper threads at once with these Bots". A list naming the Bot itself or an id
+  no Bot has is refused (REST `400`, same text as Chief's failure) with the other Bots named; a
+  `PUT` that leaves it out keeps it. Deleting a Bot drops its id from every list in the same
+  transaction. Chief may have a list.
 - Bot settings changed mid-run apply from the next run.
 - Delete Bot (confirmed in the UI; not for Chief) stops its running run, closes its threads (their
   worktrees are removed, unfinished work saved as for Close) and hard-deletes the Bot, its threads,
@@ -45,10 +62,10 @@ never a dependency.
 **Chief.** Created on first launch. It has no repo access at all times: `PUT` and its own
 `edit_bot` refuse to give it repos, its Bot settings and empty thread offer none, and a launch moves
 an older install's Chief to none. It does no code work. It has the "Can manage the platform" switch
-on: tools to create and edit Bots (including model and look), skills and repos, and to attach
+on: tools to create and edit Bots (including model, look, Mode and delegates), skills and repos, and to attach
 connections, served as Reef's own MCP tools; read tools list Bots, skills, connections, repos, MCP
 servers and signed-in models and record no change.
-A model must be one the Bot's provider lists while signed in; an unknown model or look fails with
+A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
 registered repo has (REST answers 400 with the same text). Sign-ins stay with the user. Every change shows in the thread with undo.
 Other Bots can get the switch later.
@@ -72,34 +89,85 @@ Undo of a repo registration is refused while a thread uses the repo.
   there is still none, the run ends `done` with `report: null` and a logged warning.
 - One provider process per run, in the thread's folder (`<data>/threads/<id>`): a provider
   resumes a session only in the folder that started it. One run per thread at a time; a message
-  sent while one is going is refused (`409`).
+  the user sends while one is going is refused (`409`); one between a boss and a helper is held
+  (see Delegation).
 - Reef's own MCP tools (`finish_run`, and `approve` as Claude's permission prompt tool) are served
   over streamable HTTP on Reef's own server at `/mcp/<run token>`. *They need live server state
   (open approvals, the run being reported); stdio would need a child that calls back anyway.*
   Reef's own tools are allow-listed, so they never ask the user.
-- Codex runs with `approvalPolicy: on-request` and the `workspace-write` sandbox, its auto mode;
-  approvals come as app-server requests. Claude runs in default mode; approvals come through the
-  permission prompt tool.
+- The run starts the provider with the Bot's Mode as snapshotted at run start (table in Bots).
+  Codex approvals come as app-server requests; Claude approvals come through the permission prompt
+  tool.
 - Each run's event stream is saved to `<data>/runs/<id>.jsonl`. A run left `running` or `waiting`
   when the server starts is marked `failed` with a reason. A thread's SSE stream first replays the
   going run's latest events (text deltas left out), so a page that opens late or reconnects shows
-  the current tool and approvals.
+  the current tool and approvals. An approval that is answered, or dropped because its run or the
+  provider's request ended, publishes `approval_closed {run_id, id}`; it is saved and replayed like
+  the rest, so a client drops every approval that has one and the open ones are exactly the cards
+  left. `POST /api/approvals/{id}` on a closed approval answers `404`, and the card then leaves
+  without an error.
+- Claude cancels an MCP tool call after 60 s unless `MCP_TOOL_TIMEOUT` says otherwise, and the
+  permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes).
 - Processes a Bot starts (dev server, watcher, browser) belong to the thread and outlive the run.
   When the thread closes or the app quits, the app asks whether to stop them.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
   into a pane the user can take over (v2).
 
-## Delegation (v2)
+## Delegation
 
-- A Bot may delegate only to Bots on its delegate list. Depth 1: a delegated run cannot delegate.
+- A Bot may delegate only to Bots on its delegate list: empty by default, set in Bot settings or by
+  Chief; deleting a Bot removes it from every list. Depth 1: a delegated run cannot delegate.
   *Cycles become impossible.*
-- A delegation is a thread where the parent Bot is the asker: `delegate(bot, brief)`,
-  `continue(thread, message)`. Continue for the same work; start a new one for different work.
-- A child's questions go to its parent; approvals go to the user. The child gets one line at the
-  start: `{parent} delegated this to you; your replies go to {parent}.`
-- A child works in its own worktree branched from the parent's branch (`<parent-branch>--<bot>`).
-  The parent merges it and opens the MR, and owns the result.
-- Children show nested in the parent's thread.
+- A delegation is a thread where the parent Bot is the asker. Reef's MCP server lists
+  `delegate(bot, brief, repo?)` and `continue(thread, message)` only in runs of a Bot with a
+  non-empty delegate list, in a thread that is not a helper thread (depth 1). Continue for the same
+  work; start a new one for different work.
+- `delegate` returns `{"thread_id"}` at once (plus `branch` and `note` when the helper gets a
+  worktree, below); the boss's run ends normally and the helper works in
+  a thread of its own, with `parent_thread_id` set. It uses the boss thread's repo; a boss thread
+  with no repo (Chief) may pass a registered repo's name, else the helper has none. The helper
+  starts a fresh provider session.
+- Refusals are tool results with `isError`, so the run goes on: a Bot not on the list (the text
+  names the Bots on it); a helper whose repo access does not allow the repo (`Tester has no access
+  to atoll`); a repo with no commit; a fourth helper while 3 helper runs of the boss thread are
+  going (`3 helpers running. Tell the user, and hand this off when one of them reports back.`).
+- `continue` is accepted only from the helper's boss thread, and gives the helper a run with the
+  message. A message for a thread whose run is going is held (the `inbox` table) and delivered
+  when that run ends, oldest first, one run each (a run the user stopped starts none: they wait
+  for that thread's next run to end); `continue` never answers busy. A held message
+  survives a restart: on start, after the going runs are marked `failed`, each thread's held
+  messages are delivered. A message for a closed or deleted thread is dropped.
+- Waking the boss: when a helper's run ends, Reef posts one message into the boss thread from the
+  helper Bot (`from_bot_id` on the message; empty for the user's and for the boss's `delegate` and `continue` messages in a helper thread) and that starts a boss run,
+  or waits in the inbox while the boss's run is going. The text always holds the helper thread id:
+  - done: `{Helper} reported back from thread {id}.`, then the reply and the report as
+    `Done:`, `Tried:`, `Blocked:`, `Next:` lines;
+  - failed: `{Helper}'s run failed: {error}`; a helper run going at a restart fails with the usual
+    reason and wakes its boss on start;
+  - stopped by the user: `The user stopped {Helper}`;
+  - Bot deleted mid-run: `{Helper} was deleted`.
+  A helper's question is its reply; the boss answers with `continue`.
+- Closing the boss thread stops its helpers' runs (no wake) and closes their threads, saving
+  unfinished work as any close does; deleting a Bot does the same for each of its threads. Stopping
+  the boss's run leaves its helpers going.
+- A helper thread is read-only for the user: `POST /api/threads/{id}/messages` answers 409 `{boss}
+  is handling this thread`.
+- A child's questions go to its parent; approvals go to the user. The child's first message is one
+  line, then the brief: `{parent} delegated this to you; your replies go to {parent}.`
+- When the boss thread has a worktree, the helper works on a branch off it and the boss merges
+  it, opens the MR and owns the result: `delegate` makes the helper's worktree at once, on `<boss-branch>--<bot>` (the Bot name slugged
+  as a branch slug) at the boss branch's last commit, and records it on the helper thread, so the
+  helper's `start_work` returns it. The result adds `branch` and `note`: `Uncommitted changes in
+  your worktree are not included.` The helper's first message has, after the handoff line, `Work
+  on branch {branch} and commit there. Do not push or open a PR: {boss} merges it.` It needs no
+  GitHub connection, and the wake for its `done` run adds `Merge {branch} into your branch.` A
+  boss thread with no worktree (still exploring, or Chief) gets none of this: the helper's
+  `start_work` makes its own branch from `origin/HEAD` and it opens its own MR, with the GitHub
+  connection on a GitHub repo.
+- When the boss's MR merges (GitLab), the helpers' worktrees are removed with the boss's, each
+  saved first as for Close, with `worktree_removed` reason `merged`; while a helper's run is going
+  nothing is removed, and the watcher tries again.
+- Helpers show in the boss's thread (App and UI).
 
 ## Repos and worktrees
 
@@ -114,6 +182,7 @@ Undo of a repo registration is refused while a thread uses the repo.
 - The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs) at first edit; the app makes it
   lowercase, short and unique (`-2`). Fixed once created.
 - The worktree is removed when the MR merges or the thread closes; uncommitted work is saved first.
+  A helper's worktree goes with its boss's (see Delegation).
 - The read-only checkout is a detached git worktree of the repo's HEAD at `<data>/threads/<id>`,
   outside the worktree root. It is removed when the thread closes.
 - A new branch starts at `origin/HEAD` when it resolves, else HEAD. The server never fetches.
@@ -526,6 +595,25 @@ Voice
 - Composer: the message, then the thread's repo, branch and MR as chips, and Send or Stop. A new
   thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message.
+- Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` region sits between
+  the chat and the composer with one quiet line per open helper thread: creature, Bot name, state
+  and `Open`. The state comes from the helper's latest run: the live step while it works
+  ("Running make build", else "Working"), "Needs you" with an open approval, "Done", "Failed" or
+  "Stopped". A helper's open approval shows under its line in the usual inline form; Allow and Deny
+  there answer it, and answering it in either thread removes it from both (`approval_closed`). The
+  chat keeps one line where work was handed off, after the message that led to it ("Handed off to
+  Tester and Reviewer"); a helper's report is a message from the helper Bot, an article named after
+  it with its creature, not the user's bubble. The island shows one small creature per open helper
+  after the boss's name (`Tester: working`, `needs you`, `done`, `failed`; a red dot, faded, grey),
+  the red count includes helper approvals, and the boss's sidebar row says "Needs you" while a
+  helper waits. A helper thread is listed in its Bot's thread list tagged `from {boss}`; the
+  composer is replaced by "{Boss} is handling this thread. Talk to {Boss} to change it.", `Open
+  {Boss}'s thread` and, while its run goes, `Stop`. *The boss thread's stream carries only the
+  boss's events, so the UI polls: a thread summary (`GET /api/threads/{id}`, `GET
+  /api/bots/{id}/threads`) holds `helpers` (the helper threads' summaries, with `run_status`,
+  `step` and `approval`) and, on a helper thread, `parent_bot_id`; the thread query polls every
+  2 s, as the sidebar does. The handoff line is found from the helper threads' creation time, so it
+  survives a reload.*
 - Bot settings open as a docked right panel beside the usable thread and save as you change them,
   applying from the next run: creature, name, model, persona, skills, repos, connections, memory (its own lessons and
   what it saved) and the platform switch. Skills, repos and connections are lists with icons, a
@@ -562,7 +650,9 @@ Voice
   --exit-on-stdin-close`, keeps its stdin pipe open as the sidecar's lifeline, loads the URL it
   prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
   SIGTERM; an occupied port stops retries and shows an error. The page shows Reconnecting meanwhile.
-  A page's `window.open` (provider sign-in) opens in the default browser. *A fixed address lets the
+  A page's `window.open` (provider sign-in) opens in the default browser (`on_new_window`), and so
+  does any navigation of the window to a URL that is not Reef's own server (`on_navigation`), which
+  is cancelled in the app. Links in chat replies carry `target="_blank"`. *A fixed address lets the
   open page reconnect to a restarted sidecar.*
 - The dmg is ad-hoc signed (`signingIdentity: "-"`), not notarized, as old Reef was: free, and a
   web download opens after System Settings → Privacy & Security → Open Anyway once. CI's `dmg` job
@@ -613,7 +703,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 
 ## Queue
 
-Delegation, a Slack Marketplace listing (one-click Slack for every
+A Slack Marketplace listing (one-click Slack for every
 workspace, no per-workspace app), browser pane, background processes pane, the platform
 switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up
 to about 5 items always in the prompt), routines (scheduled, repeating runs), more provider
