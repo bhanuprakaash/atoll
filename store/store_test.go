@@ -100,7 +100,7 @@ func TestStore_FailUnfinished(t *testing.T) {
 				case "waiting":
 					err = st.SetStatus(ctx, r.ID, store.StatusWaiting)
 				case "done", "failed":
-					err = st.FinishRun(ctx, r.ID, store.RunResult{Status: status})
+					err = st.FinishRun(ctx, r.ID, store.RunResult{Status: status}, nil)
 				}
 				if err != nil {
 					t.Fatal(err)
@@ -108,7 +108,7 @@ func TestStore_FailUnfinished(t *testing.T) {
 				byStatus[status] = r.ID
 			}
 
-			got, err := st.FailUnfinished(ctx, "restart")
+			got, err := st.FailUnfinished(ctx, "restart", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -136,7 +136,7 @@ func TestStore_UndoChange(t *testing.T) {
 		name, entity, action, setup, before, want string
 	}{
 		{"bot create", store.EntityBot, store.ActionCreate, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'p', 'claude')`, `null`, `missing`},
-		{"bot edit", store.EntityBot, store.ActionEdit, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"can_manage_platform":true}`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"mcp_servers":[],"can_manage_platform":true}`},
+		{"bot edit", store.EntityBot, store.ActionEdit, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"can_manage_platform":true}`, `{"id":"item","name":"old","persona":"person","provider":"claude","mode":"auto","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"mcp_servers":[],"delegates":[],"can_manage_platform":true}`},
 		{"skill create", store.EntitySkill, store.ActionCreate, `INSERT INTO skills (id, name, content) VALUES ('item', 'new', 'text'); INSERT INTO skill_files VALUES ('item', 'a.sh', 'x', 1)`, `null`, `missing`},
 		{"skill edit", store.EntitySkill, store.ActionEdit, `INSERT INTO skills (id, name, content) VALUES ('item', 'new', 'text'); INSERT INTO skill_files VALUES ('item', 'new.md', 'x', 0)`, `{"id":"item","name":"old","content":"original","files":[{"path":"a.sh","content":"x","executable":true}]}`, `{"id":"item","name":"old","content":"original","source":"","files":[{"path":"a.sh","content":"x","executable":true}]}`},
 		{"repo create", store.EntityRepo, store.ActionCreate, `INSERT INTO repos VALUES ('item', 'new', '/repo')`, `null`, `missing`},
@@ -202,6 +202,34 @@ func TestStore_UndoChange(t *testing.T) {
 	}
 }
 
+func TestStore_UndoCreateBotDropsDelegate(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	made, err := st.CreateBot(ctx, store.Bot{Name: "made", Persona: "p", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boss, err := st.CreateBot(ctx, store.Bot{Name: "boss", Persona: "p", Provider: "claude", Delegates: []string{made.ID, "other"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := st.RecordChange(ctx, store.Change{Entity: store.EntityBot, EntityID: made.ID, Action: store.ActionCreate, Before: json.RawMessage(`null`), After: json.RawMessage(`{}`), SourceThreadID: "thread"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.UndoChange(ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Bot(ctx, boss.ID)
+	if err != nil || !slices.Equal(got.Delegates, []string{"other"}) {
+		t.Fatalf("delegates after undo = %v, %v; want [other]", got.Delegates, err)
+	}
+}
+
 func TestStore_MessageTimestamps(t *testing.T) {
 	ctx := t.Context()
 	st, err := store.Open(t.TempDir())
@@ -221,7 +249,7 @@ func TestStore_MessageTimestamps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}); err != nil {
+	if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	finished, err := st.Run(ctx, run.ID)
@@ -270,7 +298,7 @@ func TestStore_MessagePage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}); err != nil {
+		if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -361,4 +389,82 @@ func TestStore_ThreadDetails(t *testing.T) {
 			}
 		})
 	}
+}
+
+func wakeFixture(t *testing.T) (*store.Store, store.Thread, store.Bot) {
+	t.Helper()
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	boss, _ := st.CreateBot(ctx, store.Bot{Name: "boss", Persona: "p", Provider: "claude"})
+	bot, _ := st.CreateBot(ctx, store.Bot{Name: "Tester", Persona: "p", Provider: "claude"})
+	bt, err := st.CreateThread(ctx, boss.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st, bt, bot
+}
+
+func wakeText(w store.Wake) string { return w.Run.Status + ": " + w.Run.Reply + w.Run.Error }
+
+func checkWake(t *testing.T, st *store.Store, bossThreadID string, bot store.Bot, want string) {
+	t.Helper()
+	it, ok, err := st.OldestInbox(context.Background(), bossThreadID)
+	if err != nil || ok != (want != "") || it.Text != want || ok && it.FromBotID != bot.ID {
+		t.Fatalf("inbox = %+v, %v, %v; want %q from %s", it, ok, err, want, bot.ID)
+	}
+}
+
+func TestStore_HelperRunWake_Finished(t *testing.T) {
+	ctx := context.Background()
+	st, bt, bot := wakeFixture(t)
+	th, err := st.CreateHelperThread(ctx, bt.ID, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, r, err := st.StartRun(ctx, th.ID, "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = st.FinishRun(ctx, r.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}, wakeText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkWake(t, st, bt.ID, bot, "done: reply")
+}
+
+func TestStore_HelperRunWake_FailedAtRestart(t *testing.T) {
+	ctx := context.Background()
+	st, bt, bot := wakeFixture(t)
+	th, err := st.CreateHelperThread(ctx, bt.ID, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.StartRun(ctx, th.ID, "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.FailUnfinished(ctx, "restart", wakeText); err != nil {
+		t.Fatal(err)
+	}
+	checkWake(t, st, bt.ID, bot, "failed: restart")
+}
+
+func TestStore_HelperRunWake_NoBoss(t *testing.T) {
+	ctx := context.Background()
+	st, bt, bot := wakeFixture(t)
+	th, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, r, err := st.StartRun(ctx, th.ID, "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = st.FinishRun(ctx, r.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}, wakeText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkWake(t, st, bt.ID, bot, "")
 }

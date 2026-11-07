@@ -35,7 +35,8 @@ func MCPCalls(prompt string) ([]MCPCall, error) {
 }
 
 // MCPLine is what one call adds to the reply: "<server>/<tool>: <text>". The text is the tool's
-// answer, "unavailable" when the config has no such server or "denied" when the user said no.
+// answer, "unavailable" when the config has no such server or the server does not list the tool,
+// or "denied" when the user said no.
 func MCPLine(c MCPCall, text string) string {
 	return c.Server + "/" + c.Tool + ": " + text
 }

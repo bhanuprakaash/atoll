@@ -9,10 +9,12 @@ type ChangeSnapshot = {
   look?: CreatureLook;
   provider?: 'claude' | 'codex';
   model?: string;
+  mode?: 'auto' | 'ask' | 'full';
   persona?: string;
   skills?: string[];
   repo_access?: 'all' | string[];
   connections?: string[];
+  delegates?: string[];
 };
 
 export type PlatformChange = {
@@ -65,7 +67,12 @@ export function useChangeNames() {
     queryKey: ['connections'],
     queryFn: () => api<{ id: string; kind: string }[]>('/connections'),
   });
+  const bots = useQuery({
+    queryKey: ['bots'],
+    queryFn: () => api<{ id: string; name: string }[]>('/bots'),
+  });
   return {
+    bots: bots.data ?? [],
     skills: skills.data ?? [],
     repos: repos.data ?? [],
     connections: connections.data ?? [],

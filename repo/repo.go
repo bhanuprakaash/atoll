@@ -32,14 +32,20 @@ func Branch(typ, slug string) (string, error) {
 	default:
 		return "", fmt.Errorf("branch type %q: %w", typ, ErrType)
 	}
-	s := strings.Trim(_nonSlug.ReplaceAllString(strings.ToLower(slug), "-"), "-")
-	if len(s) > _maxSlug {
-		s = strings.TrimRight(s[:_maxSlug], "-")
-	}
+	s := Slug(slug)
 	if s == "" {
 		return "", errors.New("branch slug is empty")
 	}
 	return typ + "/" + s, nil
+}
+
+// Slug lowercases s, turns runs of characters outside [a-z0-9] into "-" and cuts it to 40.
+func Slug(s string) string {
+	s = strings.Trim(_nonSlug.ReplaceAllString(strings.ToLower(s), "-"), "-")
+	if len(s) > _maxSlug {
+		s = strings.TrimRight(s[:_maxSlug], "-")
+	}
+	return s
 }
 
 // Base says where a new branch started. Name is the ref and short commit, such as
@@ -68,6 +74,18 @@ func Create(
 	if start == "origin/HEAD" {
 		base.Note = aheadNote(ctx, repoPath)
 	}
+	path, used, err = add(ctx, repoPath, root, repoName, branch, start)
+	return path, used, base, err
+}
+
+// CreateFrom is Create for a branch that starts at the local branch from.
+func CreateFrom(
+	ctx context.Context, repoPath, root, repoName, branch, from string,
+) (path, used string, err error) {
+	return add(ctx, repoPath, root, repoName, branch, "refs/heads/"+from)
+}
+
+func add(ctx context.Context, repoPath, root, repoName, branch, start string) (path, used string, err error) {
 	for n := 1; ; n++ {
 		used = branch
 		if n > 1 {
@@ -75,7 +93,7 @@ func Create(
 		}
 		path, err = filepath.Abs(filepath.Join(root, repoName, strings.ReplaceAll(used, "/", "-")))
 		if err != nil {
-			return "", "", Base{}, fmt.Errorf("worktree path: %w", err)
+			return "", "", fmt.Errorf("worktree path: %w", err)
 		}
 		if _, err := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", "refs/heads/"+used); err == nil {
 			continue
@@ -86,12 +104,12 @@ func Create(
 		break
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", "", Base{}, fmt.Errorf("make worktree folder: %w", err)
+		return "", "", fmt.Errorf("make worktree folder: %w", err)
 	}
 	if _, err := git(ctx, repoPath, nil, "worktree", "add", "--no-track", "-b", used, path, start); err != nil {
-		return "", "", Base{}, fmt.Errorf("add worktree: %w", err)
+		return "", "", fmt.Errorf("add worktree: %w", err)
 	}
-	return path, used, base, nil
+	return path, used, nil
 }
 
 // aheadNote names the local default branch (the one origin/HEAD points at) and how far it is ahead
@@ -187,6 +205,14 @@ func Remove(ctx context.Context, repoPath, dir string) error {
 	}
 	if _, err := git(context.WithoutCancel(ctx), repoPath, nil, "worktree", "remove", "--force", dir); err != nil {
 		return fmt.Errorf("remove worktree: %w", err)
+	}
+	return nil
+}
+
+// DeleteBranch force-deletes branch of repoPath.
+func DeleteBranch(ctx context.Context, repoPath, branch string) error {
+	if _, err := git(context.WithoutCancel(ctx), repoPath, nil, "branch", "-D", branch); err != nil {
+		return fmt.Errorf("delete branch: %w", err)
 	}
 	return nil
 }

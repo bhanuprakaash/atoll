@@ -28,6 +28,8 @@ const (
 	ToolRecall       = "recall"
 	ToolReadMemory   = "read_memory"
 	ToolRetireMemory = "retire_memory"
+	ToolDelegate     = "delegate"
+	ToolContinue     = "continue"
 	// Platform tools modify platform configuration.
 	ToolCreateBot        = "create_bot"
 	ToolEditBot          = "edit_bot"
@@ -42,6 +44,13 @@ const (
 	ToolListRepos        = "list_repos"
 	ToolListModels       = "list_models"
 	ToolListMCPServers   = "list_mcp_servers"
+)
+
+// Bot modes.
+const (
+	ModeAuto = "auto"
+	ModeAsk  = "ask"
+	ModeFull = "full"
 )
 
 // ErrSignedOut is the error of a run that failed because the provider refused its sign-in.
@@ -82,6 +91,8 @@ type Config struct {
 	// SkillDir is the absolute root of this run's skill copies. Empty runs without them.
 	SkillDir   string
 	MCPServers []UserMCPServer
+	// Mode is the Bot's mode; other values run as the provider's default.
+	Mode string
 }
 
 // UserMCPServer is local with Command, Args and Env, or remote with URL and Headers.

@@ -149,3 +149,15 @@ GitHub repos (a repo on GitHub: push and open a pull request with `gh`) extends 
 MCP sign-in for hosted servers (Connect, tokens in the OS secret store, refresh) extends these contracts in [mcp-oauth-contract.md](mcp-oauth-contract.md).
 
 Approval cards that close and links that leave the app extend these contracts in [approvals-contract.md](approvals-contract.md).
+
+Bot mode (Auto, Ask or Full access, and what each gives Claude and Codex) extends these contracts in [bot-mode-contract.md](bot-mode-contract.md).
+
+The delegate list (who a Bot may hand work to) extends these contracts in [delegates-contract.md](delegates-contract.md).
+
+Delegate and continue (a Bot hands work to a helper thread) extend these contracts in [delegation-contract.md](delegation-contract.md).
+
+Waking the boss (a helper's reply and report start a boss run) extends these contracts in [wake-contract.md](wake-contract.md).
+
+Helper code work (helpers branch off their boss; the boss merges) extends these contracts in [helper-work-contract.md](helper-work-contract.md).
+
+Helpers in the UI (above the composer, in the island, a read-only helper thread) extend these contracts in [helpers-ui-contract.md](helpers-ui-contract.md).

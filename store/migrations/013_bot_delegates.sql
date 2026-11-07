@@ -1,0 +1,1 @@
+ALTER TABLE bots ADD COLUMN delegates TEXT NOT NULL DEFAULT '[]';

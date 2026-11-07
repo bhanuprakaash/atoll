@@ -42,6 +42,7 @@ type (
 		Provider     string          `json:"provider"`
 		Look         string          `json:"look"`
 		Model        string          `json:"model"`
+		Mode         string          `json:"mode"`
 		State        string          `json:"state"`
 		Activity     string          `json:"activity"`
 		LastActivity time.Time       `json:"last_activity"`

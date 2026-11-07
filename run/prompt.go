@@ -23,14 +23,17 @@ How you talk
 - Keep apart what you did, what you verified, and what you believe. Label guesses.
 `
 
-const _codePrompt = `
+const (
+	_codeChanges       = "- Code changes: branch <type>/<short-slug>, commit, push, open an MR and link it. Never merge.\n"
+	_helperCodeChanges = "- Code changes: commit on your branch; do not push or open an MR; the boss merges it.\n"
+	_codePrompt        = `
 How you work
 - Read the code and context before changing anything. Fix causes, not symptoms.
 - Smallest change that does the job. Nothing the ask didn't need.
 - Prove it by running the real thing. "It compiles" is not proof.
-- Code changes: branch <type>/<short-slug>, commit, push, open an MR and link it. Never merge.
-- Blocked: stop and say exactly what is missing.
+` + _codeChanges + `- Blocked: stop and say exactly what is missing.
 `
+)
 
 const _memoryPrompt = `
 Memory
@@ -69,13 +72,19 @@ Voice
 - A calm, dry reef keeper. At most one sea word per reply.
 - Questions, errors and undo messages stay plain.`
 
-func systemPrompt(bot store.Bot, user string) string {
+// systemPrompt is the Bot's instructions. onBossBranch is true for a helper thread whose branch the
+// boss merges.
+func systemPrompt(bot store.Bot, user string, onBossBranch bool) string {
 	if user == "" {
 		user = "The user"
 	}
 	prompt := _corePrompt
 	if len(bot.RepoAccess) > 0 || bot.RepoAccess == nil {
-		prompt += _codePrompt
+		code := _codePrompt
+		if onBossBranch {
+			code = strings.Replace(code, _codeChanges, _helperCodeChanges, 1)
+		}
+		prompt += code
 	}
 	prompt += _memoryPrompt
 	if bot.CanManagePlatform {
@@ -92,6 +101,8 @@ func systemPrompt(bot store.Bot, user string) string {
 // for it, so the tools a change needs are named here.
 const _repoWork = "Before your first edit, call start_work and work in the path it returns. " +
 	"After you open the MR, call track_mr with its URL."
+
+const _repoWorkHelper = "Before your first edit, call start_work and work in the path it returns."
 
 const _repoWorkGitHub = "Before your first edit, call start_work and work in the path it returns. " +
 	"Open the pull request with gh pr create, then call track_mr with its URL."
@@ -135,7 +146,10 @@ func messagePrompt(
 				branch = "detached"
 			}
 			work := _repoWork
-			if repo.Host == _hostGitHub {
+			switch {
+			case thread.ParentThreadID != "" && thread.Worktree != "":
+				work = _repoWorkHelper
+			case repo.Host == _hostGitHub:
 				work = _repoWorkGitHub
 			}
 			blocks = append(blocks, fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s\n%s",

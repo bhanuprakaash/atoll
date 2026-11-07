@@ -5,6 +5,9 @@ import type { Message, Run } from '@/modules/threads/api/messages';
 export type Thread = {
   id: string;
   bot_id: string;
+  parent_thread_id: string;
+  parent_bot_id: string;
+  helpers: Thread[];
   repo_id: string;
   branch: string;
   worktree: string;
@@ -16,6 +19,7 @@ export type Thread = {
   closed_at: string | null;
   updated_at: string;
   verb: string;
+  step: string;
   closed: boolean;
   created_at: string;
   title: string;
@@ -34,7 +38,11 @@ export const getThread = (threadId: string) =>
   >(`/threads/${threadId}`);
 
 export function useThread(threadId: string) {
-  return useQuery({ queryKey: ['thread', threadId], queryFn: () => getThread(threadId) });
+  return useQuery({
+    queryKey: ['thread', threadId],
+    queryFn: () => getThread(threadId),
+    refetchInterval: 2000,
+  });
 }
 
 export function useCloseThread(threadId: string) {

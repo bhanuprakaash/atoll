@@ -61,10 +61,16 @@ func normalizeBot(b Bot) Bot {
 	if b.MCPServers == nil {
 		b.MCPServers = []string{}
 	}
+	if b.Delegates == nil {
+		b.Delegates = []string{}
+	}
+	if b.Mode == "" {
+		b.Mode = "auto"
+	}
 	return b
 }
 
-// MarshalJSON encodes empty connections, skills and MCP servers as arrays.
+// MarshalJSON encodes empty connections, skills, MCP servers and delegates as arrays.
 func (b Bot) MarshalJSON() ([]byte, error) {
 	type botJSON Bot
 	return json.Marshal(botJSON(normalizeBot(b)))
@@ -101,9 +107,13 @@ func botArgs(b Bot) ([]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encode MCP servers: %w", err)
 	}
+	delegates, err := json.Marshal(b.Delegates)
+	if err != nil {
+		return nil, fmt.Errorf("encode delegates: %w", err)
+	}
 	return []any{
 		b.ID, b.Name, b.Persona, b.Provider, access, string(conns), string(skills),
-		b.CanManagePlatform, b.Look, b.Model, string(mcp),
+		b.CanManagePlatform, b.Look, b.Model, string(mcp), b.Mode, string(delegates),
 	}, nil
 }
 
@@ -114,7 +124,7 @@ func (s *Store) EnsureBot(ctx context.Context, b Bot) (bool, error) {
 		return false, err
 	}
 	res, err := s.db.ExecContext(ctx,
-		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "+
+		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "+
 			"ON CONFLICT(id) DO NOTHING", args...)
 	if err != nil {
 		return false, fmt.Errorf("ensure bot: %w", err)
@@ -138,7 +148,7 @@ func updateBot(ctx context.Context, db execer, b Bot) error {
 	args = append(args[1:], b.ID)
 	res, err := db.ExecContext(ctx,
 		"UPDATE bots SET name = ?, persona = ?, provider = ?, repo_access = ?, connections = ?, "+
-			"skills = ?, can_manage_platform = ?, look = ?, model = ?, mcp_servers = ? "+
+			"skills = ?, can_manage_platform = ?, look = ?, model = ?, mcp_servers = ?, mode = ?, delegates = ? "+
 			"WHERE id = ? AND removed = 0", args...)
 	if err != nil {
 		return fmt.Errorf("update bot: %w", err)
@@ -360,6 +370,11 @@ func (s *Store) UndoChange(ctx context.Context, id string) (Change, error) {
 			}
 			if err := found(res, c.Entity, c.EntityID); err != nil {
 				return err
+			}
+			if c.Entity == EntityBot {
+				if err := dropDelegate(ctx, tx, c.EntityID); err != nil {
+					return err
+				}
 			}
 		case c.Action == ActionEdit && c.Entity == EntityBot:
 			var b Bot

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Navigate, Outlet, useNavigate, useParams } from 'react-router';
-import { Creature } from '@/components/creature';
+import { Creature, type CreatureLook } from '@/components/creature';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { BotMemory } from '@/modules/memory/components/bot-memory';
 import { BotSettings } from '@/modules/bots/components/bot-settings';
@@ -12,10 +12,13 @@ import { useRepos } from '@/modules/repos/api/repos';
 import { useSkills } from '@/modules/skills/api/skills';
 import { ThreadsPanel } from '@/modules/threads/components/threads-panel';
 import { useThreads, type Thread } from '@/modules/threads/api/threads';
+import { HelperCreature } from '@/modules/threads/components/helper-creature';
+import { helperState, isLiveHelper, type HelperState } from '@/modules/threads/utils/helper-state';
 
 export function BotHeader({
   bot,
   thread,
+  helpers = [],
   waiting = 0,
   open = false,
   onThreads,
@@ -24,6 +27,7 @@ export function BotHeader({
 }: {
   bot?: Bot;
   thread?: Thread;
+  helpers?: { id: string; name: string; look?: CreatureLook; state: HelperState }[];
   waiting?: number;
   open?: boolean;
   onThreads?: () => void;
@@ -52,6 +56,13 @@ export function BotHeader({
               </>
             )}
           </div>
+          {helpers.length > 0 && (
+            <div className="flex items-center gap-1">
+              {helpers.map((h) => (
+                <HelperCreature key={h.id} name={h.name} creature={h.look} state={h.state} />
+              ))}
+            </div>
+          )}
           {thread?.approval ? (
             <span className="text-[13px] text-needs-ink">Needs you</span>
           ) : thread?.run_status === 'running' ? (
@@ -140,6 +151,17 @@ export function BotPage() {
   const [panel, setPanel] = useState(false);
   const navigate = useNavigate();
   const bot = bots.find((item) => item.id === botId);
+  const helpers = (threads.find((thread) => thread.id === threadId)?.helpers ?? [])
+    .filter(isLiveHelper)
+    .map((helper) => {
+      const helperBot = bots.find((item) => item.id === helper.bot_id);
+      return {
+        id: helper.id,
+        name: helperBot?.name ?? 'Helper',
+        look: helperBot?.look,
+        state: helperState(helper),
+      };
+    });
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-[999_1_400px] flex-col">
@@ -149,11 +171,21 @@ export function BotPage() {
           onThreads={() => setPanel(!panel)}
           open={panel}
           thread={threads.find((thread) => thread.id === threadId)}
-          waiting={threads.filter((thread) => !thread.closed && thread.approval).length}
+          helpers={helpers}
+          waiting={threads
+            .filter((thread) => !thread.closed)
+            .reduce(
+              (count, thread) =>
+                count +
+                (thread.approval ? 1 : 0) +
+                thread.helpers.filter((helper) => !helper.closed && helper.approval).length,
+              0,
+            )}
         >
           {panel && (
             <ThreadsPanel
               name={bot?.name ?? ''}
+              botNames={Object.fromEntries(bots.map((item) => [item.id, item.name]))}
               threads={threads}
               repos={repos}
               currentId={threadId}
@@ -178,6 +210,7 @@ export function BotPage() {
           memory={<BotMemory botId={bot.id} />}
           onClose={() => setSettingsOpen(false)}
           repos={repos}
+          bots={bots}
           skills={skills}
           connections={connections}
           mcpServers={mcpServers.filter((s) => s.kind !== 'connection')}

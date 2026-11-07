@@ -83,7 +83,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	failed, err := st.FailUnfinished(ctx, _restartReason)
+	failed, err := st.FailUnfinished(ctx, _restartReason, threadrun.WakeText)
 	if err != nil {
 		return err
 	}
