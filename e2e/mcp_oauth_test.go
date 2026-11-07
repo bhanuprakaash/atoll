@@ -204,6 +204,31 @@ func TestMCPOAuth_RejectedRefreshNeedsSignIn(t *testing.T) {
 	}
 }
 
+func TestMCPOAuth_RegistrationRefused(t *testing.T) {
+	f := newOAuthFixture(t, "claude")
+	o := newOAuthMCP(t)
+	o.set(func() { o.refuse = true })
+	s := f.add(t, "docs-refused", o)
+	if s.Status != "not_connected" {
+		t.Fatalf("server that advertises registration_endpoint: status %q, want not_connected", s.Status)
+	}
+
+	var refused struct {
+		Error string `json:"error"`
+	}
+	f.s.do(t, "POST", "/api/mcp-servers/"+s.ID+"/connect", nil, &refused, http.StatusConflict)
+	if !strings.Contains(refused.Error, "registered app") {
+		t.Errorf("connect error %q, want it to say the server needs a registered app", refused.Error)
+	}
+	if got := f.server(t, s.ID).Status; got != "needs_app" {
+		t.Errorf("status after the registration was refused: %q, want needs_app", got)
+	}
+	f.s.do(t, "POST", "/api/mcp-servers/"+s.ID+"/connect", nil, &refused, http.StatusConflict)
+	if n := o.refused(); n != 1 {
+		t.Errorf("%d registration requests, want 1: a needs_app server is not registered again", n)
+	}
+}
+
 func TestMCPOAuth_AddByURL(t *testing.T) {
 	f := newOAuthFixture(t, "claude")
 

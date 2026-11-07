@@ -20,7 +20,7 @@ server in the UI spec). Go tests run through `e2e/with-secret-store`.
   | --- | --- | --- | --- |
   | `notion` | `Notion` | `https://mcp.notion.com/mcp` | `not_connected` |
   | `figma` | `Figma` | `https://mcp.figma.com/mcp` | `not_connected` |
-  | `cloudflare` | `Cloudflare` | `https://observability.mcp.cloudflare.com/mcp` | `not_connected` |
+  | `cloudflare` | `Cloudflare` | `https://mcp.cloudflare.com/mcp` | `not_connected` |
 
   They are `kind: "catalog"`, remote, picked by Bots like Context7, and cannot be edited or removed.
   The #64 tests that pinned a one-entry catalog (library list, the refusals count, the UI catalog
@@ -46,7 +46,9 @@ server in the UI spec). Go tests run through `e2e/with-secret-store`.
   server that needs no sign-in (`context7`, a local server, a server with no status), `409` with
   `error` containing `registered app` for `needs_app`. It works from `not_connected` and from
   `needs_sign_in` (Sign in again); Reef sends no request to the auth server's `registration_endpoint`
-  for `needs_app`.
+  for `needs_app`. A `registration_endpoint` that refuses the registration (`401` or `403`, as
+  Figma's does for a client it has not approved) also gets `409` with `registered app`, and the
+  status becomes `needs_app`; the row then says so in place of Connect, with no `internal error`.
 - Reef registers a client (`POST registration_endpoint`, JSON, one per Connect or reused: a Sign in
   again may do either) with `client_name` (nonempty), `redirect_uris` exactly
   `["<redirect>"]`, `grant_types` containing `authorization_code` and `refresh_token`,
