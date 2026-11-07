@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router';
 import { useBots } from '@/modules/bots/api/bots';
 import { ConnectionsSettings } from '@/modules/connections/components/connections-settings';
+import { McpServersSettings } from '@/modules/mcp-servers/components/mcp-servers-settings';
 import { useMemory } from '@/modules/memory/api/memory';
 import { MemorySettings } from '@/modules/memory/components/memory-settings';
 import { useProviders } from '@/modules/providers/api/providers';
@@ -22,6 +23,10 @@ export function ConnectionsPage() {
 export function SkillsPage() {
   const { data: bots = [] } = useBots();
   return <SkillsSettings bots={bots} />;
+}
+
+export function McpServersPage() {
+  return <McpServersSettings />;
 }
 
 export function MemoryPage() {
@@ -46,6 +51,7 @@ export function SettingsPage() {
     ['providers', 'Providers', toSignIn ? `${toSignIn} to sign in` : ''],
     ['connections', 'Connections', ''],
     ['skills', 'Skills', skills.length || ''],
+    ['mcp-servers', 'MCP servers', ''],
     ['repos', 'Repos', repos.length || ''],
     ['memory', 'Memory', memory.filter((m) => m.status !== 'retired').length || ''],
   ] as const;

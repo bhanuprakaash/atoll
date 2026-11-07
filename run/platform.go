@@ -29,6 +29,7 @@ func (m *Manager) Source(token string) (store.Bot, store.Thread, string, error) 
 	bot, threadID, id := a.bot, a.threadID, a.run.ID
 	bot.Skills = slices.Clone(bot.Skills)
 	bot.Connections = slices.Clone(bot.Connections)
+	bot.MCPServers = slices.Clone(bot.MCPServers)
 	bot.RepoAccess = slices.Clone(bot.RepoAccess)
 	m.mu.Unlock()
 	thread, err := m.cfg.Store.Thread(m.ctx, threadID)

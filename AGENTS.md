@@ -38,6 +38,7 @@ memory/       memory items and search
 repo/         registered repos and worktrees
 skill/        skill library, placed per provider
 connection/   sign-in, tokens in the OS secret store
+mcpserver/    MCP server library: catalog and user servers, secrets in the OS secret store
 store/        SQLite schema and queries
 web/          React UI (Vite, TypeScript)
 desktop/      Tauri shell
@@ -47,7 +48,7 @@ docs/         design.md, style guides
 Allowed imports, Go (left may import right, never the reverse):
 
 ```text
-cmd/atoll -> server -> run -> provider | memory | repo | skill | connection -> store
+cmd/atoll -> server -> run -> provider | memory | repo | skill | connection | mcpserver -> store
 ```
 
 - Packages on the same level never import each other (`memory` does not import `repo`).

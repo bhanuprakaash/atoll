@@ -28,8 +28,15 @@ export function BotSettings({
   repos,
   skills,
   connections,
+  mcpServers,
   memory,
-}: Choices & { bot: Bot; onClose: () => void; modelControl: ModelControl; memory?: ReactNode }) {
+}: Choices & {
+  bot: Bot;
+  onClose: () => void;
+  modelControl: ModelControl;
+  mcpServers: { id: string; name: string }[];
+  memory?: ReactNode;
+}) {
   const [name, setName] = useState(bot.name);
   const [persona, setPersona] = useState(bot.persona);
   const [look, setLook] = useState(bot.look);
@@ -37,6 +44,7 @@ export function BotSettings({
   const [model, setModel] = useState(bot.model);
   const [repoAccess, setRepoAccess] = useState(bot.repo_access);
   const [skillIds, setSkillIds] = useState(bot.skills ?? []);
+  const [mcpIds, setMcpIds] = useState(bot.mcp_servers ?? []);
   const [platform, setPlatform] = useState(bot.can_manage_platform);
   const [connectionIds, setConnectionIds] = useState(bot.connections ?? []);
   const [confirming, setConfirming] = useState(false);
@@ -140,6 +148,30 @@ export function BotSettings({
               mutate({ skills: value });
             }}
           />
+          <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+            <legend className="mb-2 p-0 text-xs tracking-wide text-label">MCP servers</legend>
+            <div className="overflow-hidden rounded-2xl bg-field">
+              {mcpServers.map((server) => (
+                <label
+                  key={server.id}
+                  className="flex items-center justify-between gap-3 border-b border-composer-line px-3 py-2.5 text-sm last:border-b-0"
+                >
+                  {server.name}
+                  <Switch
+                    aria-label={server.name}
+                    checked={mcpIds.includes(server.id)}
+                    onChange={(on) => {
+                      const value = on
+                        ? [...mcpIds, server.id]
+                        : mcpIds.filter((id) => id !== server.id);
+                      setMcpIds(value);
+                      mutate({ mcp_servers: value });
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+          </fieldset>
           {bot.id !== 'chief' && (
             <>
               <Segmented

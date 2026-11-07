@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -20,7 +22,8 @@ func Hang() {
 	select {}
 }
 
-// MCP is a client of one streamable-HTTP MCP server, as the real CLIs speak it.
+// MCP is a client of one MCP server, as the real CLIs speak it: streamable HTTP, or a local
+// process on stdio.
 type MCP struct {
 	url     string
 	headers map[string]string
@@ -28,11 +31,42 @@ type MCP struct {
 	Tools   map[string]bool
 	Params  map[string][]string // each tool's inputSchema property names
 	next    int
+	stdin   io.Writer // a stdio server: its process and the lines it prints
+	stdout  *bufio.Scanner
 }
 
 // Dial does the MCP handshake (initialize, notifications/initialized, tools/list).
 func Dial(url string, headers map[string]string) (*MCP, error) {
-	c := &MCP{url: url, headers: headers}
+	return (&MCP{url: url, headers: headers}).handshake()
+}
+
+// DialStdio starts a local MCP server as the real CLIs do (its env is ours plus env) and does the
+// handshake. The server ends when this process does: its stdin closes.
+func DialStdio(command string, args []string, env map[string]string) (*MCP, error) {
+	cmd := exec.Command(command, args...)
+	cmd.Env = os.Environ()
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	cmd.Stderr = os.Stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("mcp start %s: %w", command, err)
+	}
+	c := &MCP{url: command, stdin: stdin, stdout: bufio.NewScanner(stdout)}
+	c.stdout.Buffer(nil, 64*1024*1024)
+	return c.handshake()
+}
+
+func (c *MCP) handshake() (*MCP, error) {
+	url := c.url
 	if _, err := c.request("initialize", map[string]any{
 		"protocolVersion": "2025-06-18",
 		"capabilities":    map[string]any{},
@@ -95,6 +129,9 @@ func (c *MCP) Call(tool string, args json.RawMessage) (text string, isError bool
 }
 
 func (c *MCP) notify(method string) error {
+	if c.stdin != nil {
+		return c.send(map[string]any{"jsonrpc": "2.0", "method": method})
+	}
 	resp, err := c.post(map[string]any{"jsonrpc": "2.0", "method": method})
 	if err != nil {
 		return err
@@ -103,9 +140,40 @@ func (c *MCP) notify(method string) error {
 	return nil
 }
 
+func (c *MCP) send(msg any) error {
+	b, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	_, err = c.stdin.Write(append(b, '\n'))
+	return err
+}
+
 func (c *MCP) request(method string, params any) (json.RawMessage, error) {
 	c.next++
 	id := c.next
+	if c.stdin != nil {
+		if err := c.send(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
+			return nil, err
+		}
+		for c.stdout.Scan() {
+			var m struct {
+				ID     json.RawMessage `json:"id"`
+				Result json.RawMessage `json:"result"`
+				Error  *struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(c.stdout.Bytes(), &m) != nil || string(m.ID) != fmt.Sprint(id) {
+				continue
+			}
+			if m.Error != nil {
+				return nil, errors.New(m.Error.Message)
+			}
+			return m.Result, nil
+		}
+		return nil, fmt.Errorf("no response to %s", method)
+	}
 	resp, err := c.post(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
 	if err != nil {
 		return nil, err

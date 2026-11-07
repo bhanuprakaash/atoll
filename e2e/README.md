@@ -139,3 +139,5 @@ Skills keeping their scripts, playbooks and references extends these contracts i
 The skill editor for every file of a skill extends these contracts in [skill-editor-contract.md](skill-editor-contract.md).
 
 Run login isolation (a Bot uses only the logins Reef gives it) extends these contracts in [login-isolation-contract.md](login-isolation-contract.md).
+
+MCP servers (a library, a pick per Bot, secrets in the OS store) extend these contracts in [mcp-servers-contract.md](mcp-servers-contract.md).
