@@ -59,9 +59,11 @@ Codex `id`) and `name` its display name. Sign-in runs `claude auth login` / `cod
 `signed_in`, or `failed` with `error`. After `signed_in`, `GET /api/providers` shows
 `signed_in:true`.
 
-**Bots.** `look` is a creature name: `jellyfish`, `whale`, `penguin`, `shark`, `octopus`,
-`turtle`, `seahorse`, `otter`, `clownfish` or `manta`. Chief is `jellyfish`. A Bot created without
-a look gets one of the ten. `model` is a model `id` from the Bot's provider. A run passes it to
+**Bots.** `look` is a creature name: `jellyfish`, `whale`, `penguin`, `shark`, `starfish`,
+`anglerfish`, `sand_dollar`, `sponge`, `kelp`, `shell`, `wave`, `island`, `sun` or `sailboat`. Chief
+is `jellyfish`. A Bot created without a look gets one of the fourteen. A Bot saved with a look
+since retired (`octopus`, `turtle`, `seahorse`, `otter`, `clownfish`, `manta`) comes back as
+`shell`, `kelp`, `sun`, `sand_dollar`, `starfish` and `wave` in that order. `model` is a model `id` from the Bot's provider. A run passes it to
 the provider: Claude as `--model <id>`, Codex as `model` on `thread/start` / `thread/resume` (or in
 their `config`). `state` is the first that holds:
 
@@ -106,7 +108,7 @@ interrupts, as a stuck command would), and an open approval closes (`POST /api/a
 Found by role and accessible name. Colours, sizes and motion curves are not tested.
 
 - **Sidebar**: `navigation` "Bots". One `link` per Bot, Chief first, with its creature as an `img`
-  named `<Creature>, <state>` (`Jellyfish, idle`, `Shark, needs you`, `Turtle, asleep`,
+  named `<Creature>, <state>` (`Jellyfish, idle`, `Shark, needs you`, `Kelp, asleep`,
   `Shark, working`, `Shark, failed`). A needs-you row's activity names what it waits for. Also a
   `button` "New Bot" and a `link` whose name contains "Settings".
 - **Bot page**: a `button` named `Threads` (when threads wait on the user, the name also carries

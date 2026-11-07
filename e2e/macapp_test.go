@@ -74,7 +74,7 @@ type (
 	}
 )
 
-var _creatures = []string{"jellyfish", "whale", "penguin", "shark", "octopus", "turtle", "seahorse", "otter", "clownfish", "manta"}
+var _creatures = []string{"jellyfish", "whale", "penguin", "shark", "starfish", "anglerfish", "sand_dollar", "sponge", "kelp", "shell", "wave", "island", "sun", "sailboat"}
 
 const _noRecordingPrompt = "This message has no recording, so the provider fails."
 
@@ -284,9 +284,9 @@ func TestBots_LookAndModel(t *testing.T) {
 			s.do(t, "POST", "/api/bots", map[string]string{"name": "Bad", "persona": "x", "provider": p, "look": "dragon"}, nil, http.StatusBadRequest)
 
 			var edited botInfo
-			s.do(t, "PUT", "/api/bots/"+b.ID, map[string]string{"look": "otter"}, &edited, http.StatusOK)
-			if edited.Look != "otter" || edited.Model != _probeModel[p] {
-				t.Errorf("PUT look: %+v; want look otter, model %s kept", edited, _probeModel[p])
+			s.do(t, "PUT", "/api/bots/"+b.ID, map[string]string{"look": "anglerfish"}, &edited, http.StatusOK)
+			if edited.Look != "anglerfish" || edited.Model != _probeModel[p] {
+				t.Errorf("PUT look: %+v; want look anglerfish, model %s kept", edited, _probeModel[p])
 			}
 
 			th := s.newThread(t, bot{ID: b.ID})
