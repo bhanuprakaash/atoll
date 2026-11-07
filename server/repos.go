@@ -213,7 +213,7 @@ func (a *api) writeDevice(
 	if interval <= 0 {
 		interval = _defaultDeviceInterval
 	}
-	a.devices[c.ID] = &device{code: dev.DeviceCode, interval: interval, next: time.Now().Add(interval)}
+	a.devices[c.ID] = &device{code: dev.DeviceCode, interval: interval}
 	a.mu.Unlock()
 	write(w, http.StatusCreated, struct {
 		ID              string `json:"id"`
