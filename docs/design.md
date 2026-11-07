@@ -206,7 +206,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   hosted server's URL with `Authorization: Bearer <token>` (Claude `--mcp-config` headers, Codex
   `mcp_servers.github.http_headers`). A GitHub tool call goes to the user as an approval named
   `mcp__github__<tool>`, like every tool that is not Reef's own: the tools can push, merge and close
-  issues. Only Reef's own tools need none. A Bot with GitLab and GitHub gets both helpers, in one `GIT_CONFIG_*` list after
+  issues. Codex gets `default_tools_approval_mode = "prompt"` on it, since its default skips tools
+  that declare themselves read-only. Only Reef's own tools need none. A Bot with GitLab and GitHub gets both helpers, in one `GIT_CONFIG_*` list after
   the clearing entry. The token is never written to a file or log. `ATOLL_GITHUB_URL` and
   `ATOLL_GITHUB_MCP_URL` replace the real URLs for tests.
 - Settings > Connections has a GitHub card ("Bots get gh, git and GitHub tools."). Connect GitHub
@@ -271,9 +272,11 @@ Undo of a repo registration is refused while a thread uses the repo.
   `--strict-mcp-config`), Codex through `mcp_servers` in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
   Remove apply from the next run; a live run keeps its config. *A Bot that picks nothing gets none.*
 - A tool call to a user-added server is an approval in the thread, like any other tool. Claude's
-  allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex's
-  `mcpServer/elicitation/request` for any server but Reef's becomes an approval, answered
-  `{action: "accept"}` or `{action: "decline"}`. Reef's own tools need none.
+  allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex gets
+  `default_tools_approval_mode = "prompt"` on every server but Reef's, since its default skips
+  tools that declare themselves read-only; its `mcpServer/elicitation/request` becomes an approval,
+  named by the `mcpToolCall` item it follows, answered `{action: "accept"}` or
+  `{action: "decline"}`. Reef's own tools need none.
 - Importing servers from `~/.claude.json` or Codex's config and a per-server "always allow" are not
   built.
 

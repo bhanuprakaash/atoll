@@ -50,7 +50,8 @@ type (
 		msgID    string // agent message item the last text delta belonged to; owned by run
 		wrote    bool   // the turn in progress has sent text; owned by run
 		changes  map[string]json.RawMessage
-		notes    map[string]bool // commentary agent message items of the turn; owned by run
+		tools    map[string]string // server to its last started MCP tool, which names an elicitation
+		notes    map[string]bool   // commentary agent message items of the turn; owned by run
 
 		askMu sync.Mutex
 		asks  map[string]ask
@@ -73,14 +74,11 @@ type (
 	}
 
 	body struct {
-		Delta      string `json:"delta"`
-		ItemID     string `json:"itemId"`
-		ServerName string `json:"serverName"`
-		Meta       struct {
-			ToolTitle string `json:"tool_title"`
-		} `json:"_meta"`
-		Item json.RawMessage `json:"item"`
-		Turn struct {
+		Delta      string          `json:"delta"`
+		ItemID     string          `json:"itemId"`
+		ServerName string          `json:"serverName"`
+		Item       json.RawMessage `json:"item"`
+		Turn       struct {
 			Status string `json:"status"`
 			Error  *struct {
 				Message        string `json:"message"`
@@ -100,6 +98,7 @@ func New() *Session {
 		asks:    map[string]ask{},
 		notes:   map[string]bool{},
 		changes: map[string]json.RawMessage{},
+		tools:   map[string]string{},
 		done:    make(chan struct{}),
 		exited:  make(chan struct{}),
 	}
@@ -395,7 +394,7 @@ func (s *Session) serverRequest(m message) bool {
 			_ = s.write(map[string]any{"id": m.ID, "result": map[string]any{"action": "accept"}})
 			return true
 		}
-		name = "mcp__" + server + "__" + m.body().Meta.ToolTitle
+		name = "mcp__" + server + "__" + s.tools[server]
 		elicitation = true
 	default:
 		_ = s.write(map[string]any{
@@ -432,11 +431,14 @@ func (s *Session) handle(m message) bool {
 		s.msgID, s.wrote = "", false
 		clear(s.notes)
 		clear(s.changes)
+		clear(s.tools)
 	case "item/started":
 		var it struct {
-			ID    string `json:"id"`
-			Phase string `json:"phase"`
-			Type  string `json:"type"`
+			ID     string `json:"id"`
+			Phase  string `json:"phase"`
+			Type   string `json:"type"`
+			Server string `json:"server"`
+			Tool   string `json:"tool"`
 		}
 		if json.Unmarshal(m.body().Item, &it) == nil {
 			if it.Phase == "commentary" {
@@ -444,6 +446,9 @@ func (s *Session) handle(m message) bool {
 			}
 			if it.Type == "fileChange" {
 				s.changes[it.ID] = m.body().Item
+			}
+			if it.Type == "mcpToolCall" {
+				s.tools[it.Server] = it.Tool
 			}
 		}
 	case "item/agentMessage/delta":
@@ -569,6 +574,8 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 			servers[provider.GitHubMCPServer] = map[string]any{
 				"url":          cfg.GitHubMCPURL,
 				"http_headers": map[string]string{"Authorization": "Bearer " + cfg.GitHubToken},
+				// Codex's default mode skips approval for tools that declare readOnlyHint.
+				"default_tools_approval_mode": "prompt",
 			}
 		}
 		for _, m := range cfg.MCPServers {
@@ -586,6 +593,8 @@ func userServer(m provider.UserMCPServer) map[string]any {
 	if m.Command != "" {
 		e = map[string]any{"command": m.Command}
 	}
+	// Codex's default mode skips approval for tools that declare readOnlyHint.
+	e["default_tools_approval_mode"] = "prompt"
 	if len(m.Args) > 0 {
 		e["args"] = m.Args
 	}
