@@ -462,8 +462,8 @@ func TestMCPFixtures_ProviderScenarios(t *testing.T) {
 						{"id": 1, "method": "initialize", "params": map[string]any{}},
 						{"id": 2, "method": "thread/start", "params": map[string]any{"config": map[string]any{"mcp_servers": map[string]any{
 							"atoll":       map[string]any{"url": atoll.URL},
-							"docs-local":  map[string]any{"command": stdio, "args": []string{"--tag", "one"}, "env": map[string]string{_mcpEnvName: _mcpEnvSecret}},
-							"docs-remote": map[string]any{"url": remote.url(), "http_headers": map[string]string{_mcpHeaderName: _mcpHeaderSecret}},
+							"docs-local":  map[string]any{"command": stdio, "args": []string{"--tag", "one"}, "env": map[string]string{_mcpEnvName: _mcpEnvSecret}, "default_tools_approval_mode": "prompt"},
+							"docs-remote": map[string]any{"url": remote.url(), "http_headers": map[string]string{_mcpHeaderName: _mcpHeaderSecret}, "default_tools_approval_mode": "prompt"},
 						}}}},
 						{"id": 3, "method": "turn/start", "params": map[string]any{"input": []map[string]string{{"type": "text", "text": prompt}}}},
 						{"id": 9001, "result": map[string]string{"action": action}},
