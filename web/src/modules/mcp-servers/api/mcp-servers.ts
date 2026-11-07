@@ -10,7 +10,7 @@ export type McpServer = {
   url?: string;
   env_names?: string[];
   header_names?: string[];
-  status?: 'not_connected' | 'connected' | 'needs_sign_in' | 'needs_app';
+  status?: 'not_connected' | 'connected' | 'needs_sign_in' | 'needs_app' | 'needs_setup';
 };
 
 export type McpServerInput =
@@ -27,6 +27,24 @@ export function useMcpServers(signingIn?: McpServer) {
       signingIn && query.state.data?.find((s) => s.id === signingIn.id)?.status === signingIn.status
         ? 1000
         : false,
+  });
+}
+
+export type McpServerSetup = { redirect_uri: string; scopes: string[] };
+
+export function useMcpServerSetup(id: string) {
+  return useQuery({
+    queryKey: ['mcp-servers', id, 'setup'],
+    queryFn: () => api<McpServerSetup>(`/mcp-servers/${id}/setup`),
+  });
+}
+
+export function useSaveMcpServerSetup(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (clientId: string) =>
+      api<void>(`/mcp-servers/${id}/setup`, { method: 'POST', body: { client_id: clientId } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mcp-servers'] }),
   });
 }
 

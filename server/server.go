@@ -110,6 +110,8 @@ func New(
 	mux.HandleFunc("PUT /api/mcp-servers/{id}", a.putMCPServer)
 	mux.HandleFunc("DELETE /api/mcp-servers/{id}", a.deleteMCPServer)
 	mux.HandleFunc("POST /api/mcp-servers/{id}/connect", a.connectMCPServer)
+	mux.HandleFunc("GET /api/mcp-servers/{id}/setup", a.mcpServerSetup)
+	mux.HandleFunc("POST /api/mcp-servers/{id}/setup", a.saveMCPServerSetup)
 	mux.HandleFunc("GET /oauth/callback", a.oauthCallback)
 	mux.HandleFunc("POST /api/platform/changes/{id}/undo", a.undoChange)
 	mux.HandleFunc("GET /api/threads/{id}/changes", a.listChanges)

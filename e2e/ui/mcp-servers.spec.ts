@@ -42,7 +42,7 @@ test("the page lists Context7, adds a local and a remote server, and shows names
   const items = page
     .getByRole("list", { name: "Catalog" })
     .getByRole("listitem");
-  await expect(items).toHaveCount(4);
+  await expect(items).toHaveCount(5);
   const catalog = items.first();
   await expect(catalog).toContainText("Context7");
   await expect(catalog).toContainText("https://mcp.context7.com/mcp");
@@ -82,14 +82,15 @@ test("the page lists Context7, adds a local and a remote server, and shows names
     ["notion", "Notion", "catalog"],
     ["figma", "Figma", "catalog"],
     ["cloudflare", "Cloudflare", "catalog"],
-    [list[4].id, "docs-local", "local"],
-    [list[5].id, "docs-remote", "remote"],
+    ["slack", "Slack", "catalog"],
+    [list[5].id, "docs-local", "local"],
+    [list[6].id, "docs-remote", "remote"],
   ]);
-  expect(list[4]).toMatchObject({
+  expect(list[5]).toMatchObject({
     args: ["--tag", "one"],
     env_names: ["FAKE_MCP_TOKEN"],
   });
-  expect(list[5]).toMatchObject({ header_names: ["X-Fake-Key"] });
+  expect(list[6]).toMatchObject({ header_names: ["X-Fake-Key"] });
   for (const secret of [envSecret, headerSecret]) {
     expect(JSON.stringify(list)).not.toContain(secret);
     expect(await page.locator("body").innerText()).not.toContain(secret);
@@ -148,6 +149,7 @@ test("Edit keeps the secrets it is not given, and Remove drops the server from e
     "Notion",
     "Figma",
     "Cloudflare",
+    "Slack",
     "docs-local",
   ]);
   expect((await api(m, "GET", `/api/bots/${kelp.id}`)).mcp_servers).toEqual([
@@ -170,7 +172,7 @@ test("Bot settings lists MCP servers as switches; a call to a picked user-added 
   await page.getByRole("button", { name: "Bot settings" }).click();
   const panel = page.getByRole("dialog", { name: "Bot settings" });
   const group = panel.getByRole("group", { name: "MCP servers" });
-  await expect(group.getByRole("switch")).toHaveCount(5);
+  await expect(group.getByRole("switch")).toHaveCount(6);
   await expect(
     group.getByRole("switch", { name: "Context7", exact: true }),
   ).not.toBeChecked();

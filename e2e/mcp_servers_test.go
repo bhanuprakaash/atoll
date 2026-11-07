@@ -277,8 +277,8 @@ func TestMCPServers_Refusals(t *testing.T) {
 
 	var list []mcpServer
 	f.s.do(t, "GET", "/api/mcp-servers", nil, &list, http.StatusOK)
-	if len(list) != 6 {
-		t.Fatalf("GET /api/mcp-servers lists %d servers after refused requests, want the 4 catalog entries and the 2 added", len(list))
+	if len(list) != 7 {
+		t.Fatalf("GET /api/mcp-servers lists %d servers after refused requests, want the 5 catalog entries and the 2 added", len(list))
 	}
 	for _, id := range []string{"context7", "mcp_nowhere"} {
 		f.s.do(t, "PUT", "/api/mcp-servers/"+id, map[string]any{"name": "x", "command": "/bin/true"}, nil, http.StatusNotFound)

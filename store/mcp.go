@@ -36,6 +36,7 @@ const (
 	MCPConnected    = "connected"
 	MCPNeedsSignIn  = "needs_sign_in"
 	MCPNeedsApp     = "needs_app"
+	MCPNeedsSetup   = "needs_setup"
 )
 
 const _mcpColumns = "id, name, kind, command, args, url, env_names, header_names"
