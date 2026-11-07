@@ -312,9 +312,13 @@ Voice
 - Look: Geist, regular weight. Main `#171717`, sidebar `#1A1A1A`, composer `#222222`, hairlines
   `#262626`, text `#ECECEC`, muted `#9B9B9B`. The light pill (`#ECECEC` on `#161616`) is the primary
   action and the user's own message. Red `#E5484D` means needs you; amber means blocked.
-- Bot looks: old Reef's sea creatures, each with its own colour and two eye ticks: jellyfish (Chief,
-  as the logo), whale, penguin, shark, octopus, turtle, seahorse, otter, clownfish, manta. A Bot
-  stores the creature's name. Idle blinks; needs you is a pulsing red dot; asleep is grey; failed
+- Bot looks: the 14 on the canvas's Bot looks board, each with its own colour and two eye ticks.
+  Creatures: jellyfish (Chief, as the logo), whale, penguin, shark, starfish, anglerfish. Reef: sand
+  dollar, sponge, kelp, shell. Island: wave, island, sun, sailboat. A Bot stores the look's name
+  (`sand_dollar`). Bots saved with a dropped creature move to the nearest by colour on launch:
+  octopus to shell, turtle to kelp, seahorse to sun, otter to sand dollar, clownfish to starfish,
+  manta to wave. *Replaced octopus, turtle, seahorse, otter, clownfish and manta: the user redrew
+  the set on the canvas.* Idle blinks; needs you is a pulsing red dot; asleep is grey; failed
   has slanted eyes. *Replaces the eight blob shapes: the user preferred the creatures side by side.*
 - Working shows by tool kind, with old Reef's rising bubbles: no tool yet, the eyes circle up;
   reading, searching or recalling, the eyes scan; editing, writing, remembering or changing the

@@ -25,7 +25,7 @@ import (
 	"atoll/store"
 )
 
-var _looks = []string{"jellyfish", "whale", "penguin", "shark", "octopus", "turtle", "seahorse", "otter", "clownfish", "manta"}
+var _looks = []string{"jellyfish", "whale", "penguin", "shark", "starfish", "anglerfish", "sand_dollar", "sponge", "kelp", "shell", "wave", "island", "sun", "sailboat"}
 
 func (a *api) createWithLook(ctx context.Context, b store.Bot) (store.Bot, error) {
 	if b.Look == "" {

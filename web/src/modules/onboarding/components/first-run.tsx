@@ -23,7 +23,7 @@ const floaters: { look: CreatureLook; size: number; place: string; drift: string
     drift: 'motion-safe:animate-drift-b',
   },
   {
-    look: 'seahorse',
+    look: 'sun',
     size: 64,
     place: 'left-[72%] top-[9%] opacity-30',
     drift: 'motion-safe:animate-drift-c [animation-direction:reverse]',
