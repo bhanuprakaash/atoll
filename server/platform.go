@@ -66,7 +66,9 @@ func responseBot(b store.Bot) botResponse {
 	return botResponse{Bot: b, Look: b.Look, Model: b.Model, Pinned: b.Pinned, Activity: b.Activity, LastActivity: b.LastActivity}
 }
 
-func (a *api) botSummary(ctx context.Context, b store.Bot, threads []store.ThreadRun) store.Bot {
+func (a *api) botSummary(
+	ctx context.Context, b store.Bot, threads, helpers []store.ThreadRun,
+) store.Bot {
 	latest := ""
 	for _, t := range threads {
 		if latest == "" {
@@ -89,21 +91,17 @@ func (a *api) botSummary(ctx context.Context, b store.Bot, threads []store.Threa
 		}
 		if _, approvals, _ := a.runs.Active(t.ThreadID); len(approvals) > 0 {
 			b.State = "needs_you"
-			kind, target := run.ToolKind(approvals[0].Tool, approvals[0].Input)
-			verb := "use"
-			switch kind {
-			case "search", "read", "edit":
-				verb = kind
-			case "command":
-				verb = "run"
-			}
-			if tool := approvals[0].Tool; tool != "" && unicode.IsUpper([]rune(tool)[0]) {
-				verb = tool
-			}
-			b.Activity = strings.TrimSpace("Needs you: " + verb + " " + target)
+			b.Activity = needsYou(approvals[0])
 			return b
 		}
 		b.State = "working"
+	}
+	for _, h := range helpers {
+		if _, approvals, _ := a.runs.Active(h.ThreadID); len(approvals) > 0 {
+			b.State = "needs_you"
+			b.Activity = needsYou(approvals[0])
+			return b
+		}
 	}
 	if b.State != "" {
 		return b
@@ -116,6 +114,22 @@ func (a *api) botSummary(ctx context.Context, b store.Bot, threads []store.Threa
 		b.State = "idle"
 	}
 	return b
+}
+
+// needsYou is the sidebar line for a Bot that waits on the user's answer to ap.
+func needsYou(ap run.Approval) string {
+	kind, target := run.ToolKind(ap.Tool, ap.Input)
+	verb := "use"
+	switch kind {
+	case "search", "read", "edit":
+		verb = kind
+	case "command":
+		verb = "run"
+	}
+	if tool := ap.Tool; tool != "" && unicode.IsUpper([]rune(tool)[0]) {
+		verb = tool
+	}
+	return strings.TrimSpace("Needs you: " + verb + " " + target)
 }
 
 const _previewLen = 60
@@ -146,12 +160,12 @@ func (a *api) getBot(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	threads, err := a.st.ThreadRuns(r.Context(), b.ID)
+	threads, helpers, err := a.threadRuns(r.Context())
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	write(w, http.StatusOK, responseBot(a.botSummary(r.Context(), b, threads)))
+	write(w, http.StatusOK, responseBot(a.botSummary(r.Context(), b, threads[b.ID], helpers[b.ID])))
 }
 
 func (a *api) pinBot(w http.ResponseWriter, r *http.Request) {

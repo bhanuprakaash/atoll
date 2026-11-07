@@ -6,6 +6,7 @@ import { relativeTime } from '@/utils/time';
 
 export function ThreadsPanel({
   name,
+  botNames,
   threads,
   repos,
   onNew,
@@ -13,6 +14,7 @@ export function ThreadsPanel({
   currentId,
 }: {
   name: string;
+  botNames: Record<string, string>;
   threads: Thread[];
   repos: { id: string; name: string }[];
   onNew: () => void;
@@ -61,6 +63,11 @@ export function ThreadsPanel({
                 <span className="block truncate text-sm">
                   {t.title || 'Empty thread'}
                   {t.id === currentId && <span className="text-xs text-muted"> · this thread</span>}
+                  {t.parent_thread_id && (
+                    <span className="text-xs text-muted">
+                      {` · from ${botNames[t.parent_bot_id] ?? 'a Bot'}`}
+                    </span>
+                  )}
                 </span>
                 <span
                   className={`block truncate text-[12.5px] ${label === 'Needs you' ? 'text-ink/80' : 'text-muted'}`}

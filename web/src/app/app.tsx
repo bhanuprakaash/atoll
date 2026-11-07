@@ -78,6 +78,7 @@ function ThreadPage() {
   const repoName = repos.find((r) => r.id === thread?.repo_id)?.name;
   const botNames = Object.fromEntries(bots.map((b) => [b.id, b.name]));
   const botLooks = Object.fromEntries(bots.map((b) => [b.id, b.look]));
+  const botInfo = Object.fromEntries(bots.map((b) => [b.id, { name: b.name, look: b.look }]));
   const bot = bots.find((b) => b.id === botId);
   const allowed = allowedRepos(bot, repos);
   const lostRepo =
@@ -89,6 +90,7 @@ function ThreadPage() {
       botId={botId}
       botName={bots.find((b) => b.id === botId)?.name ?? ''}
       look={bots.find((b) => b.id === botId)?.look}
+      bots={botInfo}
       repos={allowed}
       bot={withConnectionNames(bot, connections)}
       repoName={repoName}

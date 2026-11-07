@@ -581,6 +581,25 @@ Voice
 - Composer: the message, then the thread's repo, branch and MR as chips, and Send or Stop. A new
   thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message.
+- Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` region sits between
+  the chat and the composer with one quiet line per open helper thread: creature, Bot name, state
+  and `Open`. The state comes from the helper's latest run: the live step while it works
+  ("Running make build", else "Working"), "Needs you" with an open approval, "Done", "Failed" or
+  "Stopped". A helper's open approval shows under its line in the usual inline form; Allow and Deny
+  there answer it, and answering it in either thread removes it from both (`approval_closed`). The
+  chat keeps one line where work was handed off, after the message that led to it ("Handed off to
+  Tester and Reviewer"); a helper's report is a message from the helper Bot, an article named after
+  it with its creature, not the user's bubble. The island shows one small creature per open helper
+  after the boss's name (`Tester: working`, `needs you`, `done`, `failed`; a red dot, faded, grey),
+  the red count includes helper approvals, and the boss's sidebar row says "Needs you" while a
+  helper waits. A helper thread is listed in its Bot's thread list tagged `from {boss}`; the
+  composer is replaced by "{Boss} is handling this thread. Talk to {Boss} to change it.", `Open
+  {Boss}'s thread` and, while its run goes, `Stop`. *The boss thread's stream carries only the
+  boss's events, so the UI polls: a thread summary (`GET /api/threads/{id}`, `GET
+  /api/bots/{id}/threads`) holds `helpers` (the helper threads' summaries, with `run_status`,
+  `step` and `approval`) and, on a helper thread, `parent_bot_id`; the thread query polls every
+  2 s, as the sidebar does. The handoff line is found from the helper threads' creation time, so it
+  survives a reload.*
 - Bot settings open as a docked right panel beside the usable thread and save as you change them,
   applying from the next run: creature, name, model, persona, skills, repos, connections, memory (its own lessons and
   what it saved) and the platform switch. Skills, repos and connections are lists with icons, a

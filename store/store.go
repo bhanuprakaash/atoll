@@ -588,18 +588,19 @@ func (s *Store) LatestRun(ctx context.Context, threadID string) (string, error) 
 // ThreadRun is a thread that has a run, with the status and the reply of its newest run. Reply
 // is only its first 300 characters: enough for a one-line preview.
 type ThreadRun struct {
-	BotID        string
-	ThreadID     string
-	LastActivity time.Time
-	Status       string
-	Reply        string
+	BotID          string
+	ThreadID       string
+	ParentThreadID string
+	LastActivity   time.Time
+	Status         string
+	Reply          string
 }
 
 // ThreadRuns lists the threads that have a run, newest activity first. botID limits it to one
 // Bot; empty means every Bot.
 func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, error) {
 	return query(ctx, s.db,
-		`SELECT t.bot_id, t.id, t.last_activity, r.status, substr(r.reply, 1, 300)
+		`SELECT t.bot_id, t.id, t.parent_thread_id, t.last_activity, r.status, substr(r.reply, 1, 300)
 		 FROM (SELECT max(rowid) AS rid FROM runs GROUP BY thread_id) latest
 		 JOIN runs r ON r.rowid = latest.rid
 		 JOIN threads t ON t.id = r.thread_id
@@ -607,7 +608,7 @@ func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, erro
 		 ORDER BY t.last_activity DESC, t.rowid DESC`,
 		func(r *sql.Rows) (tr ThreadRun, err error) {
 			var at int64
-			err = r.Scan(&tr.BotID, &tr.ThreadID, &at, &tr.Status, &tr.Reply)
+			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &at, &tr.Status, &tr.Reply)
 			tr.LastActivity = time.UnixMicro(at).UTC()
 			return tr, err
 		}, botID, botID)

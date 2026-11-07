@@ -10,13 +10,14 @@ import {
   type Message,
   type Run,
 } from '@/modules/threads/api/messages';
-import { useRun } from '@/modules/threads/api/runs';
+import { useRun, useStopRun } from '@/modules/threads/api/runs';
 import {
   useCloseThread,
   useCreateThreadWithMessage,
   useThread,
 } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
+import { HelpersRegion } from '@/modules/threads/components/helpers-region';
 import { LiveRun } from '@/modules/threads/components/live-run';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
@@ -120,15 +121,40 @@ function messageTime(createdAt: string) {
   return `${date.getDate()} ${date.toLocaleDateString([], { month: 'short' })} ${time}`;
 }
 
+const names = (list: string[]) =>
+  list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list.at(-1)}` : list[0];
+
+type Bots = Record<string, { name: string; look: CreatureLook }>;
+
 function MessageLine({
   message,
+  from,
   retry,
   signedOut,
 }: {
   message: Message;
+  from?: Bots[string];
   retry: () => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
+  if (message.from_bot_id)
+    return (
+      <div data-testid="message" className="flex max-w-[85%] flex-col gap-1">
+        <article aria-label={from?.name ?? 'Helper'} className="flex items-start gap-2.5">
+          <Creature look={from?.look} size={28} />
+          <div className="min-w-0 rounded-[22px] bg-selected px-[18px] py-2.5 text-[15px] leading-normal">
+            <Markdown>{message.text}</Markdown>
+          </div>
+        </article>
+        <time
+          className="pl-10 text-xs text-muted"
+          dateTime={message.created_at}
+          data-testid="message-time"
+        >
+          {messageTime(message.created_at)}
+        </time>
+      </div>
+    );
   if (message.role === 'user')
     return (
       <div data-testid="message" className="flex max-w-[75%] self-end flex-col items-end gap-1">
@@ -308,6 +334,7 @@ export function ThreadView({
   botId,
   botName,
   look,
+  bots,
   bot,
   repos,
   repoName,
@@ -319,6 +346,7 @@ export function ThreadView({
   botId: string;
   botName: string;
   look?: CreatureLook;
+  bots: Bots;
   bot?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
   repoName?: string;
@@ -335,6 +363,7 @@ export function ThreadView({
   const close = useCloseThread(threadId);
   const create = useCreateThreadWithMessage(botId);
   const send = useSendMessage(threadId);
+  const stop = useStopRun();
   const { runs, connected, mr, worktreeRemoved, begin } = useThreadEvents(threadId);
   const activeId =
     Object.entries(runs).find(([, run]) => !run.finished)?.[0] ??
@@ -440,6 +469,19 @@ export function ThreadView({
       {mrChip}
     </>
   );
+  const helpers = thread?.helpers ?? [];
+  const handoffs = new Map<string, string[]>();
+  for (const h of helpers) {
+    const anchor = [...messages]
+      .reverse()
+      .find((m) => Date.parse(m.created_at) <= Date.parse(h.created_at));
+    if (anchor)
+      handoffs.set(anchor.id, [
+        ...(handoffs.get(anchor.id) ?? []),
+        bots[h.bot_id]?.name ?? 'Helper',
+      ]);
+  }
+  const boss = thread?.parent_thread_id ? (bots[thread.parent_bot_id]?.name ?? 'Its boss') : '';
   const empty = messages.length === 0 && !activeId;
   const firstUserId = messages.find((m) => m.role === 'user')?.id;
   const loadOlder = () => {
@@ -523,7 +565,17 @@ export function ThreadView({
                     <span className="h-px flex-1 bg-line" />
                   </div>
                 )}
-                <MessageLine message={m} retry={retry} signedOut={signedOut} />
+                <MessageLine
+                  message={m}
+                  from={bots[m.from_bot_id ?? '']}
+                  retry={retry}
+                  signedOut={signedOut}
+                />
+                {handoffs.has(m.id) && (
+                  <p className="text-sm text-muted">
+                    {`Handed off to ${names(handoffs.get(m.id)!)}`}
+                  </p>
+                )}
                 {thread?.branch && m.role === 'user' && m.id === firstUserId && (
                   <p className="text-sm text-muted">
                     Working on <span className="font-mono text-ink/80">{thread.branch}</span>
@@ -608,7 +660,28 @@ export function ThreadView({
               </button>
             </div>
           )}
-          {thread?.closed ? (
+          <HelpersRegion helpers={helpers} bots={bots} />
+          {boss ? (
+            <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
+              <p className="flex-1">{`${boss} is handling this thread. Talk to ${boss} to change it.`}</p>
+              <Link
+                to={`/bots/${thread?.parent_bot_id}/threads/${thread?.parent_thread_id}`}
+                className="rounded-full border border-outline px-4 py-2"
+              >
+                {`Open ${boss}'s thread`}
+              </Link>
+              {activeId && (
+                <button
+                  type="button"
+                  disabled={stop.isPending}
+                  onClick={() => stop.mutate(activeId)}
+                  className="rounded-full bg-accent px-4 py-2 text-accent-ink"
+                >
+                  Stop
+                </button>
+              )}
+            </div>
+          ) : thread?.closed ? (
             <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
               <div className="flex-1">
                 This thread is closed{' '}

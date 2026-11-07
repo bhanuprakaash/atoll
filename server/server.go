@@ -208,19 +208,36 @@ func (a *api) botList(ctx context.Context) ([]botResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	runs, err := a.st.ThreadRuns(ctx, "")
+	threads, helpers, err := a.threadRuns(ctx)
 	if err != nil {
 		return nil, err
 	}
-	threads := map[string][]store.ThreadRun{}
-	for _, tr := range runs {
-		threads[tr.BotID] = append(threads[tr.BotID], tr)
-	}
 	responses := make([]botResponse, 0, len(bots))
 	for _, b := range bots {
-		responses = append(responses, responseBot(a.botSummary(ctx, b, threads[b.ID])))
+		responses = append(responses, responseBot(a.botSummary(ctx, b, threads[b.ID], helpers[b.ID])))
 	}
 	return responses, nil
+}
+
+// threadRuns groups the threads that have a run by their Bot, and the helper threads by the Bot
+// of the thread they help.
+func (a *api) threadRuns(ctx context.Context) (threads, helpers map[string][]store.ThreadRun, err error) {
+	runs, err := a.st.ThreadRuns(ctx, "")
+	if err != nil {
+		return nil, nil, err
+	}
+	owner := map[string]string{}
+	for _, tr := range runs {
+		owner[tr.ThreadID] = tr.BotID
+	}
+	threads, helpers = map[string][]store.ThreadRun{}, map[string][]store.ThreadRun{}
+	for _, tr := range runs {
+		threads[tr.BotID] = append(threads[tr.BotID], tr)
+		if boss := owner[tr.ParentThreadID]; boss != "" {
+			helpers[boss] = append(helpers[boss], tr)
+		}
+	}
+	return threads, helpers, nil
 }
 
 func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
@@ -285,6 +302,12 @@ type threadSummary struct {
 	Approval  *run.Approval `json:"approval"`
 	Verb      string        `json:"verb"`
 	UpdatedAt time.Time     `json:"updated_at"`
+
+	// Step is the active run's latest tool call with its command, as a helper's line shows it.
+	Step string `json:"step"`
+	// ParentBotID is the Bot of the thread this one helps; Helpers are the threads that help it.
+	ParentBotID string          `json:"parent_bot_id"`
+	Helpers     []threadSummary `json:"helpers"`
 }
 
 func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, error) {
@@ -293,7 +316,27 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 		return threadSummary{}, err
 	}
 	out := threadSummary{Thread: t, UpdatedAt: t.LastActivity}
+	if t.ParentThreadID != "" {
+		boss, err := a.st.Thread(r.Context(), t.ParentThreadID)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return out, err
+		}
+		out.ParentBotID = boss.BotID
+	}
+	helpers, err := a.st.HelperThreads(r.Context(), t.ID)
+	if err != nil {
+		return out, err
+	}
+	out.Helpers = make([]threadSummary, 0, len(helpers))
+	for _, h := range helpers {
+		s, err := a.threadSummary(r, h)
+		if err != nil {
+			return out, err
+		}
+		out.Helpers = append(out.Helpers, s)
+	}
 	out.Verb = a.liveVerb(t.ID)
+	out.Step = a.liveStep(t.ID)
 	out.RunID, err = a.st.LatestRun(r.Context(), t.ID)
 	if err != nil {
 		return out, err
@@ -319,6 +362,19 @@ func (a *api) liveVerb(threadID string) string {
 		return "Thinking"
 	}
 	return strings.TrimSpace(tool.Verb + " " + tool.Target)
+}
+
+// liveStep is liveVerb with the command a command call runs, and empty before any tool call.
+func (a *api) liveStep(threadID string) string {
+	tool := a.runs.ActiveTool(threadID)
+	target := tool.Target
+	var in struct {
+		Command string `json:"command"`
+	}
+	if tool.Kind == "command" && json.Unmarshal(tool.Input, &in) == nil && in.Command != "" {
+		target = in.Command
+	}
+	return strings.TrimSpace(tool.Verb + " " + target)
 }
 
 func (a *api) listThreads(w http.ResponseWriter, r *http.Request) {
