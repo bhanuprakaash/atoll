@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -23,11 +24,12 @@ type sidebarThread struct {
 
 // notice is one /api/events payload: an event of a thread with the thread's Bot and title.
 type notice struct {
-	ThreadID string `json:"thread_id"`
-	BotID    string `json:"bot_id"`
-	BotName  string `json:"bot_name"`
-	Title    string `json:"title"`
-	Data     any    `json:"data"`
+	ThreadID       string `json:"thread_id"`
+	ParentThreadID string `json:"parent_thread_id"`
+	BotID          string `json:"bot_id"`
+	BotName        string `json:"bot_name"`
+	Title          string `json:"title"`
+	Data           any    `json:"data"`
 }
 
 // sidebarThreads keeps the open threads in the order given and marks each: needs_you when its run
@@ -211,14 +213,22 @@ func (a *api) notices(w http.ResponseWriter, r *http.Request) {
 	events, cancel := a.runs.SubscribeAll()
 	defer cancel()
 	a.stream(w, r, events, func(ev run.Event) (any, bool) {
-		t, err := a.st.Thread(r.Context(), ev.ThreadID)
-		if err != nil {
-			return nil, false
-		}
-		b, err := a.st.Bot(r.Context(), t.BotID)
-		if err != nil {
-			return nil, false
-		}
-		return notice{ThreadID: t.ID, BotID: t.BotID, BotName: b.Name, Title: t.Title, Data: ev.Data}, true
+		n, err := a.noticeOf(r.Context(), ev)
+		return n, err == nil
 	})
+}
+
+func (a *api) noticeOf(ctx context.Context, ev run.Event) (notice, error) {
+	t, err := a.st.Thread(ctx, ev.ThreadID)
+	if err != nil {
+		return notice{}, err
+	}
+	b, err := a.st.Bot(ctx, t.BotID)
+	if err != nil {
+		return notice{}, err
+	}
+	return notice{
+		ThreadID: t.ID, ParentThreadID: t.ParentThreadID, BotID: t.BotID, BotName: b.Name,
+		Title: t.Title, Data: ev.Data,
+	}, nil
 }

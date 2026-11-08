@@ -1,8 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMatch } from 'react-router';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 
-type About = { thread_id: string; bot_id: string; bot_name: string; title: string };
+type About = {
+  thread_id: string;
+  parent_thread_id: string;
+  bot_id: string;
+  bot_name: string;
+  title: string;
+};
 type Notice<T> = About & { data: T };
 export type ApprovalNotice = About & { id: string; tool: string; input: unknown };
 export type EarlierNotice = About & { id: number; at: number; text: string; detail?: string };
@@ -16,7 +22,9 @@ export type Notifications = {
 
 const widenedMs = 4000;
 
-// One EventSource on /api/events for the app. The thread on screen is left out: the user sees it.
+const isOn = (notice: About, threadId?: string) =>
+  notice.thread_id === threadId || notice.parent_thread_id === threadId;
+
 export function useNotifications(): Notifications {
   const onScreen = useMatch('/bots/:botId/threads/:threadId')?.params.threadId;
   const screen = useRef(onScreen);
@@ -32,7 +40,7 @@ export function useNotifications(): Notifications {
     const on = <T>(type: string, handle: (notice: Notice<T>) => void) =>
       source.addEventListener(type, (e) => handle(JSON.parse((e as MessageEvent<string>).data)));
     const add = (notice: About, text: string, detail?: string) => {
-      if (notice.thread_id === screen.current) return undefined;
+      if (isOn(notice, screen.current)) return undefined;
       const item = { ...notice, id: seq.current++, at: Date.now(), text, detail };
       setEarlier((prev) => [item, ...prev]);
       return item;
@@ -76,11 +84,17 @@ export function useNotifications(): Notifications {
     };
   }, []);
   const needs = approvals.filter((a) => a.thread_id !== onScreen);
+  const shown = useRef(needs);
+  shown.current = needs;
+  const dismiss = useCallback(
+    () => setDismissed((prev) => [...prev, ...shown.current.map((a) => a.id)]),
+    [],
+  );
   return {
     needs,
     earlier,
-    drop: needs.find((a) => !dismissed.includes(a.id)),
-    widened: widened?.thread_id === onScreen ? undefined : widened,
-    dismiss: () => setDismissed((prev) => [...prev, ...needs.map((a) => a.id)]),
+    drop: needs.find((a) => a.parent_thread_id !== onScreen && !dismissed.includes(a.id)),
+    widened: widened && !isOn(widened, onScreen) ? widened : undefined,
+    dismiss,
   };
 }
