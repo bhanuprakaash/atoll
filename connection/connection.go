@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zalando/go-keyring"
@@ -29,6 +30,8 @@ var (
 	ErrSlowDown = fmt.Errorf("%w: slow down", ErrPending)
 	// ErrNeedsSignIn is returned when GitLab rejects a refresh token.
 	ErrNeedsSignIn = errors.New("GitLab needs sign-in")
+
+	_tokenLocks sync.Map
 )
 
 const _refreshBefore = 10 * time.Minute
@@ -97,16 +100,20 @@ func PollToken(ctx context.Context, c *http.Client, instance, deviceCode string)
 
 // SaveTokens stores the OAuth tokens of connection id in the OS secret store.
 func SaveTokens(id string, tokens Tokens) error {
-	b, err := json.Marshal(tokens)
-	if err != nil {
-		return fmt.Errorf("encode OAuth tokens: %w", err)
-	}
-	return keyring.Set("atoll", "gitlab:"+id, string(b))
+	lock, _ := _tokenLocks.LoadOrStore(id, &sync.Mutex{})
+	mu, _ := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+	return saveTokens(id, tokens)
 }
 
 // UsableToken loads a connection token and refreshes it when it expires soon. A pre-refresh
 // bare token is accepted as-is because its expiry is unknown.
 func UsableToken(ctx context.Context, c *http.Client, instance, id string) (string, error) {
+	lock, _ := _tokenLocks.LoadOrStore(id, &sync.Mutex{})
+	mu, _ := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
 	value, err := keyring.Get("atoll", "gitlab:"+id)
 	if err != nil {
 		return "", err
@@ -128,7 +135,7 @@ func UsableToken(ctx context.Context, c *http.Client, instance, id string) (stri
 	if err != nil {
 		return "", err
 	}
-	if err := SaveTokens(id, refreshed); err != nil {
+	if err := saveTokens(id, refreshed); err != nil {
 		return "", err
 	}
 	return refreshed.AccessToken, nil
@@ -136,7 +143,19 @@ func UsableToken(ctx context.Context, c *http.Client, instance, id string) (stri
 
 // DeleteToken removes the token of connection id from the OS secret store.
 func DeleteToken(id string) error {
+	lock, _ := _tokenLocks.LoadOrStore(id, &sync.Mutex{})
+	mu, _ := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
 	return keyring.Delete("atoll", "gitlab:"+id)
+}
+
+func saveTokens(id string, tokens Tokens) error {
+	b, err := json.Marshal(tokens)
+	if err != nil {
+		return fmt.Errorf("encode OAuth tokens: %w", err)
+	}
+	return keyring.Set("atoll", "gitlab:"+id, string(b))
 }
 
 type _oauthError string

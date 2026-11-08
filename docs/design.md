@@ -356,8 +356,10 @@ Undo of a repo registration is refused while a thread uses the repo.
   watcher and the MR title lookup use GitLab's environment alone, so a GitHub failure never stops
   GitLab polling.
 - GitLab OAuth records include the refresh token and expiry in the secret store. Before a run uses
-  one, it refreshes a token that expires within ten minutes. A rejected refresh marks that connection
-  `needs_sign_in`; the run stops before the provider starts, and signing in again keeps the connection.
+  one, it refreshes a token that expires within ten minutes. Reads, refreshes and sign-in writes for
+  one connection run one at a time because refresh tokens are single-use. A rejected refresh marks
+  that connection `needs_sign_in`; the run stops before the provider starts, and signing in again
+  keeps the connection.
 - Tokens live in the OS secret store through one cross-platform library. Targets: macOS and desktop
   Linux; headless Linux is out.
 - Skills: one library in standard `SKILL.md` folders, created in the app or imported; each Bot picks
