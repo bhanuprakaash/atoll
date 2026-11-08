@@ -80,6 +80,13 @@ func newPlayer(args []string) (*player, error) {
 			return nil, fmt.Errorf("--mcp-config %s: %w", v, err)
 		}
 		for name, s := range cfg.MCPServers {
+			s.URL = fake.ExpandEnv(s.URL, os.Getenv)
+			for k, v := range s.Headers {
+				s.Headers[k] = fake.ExpandEnv(v, os.Getenv)
+			}
+			for k, v := range s.Env {
+				s.Env[k] = fake.ExpandEnv(v, os.Getenv)
+			}
 			var c *fake.MCP
 			var err error
 			switch {
