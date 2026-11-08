@@ -115,6 +115,12 @@ func (m *Manager) shelf(ctx context.Context, token string) (memory.Shelf, error)
 	if err != nil {
 		return memory.Shelf{}, fmt.Errorf("load thread: %w", err)
 	}
+	m.mu.Lock()
+	allowed := a.bot.RepoAccess.Allows(t.RepoID)
+	m.mu.Unlock()
+	if !allowed {
+		t.RepoID = ""
+	}
 	return memory.Shelf{RepoID: t.RepoID, BotID: t.BotID}, nil
 }
 

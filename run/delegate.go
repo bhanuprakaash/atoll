@@ -48,6 +48,9 @@ func (m *Manager) Delegate(
 	if t.ParentThreadID != "" {
 		return Handoff{}, RefusedError("a helper cannot delegate")
 	}
+	if t.RepoID != "" && !boss.RepoAccess.Allows(t.RepoID) {
+		t.RepoID, t.Worktree, t.Branch = "", "", ""
+	}
 	helper, err := m.helper(ctx, boss, botName)
 	if err != nil {
 		return Handoff{}, err

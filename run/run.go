@@ -116,6 +116,7 @@ type (
 		// mu; delegateMu is taken under inboxMu, never the reverse.
 		inboxMu    sync.Mutex
 		delegateMu sync.Mutex
+		workMu     sync.Mutex // one start_work at a time, so a thread gets one worktree
 
 		mu        sync.Mutex
 		runs      map[string]*active                 // by thread id

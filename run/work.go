@@ -103,19 +103,20 @@ func (m *Manager) StartWork(
 	if err != nil {
 		return "", "", repo.Base{}, err
 	}
+	m.workMu.Lock()
+	defer m.workMu.Unlock()
 	t, err := m.cfg.Store.Thread(ctx, a.threadID)
 	if err != nil {
 		return "", "", repo.Base{}, fmt.Errorf("load thread: %w", err)
 	}
-	if t.Worktree != "" {
-		return t.Worktree, t.Branch, repo.Base{}, nil
-	}
 	m.mu.Lock()
 	bot := a.bot
 	m.mu.Unlock()
-	access := bot.RepoAccess
-	if t.RepoID == "" || !access.Allows(t.RepoID) {
+	if t.RepoID == "" || !bot.RepoAccess.Allows(t.RepoID) {
 		return "", "", repo.Base{}, errors.New("thread has no repo")
+	}
+	if t.Worktree != "" {
+		return t.Worktree, t.Branch, repo.Base{}, nil
 	}
 	name, err := repo.Branch(typ, slug)
 	if err != nil {
@@ -142,6 +143,7 @@ func (m *Manager) StartWork(
 		return "", "", repo.Base{}, err
 	}
 	if err := m.cfg.Store.SetWorktree(ctx, t.ID, branch, path); err != nil {
+		err = errors.Join(err, repo.Remove(ctx, rp.Path, path), repo.DeleteBranch(ctx, rp.Path, branch))
 		return "", "", repo.Base{}, err
 	}
 	m.publish(a, EventWorktreeCreated,
@@ -154,6 +156,9 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 	a, err := m.byToken(token)
 	if err != nil {
 		return err
+	}
+	if !isWebURL(url) {
+		return RefusedError("track_mr needs the full http(s) URL of the MR or PR, got " + strconv.Quote(url))
 	}
 	if title == "" {
 		thread, threadErr := m.cfg.Store.Thread(ctx, a.threadID)
@@ -202,6 +207,9 @@ func (m *Manager) CloseThread(ctx context.Context, threadID string) error {
 		if err := repo.Remove(ctx, rp.Path, m.threadDir(t.ID)); err != nil {
 			return err
 		}
+		if err := os.RemoveAll(m.noAccessDir(t.ID)); err != nil {
+			return fmt.Errorf("remove thread folder: %w", err)
+		}
 	}
 	if err := m.closeHelpers(ctx, threadID); err != nil {
 		return err
@@ -249,8 +257,10 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 		}
 	}
 	for _, t := range threads {
-		if err := os.RemoveAll(m.threadDir(t.ID)); err != nil {
-			return fmt.Errorf("remove thread folder: %w", err)
+		for _, dir := range []string{m.threadDir(t.ID), m.noAccessDir(t.ID)} {
+			if err := os.RemoveAll(dir); err != nil {
+				return fmt.Errorf("remove thread folder: %w", err)
+			}
 		}
 	}
 	return nil
@@ -324,20 +334,23 @@ func (m *Manager) reserve(threadID string) *active {
 }
 
 // workdir is where the thread's runs work: its worktree; else, for a repo thread, a clean
-// checkout of the repo; else a folder of its own.
+// checkout of the repo; else a folder of its own. A thread whose Bot lost its repo (rp is empty)
+// gets a folder that holds neither the checkout nor the worktree.
 func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, error) {
-	if t.Worktree != "" {
-		return t.Worktree, nil
-	}
 	dir := m.threadDir(t.ID)
-	if rp.ID == "" {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return "", fmt.Errorf("create thread folder: %w", err)
+	switch {
+	case t.RepoID != "" && rp.ID == "":
+		dir = m.noAccessDir(t.ID)
+	case t.Worktree != "":
+		return t.Worktree, nil
+	case rp.ID != "":
+		if err := repo.Checkout(m.ctx, rp.Path, dir); err != nil {
+			return "", err
 		}
 		return dir, nil
 	}
-	if err := repo.Checkout(m.ctx, rp.Path, dir); err != nil {
-		return "", err
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create thread folder: %w", err)
 	}
 	return dir, nil
 }
@@ -352,6 +365,10 @@ func (m *Manager) WorkDir(t store.Thread) string {
 
 func (m *Manager) threadDir(threadID string) string {
 	return filepath.Join(m.cfg.DataDir, "threads", threadID)
+}
+
+func (m *Manager) noAccessDir(threadID string) string {
+	return m.threadDir(threadID) + "-noaccess"
 }
 
 type gitHelper struct {
@@ -640,7 +657,7 @@ func (m *Manager) releaseHelpers(boss store.Thread, rp store.Repo) (bool, error)
 
 // mrState asks glab for the state of the MR at url, from inside the repo at dir.
 func (m *Manager) mrState(dir, url string, env []string) (string, string, error) {
-	cmd := exec.CommandContext(m.ctx, "glab", "mr", "view", url, "--output", "json")
+	cmd := exec.CommandContext(m.ctx, "glab", "mr", "view", "--output", "json", "--", url)
 	cmd.Dir = dir
 	cmd.Env = provider.Env(env...)
 	out, err := cmd.Output()
@@ -659,6 +676,11 @@ func (m *Manager) mrState(dir, url string, env []string) (string, string, error)
 		return "", "", fmt.Errorf("glab mr view: no state in %q", out)
 	}
 	return mr.State, mr.Title, nil
+}
+
+func isWebURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
 // writeFileAtomic replaces path in one rename, so a CLI reading the file never sees it half

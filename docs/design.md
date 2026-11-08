@@ -221,9 +221,10 @@ Undo of a repo registration is refused while a thread uses the repo.
 - Repos are registered once. A thread works in one repo.
 - A repo registers without a commit; a thread on it is refused until it has one.
 - Access is checked when the thread is created and at every run. When the Bot's repo access no
-  longer allows the thread's repo, its runs work as in a thread with no repo: the thread folder, no
-  repo block, no worktree, no `start_work`. The thread says the Bot no longer has access. Existing
-  worktrees stay where they are.
+  longer allows the thread's repo, its runs work as in a thread with no repo: a folder of their own
+  (`<data>/threads/<id>-noaccess`, neither the checkout nor the worktree), no repo block, no
+  worktree, no `start_work`, no repo memory, no repo for `delegate`. The thread says the Bot no
+  longer has access. Existing worktrees stay where they are.
 - A thread gets a worktree on its first edit, at `~/Reef/worktrees/<repo>/<branch-folder>` (root is
   a setting). Read-only threads use a clean checkout.
 - The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs) at first edit; the app makes it
@@ -254,7 +255,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   runs `gh pr create` in its worktree with the connection's env. `start_work` on a GitHub repo for a Bot without one is a tool error, "give this
   Bot the GitHub connection", with no worktree made, so the Bot says what to do and the user never
   meets a git auth error. A question in the repo needs no connection.
-- `track_mr` takes the PR URL (`<github>/<owner>/<repo>/pull/<n>`) like an MR URL; the thread shows
+- `track_mr` takes the full http(s) URL of the MR; a URL with another scheme or no host is a tool
+  error. For GitHub it takes the PR URL (`<github>/<owner>/<repo>/pull/<n>`); the thread shows
   it as `#<n>` where an MR shows `!<iid>`. PR state is not polled: the watcher never runs `glab`
   for a GitHub repo's thread, the state stays `opened`, and the worktree goes when the thread closes.
 - Atoll checks each GitLab MR with `glab mr view` every minute (`ATOLL_REPO_POLL_INTERVAL`, a Go duration).

@@ -39,13 +39,21 @@ type fakeSession struct {
 	events      chan provider.Event
 	closed      bool
 	prompts     []string
+	cfgs        []provider.Config
 	answers     []bool
 	interrupted int
 }
 
-func (f *fakeSession) Start(context.Context, provider.Config) error          { return nil }
-func (f *fakeSession) Resume(context.Context, provider.Config, string) error { return nil }
-func (f *fakeSession) Events() <-chan provider.Event                         { return f.events }
+func (f *fakeSession) Start(_ context.Context, cfg provider.Config) error {
+	f.cfgs = append(f.cfgs, cfg)
+	return nil
+}
+
+func (f *fakeSession) Resume(ctx context.Context, cfg provider.Config, _ string) error {
+	return f.Start(ctx, cfg)
+}
+
+func (f *fakeSession) Events() <-chan provider.Event { return f.events }
 
 func (f *fakeSession) Send(_ context.Context, prompt string, _ []provider.Image) error {
 	f.mu.Lock()
