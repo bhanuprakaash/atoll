@@ -12,6 +12,12 @@ import (
 
 const _maxHelpers = 3
 
+// A helper's first message is a preface of one or two paragraphs, then the brief.
+const (
+	_delegatedTo = " delegated this to you; your replies go to "
+	_workOn      = "Work on branch "
+)
+
 // RefusedError is a tool error the Bot sees, so its run goes on.
 type RefusedError string
 
@@ -81,7 +87,7 @@ func (m *Manager) startHelper(
 		return h, "", RefusedError(fmt.Sprintf("%d helpers running. Tell the user, "+
 			"and hand this off when one of them reports back.", _maxHelpers))
 	}
-	first := boss.Name + " delegated this to you; your replies go to " + boss.Name + ".\n\n"
+	first := boss.Name + _delegatedTo + boss.Name + ".\n\n"
 	if t.Worktree != "" {
 		root, err := m.WorktreeRoot(ctx)
 		if err != nil {
@@ -92,7 +98,7 @@ func (m *Manager) startHelper(
 			return h, "", err
 		}
 		h.Note = "Uncommitted changes in your worktree are not included."
-		first += "Work on branch " + h.Branch + " and commit there. Do not push or open a PR: " +
+		first += _workOn + h.Branch + " and commit there. Do not push or open a PR: " +
 			boss.Name + " merges it.\n\n"
 	} else if rp.ID != "" && RepoHost(ctx, rp.Path) == _hostGitHub && !m.hasGitHub(ctx, helper) {
 		h.Note = helper.Name + " can read " + rp.Name + " but cannot edit it until it has the GitHub connection."
@@ -107,7 +113,11 @@ func (m *Manager) startHelper(
 			return h, path, err
 		}
 	}
-	if _, _, err := m.send(ctx, store.InboxItem{ThreadID: ht.ID, Text: first + brief}); err != nil {
+	if err := m.cfg.Store.SetTitle(ctx, ht.ID, store.FirstWords(brief)); err != nil {
+		return h, path, err
+	}
+	it := store.InboxItem{ThreadID: ht.ID, FromBotID: boss.ID, Text: first + brief}
+	if _, _, err := m.send(ctx, it); err != nil {
 		return h, path, fmt.Errorf("start helper run: %w", err)
 	}
 	return h, path, nil
@@ -226,4 +236,15 @@ func (m *Manager) helperRepo(ctx context.Context, bossRepoID, name string) (stor
 	}
 	return store.Repo{}, RefusedError(fmt.Sprintf("no repo %q; registered repos: %s",
 		name, strings.Join(names, ", ")))
+}
+
+// helperBrief is the brief of a helper's first message: text without its preface.
+func helperBrief(text string) string {
+	if first, rest, ok := strings.Cut(text, "\n\n"); ok && strings.Contains(first, _delegatedTo) {
+		text = rest
+		if first, rest, ok := strings.Cut(text, "\n\n"); ok && strings.HasPrefix(first, _workOn) {
+			text = rest
+		}
+	}
+	return text
 }

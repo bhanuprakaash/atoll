@@ -585,6 +585,15 @@ func (s *Store) SetTitle(ctx context.Context, threadID, title string) error {
 	return found(res, "thread", threadID)
 }
 
+// ReplaceTitle sets the thread's title to title if it is still old.
+func (s *Store) ReplaceTitle(ctx context.Context, threadID, old, title string) error {
+	if _, err := s.db.ExecContext(ctx, "UPDATE threads SET title = ? WHERE id = ? AND title = ?",
+		title, threadID, old); err != nil {
+		return fmt.Errorf("replace title: %w", err)
+	}
+	return nil
+}
+
 // SetClosed closes the thread: it takes no more messages.
 func (s *Store) SetClosed(ctx context.Context, threadID string) error {
 	res, err := s.db.ExecContext(ctx, "UPDATE threads SET closed = 1, closed_at = ? WHERE id = ?", time.Now().UTC().UnixMicro(), threadID)
@@ -675,7 +684,7 @@ func (s *Store) startRun(
 		}
 		if _, err := tx.ExecContext(ctx,
 			"UPDATE threads SET last_activity = ?, title = CASE WHEN title = '' THEN ? ELSE title END WHERE id = ?",
-			time.Now().UTC().UnixMicro(), firstWords(text), threadID); err != nil {
+			time.Now().UTC().UnixMicro(), FirstWords(text), threadID); err != nil {
 			return err
 		}
 		if inboxID != "" {
@@ -1017,9 +1026,9 @@ func (s *Store) tx(ctx context.Context, fn func(*sql.Tx) error) error {
 	return nil
 }
 
-// firstWords is the title a thread's first message gives it: the first six words, without the
+// FirstWords is the title a thread's first message gives it: the first six words, without the
 // punctuation that ends the last one.
-func firstWords(text string) string {
+func FirstWords(text string) string {
 	words := strings.Fields(text)
 	words = words[:min(6, len(words))]
 	if len(words) > 0 {

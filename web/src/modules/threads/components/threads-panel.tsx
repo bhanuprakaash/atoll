@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { Thread } from '@/modules/threads/api/threads';
+import { quiet } from '@/components/button';
+import { useCloseThread, type Thread } from '@/modules/threads/api/threads';
 import { approvalTarget } from '@/modules/threads/components/approval-card';
 import { isLiveHelper } from '@/modules/threads/utils/helper-state';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
@@ -24,6 +25,18 @@ export function ThreadsPanel({
 }) {
   const [showClosed, setShowClosed] = useState(false);
   const [query, setQuery] = useState('');
+  const close = useCloseThread();
+  const current = threads.find((t) => t.id === currentId);
+  const closable = (t: Thread) => !t.closed && !t.parent_thread_id;
+  const hoverClose = (t: Thread) => closable(t) && t.id !== currentId;
+  const context = (t: Thread) =>
+    [
+      repos.find((r) => r.id === t.repo_id)?.name,
+      t.branch,
+      t.mr_url && `${mrRef(t.mr_url) ?? '!MR'}${t.mr_state ? ` ${t.mr_state}` : ''}`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
   const searchable = threads.filter((t) => !t.closed).length > 8;
   const match = (t: Thread) =>
     !searchable || t.title.toLowerCase().includes(query.trim().toLowerCase());
@@ -45,7 +58,7 @@ export function ThreadsPanel({
       )}
       <ul aria-label={label} className="flex flex-col">
         {items.map((t) => (
-          <li key={t.id}>
+          <li key={t.id} className="group relative">
             <button
               type="button"
               className={`flex w-full items-center gap-2.5 rounded-[14px] p-2.5 text-left ${label === 'Needs you' ? 'bg-needs hover:bg-needs/80' : t.id === currentId ? 'bg-line' : 'hover:bg-line'}`}
@@ -78,15 +91,16 @@ export function ThreadsPanel({
                       } ${approvalTarget(t.approval.input)}`
                     : [
                         label !== 'Running'
-                          ? repos.find((r) => r.id === t.repo_id)?.name
+                          ? context(t)
                           : t.run_status === 'running'
                             ? t.verb
                             : `${t.helpers
                                 .filter(isLiveHelper)
                                 .map((h) => botNames[h.bot_id] ?? 'Helper')
                                 .join(', ')} working`,
-                        t.branch,
-                        t.mr_url &&
+                        label === 'Running' && t.branch,
+                        label === 'Running' &&
+                          t.mr_url &&
                           `${mrRef(t.mr_url) ?? '!MR'}${t.mr_state ? ` ${t.mr_state}` : ''}`,
                         label !== 'Running' && t.run_status,
                       ]
@@ -95,11 +109,24 @@ export function ThreadsPanel({
                 </span>
               </span>
               {t.updated_at && (
-                <time className="flex-none text-xs text-muted" dateTime={t.updated_at}>
+                <time
+                  className={`flex-none text-xs text-muted ${hoverClose(t) ? 'group-hover:invisible' : ''}`}
+                  dateTime={t.updated_at}
+                >
                   {relativeTime(t.updated_at)}
                 </time>
               )}
             </button>
+            {hoverClose(t) && (
+              <button
+                type="button"
+                disabled={close.isPending}
+                onClick={() => close.mutate(t.id)}
+                className={`absolute top-1/2 right-2.5 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 ${quiet}`}
+              >
+                Close
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -112,6 +139,31 @@ export function ThreadsPanel({
       aria-label={`Threads with ${name}`}
       className="flex min-h-0 flex-1 flex-col gap-1 border-t border-composer-line p-2"
     >
+      {current && (
+        <section aria-label="This thread" className="flex-none">
+          <h3 className="px-2.5 pt-1 pb-0.5 text-[11.5px] tracking-[.06em] text-label uppercase">
+            This thread
+          </h3>
+          <div className="flex items-center gap-2.5 rounded-[14px] bg-line p-2.5">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm">{current.title || 'Empty thread'}</span>
+              {context(current) && (
+                <span className="block truncate text-[12.5px] text-muted">{context(current)}</span>
+              )}
+            </span>
+            {closable(current) && (
+              <button
+                type="button"
+                disabled={close.isPending}
+                onClick={() => close.mutate(current.id)}
+                className={`flex-none ${quiet}`}
+              >
+                Close thread
+              </button>
+            )}
+          </div>
+        </section>
+      )}
       <div className="flex flex-none items-center gap-2">
         <button
           type="button"

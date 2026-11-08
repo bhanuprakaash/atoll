@@ -207,7 +207,7 @@ export function Composer({
               <div
                 role="group"
                 aria-label="Thread context"
-                className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-[12.5px] text-ink/80"
+                className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-[12.5px] text-ink/80"
               >
                 {context}
               </div>

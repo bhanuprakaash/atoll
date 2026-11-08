@@ -45,11 +45,16 @@ export function useThread(threadId: string) {
   });
 }
 
-export function useCloseThread(threadId: string) {
+export function useCloseThread() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => api<void>(`/threads/${threadId}/close`, { method: 'POST' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['thread', threadId] }),
+    mutationFn: (threadId: string) => api<void>(`/threads/${threadId}/close`, { method: 'POST' }),
+    onSuccess: (_, threadId) =>
+      Promise.all(
+        [['thread', threadId], ['threads']].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      ),
   });
 }
 

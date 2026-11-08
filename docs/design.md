@@ -169,7 +169,7 @@ Undo of a repo registration is refused while a thread uses the repo.
   survives a restart: on start, after the going runs are marked `failed`, each thread's held
   messages are delivered. A message for a closed or deleted thread is dropped.
 - Waking the boss: when a helper's run ends, Reef posts one message into the boss thread from the
-  helper Bot (`from_bot_id` on the message; empty for the user's and for the boss's `delegate` and `continue` messages in a helper thread) and that starts a boss run,
+  helper Bot (`from_bot_id` on the message; the boss's id on its brief in a helper thread, empty for the user's and for the boss's `continue` messages) and that starts a boss run,
   or waits in the inbox while the boss's run is going. The text always holds the helper thread id:
   - done: `{Helper} reported back from thread {id}.`, then the reply and the report as
     `Done:`, `Tried:`, `Blocked:`, `Next:` lines;
@@ -184,7 +184,8 @@ Undo of a repo registration is refused while a thread uses the repo.
 - A helper thread is read-only for the user: `POST /api/threads/{id}/messages` answers 409 `{boss}
   is handling this thread`.
 - A child's questions go to its parent; approvals go to the user. The child's first message is one
-  line, then the brief: `{parent} delegated this to you; your replies go to {parent}.`
+  line, then the brief: `{parent} delegated this to you; your replies go to {parent}.` The helper
+  thread's title comes from the brief, never from that line.
 - When the boss thread has a worktree, the helper works on a branch off it and the boss merges
   it, opens the MR and owns the result: `delegate` makes the helper's worktree at once, on `<boss-branch>--<bot>` (the Bot name slugged
   as a branch slug) at the boss branch's last commit, and records it on the helper thread, so the
@@ -604,41 +605,71 @@ Voice
   about 60% of the window height; only the groups scroll, and each group's title stays while it
   scrolls. A click outside closes it; hover does not open it. Bot settings is an icon at the right.
   *The user saw a centred island in a reference app and preferred it; the run state sits where the
-  eye already is.* A thread's title is the first six words of its first message, set when that
-  message is sent and stored, with trailing `.,;:!?` removed from the last word. The user can set a
-  title (`PATCH /api/threads/{id}`), and a user title is never replaced.
-- The chat has no cards. The user's message is the only bubble; the Bot replies in plain text with
-  markdown. Everything else is one quiet line with its action inline: approvals (Allow, Deny; the
-  line leaves once answered), Chief's changes (Undo, struck through once undone), the branch
-  starting, the worktree cleaned up, a failed run (Retry), a stopped run, blocked (from
-  `finish_run`'s `blocked`), a refused message and reconnecting. Chips are the exception: an MR
-  with its live state, a saved memory with its kind and Retire (tap opens kind, scope, why and what
-  it replaced), a closed thread. A Bot Chief creates gets one card: its creature, name, model,
-  persona, skills, repos, Open and Undo.
-  One run's changes are grouped by kind and action: one change shows as above; two or more show as
-  one line ("Created 5 skills teach, tdd, …") or, for new Bots, one compact list with Open per row,
-  and one Undo all.
-- Messages show their local send time beneath them. The log opens on its newest 50 messages and
-  loads older pages at its top without shifting what the user was reading; a round jump control
-  returns to the latest message when the user has scrolled away.
+  eye already is.* The open island starts with This thread: its title, branch and MR, and Close
+  thread. Other open rows show Close on hover; helper threads and closed threads have none. There is
+  no other Close thread control and no ⋯ menu.
+- Thread titles: the first six words of the first message (a helper's brief), set when that message
+  is sent and stored, with trailing `.,;:!?` removed from the last word. After the thread's first
+  reply, Reef asks the Bot's provider for a better one: a session of its own on the provider's
+  cheapest model (Claude Code `haiku`, Codex `gpt-6-luna`), with no MCP server, in
+  `<data>/titles`, given the first message and the reply, each cut to 2,000 characters. The answer's
+  first line, at most six words, first letter upper case, no trailing punctuation, replaces the
+  title only if it is still the first-words one. It is not a run, shows no status line and never
+  touches the thread's provider session; when it fails, the first-words title stays. The user can
+  set a title (`PATCH /api/threads/{id}`), and a user title is never replaced. *Six words cut
+  mid-thought ("hey we have to bring the"); one cheap call per thread is worth a title that says
+  what the thread is about.*
+- The chat has one rule per kind of message. The user's message is the only bubble. The thread's
+  own Bot replies in plain text with markdown, no avatar. Any other Bot (a helper's report in the
+  boss thread, the boss's brief in a helper thread) gets its creature and name on a line above
+  plain text, starting at the same edge as the replies. A helper's report shows its prose only
+  (Done/Tried/Blocked/Next stay in the helper thread) and `Open thread` links to the helper
+  thread. Everything else is one quiet line with its action inline: approvals (Allow, Deny; the
+  line leaves once answered; a long command or path wraps), Chief's changes, the branch starting,
+  the worktree cleaned up, a failed run (Retry), blocked, a refused message and reconnecting. Inline
+  actions (Undo, Undo all, Open, Retire, Details, Show more) are one quiet text-button style.
+- A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `·
+  Stopped by you after 4s`). Inside the run, above the footer: Chief's changes, then saved memory,
+  then a Blocked line (from `finish_run`'s `blocked`) whose dot hangs in the margin so its text
+  starts at the reply's edge. Spacing: 18 px between messages, 8 px between a message's parts, 2 px
+  between footer lines.
+- Chief's changes: new Bots, one or several, show as one compact card the full reply width:
+  creature, name, provider · model · skills · repos, Open and Undo per row, Undo all for two or
+  more. An edit names the fields (`Edited Poteto · persona`); short values show inline (`model
+  sonnet → opus`), a long one opens below as Before / After behind Show change. Two or more other
+  changes of one kind show as one line ("Created 5 skills teach, tdd, …") with Undo all. The Bot
+  that made a change is named only when it is not the thread's own Bot.
+- A saved memory shows two lines of its text, then its kind, why and source as plain muted text,
+  with Details (scope, what it replaced) and Retire. A retired item leaves the thread.
+- Long text clamps where it can grow without limit, never a Bot's reply: the user's message and a
+  boss's brief at 8 lines with a fade and Show more / Show less; a memory item, an edit line and a
+  Blocked line at 2 lines. The window itself never scrolls.
+- Times use the locale's clock everywhere (sidebar, island, messages). A message's time sits under
+  it at its text edge. The log opens on its newest 50 messages and loads older pages at its top
+  without shifting what the user was reading; a round jump control returns to the latest message
+  when the user has scrolled away.
 - While a run works, one status line shows the Bot, a verb and its target ("Reading
-  repo-step.tsx") and the time; never raw tool calls. When it ends, a summary line ("Worked 1m 12s
-  · read 4 files, edited 1, ran tests") sits above the reply. Approvals show a short form per tool:
-  a command shows the command, an edit shows the file with its diff behind a toggle, anything else
+  repo-step.tsx") and the time; never raw tool calls. Approvals show a short form per tool: a
+  command shows the command, an edit shows the file with its diff behind a toggle, anything else
   shows the tool and its target.
-- Composer: the message, then the thread's repo, branch and MR as chips, and Send or Stop. A new
+- Composer: the message, then the thread's repo, branch and MR as chips on one row, and Send or
+  Stop. A long branch name ends in "…" with the full name on hover. The MR chip shows only its
+  reference (`#92`, `!12`) with a state dot (open, merged, closed); hovering shows its title. The MR
+  is not repeated in the log. A new
   thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message.
 - Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` region sits between
   the chat and the composer with one quiet line per helper whose run is going or waiting on an
   approval: creature, Bot name, state
-  and `Open`. The state is the live step while it works ("Running make build", else "Working"), or
-  "Needs you" with an open approval; the line leaves when the run ends, and the report in the chat
+  and `Open`. The state is the live step while it works: the verb and a short target, for a
+  command its program and plain first argument past any `cd` ("Running make build"), never the raw
+  command, else "Working"; or "Needs you" with an open approval; the line leaves when the run ends, and the report in the chat
   says how it went. A helper's open approval shows under its line in the usual inline form; Allow and Deny
   there answer it, and answering it in either thread removes it from both (`approval_closed`). The
   chat keeps one line where work was handed off, after the message that led to it ("Handed off to
-  Tester and Reviewer"); a helper's report is a message from the helper Bot, an article named after
-  it with its creature, not the user's bubble. The island shows one small creature per such helper
+  Tester and Reviewer", `Tester ×2` for two helpers of one Bot), each name linking to its helper
+  thread; a helper's report is a message from the helper Bot, an article named after it with its
+  creature, not the user's bubble. The island shows one small creature per such helper
   after the boss's name (`Tester: working`, `needs you` with a red dot),
   the red count includes helper approvals, and the boss's sidebar row says "Needs you" while a
   helper waits. A helper thread is listed in its Bot's thread list tagged `from {boss}`; the

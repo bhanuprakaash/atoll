@@ -507,6 +507,13 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	// Dropped before run_finished: a client may send the next message the moment it sees it.
 	m.drop(a)
 	m.publish(a, EventRunFinished, Finished{RunID: a.run.ID, Status: res.Status, Error: res.Error})
+	if res.Status == store.StatusDone && res.Reply != "" {
+		m.wg.Add(1)
+		go func() {
+			defer m.wg.Done()
+			m.nameThread(a.threadID, a.bot.Provider)
+		}()
+	}
 	if !quiet {
 		m.flushBoss(a.threadID)
 		// A user's Stop must not start the next held message at once.

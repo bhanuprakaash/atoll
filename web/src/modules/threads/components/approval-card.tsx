@@ -53,7 +53,9 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
       <div className="flex flex-wrap items-center gap-3">
         <span className="min-w-60 flex-1 text-ink/80">
           {edit ? 'Wants to edit' : command ? 'Wants to run' : `Wants to use ${tool}`}{' '}
-          <span className="font-mono text-[0.88em] text-ink">{target}</span>
+          <span className="font-mono text-[0.88em] text-ink [overflow-wrap:anywhere]">
+            {target}
+          </span>
           {edit && (added > 0 || removed > 0) && (
             <>
               {' '}
