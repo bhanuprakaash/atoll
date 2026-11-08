@@ -4,6 +4,14 @@ import { api } from '@/lib/api-client';
 
 export type Provider = 'claude' | 'codex';
 
+export type SidebarThread = {
+  id: string;
+  title: string;
+  state: 'needs_you' | 'running' | 'new' | '';
+  pinned: boolean;
+  helper?: boolean;
+};
+
 export type Bot = {
   id: string;
   name: string;
@@ -22,6 +30,8 @@ export type Bot = {
   mcp_servers: string[];
   delegates: string[];
   can_manage_platform: boolean;
+  group_id: string;
+  threads?: SidebarThread[];
 };
 
 export type NewBot = Pick<

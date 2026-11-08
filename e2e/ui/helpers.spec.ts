@@ -1,7 +1,7 @@
 // Helpers in the boss's thread: above the composer, in the header island, and a read-only helper
 // thread. Contract: e2e/helpers-ui-contract.md.
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { api, type Machine, newBotAPI, prompts, sidebarRow, startAtoll } from './atoll';
+import { api, type Machine, newBotAPI, prompts, sidebarRow, startAtoll, threadTree } from './atoll';
 
 let m: Machine;
 test.beforeEach(async () => {
@@ -124,8 +124,8 @@ test('a helper approval shows under its line, Allow works there, and the report 
 
   const header = page.locator('header');
   await expect(header.getByLabel('Tester: needs you', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Threads/ })).toHaveAccessibleName(
-    /^Threads\b.*\b1\b/,
+  await expect(page.getByRole('button', { name: /^Notifications/ })).toHaveAccessibleName(
+    /^Notifications\b.*\b1\b/,
   );
   await expect(sidebarRow(page, 'Poteto')).toContainText('Needs you');
 
@@ -154,10 +154,12 @@ test('a helper approval shows under its line, Allow works there, and the report 
     `/bots/${helpers.Tester.id}/threads/${threads.Tester}`,
   );
   await expect(header.getByLabel('Tester: needs you', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /^Threads/ })).toHaveAccessibleName('Threads');
+  await expect(page.getByRole('button', { name: /^Notifications/ })).toHaveAccessibleName(
+    'Notifications',
+  );
 });
 
-test('the helper thread is tagged from Poteto and read-only; Allow there leaves the boss thread', async ({
+test('the helper thread is under its Bot in the sidebar and read-only; Allow there leaves the boss thread', async ({
   page,
   context,
 }) => {
@@ -167,20 +169,16 @@ test('the helper thread is tagged from Poteto and read-only; Allow there leaves 
   await expect(bossAllow).toHaveCount(1);
 
   const helperPage = await context.newPage();
-  await helperPage.goto(`${m.url}/bots/${helpers.Tester.id}`);
-  await helperPage.getByRole('button', { name: /^Threads/ }).click();
-  const panel = helperPage.getByRole('dialog', { name: 'Threads with Tester' });
-  const item = panel.getByRole('listitem').filter({ hasText: 'from Poteto' });
+  await helperPage.goto(m.url);
+  const item = threadTree(helperPage, 'Tester').getByRole('listitem');
   await expect(item).toHaveCount(1);
-  await item.click();
+  await item.getByRole('link').click();
   await expect(helperPage).toHaveURL(new RegExp(`/threads/${threads.Tester}$`));
   const helperLog = helperPage.getByRole('log', { name: 'Messages' });
   await expect(helperLog.getByRole('article', { name: 'Poteto' })).toContainText(reportPrompt);
   await expect(helperLog.getByRole('article', { name: 'You' })).toHaveCount(0);
-  await helperPage.getByRole('button', { name: /^Threads/ }).click();
-  await expect(panel.getByRole('region', { name: 'This thread' })).toBeVisible();
-  await expect(panel.getByRole('button', { name: /^Close( thread)?$/ })).toHaveCount(0);
-  await helperPage.getByRole('button', { name: /^Threads/ }).click();
+  await item.hover();
+  await expect(item.getByRole('button', { name: 'Close thread' })).toHaveCount(0);
 
   await expect(helperPage.getByRole('textbox', { name: /^Message/ })).toHaveCount(0);
   await expect(

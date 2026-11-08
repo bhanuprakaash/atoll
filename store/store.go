@@ -32,6 +32,8 @@ var (
 	ErrUndone = errors.New("already undone")
 	// ErrInUse is wrapped when an entity cannot be removed because a thread uses it.
 	ErrInUse = errors.New("in use")
+	// ErrPinLimit is returned when a Bot already has the most pinned threads.
+	ErrPinLimit = errors.New("3 threads of this Bot are pinned")
 )
 
 //go:embed migrations/*.sql
@@ -66,6 +68,9 @@ const (
 	ConnectionNeedsSignIn = "needs_sign_in"
 )
 
+// _maxPinnedThreads is how many open threads of one Bot may be pinned.
+const _maxPinnedThreads = 3
+
 // Message roles.
 const (
 	RoleUser = "user"
@@ -96,6 +101,15 @@ type (
 		MCPServers        []string   `json:"mcp_servers"`
 		Delegates         []string   `json:"delegates"`
 		CanManagePlatform bool       `json:"can_manage_platform"`
+		// GroupID is the sidebar group, empty when Ungrouped. Only SetGroup writes it.
+		GroupID string `json:"group_id,omitempty"`
+	}
+
+	// Group is a sidebar section of Bots.
+	Group struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Folded bool   `json:"folded"`
 	}
 
 	// RepoAccess is the repos a Bot may work in. Nil allows every repo and is "all" as JSON;
@@ -305,7 +319,8 @@ func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 // Bot returns the Bot with id.
 func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
 	rows, err := query(ctx, s.db,
-		"SELECT "+_botColumns+", pinned_at IS NOT NULL FROM bots WHERE id = ? AND removed = 0",
+		"SELECT "+_botColumns+", pinned_at IS NOT NULL, coalesce(group_id, '') FROM bots "+
+			"WHERE id = ? AND removed = 0",
 		scanBot, id)
 	if err != nil {
 		return Bot{}, fmt.Errorf("read bot %s: %w", id, err)
@@ -320,7 +335,8 @@ func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
 // first.
 func (s *Store) Bots(ctx context.Context) ([]Bot, error) {
 	return query(ctx, s.db,
-		"SELECT "+_botColumns+", pinned_at IS NOT NULL FROM bots WHERE removed = 0 "+
+		"SELECT "+_botColumns+", pinned_at IS NOT NULL, coalesce(group_id, '') FROM bots "+
+			"WHERE removed = 0 "+
 			"ORDER BY id = 'chief' DESC, pinned_at IS NULL, pinned_at, rowid", scanBot)
 }
 
@@ -598,9 +614,9 @@ func (s *Store) ReplaceTitle(ctx context.Context, threadID, old, title string) e
 	return nil
 }
 
-// SetClosed closes the thread: it takes no more messages.
+// SetClosed closes the thread: it takes no more messages. A closed thread is not pinned.
 func (s *Store) SetClosed(ctx context.Context, threadID string) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE threads SET closed = 1, closed_at = ? WHERE id = ?", time.Now().UTC().UnixMicro(), threadID)
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET closed = 1, closed_at = ?, pinned_at = NULL WHERE id = ?", time.Now().UTC().UnixMicro(), threadID)
 	if err != nil {
 		return fmt.Errorf("close thread: %w", err)
 	}
@@ -618,33 +634,188 @@ func (s *Store) LatestRun(ctx context.Context, threadID string) (string, error) 
 	return id, nil
 }
 
-// ThreadRun is a thread that has a run, with the status and the reply of its newest run. Reply
-// is only its first 300 characters: enough for a one-line preview.
+// ThreadRun is a thread with the status and the reply of its newest run; Status is empty for a
+// thread with no run. Reply is only its first 300 characters: enough for a one-line preview.
+// Unseen is set when the newest run ended after the user last opened the thread.
 type ThreadRun struct {
 	BotID          string
 	ThreadID       string
 	ParentThreadID string
+	Title          string
+	Closed         bool
+	Pinned         bool
 	LastActivity   time.Time
+	Unseen         bool
 	Status         string
 	Reply          string
 }
 
-// ThreadRuns lists the threads that have a run, newest activity first. botID limits it to one
-// Bot; empty means every Bot.
+// ThreadRuns lists every thread with its newest run, newest activity first. botID limits it to
+// one Bot; empty means every Bot.
 func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, error) {
 	return query(ctx, s.db,
-		`SELECT t.bot_id, t.id, t.parent_thread_id, t.last_activity, r.status, substr(r.reply, 1, 300)
-		 FROM (SELECT max(rowid) AS rid FROM runs GROUP BY thread_id) latest
-		 JOIN runs r ON r.rowid = latest.rid
-		 JOIN threads t ON t.id = r.thread_id
+		`SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.closed, t.pinned_at IS NOT NULL,
+		        t.last_activity, coalesce(r.finished_at, 0) > t.last_opened_at,
+		        coalesce(r.status, ''), substr(coalesce(r.reply, ''), 1, 300)
+		 FROM threads t
+		 LEFT JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = t.id)
 		 WHERE ? = '' OR t.bot_id = ?
 		 ORDER BY t.last_activity DESC, t.rowid DESC`,
 		func(r *sql.Rows) (tr ThreadRun, err error) {
-			var at int64
-			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &at, &tr.Status, &tr.Reply)
-			tr.LastActivity = time.UnixMicro(at).UTC()
+			var active int64
+			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &tr.Title, &tr.Closed,
+				&tr.Pinned, &active, &tr.Unseen, &tr.Status, &tr.Reply)
+			tr.LastActivity = time.UnixMicro(active).UTC()
 			return tr, err
 		}, botID, botID)
+}
+
+// MarkOpened records that the user opened the thread now.
+func (s *Store) MarkOpened(ctx context.Context, threadID string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET last_opened_at = ? WHERE id = ?",
+		time.Now().UTC().UnixMicro(), threadID)
+	if err != nil {
+		return fmt.Errorf("mark opened: %w", err)
+	}
+	return found(res, "thread", threadID)
+}
+
+// PinThread pins an open thread that is not a helper's; pinning a pinned one keeps its place.
+// replace, when set, is unpinned in the same transaction. It returns ErrPinLimit when the Bot
+// already has the most other threads pinned.
+func (s *Store) PinThread(ctx context.Context, threadID, replace string) error {
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		var botID string
+		var pinned bool
+		err := tx.QueryRowContext(ctx,
+			"SELECT bot_id, pinned_at IS NOT NULL FROM threads "+
+				"WHERE id = ? AND closed = 0 AND parent_thread_id = ''", threadID).Scan(&botID, &pinned)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("thread %s: %w", threadID, ErrNotFound)
+		}
+		if err != nil {
+			return fmt.Errorf("read thread %s: %w", threadID, err)
+		}
+		if pinned {
+			return nil
+		}
+		if replace != "" {
+			if _, err := tx.ExecContext(ctx,
+				"UPDATE threads SET pinned_at = NULL WHERE id = ? AND bot_id = ?", replace, botID); err != nil {
+				return fmt.Errorf("unpin thread %s: %w", replace, err)
+			}
+		}
+		var n int
+		if err := tx.QueryRowContext(ctx,
+			"SELECT count(*) FROM threads WHERE bot_id = ? AND pinned_at IS NOT NULL", botID).
+			Scan(&n); err != nil {
+			return fmt.Errorf("count pinned threads: %w", err)
+		}
+		if n >= _maxPinnedThreads {
+			return ErrPinLimit
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE threads SET pinned_at = ? WHERE id = ?",
+			time.Now().UTC().UnixMicro(), threadID); err != nil {
+			return fmt.Errorf("pin thread: %w", err)
+		}
+		return nil
+	})
+}
+
+// UnpinThread unpins the thread.
+func (s *Store) UnpinThread(ctx context.Context, threadID string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET pinned_at = NULL WHERE id = ?", threadID)
+	if err != nil {
+		return fmt.Errorf("unpin thread: %w", err)
+	}
+	return found(res, "thread", threadID)
+}
+
+// Groups lists the groups in the user's order.
+func (s *Store) Groups(ctx context.Context) ([]Group, error) {
+	return query(ctx, s.db, "SELECT id, name, folded FROM bot_groups ORDER BY position, rowid",
+		func(r *sql.Rows) (g Group, err error) { return g, r.Scan(&g.ID, &g.Name, &g.Folded) })
+}
+
+// CreateGroup adds a group after the others.
+func (s *Store) CreateGroup(ctx context.Context, name string) (Group, error) {
+	g := Group{ID: newID(), Name: name}
+	_, err := s.db.ExecContext(ctx,
+		"INSERT INTO bot_groups (id, name, position) "+
+			"SELECT ?, ?, coalesce(max(position), 0) + 1 FROM bot_groups", g.ID, g.Name)
+	if err != nil {
+		return Group{}, fmt.Errorf("insert group: %w", err)
+	}
+	return g, nil
+}
+
+// SetGroupName renames the group.
+func (s *Store) SetGroupName(ctx context.Context, id, name string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE bot_groups SET name = ? WHERE id = ?", name, id)
+	if err != nil {
+		return fmt.Errorf("set group name: %w", err)
+	}
+	return found(res, "group", id)
+}
+
+// SetGroupFolded folds or unfolds the group.
+func (s *Store) SetGroupFolded(ctx context.Context, id string, folded bool) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE bot_groups SET folded = ? WHERE id = ?", folded, id)
+	if err != nil {
+		return fmt.Errorf("set group folded: %w", err)
+	}
+	return found(res, "group", id)
+}
+
+// MoveGroup swaps the group with the one above it (up) or below it; at the end it does nothing.
+func (s *Store) MoveGroup(ctx context.Context, id string, up bool) error {
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		ids, err := query(ctx, tx, "SELECT id FROM bot_groups ORDER BY position, rowid",
+			func(r *sql.Rows) (id string, err error) { return id, r.Scan(&id) })
+		if err != nil {
+			return fmt.Errorf("list groups: %w", err)
+		}
+		i := slices.Index(ids, id)
+		if i < 0 {
+			return fmt.Errorf("group %s: %w", id, ErrNotFound)
+		}
+		j := i + 1
+		if up {
+			j = i - 1
+		}
+		if j < 0 || j >= len(ids) {
+			return nil
+		}
+		ids[i], ids[j] = ids[j], ids[i]
+		for pos, gid := range ids {
+			if _, err := tx.ExecContext(ctx, "UPDATE bot_groups SET position = ? WHERE id = ?",
+				pos+1, gid); err != nil {
+				return fmt.Errorf("move group: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+// DeleteGroup removes the group; its Bots become Ungrouped.
+func (s *Store) DeleteGroup(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, "DELETE FROM bot_groups WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete group: %w", err)
+	}
+	return found(res, "group", id)
+}
+
+// SetGroup puts the Bot in the group groupID, or Ungrouped when groupID is empty. It wraps
+// ErrNotFound for an unknown group.
+func (s *Store) SetGroup(ctx context.Context, botID, groupID string) error {
+	res, err := s.db.ExecContext(ctx,
+		"UPDATE bots SET group_id = nullif(?1, '') WHERE id = ?2 AND removed = 0 "+
+			"AND (?1 = '' OR EXISTS (SELECT 1 FROM bot_groups WHERE id = ?1))", groupID, botID)
+	if err != nil {
+		return fmt.Errorf("set group: %w", err)
+	}
+	return found(res, "bot or group", botID)
 }
 
 // SetSession records the provider session the thread's next runs resume.
@@ -1109,7 +1280,7 @@ func scanBot(r *sql.Rows) (Bot, error) {
 	var access sql.NullString
 	var conns, skills, mcp, delegates string
 	err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills,
-		&b.CanManagePlatform, &b.Look, &b.Model, &mcp, &b.Mode, &delegates, &b.Pinned)
+		&b.CanManagePlatform, &b.Look, &b.Model, &mcp, &b.Mode, &delegates, &b.Pinned, &b.GroupID)
 	if err != nil {
 		return Bot{}, err
 	}

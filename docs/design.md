@@ -75,10 +75,23 @@ Undo of a repo registration is refused while a thread uses the repo.
 ## Threads and runs
 
 - Thread records retain the tracked MR title and state, close time, and worktree cleanup and snapshot
-  status so the chat and thread list can show them after a restart. `track_mr` accepts the MR title
-  with its URL. The thread list includes the current work verb and pending approval.
+  status so the chat and threads popup can show them after a restart. `track_mr` accepts the MR title
+  with its URL. A thread summary includes the current work verb and pending approval.
 - A thread is a chat with one Bot. Each message starts a run that resumes the Bot's session and
   exits after replying. No agent process lives between messages.
+- A thread records when the user last opened it (`POST /api/threads/{id}/opened`, sent by the
+  thread view when it opens and when a run ends while it is on screen; never by a read, which the
+  UI polls). A thread whose newest run finished after that is New until the user opens it; this
+  survives a restart. Threads that were already there when this shipped start as read.
+- A thread can be pinned to the sidebar (`POST`/`DELETE /api/threads/{id}/pin`), at most 3 open
+  threads per Bot. A 4th pin answers `409` unless it names a pin to replace (`{replace}`), done in
+  one transaction. Closing a thread drops its pin; helper threads cannot be pinned.
+- `GET /api/events` is one SSE stream for the whole app: `approval`, `approval_closed`,
+  `run_finished`, `mr_updated` and `platform_changed` from every thread, each as `{thread_id,
+  bot_id, bot_name, title, data}` with `data` as on the thread's own stream. On connect it first
+  sends the approvals open now. It is live only: nothing is stored, so the island's Earlier list
+  lasts until the app reloads. *A notifications table would need read state and cleanup for
+  little gain; open approvals, the only thing that must survive, are replayed.*
 - Resume by default. A fresh session only comes from starting a new thread or delegation.
 - Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply stays
   2–3 plain lines. *The report feeds memory, parents and fresh starts.* `blocked` is only what
@@ -586,33 +599,63 @@ Voice
   and manta are looks again and keep their Bots. *Replaces the 14 looks in three groups: the user
   picked pebble + one trait on the canvas.* Idle blinks; needs you is a pulsing red dot; asleep is
   grey; failed has slanted eyes; reduced motion stops every animation.
-- Working shows by tool kind, with old Reef's rising bubbles: no tool yet, the eyes circle up;
+- Working shows by tool kind in the creature's eyes and body: no tool yet, the eyes circle up;
   reading, searching or recalling, the eyes scan; editing, writing, remembering or changing the
-  platform, it bounces; running a command, it breathes.
+  platform, it bounces; running a command, it breathes. No spinner rings or bubbles anywhere, on a
+  creature or a thread; a running thread shows three small wave dots.
 - Sidebar: a search field on top filters Bots by name, `+` beside it; no logo (the user found it
-  redundant).
+  redundant). Mockups: the "Reef thread tracking" canvas
+  (https://claude.ai/artifact/McPffSMXRCir3g17QQJTGQ).
   One row per Bot (creature, name, latest activity, time): Chief first, then pinned Bots in the order
-  pinned, then the rest. Hovering a row shows a pin button; Bot settings has Pin to sidebar; Chief
-  cannot be pinned. The activity line is the live verb while a run works ("Running make build"),
-  "Needs you: ..." while an approval waits, otherwise the first line of the latest reply, at most
-  60 characters cut at a word boundary with "…" when cut. `+` opens New Bot; the
-  bottom user row opens Settings. No group chats. A thread's activity time moves when a run
+  pinned, then the user's groups in their order, then Ungrouped. Hovering a row shows a pin button
+  and `+` (New thread); Bot settings has Pin to sidebar; Chief cannot be pinned. The activity
+  line is the live verb while a run works ("Running make build"), "Needs you: ..." while an approval waits, otherwise the first line of the latest reply, at most
+  60 characters cut at a word boundary with "…" when cut. `+` at the top opens New Bot and New
+  group; the bottom user row opens Settings. No group chats. A thread's activity time moves when a run
   starts, an approval opens or closes, and a run ends, not on every event. *The sidebar polls
-  every 2 s; a write per text delta would cost more than the time is worth.*
-- Bot header: a centred island with no border; messages fade out as they scroll up to it. The pill
-  holds the creature, the Bot name, the thread title (cut with "…"), the open thread's run state and, when
-  any thread waits on the user, a red count. Run state is three wave dots (text "Thinking") while
-  the thread's run works, "Needs you" while an approval waits, "Run failed" after a failed run,
-  nothing otherwise. Clicking the pill grows it down into the thread list: New thread on top
-  (with a search field once more than 8 threads are open), then Needs you (and what it waits for),
-  Running (live verb, branch, MR; a thread whose own run ended counts while a helper's run works, and
-  shows "{Helper} working"), Recent, and Closed folded at the bottom. The island stops at
-  about 60% of the window height; only the groups scroll, and each group's title stays while it
-  scrolls. A click outside closes it; hover does not open it. Bot settings is an icon at the right.
-  *The user saw a centred island in a reference app and preferred it; the run state sits where the
-  eye already is.* The open island starts with This thread: its title, branch and MR, and Close
-  thread. Other open rows show Close on hover; helper threads and closed threads have none. There is
-  no other Close thread control and no ⋯ menu.
+  every 2 s; a write per text delta would cost more than the time is worth.* Clicking a Bot opens
+  its latest thread.
+- Thread tree: under each Bot, at most 3 thread rows hang from a thin line under the creature's
+  centre (one tick per row, a rounded corner on the last). A Bot with nothing to show is its plain
+  row. A row is the title and one marker: a red dot and "Needs you"; a blue dot, bold title and
+  "New"; three wave dots at the end while running; a pin when pinned and nothing else applies (a
+  pinned thread that needs you, is New or runs shows that instead). Slots go to needs you (never
+  hidden, so there may be more than 3), then pinned, new and running; the thread on screen always
+  shows and is never New. When those already fill 3 or more, nothing else is added. One last line
+  stands for the rest: `N more running` (wave dots) when a hidden thread is running, which unfolds
+  only the hidden running threads in place, then `Show less`; a row leaves when its run ends, and
+  switching Bot folds it again. Otherwise `N more` (a blue dot when a hidden thread is New) opens
+  the threads popup. A helper thread is listed under its own Bot, without close or pin. *The
+  server sends each Bot's open threads with their marker on `GET /api/bots`; the client picks the
+  rows, since only it knows the thread on screen and what is unfolded.*
+- New thread: `+` on Bot row hover, the Bot's right-click menu (New thread, Pin to sidebar, Move
+  to group, Bot settings), or `⌘N` for the open Bot. A thread row shows `×` on hover (Close thread,
+  saving unfinished work as before); right-click has Rename and Close.
+- Threads popup (from `N more`): a dialog with the Bot's creature and name, "N open threads · N
+  closed", New thread and close; a search over title, branch and MR (`!7`); the rows the tree shows
+  ("In the sidebar"), Other open threads, and Closed folded. Row hover has Pin to sidebar or Unpin
+  and `×`. Pinning a 4th thread asks which pin to replace. Esc closes it.
+- Bot groups are only sidebar headings; they change nothing else about a Bot. A Bot is in one group
+  or Ungrouped. Create one from `+` › New group (an inline name field: Enter saves, Esc cancels).
+  Move a Bot with right-click › Move to group (the groups, No group, New group…) or by dragging it
+  onto a heading. A heading's hover shows a fold arrow and ⋯ (Rename, New Bot in this group, Move
+  up, Move down, Delete group); deleting moves its Bots to Ungrouped. Name, order and fold state
+  are stored (`/api/groups`). A folded group shows a red dot only when a Bot in it needs the user;
+  no counts.
+- Bot header: a centred island with no border; messages fade out as they scroll up to it. At rest
+  the pill holds the creature, the Bot name, the thread title (cut with "…") and the open thread's
+  run state: three wave dots (text "Thinking") while its run works, "Needs you" while an approval
+  waits, "Run failed" after a failed run, nothing otherwise. It has no thread list, search, New
+  thread, Close thread or chevron. Bot settings is an icon at the right. *The user saw a centred
+  island in a reference app and preferred it; the run state sits where the eye already is.*
+- The island is where work in other threads reaches the user: every thread except the one on
+  screen, the same Bot's other threads included (`GET /api/events`). An approval drops the island
+  open: the Bot, the thread, the exact command or path, Open thread, Deny and Allow; Allow lets
+  that run go on without leaving the thread on screen. It stays until answered; Esc or a click
+  away shrinks it to a red count on the pill. A finished run widens the island for about 4 s
+  ("reviewer finished Review !42", View), with no buttons, then it returns to rest. Clicking the
+  island opens the notification list: Needs you (Allow and Deny inline), then Earlier (finished
+  runs, MRs opened, Chief's changes). Hover does not open it.
 - Thread titles: the first six words of the first message (a helper's brief), set when that message
   is sent and stored, with trailing `.,;:!?` removed from the last word. After the thread's first
   reply, Reef asks the Bot's provider for a better one: a session of its own on the provider's
@@ -677,7 +720,7 @@ Voice
   creature, not the user's bubble. The island shows one small creature per such helper
   after the boss's name (`Tester: working`, `needs you` with a red dot),
   the red count includes helper approvals, and the boss's sidebar row says "Needs you" while a
-  helper waits. A helper thread is listed in its Bot's thread list tagged `from {boss}`; the
+  helper waits. A helper thread is listed under its Bot in the sidebar tree, with no close; the
   composer is replaced by "{Boss} is handling this thread. Talk to {Boss} to change it.", `Open
   {Boss}'s thread` and, while its run goes, `Stop`. *The boss thread's stream carries only the
   boss's events, so the UI polls: a thread summary (`GET /api/threads/{id}`, `GET

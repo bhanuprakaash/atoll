@@ -757,15 +757,15 @@ export function ThreadView({
         </div>
       </div>
       {!empty && (
-        <div className="mx-auto w-full max-w-204 px-7 pb-4.5">
+        <div className="relative mx-auto w-full max-w-204 px-7 pb-4.5">
           {awayFromLatest && (
-            <div className="mb-2 flex justify-center">
+            <div className="pointer-events-none absolute inset-x-0 bottom-full mb-2 flex justify-center">
               <button
                 type="button"
                 aria-label="Jump to latest"
                 data-working={activeId ? 'true' : undefined}
                 onClick={scrollToLatest}
-                className="flex size-10 items-center justify-center rounded-full border border-outline bg-card shadow-sm"
+                className="pointer-events-auto flex size-10 items-center justify-center rounded-full border border-outline bg-card shadow-sm"
               >
                 {activeId ? (
                   <Creature look={look} state="working" size={28} />

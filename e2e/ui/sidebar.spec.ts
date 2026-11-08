@@ -38,7 +38,7 @@ test('sidebar rows show each state on the creature, Chief first', async ({ page 
   await page.goto(m.url);
   const nav = page.getByRole('navigation', { name: 'Bots' });
   await expect(nav.getByRole('link').first()).toContainText('Chief');
-  await expect(nav.getByRole('button', { name: 'New Bot' })).toBeVisible();
+  await expect(nav.getByRole('button', { name: 'New', exact: true })).toBeVisible();
   for (const [name, img] of [
     ['Chief', 'Jellyfish, idle'],
     ['Idle', 'Penguin, idle'],

@@ -12,7 +12,8 @@ test('create a Bot, chat, watch the run work, approve a step', async ({ page }) 
   const name = `Ada ${Date.now()}`; // the server outlives a retry
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'New Bot' }).click();
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'New Bot' }).click();
   await page.getByRole('textbox', { name: 'Name' }).fill(name);
   await page.getByRole('textbox', { name: 'Persona' }).fill('A careful Go engineer.');
   await pickModel(page, page, 'Claude Code');

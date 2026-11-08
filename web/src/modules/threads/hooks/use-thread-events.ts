@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ToolKind } from '@/components/creature';
 import { getRun } from '@/modules/threads/api/runs';
-import { getThread } from '@/modules/threads/api/threads';
+import { getThread, markOpened } from '@/modules/threads/api/threads';
 
 export type LiveRun = {
   text: string;
@@ -30,6 +30,11 @@ export function useThreadEvents(threadId: string) {
     setRuns({});
     closedApprovals.current.clear();
     let reconnecting = false;
+    const opened = () =>
+      markOpened(threadId)
+        .then(() => queryClient.invalidateQueries({ queryKey: ['bots'] }))
+        .catch(() => {});
+    void opened();
     const source = new EventSource(`/api/threads/${threadId}/events`);
     const refresh = () => {
       for (const queryKey of [
@@ -96,7 +101,10 @@ export function useThreadEvents(threadId: string) {
       ...run,
       finished: d,
     }));
-    source.addEventListener('run_finished', refresh);
+    source.addEventListener('run_finished', () => {
+      refresh();
+      void opened();
+    });
     for (const type of ['platform_changed', 'memory_saved', 'worktree_created'])
       source.addEventListener(type, refresh);
     source.addEventListener('mr_updated', (e) => {

@@ -252,12 +252,6 @@ export function Creature({
           strokeWidth="3"
         />
       )}
-      {state === 'working' && (
-        <g fill="none" stroke="var(--color-muted)" strokeWidth="2">
-          <circle className="creature-bubble" cx="57" cy="8" r="3" />
-          <circle className="creature-bubble creature-bubble-delay" cx="63" cy="2" r="2" />
-        </g>
-      )}
     </svg>
   );
 }
