@@ -1,6 +1,9 @@
-import { NavLink } from 'react-router';
+import { useState } from 'react';
+import { NavLink, useNavigate } from 'react-router';
 import { Creature } from '@/components/creature';
+import { Menu } from '@/components/menu';
 import { useBots, usePinBot, type Bot } from '@/modules/bots/api/bots';
+import { ThreadTree } from '@/modules/bots/components/thread-tree';
 import { relativeTime } from '@/utils/time';
 
 function PinButton({ bot }: { bot: Bot }) {
@@ -34,8 +37,122 @@ function PinButton({ bot }: { bot: Bot }) {
   );
 }
 
-export function BotList({ search }: { search: string }) {
+function BotRow({
+  bot,
+  open,
+  unfolded,
+  onUnfold,
+  onMore,
+  onCloseThread,
+  onRenameThread,
+}: {
+  bot: Bot;
+  open: { botId?: string; threadId?: string };
+  unfolded: boolean;
+  onUnfold: (unfolded: boolean) => void;
+  onMore: (botId: string) => void;
+  onCloseThread: (threadId: string) => void;
+  onRenameThread: (threadId: string, title: string) => void;
+}) {
+  const navigate = useNavigate();
+  const pin = usePinBot(bot.id);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const newThread = () => navigate(`/bots/${bot.id}/new`);
+  return (
+    <li>
+      <div
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenu({ x: event.clientX, y: event.clientY });
+        }}
+        className={`group flex items-center rounded-card ${open.botId === bot.id ? 'bg-selected' : ''}`}
+      >
+        <NavLink to={`/bots/${bot.id}`} className="flex min-w-0 flex-1 items-center gap-3 p-2.5">
+          <Creature look={bot.look} state={bot.state} size={44} />
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="flex justify-between gap-2 text-[15px]">
+              <span className="truncate">{bot.name}</span>
+              <span className="flex flex-none items-center gap-1.5">
+                <span className="text-xs text-muted">{relativeTime(bot.last_activity)}</span>
+                {bot.id !== 'chief' && <PinButton bot={bot} />}
+              </span>
+            </span>
+            <span className="truncate text-[13px] text-muted">{bot.activity}</span>
+          </span>
+        </NavLink>
+        <button
+          type="button"
+          aria-label={`New thread with ${bot.name}`}
+          title="New thread (⌘N)"
+          onClick={newThread}
+          className="mr-2.5 hidden size-7 flex-none items-center justify-center rounded-control bg-tile text-ink group-focus-within:flex group-hover:flex"
+        >
+          <svg
+            aria-hidden="true"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      </div>
+      <ThreadTree
+        bot={bot}
+        openThreadId={open.botId === bot.id ? open.threadId : undefined}
+        unfolded={unfolded}
+        onUnfold={onUnfold}
+        onMore={onMore}
+        onCloseThread={onCloseThread}
+        onRenameThread={onRenameThread}
+      />
+      {menu && (
+        <Menu
+          at={menu}
+          onClose={() => setMenu(null)}
+          items={[
+            { label: 'New thread', onSelect: newThread },
+            ...(bot.id === 'chief'
+              ? []
+              : [
+                  {
+                    label: bot.pinned ? 'Unpin' : 'Pin to sidebar',
+                    onSelect: () => pin.mutate(!bot.pinned),
+                  },
+                  { label: 'Move to group', disabled: true },
+                ]),
+            { label: 'Bot settings', onSelect: () => navigate(`/bots/${bot.id}?settings`) },
+          ]}
+        />
+      )}
+    </li>
+  );
+}
+
+export function BotList({
+  search,
+  open,
+  onMore,
+  onCloseThread,
+  onRenameThread,
+}: {
+  search: string;
+  open: { botId?: string; threadId?: string };
+  onMore: (botId: string) => void;
+  onCloseThread: (threadId: string) => void;
+  onRenameThread: (threadId: string, title: string) => void;
+}) {
   const { data: bots = [] } = useBots();
+  const [unfolded, setUnfolded] = useState<string | null>(null);
+  const [openBot, setOpenBot] = useState(open.botId);
+  if (openBot !== open.botId) {
+    setOpenBot(open.botId);
+    setUnfolded(null);
+  }
   const ordered = bots
     .filter((bot) => bot.name.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => Number(b.id === 'chief') - Number(a.id === 'chief'));
@@ -45,26 +162,16 @@ export function BotList({ search }: { search: string }) {
         <li className="px-2.5 py-2 text-sm text-muted">No Bots match</li>
       )}
       {ordered.map((bot) => (
-        <li key={bot.id}>
-          <NavLink
-            to={`/bots/${bot.id}`}
-            className={({ isActive }) =>
-              `group flex items-center gap-3 rounded-card p-2.5 ${isActive ? 'bg-selected' : ''}`
-            }
-          >
-            <Creature look={bot.look} state={bot.state} size={44} />
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="flex justify-between gap-2 text-[15px]">
-                <span className="truncate">{bot.name}</span>
-                <span className="flex flex-none items-center gap-1.5">
-                  <span className="text-xs text-muted">{relativeTime(bot.last_activity)}</span>
-                  {bot.id !== 'chief' && <PinButton bot={bot} />}
-                </span>
-              </span>
-              <span className="truncate text-[13px] text-muted">{bot.activity}</span>
-            </span>
-          </NavLink>
-        </li>
+        <BotRow
+          key={bot.id}
+          bot={bot}
+          open={open}
+          unfolded={unfolded === bot.id}
+          onUnfold={(on) => setUnfolded(on ? bot.id : null)}
+          onMore={onMore}
+          onCloseThread={onCloseThread}
+          onRenameThread={onRenameThread}
+        />
       ))}
     </ul>
   );

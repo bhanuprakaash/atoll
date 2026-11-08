@@ -231,19 +231,6 @@ body {
       opacity: 0.4;
     }
   }
-  @keyframes bubble {
-    0% {
-      transform: translateY(3px);
-      opacity: 0;
-    }
-    30% {
-      opacity: 0.8;
-    }
-    100% {
-      transform: translateY(-10px);
-      opacity: 0;
-    }
-  }
   .creature-blink {
     transform-box: fill-box;
     transform-origin: center;
@@ -265,19 +252,10 @@ body {
   .creature-pulse {
     animation: pulse 1.2s ease-in-out infinite;
   }
-  .creature-bubble {
-    animation: bubble 1.8s ease-out infinite;
-  }
-  .creature-bubble-delay {
-    animation-delay: -0.9s;
-  }
 }
 
 .tide {
   color: var(--color-muted);
-}
-.bubble {
-  display: none;
 }
 @media (prefers-reduced-motion: no-preference) {
   @keyframes tide {
@@ -300,44 +278,5 @@ body {
     background-clip: text;
     color: transparent;
     animation: tide 2.6s ease-in-out infinite;
-  }
-  @keyframes bubble-up {
-    0% {
-      transform: translateY(0) scale(0.4);
-      opacity: 0;
-    }
-    20% {
-      opacity: 0.8;
-    }
-    100% {
-      transform: translateY(-26px) scale(1);
-      opacity: 0;
-    }
-  }
-  .bubble {
-    display: block;
-    position: absolute;
-    bottom: 4px;
-    left: 7px;
-    width: 5px;
-    height: 5px;
-    border: 1.5px solid var(--color-label);
-    border-radius: 999px;
-    opacity: 0;
-    animation: bubble-up 2.8s ease-out infinite;
-  }
-  .bubble-1 {
-    left: 15px;
-    width: 4px;
-    height: 4px;
-    animation-duration: 3.2s;
-    animation-delay: 0.9s;
-  }
-  .bubble-2 {
-    left: 3px;
-    width: 6px;
-    height: 6px;
-    animation-duration: 2.4s;
-    animation-delay: 1.6s;
   }
 }

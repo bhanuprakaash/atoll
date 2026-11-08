@@ -1,5 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Navigate, Outlet, useOutletContext, useParams } from 'react-router';
+import {
+  Navigate,
+  Outlet,
+  useLocation,
+  useOutletContext,
+  useParams,
+  useSearchParams,
+} from 'react-router';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { BotMemory } from '@/modules/memory/components/bot-memory';
@@ -140,7 +147,10 @@ export function BotPage() {
   const { data: mcpServers = [] } = useMcpServers();
   const { data: connections = [] } = useConnections();
   const { data: providers = [] } = useProviders();
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const settingsOpen = params.has('settings');
+  const setSettingsOpen = (open: boolean) =>
+    setParams(open ? { settings: '' } : {}, { replace: true });
   const [list, setList] = useState(false);
   const notifications = useOutletContext<Notifications>();
   const { drop, widened, dismiss } = notifications;
@@ -227,9 +237,13 @@ export function BotPage() {
 export function LatestThread() {
   const { botId = '' } = useParams();
   const { data: threads } = useThreads(botId);
+  const { search } = useLocation();
   if (!threads) return null;
   const latest = threads[0];
   return (
-    <Navigate to={latest ? `/bots/${botId}/threads/${latest.id}` : `/bots/${botId}/new`} replace />
+    <Navigate
+      to={`${latest ? `/bots/${botId}/threads/${latest.id}` : `/bots/${botId}/new`}${search}`}
+      replace
+    />
   );
 }

@@ -21,6 +21,7 @@ export type Thread = {
   verb: string;
   step: string;
   closed: boolean;
+  pinned: boolean;
   created_at: string;
   title: string;
   last_activity: string;
@@ -51,12 +52,29 @@ export function useCloseThread() {
     mutationFn: (threadId: string) => api<void>(`/threads/${threadId}/close`, { method: 'POST' }),
     onSuccess: (_, threadId) =>
       Promise.all(
-        [['thread', threadId], ['threads']].map((queryKey) =>
+        [['thread', threadId], ['threads'], ['bots']].map((queryKey) =>
           queryClient.invalidateQueries({ queryKey }),
         ),
       ),
   });
 }
+
+export function useRenameThread() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) =>
+      api<Thread>(`/threads/${id}`, { method: 'PATCH', body: { title } }),
+    onSuccess: (_, { id }) =>
+      Promise.all(
+        [['thread', id], ['threads'], ['bots']].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      ),
+  });
+}
+
+export const markOpened = (threadId: string) =>
+  api<void>(`/threads/${threadId}/opened`, { method: 'POST' });
 
 export function useThreads(botId: string) {
   return useQuery({
