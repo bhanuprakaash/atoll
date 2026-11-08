@@ -6,13 +6,7 @@ import { ServerLogo } from '@/components/server-logo';
 import { outlineButton, solidButton } from '@/components/settings-ui';
 import { Switch } from '@/components/switch';
 import { TextArea, TextField } from '@/components/text-field';
-import {
-  useDeleteBot,
-  usePinBot,
-  useUpdateBot,
-  type Bot,
-  type NewBot,
-} from '@/modules/bots/api/bots';
+import { useDeleteBot, usePinBot, useUpdateBot, type Bot } from '@/modules/bots/api/bots';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { ConnectionList } from '@/modules/bots/components/connection-list';
 import { CreatureCarousel } from '@/modules/bots/components/creature-picker';
@@ -27,6 +21,8 @@ const modes = [
   { value: 'ask', label: 'Ask' },
   { value: 'full', label: 'Full access' },
 ];
+
+type Change = Parameters<ReturnType<typeof useUpdateBot>['mutate']>[0];
 
 export function BotSettings({
   bot,
@@ -47,29 +43,31 @@ export function BotSettings({
   bots: { id: string; name: string }[];
   memory?: ReactNode;
 }) {
-  const [name, setName] = useState(bot.name);
-  const [persona, setPersona] = useState(bot.persona);
-  const [look, setLook] = useState(bot.look);
-  const [provider, setProvider] = useState(bot.provider);
-  const [model, setModel] = useState(bot.model);
-  const [mode, setMode] = useState(bot.mode);
-  const [repoAccess, setRepoAccess] = useState(bot.repo_access);
-  const [skillIds, setSkillIds] = useState(bot.skills ?? []);
-  const [delegateIds, setDelegateIds] = useState(bot.delegates ?? []);
-  const [mcpIds, setMcpIds] = useState(bot.mcp_servers ?? []);
-  const [platform, setPlatform] = useState(bot.can_manage_platform);
-  const [connectionIds, setConnectionIds] = useState(bot.connections ?? []);
   const [confirming, setConfirming] = useState(false);
   const update = useUpdateBot(bot.id);
   const pin = usePinBot(bot.id);
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const mutate = update.mutate;
-  const pending = useRef<Record<string, Partial<NewBot>>>({});
+  const [draft, setDraft] = useState<Change>({});
+  const current = { ...bot, ...draft };
+  const send = (change: Change) => {
+    const settled = () =>
+      setDraft((d) =>
+        Object.fromEntries(Object.entries(d).filter(([k, v]) => v !== change[k as keyof Change])),
+      );
+    update.mutateAsync(change).then(settled, settled);
+  };
+  const save = (change: Change) => {
+    setDraft((d) => ({ ...d, ...change }));
+    send(change);
+  };
+  const pending = useRef<Record<string, Change>>({});
   const saveText = (key: 'name' | 'persona', value: string) => {
+    setDraft((d) => ({ ...d, [key]: value }));
     clearTimeout(timers.current[key]);
     pending.current[key] = { [key]: value };
     timers.current[key] = setTimeout(() => {
-      mutate(pending.current[key]);
+      send(pending.current[key]);
       delete pending.current[key];
     }, 400);
   };
@@ -110,40 +108,24 @@ export function BotSettings({
           </button>
         </div>
         <div className="flex flex-col gap-6">
-          <CreatureCarousel
-            value={look}
-            onChange={(value) => {
-              setLook(value);
-              mutate({ look: value });
-            }}
-          />
+          <CreatureCarousel value={current.look} onChange={(value) => save({ look: value })} />
           <Field label="Name">
             {(id) => (
               <TextField
                 id={id}
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  saveText('name', e.target.value);
-                }}
+                value={current.name}
+                onChange={(e) => saveText('name', e.target.value)}
               />
             )}
           </Field>
-          {modelControl(provider, model, (p, m) => {
-            setProvider(p);
-            setModel(m);
-            mutate({ provider: p, model: m });
-          })}
+          {modelControl(current.provider, current.model, (p, m) => save({ provider: p, model: m }))}
           <Field label="Persona">
             {(id) => (
               <TextArea
                 id={id}
                 rows={4}
-                value={persona}
-                onChange={(e) => {
-                  setPersona(e.target.value);
-                  saveText('persona', e.target.value);
-                }}
+                value={current.persona}
+                onChange={(e) => saveText('persona', e.target.value)}
               />
             )}
           </Field>
@@ -154,11 +136,8 @@ export function BotSettings({
             title="Skills"
             singular="skill"
             choices={skills}
-            selected={skillIds}
-            onChange={(value) => {
-              setSkillIds(value);
-              mutate({ skills: value });
-            }}
+            selected={current.skills ?? []}
+            onChange={(value) => save({ skills: value })}
           />
           <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
             <legend className="mb-2 p-0 text-xs tracking-wide text-label">MCP servers</legend>
@@ -174,13 +153,14 @@ export function BotSettings({
                   </span>
                   <Switch
                     aria-label={server.name}
-                    checked={mcpIds.includes(server.id)}
+                    checked={(current.mcp_servers ?? []).includes(server.id)}
                     onChange={(on) => {
-                      const value = on
-                        ? [...mcpIds, server.id]
-                        : mcpIds.filter((id) => id !== server.id);
-                      setMcpIds(value);
-                      mutate({ mcp_servers: value });
+                      const ids = current.mcp_servers ?? [];
+                      save({
+                        mcp_servers: on
+                          ? [...ids, server.id]
+                          : ids.filter((id) => id !== server.id),
+                      });
                     }}
                   />
                 </label>
@@ -191,39 +171,28 @@ export function BotSettings({
             <>
               <Segmented
                 label="Repo access"
-                value={repoAccess === 'all' ? 'all' : 'only'}
-                onChange={(choice) => {
-                  const value = choice === 'all' ? 'all' : [];
-                  setRepoAccess(value);
-                  mutate({ repo_access: value });
-                }}
+                value={current.repo_access === 'all' ? 'all' : 'only'}
+                onChange={(choice) => save({ repo_access: choice === 'all' ? 'all' : [] })}
                 choices={repoAccessChoices}
               />
-              {repoAccess !== 'all' && (
+              {current.repo_access !== 'all' && (
                 <ChoiceList
                   title="Repos"
                   singular="repo"
                   choices={repos}
-                  selected={repoAccess}
-                  onChange={(value) => {
-                    setRepoAccess(value);
-                    mutate({ repo_access: value });
-                  }}
+                  selected={current.repo_access}
+                  onChange={(value) => save({ repo_access: value })}
                 />
               )}
             </>
           )}
           <Segmented
             label="Mode"
-            value={mode}
-            onChange={(value) => {
-              const next = value as Bot['mode'];
-              setMode(next);
-              mutate({ mode: next });
-            }}
+            value={current.mode}
+            onChange={(value) => save({ mode: value as Bot['mode'] })}
             choices={modes}
           />
-          {mode === 'full' && (
+          {current.mode === 'full' && (
             <p className="-mt-4 text-xs text-label">
               Full access: this Bot never asks, even to delete files or push. Use it for Bots that
               run in a VM.
@@ -231,22 +200,16 @@ export function BotSettings({
           )}
           <ConnectionList
             connections={connections}
-            selected={connectionIds}
-            onChange={(value) => {
-              setConnectionIds(value);
-              mutate({ connections: value });
-            }}
+            selected={current.connections ?? []}
+            onChange={(value) => save({ connections: value })}
             reconnect={reconnect}
           />
           <ChoiceList
             title="Can hand work to"
             singular="Bot"
             choices={bots.filter((other) => other.id !== bot.id)}
-            selected={delegateIds}
-            onChange={(value) => {
-              setDelegateIds(value);
-              mutate({ delegates: value });
-            }}
+            selected={current.delegates ?? []}
+            onChange={(value) => save({ delegates: value })}
           />
           <p className="-mt-4 text-xs text-label">
             {bot.name} can start up to 3 helper threads at once with these Bots
@@ -266,11 +229,8 @@ export function BotSettings({
             <label className="flex items-center justify-between border-t border-line pt-4 text-sm">
               Manage platform
               <Switch
-                checked={platform}
-                onChange={(value) => {
-                  setPlatform(value);
-                  mutate({ can_manage_platform: value });
-                }}
+                checked={current.can_manage_platform}
+                onChange={(value) => save({ can_manage_platform: value })}
               />
             </label>
           )}
