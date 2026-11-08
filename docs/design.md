@@ -571,7 +571,8 @@ Voice
   the thread's run works, "Needs you" while an approval waits, "Run failed" after a failed run,
   nothing otherwise. Clicking the pill grows it down into the thread list: New thread on top
   (with a search field once more than 8 threads are open), then Needs you (and what it waits for),
-  Running (live verb, branch, MR), Recent, and Closed folded at the bottom. The island stops at
+  Running (live verb, branch, MR; a thread whose own run ended counts while a helper's run works, and
+  shows "{Helper} working"), Recent, and Closed folded at the bottom. The island stops at
   about 60% of the window height; only the groups scroll, and each group's title stays while it
   scrolls. A click outside closes it; hover does not open it. Bot settings is an icon at the right.
   *The user saw a centred island in a reference app and preferred it; the run state sits where the
