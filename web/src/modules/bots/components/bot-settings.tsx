@@ -35,6 +35,7 @@ export function BotSettings({
   repos,
   skills,
   connections,
+  reconnect,
   mcpServers,
   bots,
   memory,
@@ -235,6 +236,7 @@ export function BotSettings({
               setConnectionIds(value);
               mutate({ connections: value });
             }}
+            reconnect={reconnect}
           />
           <ChoiceList
             title="Can hand work to"

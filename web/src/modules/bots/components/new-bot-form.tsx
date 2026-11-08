@@ -25,6 +25,7 @@ export type Choices = {
     instance_url: string;
     status: 'pending' | 'connected' | 'needs_sign_in';
   }[];
+  reconnect: (connection: Choices['connections'][number]) => ReactNode;
 };
 
 export const repoAccess = [
@@ -35,6 +36,7 @@ export const repoAccess = [
 export function NewBotForm({
   repos,
   connections,
+  reconnect,
   skills,
   onCreated,
   modelControl,
@@ -159,6 +161,7 @@ export function NewBotForm({
               connections={connections}
               selected={connectionIds}
               onChange={setConnectionIds}
+              reconnect={reconnect}
             />
           </section>
           {create.isError && <p className="text-sm text-danger">{create.error.message}</p>}

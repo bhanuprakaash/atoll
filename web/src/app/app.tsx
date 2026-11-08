@@ -23,6 +23,7 @@ import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { useSetBotGroup } from '@/modules/bots/api/groups';
 import { NewBotForm } from '@/modules/bots/components/new-bot-form';
 import { useConnections, type Connection } from '@/modules/connections/api/connections';
+import { ReconnectButton } from '@/modules/connections/components/reconnect-button';
 import { FirstRun } from '@/modules/onboarding/components/first-run';
 import {
   FirstRunProviders,
@@ -75,6 +76,7 @@ function NewBotPage() {
       repos={repos}
       skills={skills}
       connections={connections}
+      reconnect={(connection) => <ReconnectButton connection={connection} />}
       onCreated={(bot) => {
         const groupId = params.get('group');
         if (groupId) setGroup.mutate({ botId: bot.id, groupId });
