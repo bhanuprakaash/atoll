@@ -89,7 +89,7 @@ func (m *Manager) writeTitle(ctx context.Context, name, message, reply string) (
 		return "", fmt.Errorf("start %s: %w", name, err)
 	}
 	prompt := "Message:\n" + clip(message) + "\n\nReply:\n" + clip(reply)
-	if err := sess.Send(ctx, prompt); err != nil {
+	if err := sess.Send(ctx, prompt, nil); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
 	var b strings.Builder
