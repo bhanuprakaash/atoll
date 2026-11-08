@@ -86,7 +86,7 @@ export function BotSettings({
       className="min-h-0 min-w-0 max-w-105 flex-[1_1_400px] overflow-auto border-l border-line bg-bg"
     >
       <section role="dialog" aria-label="Bot settings" aria-hidden={confirming} className="p-7">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="sticky top-0 z-10 -mx-7 -mt-7 flex items-center justify-between bg-bg px-7 pb-6 pt-7">
           <h2 className="text-lg">Bot settings</h2>
           <button
             type="button"
