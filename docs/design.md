@@ -615,11 +615,14 @@ Voice
   starts, an approval opens or closes, and a run ends, not on every event. *The sidebar polls
   every 2 s; a write per text delta would cost more than the time is worth.* Clicking a Bot opens
   its latest thread.
-- Thread tree: under each Bot, at most 3 thread rows hang from a thin line under the creature's
-  centre (one tick per row, a rounded corner on the last). A Bot with nothing to show is its plain
-  row. A row is the title and one marker: a red dot and "Needs you"; a blue dot, bold title and
-  "New"; three wave dots at the end while running; a pin when pinned and nothing else applies (a
-  pinned thread that needs you, is New or runs shows that instead). Slots go to needs you (never
+- Thread tree: under each Bot, at most 3 thread rows (32 px, no gap) hang from one thin rail under
+  the creature's centre. The rail starts at the bottom of the Bot row and ends in a rounded hook at
+  the middle of the last row, the overflow line included; it never touches a row. A Bot with
+  nothing to show is its plain row. A row is the title and one marker at its right end: "Needs
+  you" and a red dot; a blue dot and a bold title for New; three wave dots while running; a pin
+  when pinned and nothing else applies (a pinned thread that needs you, is New or runs shows that
+  instead). Only the open thread and the hovered row have a box. *The tick tree started inside the
+  Bot row and collided with the row boxes; the user picked one rail with a hook.* Slots go to needs you (never
   hidden, so there may be more than 3), then pinned, new and running; the thread on screen always
   shows and is never New. When those already fill 3 or more, nothing else is added. One last line
   stands for the rest: `N more running` (wave dots) when a hidden thread is running, which unfolds
