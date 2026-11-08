@@ -100,6 +100,8 @@ type Config struct {
 	MCPServers []UserMCPServer
 	// Mode is the Bot's mode; other values run as the provider's default.
 	Mode string
+	// NoTools disables tools, or confines them to a read-only, no-network sandbox.
+	NoTools bool
 }
 
 // UserMCPServer is local with Command, Args and Env, or remote with URL and Headers.

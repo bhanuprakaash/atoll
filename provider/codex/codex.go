@@ -575,13 +575,17 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 		return nil, err
 	}
 	params := map[string]any{"cwd": cfg.Cwd, "approvalPolicy": "never", "config": config}
+	if cfg.NoTools {
+		params["sandbox"] = "read-only"
+		config["web_search"] = "disabled"
+	}
 	if cfg.Model != "" {
 		params["model"] = cfg.Model
 	}
 	if cfg.SystemPrompt != "" {
 		params["developerInstructions"] = cfg.SystemPrompt
 	}
-	if cfg.MCPURL != "" {
+	if cfg.MCPURL != "" && !cfg.NoTools {
 		servers := map[string]any{provider.MCPServer: map[string]string{"url": cfg.MCPURL}}
 		if cfg.GitHubMCPURL != "" {
 			servers[provider.GitHubMCPServer] = map[string]any{

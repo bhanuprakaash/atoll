@@ -269,10 +269,11 @@ func TestThreadConfig(t *testing.T) {
 
 func TestThreadParams(t *testing.T) {
 	tests := []struct {
-		name   string
-		mcpURL string
-		system string
-		want   string
+		name    string
+		mcpURL  string
+		system  string
+		want    string
+		noTools bool
 	}{
 		{
 			name: "without MCP",
@@ -288,11 +289,21 @@ func TestThreadParams(t *testing.T) {
 		},
 		{name: "system addition", system: "addition", want: `{"approvalPolicy":"never","config":{"features":{"apps":false,"plugins":false,` +
 			`"remote_plugin":false},"skills":{"bundled":{"enabled":false}}},"cwd":"/work","developerInstructions":"addition"}`},
+		{
+			name: "title without tools", noTools: true,
+			want: `{"approvalPolicy":"never","config":{"features":{"apps":false,"plugins":false,` +
+				`"remote_plugin":false},"skills":{"bundled":{"enabled":false}},"web_search":"disabled"},"cwd":"/work","sandbox":"read-only"}`,
+		},
+		{
+			name: "no tools ignores MCP", noTools: true, mcpURL: "http://127.0.0.1:9/mcp/t0k",
+			want: `{"approvalPolicy":"never","config":{"features":{"apps":false,"plugins":false,` +
+				`"remote_plugin":false},"skills":{"bundled":{"enabled":false}},"web_search":"disabled"},"cwd":"/work","sandbox":"read-only"}`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			params, err := threadParams(provider.Config{Cwd: "/work", MCPURL: tt.mcpURL, SystemPrompt: tt.system})
+			params, err := threadParams(provider.Config{Cwd: "/work", MCPURL: tt.mcpURL, SystemPrompt: tt.system, NoTools: tt.noTools})
 			if err != nil {
 				t.Fatal(err)
 			}

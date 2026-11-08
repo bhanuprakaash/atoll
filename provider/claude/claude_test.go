@@ -117,21 +117,24 @@ func TestArgv(t *testing.T) {
 		"--allowedTools", "mcp__atoll",
 	}
 	tests := []struct {
-		name   string
-		mcpURL string
-		system string
-		extra  []string
-		want   []string
+		name    string
+		mcpURL  string
+		system  string
+		extra   []string
+		want    []string
+		noTools bool
 	}{
-		{"without MCP", "", "", nil, base},
-		{"with MCP", "http://127.0.0.1:9/mcp/t0k", "", nil, append(base[:len(base):len(base)], mcp...)},
+		{"without MCP", "", "", nil, base, false},
+		{"with MCP", "http://127.0.0.1:9/mcp/t0k", "", nil, append(base[:len(base):len(base)], mcp...), false},
 		{"resume comes last", "http://127.0.0.1:9/mcp/t0k", "", []string{"--resume", "abc"},
-			append(append(base[:len(base):len(base)], mcp...), "--resume", "abc")},
-		{"system on resume", "", "addition", []string{"--resume", "abc"}, append(base[:len(base):len(base)], "--append-system-prompt", "addition", "--resume", "abc")},
+			append(append(base[:len(base):len(base)], mcp...), "--resume", "abc"), false},
+		{"system on resume", "", "addition", []string{"--resume", "abc"}, append(base[:len(base):len(base)], "--append-system-prompt", "addition", "--resume", "abc"), false},
+		{"title without tools", "", "", nil, append(base[:len(base):len(base)], "--tools", ""), true},
+		{"no tools ignores MCP", "http://127.0.0.1:9/mcp/t0k", "", nil, append(base[:len(base):len(base)], "--tools", ""), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := argv(provider.Config{MCPURL: tt.mcpURL, SystemPrompt: tt.system}, tt.extra...)
+			got, err := argv(provider.Config{MCPURL: tt.mcpURL, SystemPrompt: tt.system, NoTools: tt.noTools}, tt.extra...)
 			if err != nil {
 				t.Fatal(err)
 			}

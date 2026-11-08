@@ -322,7 +322,7 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 	if cfg.SystemPrompt != "" {
 		args = append(args, "--append-system-prompt", cfg.SystemPrompt)
 	}
-	if cfg.MCPURL != "" {
+	if cfg.MCPURL != "" && !cfg.NoTools {
 		mcpServers := map[string]any{
 			provider.MCPServer: map[string]any{"type": "http", "url": cfg.MCPURL},
 		}
@@ -354,6 +354,9 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 	}
 	if cfg.SkillDir != "" {
 		args = append(args, "--add-dir", cfg.SkillDir)
+	}
+	if cfg.NoTools {
+		args = append(args, "--tools", "")
 	}
 	return append(args, extra...), nil
 }

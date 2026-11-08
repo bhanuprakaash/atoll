@@ -678,7 +678,9 @@ Voice
 - Thread titles: the first six words of the first message (a helper's brief), set when that message
   is sent and stored, with trailing `.,;:!?` removed from the last word. After the thread's first
   reply, Reef asks the Bot's provider for a better one: a session of its own on the provider's
-  cheapest model (Claude Code `haiku`, Codex `gpt-6-luna`), with no MCP server, in
+  cheapest model (Claude Code `haiku`, Codex `gpt-6-luna`), with no MCP server and the environment
+  of a Bot with no connections. Claude disables tools (`--tools ""`); Codex uses a read-only,
+  no-network sandbox with web search disabled. The session runs in
   `<data>/titles`, given the first message and the reply, each cut to 2,000 characters. The answer's
   first line, at most six words, first letter upper case, no trailing punctuation, replaces the
   title only if it is still the first-words one. It is not a run, shows no status line and never
