@@ -8,10 +8,7 @@ import { threadTree } from '@/modules/bots/utils/thread-tree';
 const marker = (t: SidebarThread) =>
   t.state ? t.state.replace('_', '-') : t.pinned ? 'pinned' : undefined;
 
-const treeItem =
-  'relative before:absolute before:top-0 before:-left-3.75 before:bottom-0 before:border-l-[1.5px] before:border-composer-line after:absolute after:top-1/2 after:-left-3.75 after:w-2.25 after:border-t-[1.5px] after:border-composer-line last:before:bottom-1/2 last:before:w-2.25 last:before:rounded-bl-lg last:before:border-b-[1.5px] last:after:hidden';
-
-const rowStyle = 'flex h-7 items-center gap-2 rounded-lg px-2 text-[13px]';
+const rowStyle = 'flex h-8 items-center gap-2.5 rounded-lg px-2 text-[13px]';
 
 function Dot({ className = '' }: { className?: string }) {
   return <span aria-hidden="true" className={`size-1.5 flex-none rounded-full ${className}`} />;
@@ -78,6 +75,26 @@ export function ThreadLabel({ thread }: { thread: SidebarThread }) {
   );
 }
 
+function ThreadMarker({ thread }: { thread: SidebarThread }) {
+  if (thread.state === 'needs_you')
+    return (
+      <>
+        <span className="flex-none text-xs text-needs-ink">Needs you</span>
+        <Dot className="bg-danger" />
+      </>
+    );
+  if (thread.state === 'new')
+    return (
+      <>
+        <Dot className="bg-kind" />
+        <span className="sr-only">New</span>
+      </>
+    );
+  if (thread.state === 'running') return <Wave label="Running" />;
+  if (thread.pinned && thread.state === '') return <Pin />;
+  return null;
+}
+
 function RenameField({ title, onDone }: { title: string; onDone: (title?: string) => void }) {
   return (
     <TextField
@@ -122,13 +139,13 @@ export function ThreadTree({
     <>
       <ul
         aria-label={`${bot.name} threads`}
-        className={`mb-1.5 pr-1 pl-11.5 ${selected ? 'mt-1' : ''}`}
+        className={`relative mb-1.5 pr-1 pl-11.5 before:absolute before:top-0 before:bottom-4 before:left-[31.25px] before:w-2.5 before:rounded-bl-[9px] before:border-b-[1.5px] before:border-l-[1.5px] before:border-composer-line ${selected ? 'mt-1' : ''}`}
       >
         {rows.map((thread) => (
           <li
             key={thread.id}
             data-marker={marker(thread)}
-            className={`group ${treeItem} ${selected ? 'first:before:-top-1' : 'first:before:-top-2.5'}`}
+            className="group relative"
             onContextMenu={(event) => {
               event.preventDefault();
               setMenu({ x: event.clientX, y: event.clientY, thread });
@@ -150,7 +167,12 @@ export function ThreadTree({
                     `${rowStyle} ${isActive ? 'bg-selected' : 'hover:bg-field'}`
                   }
                 >
-                  <ThreadLabel thread={thread} />
+                  <span
+                    className={`min-w-0 flex-1 truncate ${thread.state === 'new' ? 'font-semibold' : ''}`}
+                  >
+                    {thread.title || 'Empty thread'}
+                  </span>
+                  <ThreadMarker thread={thread} />
                 </NavLink>
                 {!thread.helper && (
                   <button
@@ -179,7 +201,7 @@ export function ThreadTree({
           </li>
         ))}
         {more && (
-          <li className={treeItem}>
+          <li>
             <button
               type="button"
               onClick={() =>
@@ -187,14 +209,12 @@ export function ThreadTree({
               }
               className={`${rowStyle} w-full text-left text-[12.5px] text-label hover:bg-field`}
             >
-              <Dot className={more.kind === 'more' && more.dot ? 'bg-kind' : ''} />
-              {more.kind === 'less' ? 'Show less' : `${more.count} more`}
-              {more.kind === 'running' && (
-                <>
-                  {' running'}
-                  <Wave />
-                </>
-              )}
+              <span className="min-w-0 flex-1 truncate">
+                {more.kind === 'less' ? 'Show less' : `${more.count} more`}
+                {more.kind === 'running' && ' running'}
+              </span>
+              {more.kind === 'running' && <Wave />}
+              {more.kind === 'more' && more.dot && <Dot className="bg-kind" />}
             </button>
           </li>
         )}
