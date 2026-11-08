@@ -32,9 +32,10 @@ chronological order. A message has its stable `id`, role, text and created time.
 
 - The new title appears in the thread header and the Threads panel. The sidebar presently has no
   thread-title surface, so it has no title assertion.
-- A sidebar Bot row's second line exactly matches its API `activity`: the live run verb while it
-  works, `Needs you: …` for an approval, otherwise the latest reply's first line, at most 60
-  characters at a word boundary, followed by `…` only when cut. It never says `Done`.
+- A sidebar Bot row's second line exactly matches its API `activity` while it works (the live
+  run verb) or an approval waits (`Needs you: …`). An idle Bot row has no second line: the API
+  `activity` (the latest reply's first line, at most 60 characters at a word boundary, followed
+  by `…` only when cut) is not shown. It never says `Done`.
 - Each user message and reply has a `data-testid="message-time"` beneath it. It displays the message's `created_at` as `H:MM`
   today, `Yesterday H:MM` yesterday, `Mon H:MM` within the last seven days, otherwise
   `6 Nov H:MM`. It is 12px and has the same computed color as an existing muted element.

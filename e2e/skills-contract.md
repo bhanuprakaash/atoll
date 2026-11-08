@@ -173,6 +173,24 @@ in the thread. This reuses Slice 4's **Saved memory** / **Retire** interaction
 shape without changing memory's semantics. The browser test asks Chief and
 clicks Undo through the UI; REST is used only to verify the result.
 
+A reply's changes fold into one quiet line per kind (entity and action), each
+still a **Platform change** region. The line is a `button` with `aria-expanded`
+(`false` by default, not remembered) whose accessible name contains the summary:
+`Created 2 Bots: Poteto Agent, Comment Sicko` for two, `Created … Lagoon` for
+one (the test matches `/Created .*Lagoon/`). Creatures inside the button may add
+their image labels to its name, so the tests do not anchor the start. The main
+action is a separate `button` in the region, outside the toggle: **Undo all**
+for several changes, **Undo** for one; it works folded and then shows **Undone**
+in its place. Folded shows no **Open** link and no per-Bot **Undo**. Clicking
+the toggle opens today's card in place (`aria-expanded` `true`): per Bot its
+name as its own text, a `link` **Open** and a `button` **Undo**; clicking it
+again folds. While open, each action and **Undone** show once: a single
+change's **Undo** is its row's. The run's `Blocked: …` line is never inside a
+toggle and shows while the lines are folded. The scenario `platform-calls`
+(prompt `Call platform tools. ` then a JSON array of `{tool,args}`) makes every
+call in one run, replies `Made <n> platform calls.` and reports `blocked`
+"Comment Sicko needs a GitLab connection to review MRs.".
+
 ## Fakes and acceptance mapping
 
 New recordings reuse the existing recorded transport envelopes and session IDs;
@@ -208,7 +226,8 @@ temporary and the harness removes them.
 | Placed copy drops `disable-model-invocation`; library unchanged | `TestSkills_PlacedCopyDropsDisableModelInvocation/{claude,codex}` |
 | Repo skills still load | `TestSkills_RepoAndBotSkills/{claude,codex}` in clean checkout and edit worktree alongside Bot skills |
 | Next-run semantics and concurrent isolation | `TestSkills_ConcurrentRunsAndNextRun/{claude,codex}` |
-| UI chat → change with Undo → restored state | `ui/skills.spec.ts` |
+| UI chat → change with Undo → restored state | `ui/skills.spec.ts` "Chief creates a skill and Bot in chat, and Undo removes the Bot" |
+| Two Bots in a reply: one line with both names, Undo all works folded, the line opens (Open and Undo per Bot) and folds, Blocked not folded | `ui/skills.spec.ts` "a reply that created 2 Bots folds into one line: …" |
 | Fakes operate before implementation | `TestSkillsFixtures_ProviderScenarios/{claude,codex}` (create, create-codex, configure, edit, denied, use, prompt-only, disabled, worktree, hold) |
 
 The contract does not require a platform prompt change: skill discovery is native

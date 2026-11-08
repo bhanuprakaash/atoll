@@ -107,12 +107,18 @@ interrupts, as a stuck command would), and an open approval closes (`POST /api/a
 
 ## UI contract
 
-Found by role and accessible name. Colours, sizes and motion curves are not tested.
+Found by role and accessible name. Colours, sizes (except the sidebar width) and motion curves are
+not tested.
 
 - **Sidebar**: `navigation` "Bots". One `link` per Bot, Chief first, with its creature as an `img`
   named `<Creature>, <state>` (`Jellyfish, idle`, `Shark, needs you`, `Narwhal, asleep`,
-  `Shark, working`, `Shark, failed`). A needs-you row's activity names what it waits for. Also a
-  `button` "New Bot" and a `link` whose name contains "Settings".
+  `Shark, working`, `Shark, failed`). A needs-you row's activity names what it waits for; an
+  idle row shows no activity (see [sidebar-tree-contract.md](sidebar-tree-contract.md)). Also a
+  `button` "New Bot" and a `link` whose name contains "Settings". The sidebar's width is the
+  `navigation`'s box, 340px on first launch. Its right edge is a focusable `separator` "Resize
+  sidebar" (`aria-orientation="vertical"`, `aria-valuenow` the width, `aria-valuemin` 260,
+  `aria-valuemax` 480): dragging moves the width within 260–480, double-click sets 340, Left and
+  Right arrows change it by 16px, and the width survives a reload (`ui/sidebar-resize.spec.ts`).
 - **Bot page**: a `button` named `Threads` (when threads wait on the user, the name also carries
   their count, e.g. `Threads, 1 waiting`) and a `button` "Bot settings". Clicking a Bot with no
   threads opens its empty thread.

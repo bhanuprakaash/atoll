@@ -50,7 +50,7 @@ export function BotHeader({
   return (
     <header
       data-tauri-drag-region="deep"
-      className="grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start pt-3.5"
+      className="relative z-10 grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5"
     >
       <div
         data-island
@@ -134,6 +134,10 @@ export function BotHeader({
           <circle cx="10" cy="17" r="2" />
         </svg>
       </button>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-full h-6 bg-linear-to-b from-bg to-transparent"
+      />
     </header>
   );
 }
