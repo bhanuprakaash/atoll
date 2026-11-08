@@ -22,6 +22,8 @@ import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 import { clockTime } from '@/utils/time';
 
+const chatText = 'text-base leading-[1.65] tracking-normal';
+
 function duration(run: Run) {
   const seconds =
     Math.max(0, Math.floor((Date.parse(run.finished_at) - Date.parse(run.started_at)) / 1000)) || 0;
@@ -66,7 +68,7 @@ function RunResult({
     run.status === 'stopped' && `Stopped by you after ${duration(run)}`,
   ].filter(Boolean);
   return (
-    <div className="flex flex-col gap-0.5 text-sm text-muted">
+    <div className="flex flex-col gap-6 text-sm text-muted">
       {blocked && !['none', 'nothing', 'nothing.'].includes(blocked.toLowerCase()) && (
         <p className="relative text-ink/80">
           <span
@@ -231,7 +233,7 @@ function MessageLine({
   if (message.from_bot_id) {
     const report = brief ? { prose: message.text, threadId: '' } : helperReport(message.text);
     const text = (
-      <div className="text-[15px] leading-normal">
+      <div className={chatText}>
         <Markdown threadId={threadId}>{report.prose}</Markdown>
       </div>
     );
@@ -246,7 +248,7 @@ function MessageLine({
           {from?.name ?? 'Helper'}
         </span>
         {brief ? (
-          <Clamp className="self-stretch text-[15px] leading-normal">
+          <Clamp className={`self-stretch ${chatText}`}>
             <Markdown threadId={threadId}>{report.prose}</Markdown>
           </Clamp>
         ) : (
@@ -279,7 +281,9 @@ function MessageLine({
             </div>
           )}
           {message.text && (
-            <div className="rounded-[22px] bg-accent px-[18px] py-2.5 text-[15px] leading-normal whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]">
+            <div
+              className={`rounded-[22px] bg-accent px-[18px] py-2.5 ${chatText} whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]`}
+            >
               <Clamp toggle="text-[13px] text-accent-ink/60 hover:text-accent-ink">
                 {message.text}
               </Clamp>
@@ -290,8 +294,8 @@ function MessageLine({
       </div>
     );
   return (
-    <div data-testid="message" className="flex max-w-[85%] flex-col gap-2">
-      <div className="text-[15px] leading-normal">
+    <div data-testid="message" className="flex max-w-[85%] flex-col gap-6">
+      <div className={chatText}>
         <Markdown threadId={threadId}>{message.text}</Markdown>
       </div>
       {footer}
@@ -646,7 +650,7 @@ export function ThreadView({
           setAwayFromLatest(!atLatest);
           loadOlder();
         }}
-        className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-7 [mask-image:linear-gradient(to_bottom,transparent,black_1.5rem)] ${empty ? 'justify-center' : ''}`}
+        className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-7 ${empty ? 'justify-center' : ''}`}
       >
         <div className="mx-auto flex w-full max-w-190 flex-col gap-4.5 pt-6 pb-4">
           {empty && (
@@ -716,7 +720,7 @@ export function ThreadView({
             );
           })}
           {Object.entries(runs).map(([id, run]) => (
-            <div key={id} className="flex flex-col gap-2">
+            <div key={id} className="flex flex-col gap-6">
               <LiveRun id={id} run={run} look={look} />
               {run.finished && !answered.has(id) && (
                 <>
@@ -727,7 +731,7 @@ export function ThreadView({
             </div>
           ))}
           {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-6">
               {afterRun?.(thread.run_id)}
               <RunResult id={thread.run_id} retry={retry} signedOut={signedOut} />
             </div>
