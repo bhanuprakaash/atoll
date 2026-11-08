@@ -78,6 +78,7 @@ type (
 		Delta      string          `json:"delta"`
 		ItemID     string          `json:"itemId"`
 		ServerName string          `json:"serverName"`
+		RequestID  json.RawMessage `json:"requestId"`
 		Item       json.RawMessage `json:"item"`
 		Turn       struct {
 			Status string `json:"status"`
@@ -466,6 +467,13 @@ func (s *Session) handle(m message) bool {
 			return false
 		}
 		s.msgID, s.wrote = itemID, true
+	case "serverRequest/resolved":
+		id := string(m.body().RequestID)
+		s.askMu.Lock()
+		_, open := s.asks[id]
+		delete(s.asks, id)
+		s.askMu.Unlock()
+		return !open || s.emit(provider.Event{Kind: provider.KindApprovalEnd, ID: id})
 	}
 	ev, ok := m.event()
 	if !ok {

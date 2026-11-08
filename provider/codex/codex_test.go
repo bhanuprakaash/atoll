@@ -307,6 +307,38 @@ func TestThreadParams(t *testing.T) {
 	}
 }
 
+func TestSession_requestResolved(t *testing.T) {
+	tests := []struct {
+		name    string
+		request string
+		resolve string
+		want    string // ID of the KindApprovalEnd event, empty for none
+	}{
+		{name: "pending request", request: `7`, resolve: `{"requestId":7,"threadId":"t"}`, want: "7"},
+		{name: "string id", request: `"a"`, resolve: `{"requestId":"a","threadId":"t"}`, want: `"a"`},
+		{name: "unknown request", request: `7`, resolve: `{"requestId":8,"threadId":"t"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New()
+			s.serverRequest(message{ID: json.RawMessage(tt.request), Method: "item/commandExecution/requestApproval"})
+			<-s.Events()
+			s.handle(message{Method: "serverRequest/resolved", Params: json.RawMessage(tt.resolve)})
+			ev := provider.Event{}
+			select {
+			case ev = <-s.Events():
+			default:
+			}
+			if ev.ID != tt.want || (tt.want != "" && ev.Kind != provider.KindApprovalEnd) {
+				t.Errorf("event %+v, want KindApprovalEnd with ID %q", ev, tt.want)
+			}
+			if tt.want != "" && s.Answer(tt.want, true) == nil {
+				t.Error("an answer to a resolved request was accepted")
+			}
+		})
+	}
+}
+
 func TestFileChangeApprovalDetails(t *testing.T) {
 	tests := []struct{ name, itemID, want string }{
 		{name: "matching item", itemID: "edit-1", want: `"changes":[{"path":"a.go","diff":"+line"}]`},

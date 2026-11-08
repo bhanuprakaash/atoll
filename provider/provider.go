@@ -120,9 +120,10 @@ const (
 	KindText    Kind = iota + 1 // Text is a piece of the reply
 	KindSession                 // SessionID is the id Resume takes
 	KindTurnEnd
-	KindError    // Text is the error; SignedOut when the provider refused its sign-in
-	KindToolCall // ID, Name and Input: a tool call started
-	KindApproval // ID, Name and Input: the provider waits for Answer(ID, ...)
+	KindError       // Text is the error; SignedOut when the provider refused its sign-in
+	KindToolCall    // ID, Name and Input: a tool call started
+	KindApproval    // ID, Name and Input: the provider waits for Answer(ID, ...)
+	KindApprovalEnd // ID: the provider ended the request without an Answer
 )
 
 // Event is one step of a session.

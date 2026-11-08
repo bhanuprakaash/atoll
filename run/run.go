@@ -38,6 +38,8 @@ var (
 		"give this Bot the GitHub connection in its settings, then ask again")
 )
 
+var errRequestEnded = errors.New("the provider ended the request")
+
 // Event types on a thread's stream.
 const (
 	EventText        = "text"            // Text: a piece of the reply
@@ -734,10 +736,21 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 // turn's text is dropped.
 func (m *Manager) stream(a *active, sess provider.Session, showText bool) (string, error) {
 	var reply strings.Builder
+	var wg sync.WaitGroup
+	asks := map[string]context.CancelCauseFunc{}
+	failed := make(chan error, 1)
+	defer func() {
+		for _, cancel := range asks {
+			cancel(nil)
+		}
+		wg.Wait()
+	}()
 	for {
 		select {
 		case <-a.ctx.Done():
 			return "", a.ctx.Err()
+		case err := <-failed:
+			return "", err
 		case ev, ok := <-sess.Events():
 			if !ok {
 				return "", errors.New("provider exited before the turn ended")
@@ -783,12 +796,26 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 					close(ch)
 				}
 			case provider.KindApproval:
-				allow, err := m.approve(a.ctx, a, ev.Name, ev.Input)
-				if err != nil {
-					return "", err
-				}
-				if err := sess.Answer(ev.ID, allow); err != nil {
-					return "", fmt.Errorf("answer approval: %w", err)
+				ctx, cancel := context.WithCancelCause(a.ctx)
+				asks[ev.ID] = cancel
+				wg.Go(func() {
+					allow, err := m.approve(ctx, a, ev.Name, ev.Input)
+					if err == nil {
+						if err = sess.Answer(ev.ID, allow); err != nil {
+							err = fmt.Errorf("answer approval: %w", err)
+						}
+					}
+					if err != nil && !errors.Is(context.Cause(ctx), errRequestEnded) {
+						select {
+						case failed <- err:
+						default:
+						}
+					}
+				})
+			case provider.KindApprovalEnd:
+				if cancel, ok := asks[ev.ID]; ok {
+					cancel(errRequestEnded)
+					delete(asks, ev.ID)
 				}
 			case provider.KindTurnEnd:
 				return reply.String(), nil

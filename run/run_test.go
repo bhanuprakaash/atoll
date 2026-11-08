@@ -448,6 +448,34 @@ func TestRun_Approval(t *testing.T) {
 	}
 }
 
+func TestRun_ApprovalEndedByProvider(t *testing.T) {
+	e := newEnv(t, &fakeSession{script: []provider.Event{
+		{Kind: provider.KindApproval, ID: "p1", Name: "Write", Input: json.RawMessage(`{"a":1}`)},
+	}})
+	_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ap := nextAs[Approval](t, e, EventApproval)
+	e.sess.events <- provider.Event{Kind: provider.KindApprovalEnd, ID: "p1"}
+	if closed := nextAs[ApprovalClosed](t, e, EventApprovalEnd); closed.ID != ap.ID {
+		t.Errorf("approval_closed id %q, want %q", closed.ID, ap.ID)
+	}
+	if err := e.m.Answer(t.Context(), ap.ID, true); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Answer after the provider ended the request: %v, want ErrNotFound", err)
+	}
+	e.sess.events <- provider.Event{Kind: provider.KindTurnEnd}
+	e.next(t, EventRunFinished)
+	if got, _ := e.st.Run(t.Context(), run.ID); got.Status != store.StatusDone {
+		t.Errorf("status %q, want done", got.Status)
+	}
+	e.sess.mu.Lock()
+	defer e.sess.mu.Unlock()
+	if len(e.sess.answers) != 0 {
+		t.Errorf("provider answers %v, want none", e.sess.answers)
+	}
+}
+
 func TestRun_ApprovalOutlivesRun(t *testing.T) {
 	tests := []struct {
 		name       string
