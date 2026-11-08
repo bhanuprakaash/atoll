@@ -114,6 +114,30 @@ Undo of a repo registration is refused while a thread uses the repo.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
   into a pane the user can take over (v2).
 
+## Attachments
+
+- A user message can carry images: `POST` of a message or a new thread takes `images: [{mime, data}]`
+  with `data` in base64. Allowed: `image/png`, `image/jpeg`, `image/gif`, `image/webp`; at most 5 MB
+  decoded each and 10 per message. Any breach is `400` and nothing is stored: no message, no run.
+  Text may be empty when there is an image.
+- Images live in the SQLite `attachments` table (bytes as a BLOB), saved with their message in one
+  transaction and removed with it (`ON DELETE CASCADE`, so deleting a Bot removes them). A message
+  lists `attachments: [{id, mime}]`, never the bytes; `GET /api/attachments/{id}` returns them with
+  the stored `Content-Type`, `404` if unknown. *SQLite keeps one file to back up and no path to
+  guard; the 5 MB cap bounds the size.*
+- The run hands the images to the provider with the prompt of the turn that delivers the message;
+  the finish_run nudge sends none. Claude gets stream-json content blocks: the text block first
+  (when there is text), then one `{"type":"image","source":{"type":"base64",...}}` per image. Codex
+  gets `turn/start` input items: the text item first, then one `{"type":"image","url":"data:<mime>;base64,..."}`
+  per image.
+- `GET /api/threads/{id}/file?path=<p>` serves an image file (png, jpg, jpeg, gif, webp) of the
+  thread's work folder (its worktree, else its own checkout), so a Bot's reply can show a screenshot
+  it saved: a relative `p` resolves against that folder, symlinks are resolved, and a path outside
+  it, a non-image or a missing file answers `404`. The UI turns a reply's Markdown image with a relative `src` into
+  this route.
+- The composer takes images by paste and drop; the desktop webview turns its own drag-and-drop
+  handler off so drop events reach the page.
+
 ## Delegation
 
 - A Bot may delegate only to Bots on its delegate list: empty by default, set in Bot settings or by

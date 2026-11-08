@@ -54,6 +54,7 @@ fn main() {
             .background_color(Color(19, 19, 19, 255))
             .inner_size(1200.0, 800.0)
             .min_inner_size(700.0, 500.0)
+            .disable_drag_drop_handler()
             .on_new_window(|url, _| {
                 if matches!(url.scheme(), "http" | "https" | "mailto") {
                     if let Err(err) = Command::new("open").arg(url.as_str()).spawn() {
