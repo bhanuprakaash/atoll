@@ -1,7 +1,5 @@
 import { type ReactNode, useState } from 'react';
 
-// Fold is one quiet line of a reply: icon, summary and the main action, then a chevron. The line
-// opens its children in place; the action stays outside the toggle so it works while folded.
 export function Fold({
   icon,
   summary,
