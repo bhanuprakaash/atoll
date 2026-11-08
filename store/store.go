@@ -152,7 +152,6 @@ type (
 		SnapshotRef     string     `json:"snapshot_ref"`
 		ClosedAt        *time.Time `json:"closed_at"`
 		Closed          bool       `json:"closed"`
-		Pinned          bool       `json:"pinned"`
 		Created         time.Time  `json:"created_at"`
 		LastActivity    time.Time  `json:"last_activity"`
 	}
@@ -213,7 +212,7 @@ type (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, pinned_at IS NOT NULL"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id"
 	_messagePageSize = 50
 )
 
@@ -1257,7 +1256,7 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	var closedAt sql.NullInt64
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
 		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
-		&t.Title, &t.ParentThreadID, &t.Pinned)
+		&t.Title, &t.ParentThreadID)
 	if err != nil {
 		return Thread{}, err
 	}

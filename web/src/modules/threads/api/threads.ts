@@ -21,7 +21,6 @@ export type Thread = {
   verb: string;
   step: string;
   closed: boolean;
-  pinned: boolean;
   created_at: string;
   title: string;
   last_activity: string;
