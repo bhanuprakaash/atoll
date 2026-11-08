@@ -692,14 +692,21 @@ Voice
   then a Blocked line (from `finish_run`'s `blocked`) whose dot hangs in the margin so its text
   starts at the reply's edge. Spacing: 18 px between messages, 8 px between a message's parts, 2 px
   between footer lines.
-- Chief's changes: new Bots, one or several, show as one compact card the full reply width:
-  creature, name, provider · model · skills · repos, Open and Undo per row, Undo all for two or
-  more. An edit names the fields (`Edited Poteto · persona`); short values show inline (`model
-  sonnet → opus`), a long one opens below as Before / After behind Show change. Two or more other
-  changes of one kind show as one line ("Created 5 skills teach, tdd, …") with Undo all. The Bot
-  that made a change is named only when it is not the thread's own Bot.
-- A saved memory shows two lines of its text, then its kind, why and source as plain muted text,
-  with Details (scope, what it replaced) and Retire. A retired item leaves the thread.
+- Chief's changes and saved memory are quiet lines, one per kind (new Bots, edits, saved memory),
+  folded by default and not remembered. A line is one grey 13.5 px row: up to 3 small creatures for
+  new Bots, a pencil for other changes, a bookmark for memory, a summary, the main action in muted
+  text, then `›`. `Created 2 Bots: Poteto Agent, Comment Sicko · Undo all ›`, `Edited Poteto:
+  persona, delegates · Undo ›`, `Saved 2 memories: a finding, a decision ›` (one memory: `Saved a
+  memory: <first words> ›`). The action (Undo, Undo all) sits outside the toggle and works while
+  folded, then shows Undone. Clicking the line opens today's card in place and clicking again
+  folds it. A new Bot's card shows creature, name, provider · model · skills · repos, Open and
+  Undo per row (the line's own Undo hides while it is open for one Bot). An edit opens as Before /
+  After per field. A saved memory opens as two lines of its text, then its kind, why and source as
+  plain muted text, with Details (scope, what it replaced) and Retire. A retired item leaves the
+  thread. Two or more other changes of one kind show as one line ("Created 5 skills: teach, tdd,
+  …") with Undo all and nothing to open. The Bot that made a change is named only when it is not
+  the thread's own Bot. A Blocked line is never folded. *Cards and rows competed with the reply;
+  the user wanted the prose to lead.*
 - Long text clamps where it can grow without limit, never a Bot's reply: the user's message and a
   boss's brief at 8 lines with a fade and Show more / Show less; a memory item, an edit line and a
   Blocked line at 2 lines. The window itself never scrolls.

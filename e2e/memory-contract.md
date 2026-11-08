@@ -107,6 +107,19 @@ Bot name and a **Retire** button. Clicking Retire marks it **Retired**, removes
 the button, keeps its body visible and changes that same item's REST status to
 `retired`. Only verification uses REST; creating and retiring happen in the UI.
 
+A reply's saves fold into one quiet line in that region: a `button` with
+`aria-expanded` (`false` by default, not remembered) whose accessible name
+contains `Saved 2 memories: a finding, a decision` (kinds in save order) or,
+for one, `Saved a memory: <first words>` (the test matches
+`/Saved a memory: Use SQLite/`). The summary is one text in the button, so each
+body shows exactly once, in its row. Folded shows no **Details** or **Retire**.
+Clicking the line opens today's rows (`aria-expanded` `true`): per memory its
+body as its own text, why, Bot name, kind, and `button`s **Details** and
+**Retire**. Retire works from the open line. The scenario `memory-save-pair`
+(prompt "Save the journal finding and decision in user memory.") remembers, in
+user scope, the finding "The journal fsync takes 40 ms on CI." then the decision
+"Batch journal writes every 50 ms." and replies "Saved a finding and a decision.".
+
 ## Prompt layout and golden files
 
 `testdata/golden/system.txt` is the complete draft from `docs/design.md`, with
@@ -174,6 +187,7 @@ No CI or ordinary test run invokes `-update`.
 | Resume only unseen memory                           | `TestMemory_ResumeOnlyUnseen/{claude,codex}`                                                      |
 | Retire excludes later prompts, preserves history    | `TestMemory_RetireKeepsHistory/{claude,codex}/{mcp,rest}`                                         |
 | Browser save and Retire                             | `ui/memory.spec.ts`                                                                               |
+| Two saves: one "Saved 2 memories" line; open shows Details and Retire per memory; Retire works | `ui/memory.spec.ts` "a reply that saved 2 memories folds into one line; …" |
 | Fakes work before implementation exists             | `TestMemoryFixtures_ProviderScenarios/{claude,codex}/{save,save-user,recall,check,resume,retire}` |
 
 All acceptance boxes stay unticked: these tests intentionally fail against
