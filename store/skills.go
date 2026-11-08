@@ -326,6 +326,19 @@ func (s *Store) Changes(ctx context.Context, threadID string) ([]Change, error) 
 		scanChange, threadID)
 }
 
+// Change returns one recorded platform change.
+func (s *Store) Change(ctx context.Context, id string) (Change, error) {
+	rows, err := query(ctx, s.db,
+		"SELECT "+_changeColumns+" FROM changes WHERE id = ?", scanChange, id)
+	if err != nil {
+		return Change{}, fmt.Errorf("read change %s: %w", id, err)
+	}
+	if len(rows) == 0 {
+		return Change{}, fmt.Errorf("change %s: %w", id, ErrNotFound)
+	}
+	return rows[0], nil
+}
+
 // UndoChange restores the state before a change and marks it undone.
 func (s *Store) UndoChange(ctx context.Context, id string) (Change, error) {
 	var c Change
@@ -368,12 +381,24 @@ func (s *Store) UndoChange(ctx context.Context, id string) (Change, error) {
 			if err != nil {
 				return fmt.Errorf("undo create: %w", err)
 			}
-			if err := found(res, c.Entity, c.EntityID); err != nil {
-				return err
+			// The HTTP undo handler removes Bots through the run manager first.
+			if c.Entity != EntityBot {
+				if err := found(res, c.Entity, c.EntityID); err != nil {
+					return err
+				}
 			}
 			if c.Entity == EntityBot {
 				if err := dropDelegate(ctx, tx, c.EntityID); err != nil {
 					return err
+				}
+			}
+			if c.Entity == EntityRepo {
+				_, err := tx.ExecContext(ctx,
+					"UPDATE bots SET repo_access = (SELECT json_group_array(value) FROM json_each(repo_access) "+
+						"WHERE value != ?1) WHERE EXISTS (SELECT 1 FROM json_each(repo_access) WHERE value = ?1)",
+					c.EntityID)
+				if err != nil {
+					return fmt.Errorf("drop repo from bot access: %w", err)
 				}
 			}
 		case c.Action == ActionEdit && c.Entity == EntityBot:
@@ -382,6 +407,9 @@ func (s *Store) UndoChange(ctx context.Context, id string) (Change, error) {
 				return fmt.Errorf("decode bot before: %w", err)
 			}
 			b.ID = c.EntityID
+			if err := filterBotIDs(ctx, tx, &b); err != nil {
+				return err
+			}
 			if err := updateBot(ctx, tx, b); err != nil {
 				return err
 			}
@@ -408,4 +436,36 @@ func (s *Store) UndoChange(ctx context.Context, id string) (Change, error) {
 		return Change{}, err
 	}
 	return c, nil
+}
+
+func filterBotIDs(ctx context.Context, tx *sql.Tx, b *Bot) error {
+	for _, refs := range []struct {
+		ids   *[]string
+		table string
+	}{
+		{(*[]string)(&b.RepoAccess), "repos"},
+		{&b.Delegates, "bots WHERE removed = 0"},
+		{&b.MCPServers, "mcp_servers"},
+		{&b.Skills, "skills"},
+		{&b.Connections, "connections"},
+	} {
+		if *refs.ids == nil {
+			continue
+		}
+		data, err := json.Marshal(*refs.ids)
+		if err != nil {
+			return fmt.Errorf("encode bot ids: %w", err)
+		}
+		ids, err := query(ctx, tx,
+			"SELECT value FROM json_each(?) WHERE value IN (SELECT id FROM "+refs.table+")",
+			func(r *sql.Rows) (string, error) {
+				var id string
+				return id, r.Scan(&id)
+			}, string(data))
+		if err != nil {
+			return fmt.Errorf("filter bot ids: %w", err)
+		}
+		*refs.ids = append([]string{}, ids...)
+	}
+	return nil
 }

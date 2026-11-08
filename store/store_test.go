@@ -137,7 +137,9 @@ func TestStore_UndoChange(t *testing.T) {
 		name, entity, action, setup, before, want string
 	}{
 		{"bot create", store.EntityBot, store.ActionCreate, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'p', 'claude')`, `null`, `missing`},
-		{"bot edit", store.EntityBot, store.ActionEdit, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"can_manage_platform":true}`, `{"id":"item","name":"old","persona":"person","provider":"claude","mode":"auto","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"mcp_servers":[],"delegates":[],"can_manage_platform":true}`},
+		{"bot edit", store.EntityBot, store.ActionEdit, `INSERT INTO repos VALUES ('repo', 'r', '/repo'); INSERT INTO connections VALUES ('conn', 'gitlab', 'https://gitlab.com', 'connected'); INSERT INTO skills (id, name, content) VALUES ('skill', 's', 'text'); INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"can_manage_platform":true}`, `{"id":"item","name":"old","persona":"person","provider":"claude","mode":"auto","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"mcp_servers":[],"delegates":[],"can_manage_platform":true}`},
+		{"bot edit drops deleted ids", store.EntityBot, store.ActionEdit, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex'); INSERT INTO bots (id, name, persona, provider, removed) VALUES ('gone', 'gone', '', 'claude', 1)`, `{"name":"old","provider":"claude","repo_access":["gone"],"connections":["gone"],"skills":["gone"],"mcp_servers":["gone"],"delegates":["gone"]}`, `{"id":"item","name":"old","persona":"","provider":"claude","mode":"auto","repo_access":[],"connections":[],"skills":[],"mcp_servers":[],"delegates":[],"can_manage_platform":false}`},
+		{"bot edit keeps all repo access", store.EntityBot, store.ActionEdit, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"name":"old","provider":"claude","repo_access":"all"}`, `{"id":"item","name":"old","persona":"","provider":"claude","mode":"auto","repo_access":"all","connections":[],"skills":[],"mcp_servers":[],"delegates":[],"can_manage_platform":false}`},
 		{"skill create", store.EntitySkill, store.ActionCreate, `INSERT INTO skills (id, name, content) VALUES ('item', 'new', 'text'); INSERT INTO skill_files VALUES ('item', 'a.sh', 'x', 1)`, `null`, `missing`},
 		{"skill edit", store.EntitySkill, store.ActionEdit, `INSERT INTO skills (id, name, content) VALUES ('item', 'new', 'text'); INSERT INTO skill_files VALUES ('item', 'new.md', 'x', 0)`, `{"id":"item","name":"old","content":"original","files":[{"path":"a.sh","content":"x","executable":true}]}`, `{"id":"item","name":"old","content":"original","source":"","files":[{"path":"a.sh","content":"x","executable":true}]}`},
 		{"repo create", store.EntityRepo, store.ActionCreate, `INSERT INTO repos VALUES ('item', 'new', '/repo')`, `null`, `missing`},
@@ -357,6 +359,13 @@ func TestStore_ThreadDetails(t *testing.T) {
 	if err := st.RemoveWorktree(ctx, thread.ID, "refs/atoll/unfinished/test"); err != nil {
 		t.Fatal(err)
 	}
+	bot.Provider = "codex"
+	if _, err := st.UpdateBot(ctx, bot); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetSession(ctx, thread.ID, "claude-session", "claude"); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.SetClosed(ctx, thread.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -377,6 +386,8 @@ func TestStore_ThreadDetails(t *testing.T) {
 		got, want any
 	}{
 		{"title", got.MRTitle, "Fix the wizard"},
+		{"session", got.Session, "claude-session"},
+		{"session provider survives settings change", got.SessionProvider, "claude"},
 		{"state", got.MRState, "merged"},
 		{"removed", got.WorktreeRemoved, true},
 		{"snapshot", got.SnapshotRef, "refs/atoll/unfinished/test"},

@@ -363,7 +363,22 @@ func (a *api) reimportSkill(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) undoChange(w http.ResponseWriter, r *http.Request) {
-	_, err := a.st.UndoChange(r.Context(), r.PathValue("id"))
+	c, err := a.st.Change(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if c.Undone {
+		a.fail(w, r, store.ErrUndone)
+		return
+	}
+	if c.Entity == store.EntityBot && c.Action == store.ActionCreate {
+		if err := a.runs.DeleteBot(r.Context(), c.EntityID); err != nil {
+			a.fail(w, r, err)
+			return
+		}
+	}
+	_, err = a.st.UndoChange(r.Context(), c.ID)
 	if err != nil {
 		a.fail(w, r, err)
 		return

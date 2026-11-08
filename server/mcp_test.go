@@ -168,6 +168,10 @@ func TestPlatform_EditBotUndo(t *testing.T) {
 	ctx := t.Context()
 	e := newPlatform(t, nil)
 	st, thread := e.st, e.thread
+	if _, err := st.DB().ExecContext(ctx,
+		"INSERT INTO skills (id, name, content) VALUES ('a', 'a', ''), ('b', 'b', ''), ('c', 'c', '')"); err != nil {
+		t.Fatal(err)
+	}
 	target, err := st.CreateBot(ctx, store.Bot{Name: "Ada", Provider: "claude", Skills: []string{"a", "b"}})
 	if err != nil {
 		t.Fatal(err)

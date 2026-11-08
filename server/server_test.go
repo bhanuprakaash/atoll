@@ -2,18 +2,135 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
+	"atoll/provider"
 	"atoll/run"
 	"atoll/store"
 )
+
+func TestUndoChange_BotSave(t *testing.T) {
+	tests := []struct {
+		name, entity, action, setup, before string
+	}{
+		{
+			name: "register repo drops access", entity: store.EntityRepo, action: store.ActionCreate,
+			setup: "INSERT INTO repos VALUES ('gone', 'gone', '/repo'); " +
+				"UPDATE bots SET repo_access = '[\"gone\"]' WHERE id = 'bot'",
+		},
+		{
+			name: "edit bot drops deleted delegate", entity: store.EntityBot, action: store.ActionEdit,
+			setup:  "INSERT INTO bots (id, name, persona, provider) VALUES ('gone', 'Helper', '', 'claude')",
+			before: `{"name":"Ada","provider":"claude","repo_access":[],"delegates":["gone"]}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, st := newHandlerWith(t, nil)
+			ctx := t.Context()
+			if _, err := st.DB().ExecContext(ctx,
+				"INSERT INTO bots (id, name, persona, provider) VALUES ('bot', 'Ada', '', 'claude'); "+tt.setup); err != nil {
+				t.Fatal(err)
+			}
+			id := "gone"
+			if tt.entity == store.EntityBot {
+				id = "bot"
+			}
+			c, err := st.RecordChange(ctx, store.Change{Entity: tt.entity, EntityID: id,
+				Action: tt.action, Before: json.RawMessage(tt.before), After: json.RawMessage(`{}`)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.entity == store.EntityBot {
+				if _, err := st.DeleteBot(ctx, "gone", nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, want := range []int{204, 409} {
+				rec := serve(h, http.MethodPost, "/api/platform/changes/"+c.ID+"/undo", "")
+				if rec.Code != want {
+					t.Fatalf("undo status = %d, body %s; want %d", rec.Code, rec.Body, want)
+				}
+			}
+			rec := serve(h, http.MethodPut, "/api/bots/bot", `{"name":"Ada 2"}`)
+			if rec.Code != 200 {
+				t.Fatalf("save status = %d, body %s; want 200", rec.Code, rec.Body)
+			}
+			bot, err := st.Bot(ctx, "bot")
+			if err != nil || !slices.Equal(bot.RepoAccess, []string{}) || len(bot.Delegates) != 0 {
+				t.Fatalf("bot = %+v, %v; want no repos or delegates", bot, err)
+			}
+		})
+	}
+}
+
+func TestUndoChange_CreateBotStopsRun(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "Ada", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := st.RecordChange(ctx, store.Change{Entity: store.EntityBot, EntityID: bot.ID,
+		Action: store.ActionCreate, After: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := &urlSession{events: make(chan provider.Event), url: make(chan string, 1)}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	runs := run.New(run.Config{Store: st, DataDir: t.TempDir(), Log: log,
+		Launch: func(context.Context, string) (provider.Session, provider.Config, error) {
+			return sess, provider.Config{}, nil
+		}})
+	t.Cleanup(func() { _ = runs.Close() })
+	h := New(st, nil, runs, log, nil)
+	if _, _, err := runs.Send(ctx, thread.ID, "hi", nil); err != nil {
+		t.Fatal(err)
+	}
+	<-sess.url
+	rec := serve(h, http.MethodPost, "/api/platform/changes/"+c.ID+"/undo", "")
+	if rec.Code != 204 {
+		t.Fatalf("undo status = %d, body %s; want 204", rec.Code, rec.Body)
+	}
+	if id, _, ok := runs.Active(thread.ID); ok {
+		t.Fatalf("run still active: %s", id)
+	}
+	select {
+	case _, ok := <-sess.events:
+		if ok {
+			t.Fatal("provider events still open")
+		}
+	default:
+		t.Fatal("provider was not interrupted")
+	}
+	if _, err := st.Bot(ctx, bot.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("Bot after undo = %v; want not found", err)
+	}
+	if _, err := st.Thread(ctx, thread.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("thread after undo = %v; want not found", err)
+	}
+	if rec := serve(h, http.MethodPost, "/api/platform/changes/"+c.ID+"/undo", ""); rec.Code != 409 {
+		t.Fatalf("second undo status = %d; want 409", rec.Code)
+	}
+}
 
 func newHandler(t *testing.T) http.Handler {
 	t.Helper()

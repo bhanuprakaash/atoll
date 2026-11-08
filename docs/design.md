@@ -73,6 +73,9 @@ Other Bots can get the switch later.
 Undo: each change stores the entity before and after; Undo writes `before` back, or removes an entity
 the change created, and keeps the record marked undone. *Records survive restart; no undo of undo.*
 Undo of a repo registration is refused while a thread uses the repo.
+Otherwise it drops the repo from Bots' access lists in the same transaction. Undo of a Bot edit
+restores only repo, delegate, MCP server, skill and connection ids that still exist. Undo of Bot
+creation uses Delete Bot's cleanup, including stopping runs and saving unfinished work.
 
 ## Threads and runs
 
