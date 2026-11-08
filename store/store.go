@@ -151,14 +151,24 @@ type (
 		RunID     string    `json:"run_id"`
 		FromBotID string    `json:"from_bot_id,omitempty"`
 		CreatedAt time.Time `json:"created_at"`
+		// Attachments are the message's images. Data is set only on a message just stored.
+		Attachments []Attachment `json:"attachments"`
 	}
 
-	// InboxItem is a held message.
+	// Attachment is an image sent with a message.
+	Attachment struct {
+		ID   string `json:"id"`
+		Mime string `json:"mime"`
+		Data []byte `json:"-"`
+	}
+
+	// InboxItem is a held message. Images ride along only when the item is sent straight away.
 	InboxItem struct {
 		ID        string
 		ThreadID  string
 		FromBotID string
 		Text      string
+		Images    []Attachment
 	}
 
 	// Run is one message handled.
@@ -636,19 +646,23 @@ func (s *Store) SetSession(ctx context.Context, threadID, session string) error 
 
 // StartRun stores the user's message and a running run for it, in one transaction.
 func (s *Store) StartRun(ctx context.Context, threadID, text string) (Message, Run, error) {
-	return s.startRun(ctx, threadID, "", text, "")
+	return s.startRun(ctx, threadID, "", text, "", nil)
 }
 
 // StartRunFrom is StartRun for an inbox item, removing it in the same transaction.
 func (s *Store) StartRunFrom(ctx context.Context, it InboxItem) (Message, Run, error) {
-	return s.startRun(ctx, it.ThreadID, it.FromBotID, it.Text, it.ID)
+	return s.startRun(ctx, it.ThreadID, it.FromBotID, it.Text, it.ID, it.Images)
 }
 
 func (s *Store) startRun(
-	ctx context.Context, threadID, fromBotID, text, inboxID string,
+	ctx context.Context, threadID, fromBotID, text, inboxID string, images []Attachment,
 ) (Message, Run, error) {
 	r := Run{ID: newID(), ThreadID: threadID, Status: StatusRunning, StartedAt: time.Now().UTC(), Tools: map[string]int{}}
 	m := Message{ID: newID(), ThreadID: threadID, Role: RoleUser, Text: text, RunID: r.ID, FromBotID: fromBotID}
+	m.Attachments = []Attachment{}
+	for _, img := range images {
+		m.Attachments = append(m.Attachments, Attachment{ID: newID(), Mime: img.Mime, Data: img.Data})
+	}
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx,
 			"INSERT INTO runs (id, thread_id, status, started_at) SELECT ?, id, ?, ? FROM threads WHERE id = ?",
@@ -931,15 +945,61 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 }
 
 func (s *Store) messages(ctx context.Context, querySQL string, args ...any) ([]Message, error) {
-	return query(ctx, s.db, querySQL,
+	msgs, err := query(ctx, s.db, querySQL,
 		func(r *sql.Rows) (m Message, err error) {
 			var at int64
 			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &at)
 			if at != 0 {
 				m.CreatedAt = time.UnixMicro(at).UTC()
 			}
+			m.Attachments = []Attachment{}
 			return m, err
 		}, args...)
+	if err != nil || len(msgs) == 0 {
+		return msgs, err
+	}
+	ids := make([]string, len(msgs))
+	byID := make(map[string]*Message, len(msgs))
+	for i := range msgs {
+		ids[i] = msgs[i].ID
+		byID[msgs[i].ID] = &msgs[i]
+	}
+	list, err := json.Marshal(ids)
+	if err != nil {
+		return nil, fmt.Errorf("encode message ids: %w", err)
+	}
+	type row struct {
+		messageID string
+		Attachment
+	}
+	rows, err := query(ctx, s.db,
+		`SELECT message_id, id, mime FROM attachments
+         WHERE message_id IN (SELECT value FROM json_each(?)) ORDER BY rowid`,
+		func(r *sql.Rows) (a row, err error) {
+			return a, r.Scan(&a.messageID, &a.ID, &a.Mime)
+		}, string(list))
+	if err != nil {
+		return nil, fmt.Errorf("list attachments: %w", err)
+	}
+	for _, a := range rows {
+		m := byID[a.messageID]
+		m.Attachments = append(m.Attachments, a.Attachment)
+	}
+	return msgs, nil
+}
+
+// Attachment returns the image with id. It wraps ErrNotFound for an unknown id.
+func (s *Store) Attachment(ctx context.Context, id string) (Attachment, error) {
+	a := Attachment{ID: id}
+	err := s.db.QueryRowContext(ctx, "SELECT mime, data FROM attachments WHERE id = ?", id).
+		Scan(&a.Mime, &a.Data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Attachment{}, fmt.Errorf("attachment %s: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return Attachment{}, fmt.Errorf("read attachment %s: %w", id, err)
+	}
+	return a, nil
 }
 
 func (s *Store) tx(ctx context.Context, fn func(*sql.Tx) error) error {
@@ -984,6 +1044,13 @@ func insertMessage(ctx context.Context, tx *sql.Tx, m Message) error {
 		m.ID, m.ThreadID, m.Role, m.Text, m.RunID, m.FromBotID)
 	if err != nil {
 		return fmt.Errorf("insert message: %w", err)
+	}
+	for _, a := range m.Attachments {
+		if _, err := tx.ExecContext(ctx,
+			"INSERT INTO attachments (id, message_id, mime, data, created_at) VALUES (?, ?, ?, ?, ?)",
+			a.ID, m.ID, a.Mime, a.Data, time.Now().UTC().UnixMicro()); err != nil {
+			return fmt.Errorf("insert attachment: %w", err)
+		}
 	}
 	return nil
 }

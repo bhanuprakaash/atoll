@@ -468,3 +468,44 @@ func TestStore_HelperRunWake_NoBoss(t *testing.T) {
 	}
 	checkWake(t, st, bt.ID, bot, "")
 }
+
+func TestStore_Attachments(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, _, err := st.StartRunFrom(ctx, store.InboxItem{
+		ThreadID: thread.ID, Text: "look",
+		Images: []store.Attachment{{Mime: "image/png", Data: []byte("png")}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := st.Messages(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || len(listed[0].Attachments) != 1 || listed[0].Attachments[0].Data != nil {
+		t.Fatalf("listed = %+v, want one message with one attachment and no bytes", listed)
+	}
+	got, err := st.Attachment(ctx, msg.Attachments[0].ID)
+	if err != nil || got.Mime != "image/png" || string(got.Data) != "png" {
+		t.Fatalf("attachment = %+v, %v", got, err)
+	}
+	if _, err := st.DeleteBot(ctx, bot.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Attachment(ctx, got.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("after bot delete: err = %v, want ErrNotFound", err)
+	}
+}
