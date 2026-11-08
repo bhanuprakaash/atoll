@@ -245,7 +245,13 @@ function MessageLine({
           <Creature look={from?.look} size={24} />
           {from?.name ?? 'Helper'}
         </span>
-        {brief ? <Clamp className="self-stretch">{text}</Clamp> : text}
+        {brief ? (
+          <Clamp className="self-stretch text-[15px] leading-normal">
+            <Markdown>{report.prose}</Markdown>
+          </Clamp>
+        ) : (
+          text
+        )}
         {report.threadId && (
           <Link to={`/bots/${message.from_bot_id}/threads/${report.threadId}`} className={quiet}>
             Open thread
