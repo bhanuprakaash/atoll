@@ -13,7 +13,10 @@ export type Message = {
   run_id: string;
   from_bot_id?: string;
   created_at: string;
+  attachments: { id: string; mime: string }[];
 };
+
+export type ImageInput = { mime: string; data: string };
 
 export type Run = {
   id: string;
@@ -74,10 +77,10 @@ export function useMessages(threadId: string) {
 export function useSendMessage(threadId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (text: string) =>
+    mutationFn: (input: { text: string; images?: ImageInput[] }) =>
       api<{ message: Message; run: Run }>(`/threads/${threadId}/messages`, {
         method: 'POST',
-        body: { text },
+        body: input,
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['messages', threadId] }),
   });

@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { Markdown } from '@/components/markdown';
+import { ZoomImage } from '@/components/zoom-image';
 import { Select } from '@/components/select';
 import {
   useMessages,
   useSendMessage,
+  type ImageInput,
   type Message,
   type Run,
 } from '@/modules/threads/api/messages';
@@ -128,11 +130,13 @@ type Bots = Record<string, { name: string; look: CreatureLook }>;
 
 function MessageLine({
   message,
+  threadId,
   from,
   retry,
   signedOut,
 }: {
   message: Message;
+  threadId: string;
   from?: Bots[string];
   retry: () => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
@@ -143,7 +147,7 @@ function MessageLine({
         <article aria-label={from?.name ?? 'Helper'} className="flex items-start gap-2.5">
           <Creature look={from?.look} size={28} />
           <div className="min-w-0 rounded-[22px] bg-selected px-[18px] py-2.5 text-[15px] leading-normal">
-            <Markdown>{message.text}</Markdown>
+            <Markdown threadId={threadId}>{message.text}</Markdown>
           </div>
         </article>
         <time
@@ -158,10 +162,25 @@ function MessageLine({
   if (message.role === 'user')
     return (
       <div data-testid="message" className="flex max-w-[75%] self-end flex-col items-end gap-1">
-        <article aria-label="You">
-          <div className="rounded-[22px] bg-accent px-[18px] py-2.5 text-[15px] leading-normal whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]">
-            {message.text}
-          </div>
+        <article aria-label="You" className="flex flex-col items-end gap-1.5">
+          {message.attachments.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {message.attachments.map((a) => (
+                <ZoomImage
+                  key={a.id}
+                  src={`/api/attachments/${a.id}`}
+                  alt="Attachment"
+                  testId="message-attachment"
+                  className="max-h-40 max-w-60 rounded-2xl object-cover"
+                />
+              ))}
+            </div>
+          )}
+          {message.text && (
+            <div className="rounded-[22px] bg-accent px-[18px] py-2.5 text-[15px] leading-normal whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]">
+              {message.text}
+            </div>
+          )}
         </article>
         <time
           className="pr-3 text-xs text-muted"
@@ -176,7 +195,7 @@ function MessageLine({
     <div data-testid="message" className="flex max-w-[85%] flex-col gap-2">
       <RunResult id={message.run_id} retry={retry} signedOut={signedOut} />
       <div className="text-[15px] leading-normal">
-        <Markdown>{message.text}</Markdown>
+        <Markdown threadId={threadId}>{message.text}</Markdown>
       </div>
       <time className="text-xs text-muted" dateTime={message.created_at} data-testid="message-time">
         {messageTime(message.created_at)}
@@ -206,7 +225,7 @@ function EmptyThread({
   threadId: string;
   disabled: boolean;
   context?: ReactNode;
-  sendFirst: (text: string) => void;
+  sendFirst: (text: string, images?: ImageInput[]) => void;
   onSent: (run: Run) => void;
 }) {
   return (
@@ -292,10 +311,10 @@ export function DraftThread({
   const navigate = useNavigate();
   const [repoId, setRepoId] = useState('');
   const create = useCreateThreadWithMessage(botId);
-  const sendFirst = (text: string) => {
+  const sendFirst = (text: string, images?: ImageInput[]) => {
     if (create.isPending) return;
     create.mutate(
-      { repoId, text },
+      { repoId, text, images },
       {
         onSuccess: (result) =>
           navigate(`/bots/${botId}/threads/${result.thread?.id ?? result.id}`, { replace: true }),
@@ -397,18 +416,18 @@ export function ThreadView({
   const answered = new Set(messages.filter((m) => m.role === 'bot').map((m) => m.run_id));
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
   const retry = () => {
-    if (lastUser) send.mutate(lastUser.text, { onSuccess: ({ run }) => begin(run.id) });
+    if (lastUser) send.mutate({ text: lastUser.text }, { onSuccess: ({ run }) => begin(run.id) });
   };
-  const sendFirst = (text: string) => {
+  const sendFirst = (text: string, images?: ImageInput[]) => {
     if (repoId && !thread?.repo_id)
       create.mutate(
-        { repoId, text },
+        { repoId, text, images },
         {
           onSuccess: (result) =>
             navigate(`/bots/${botId}/threads/${result.thread?.id ?? result.id}`),
         },
       );
-    else send.mutate(text, { onSuccess: ({ run }) => begin(run.id) });
+    else send.mutate({ text, images }, { onSuccess: ({ run }) => begin(run.id) });
   };
   const mrUrl = mr?.url ?? thread?.mr_url;
   const mrState = mr?.state ?? thread?.mr_state;
@@ -570,6 +589,7 @@ export function ThreadView({
                 )}
                 <MessageLine
                   message={m}
+                  threadId={threadId}
                   from={bots[m.from_bot_id ?? '']}
                   retry={retry}
                   signedOut={signedOut}
