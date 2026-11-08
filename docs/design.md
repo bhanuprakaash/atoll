@@ -426,8 +426,10 @@ Undo of a repo registration is refused while a thread uses the repo.
   `WWW-Authenticate` has `resource_metadata` means the server needs sign-in: `not_connected`, or
   `needs_app` when its authorization server has no `registration_endpoint`. Any other answer adds
   the server with no status. Headers are the user's own sign-in: no request. A `PUT` that changes
-  the URL or the kind deletes the server's tokens and status, so a grant never follows a server to
-  another host; a remote server left with no headers is sent the same request as Add.
+  the URL or the kind deletes the server's tokens and status before publishing the change, so a
+  grant never follows a server to another host. A saved grant is usable only for its recorded URL;
+  a grant saved before URLs were recorded is used as is. A remote server left with no headers is sent
+  the same request as Add.
 - `POST /api/mcp-servers/{id}/connect` follows the MCP authorization flow: protected-resource
   metadata from the `401`, the first authorization server's
   `/.well-known/oauth-authorization-server`, dynamic client registration (public client,
@@ -444,7 +446,7 @@ Undo of a repo registration is refused while a thread uses the repo.
   answers `400` and nothing is stored. A pending sign-in older than ten minutes is dropped when a
   new one starts. *The Allow page must come back to a URL registered at registration; a second
   listener would add a port to allow.*
-- The client ID, access token, refresh token and expiry are one OS secret store entry,
+- The server URL, client ID, access token, refresh token and expiry are one OS secret store entry,
   `mcp:<id>:oauth`: never the database, a file, a log or an API reply (the authorize URL names the
   client and is the one exception). Remove deletes the entry. *Reef owns the tokens; providers never
   run their own MCP OAuth.* A run gets the server as a remote entry with
@@ -458,8 +460,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   refreshed (`grant_type=refresh_token`, same client). A rejected refresh (`invalid_grant`) sets
   `needs_sign_in`; the run fails before the provider starts with `<name> needs sign-in`. Sign in again
   is Connect again: the server keeps its id and every Bot's pick. Nothing refreshes without a run.
-  Reads and refreshes of one server's tokens run one at a time (refresh tokens are single-use), and
-  each re-reads the record first, so a run that waited uses the tokens the other saved.
+  Reads, refreshes, sign-in completion and endpoint changes for one server run one at a time
+  (refresh tokens are single-use). Each re-reads the record first, so a run that waited uses the
+  tokens the other saved.
   A token reply may omit `expires_in` (no known expiry: never refreshed before a run) and
   `refresh_token` (near expiry the server goes `needs_sign_in` with no refresh attempt; a refresh
   reply without a new one keeps the old).

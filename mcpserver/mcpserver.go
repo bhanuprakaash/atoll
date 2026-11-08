@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 
 	"atoll/store"
 
@@ -119,6 +120,10 @@ func Add(ctx context.Context, st *store.Store, c *http.Client, in Input) (store.
 // Replace drops the sign-in when the URL or kind changes, and probes a remote server left with no
 // headers.
 func Replace(ctx context.Context, st *store.Store, c *http.Client, id string, in Input) (store.MCPServer, error) {
+	lock, _ := _tokenLocks.LoadOrStore(id, &sync.Mutex{})
+	mu, _ := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
 	prev, err := st.MCPServer(ctx, id)
 	if err != nil {
 		return store.MCPServer{}, err
@@ -127,16 +132,19 @@ func Replace(ctx context.Context, st *store.Store, c *http.Client, id string, in
 	if err != nil {
 		return store.MCPServer{}, err
 	}
+	changed := prev.URL != s.URL || prev.Kind != s.Kind
+	if changed {
+		if err := errors.Join(deleteTokens(id), st.DeleteMCPSignIn(ctx, id)); err != nil {
+			return store.MCPServer{}, err
+		}
+	}
 	if s, err = st.UpdateMCPServer(ctx, s); err != nil {
 		return store.MCPServer{}, err
 	}
 	if err := saveSecrets(s, write); err != nil {
 		return store.MCPServer{}, err
 	}
-	if prev.URL != s.URL || prev.Kind != s.Kind {
-		if err := errors.Join(deleteTokens(id), st.DeleteMCPSignIn(ctx, id)); err != nil {
-			return store.MCPServer{}, err
-		}
+	if changed {
 		if s.Kind == store.MCPRemote && len(s.HeaderNames) == 0 {
 			if s.Status = probe(ctx, c, s.URL); s.Status != "" {
 				if err := st.SetMCPSignIn(ctx, id, s.Status); err != nil {
