@@ -128,6 +128,10 @@ Undo of a repo registration is refused while a thread uses the repo.
   a thread of its own, with `parent_thread_id` set. It uses the boss thread's repo; a boss thread
   with no repo (Chief) may pass a registered repo's name, else the helper has none. The helper
   starts a fresh provider session.
+- When the boss thread has no worktree, the repo is on GitHub and the helper has no connected
+  GitHub connection, `delegate` still starts the helper and adds a `note`: `{Helper} can read
+  {repo} but cannot edit it until it has the GitHub connection.` Its `start_work` would fail, so
+  the boss learns it now instead of from a wake.
 - Refusals are tool results with `isError`, so the run goes on: a Bot not on the list (the text
   names the Bots on it); a helper whose repo access does not allow the repo (`Tester has no access
   to atoll`); a repo with no commit; a fourth helper while 3 helper runs of the boss thread are

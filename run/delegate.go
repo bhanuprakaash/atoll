@@ -94,6 +94,8 @@ func (m *Manager) startHelper(
 		h.Note = "Uncommitted changes in your worktree are not included."
 		first += "Work on branch " + h.Branch + " and commit there. Do not push or open a PR: " +
 			boss.Name + " merges it.\n\n"
+	} else if rp.ID != "" && RepoHost(ctx, rp.Path) == _hostGitHub && !m.hasGitHub(ctx, helper) {
+		h.Note = helper.Name + " can read " + rp.Name + " but cannot edit it until it has the GitHub connection."
 	}
 	ht, err := m.cfg.Store.CreateHelperThread(ctx, t.ID, helper.ID, rp.ID)
 	if err != nil {
@@ -152,6 +154,17 @@ func (m *Manager) Continue(ctx context.Context, token, threadID, message string)
 		return ErrClosed
 	}
 	return m.post(ctx, threadID, "", message)
+}
+
+// hasGitHub reports whether b has a connected GitHub connection.
+func (m *Manager) hasGitHub(ctx context.Context, b store.Bot) bool {
+	for _, id := range b.Connections {
+		c, err := m.cfg.Store.Connection(ctx, id)
+		if err == nil && c.Kind == store.KindGitHub && c.Status == store.ConnectionConnected {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Manager) helpersGoing(ctx context.Context, bossID string) (int, error) {
