@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Thread } from '@/modules/threads/api/threads';
 import { approvalTarget } from '@/modules/threads/components/approval-card';
+import { isLiveHelper } from '@/modules/threads/utils/helper-state';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 import { relativeTime } from '@/utils/time';
 
@@ -26,16 +27,11 @@ export function ThreadsPanel({
   const searchable = threads.filter((t) => !t.closed).length > 8;
   const match = (t: Thread) =>
     !searchable || t.title.toLowerCase().includes(query.trim().toLowerCase());
+  const working = (t: Thread) => t.run_status === 'running' || t.helpers.some(isLiveHelper);
   const groups: [string, Thread[]][] = [
     ['Needs you', threads.filter((t) => !t.closed && !!t.approval && match(t))],
-    [
-      'Running',
-      threads.filter((t) => !t.closed && !t.approval && t.run_status === 'running' && match(t)),
-    ],
-    [
-      'Recent',
-      threads.filter((t) => !t.closed && !t.approval && t.run_status !== 'running' && match(t)),
-    ],
+    ['Running', threads.filter((t) => !t.closed && !t.approval && working(t) && match(t))],
+    ['Recent', threads.filter((t) => !t.closed && !t.approval && !working(t) && match(t))],
   ];
   const shown = groups.filter(([, items]) => items.length > 0);
   const list = (label: string, items: Thread[]) => (
@@ -81,7 +77,14 @@ export function ThreadsPanel({
                             : 'use'
                       } ${approvalTarget(t.approval.input)}`
                     : [
-                        label === 'Running' ? t.verb : repos.find((r) => r.id === t.repo_id)?.name,
+                        label !== 'Running'
+                          ? repos.find((r) => r.id === t.repo_id)?.name
+                          : t.run_status === 'running'
+                            ? t.verb
+                            : `${t.helpers
+                                .filter(isLiveHelper)
+                                .map((h) => botNames[h.bot_id] ?? 'Helper')
+                                .join(', ')} working`,
                         t.branch,
                         t.mr_url &&
                           `${mrRef(t.mr_url) ?? '!MR'}${t.mr_state ? ` ${t.mr_state}` : ''}`,
