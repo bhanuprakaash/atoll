@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -27,9 +28,11 @@ import (
 
 var _looks = []string{"jellyfish", "whale", "shark", "penguin", "anglerfish", "pufferfish", "octopus", "crab", "seal", "manta", "scallop", "narwhal"}
 
+var _repoName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
 var _modes = []string{provider.ModeAuto, provider.ModeAsk, provider.ModeFull}
 
-func (a *api) createWithLook(ctx context.Context, b store.Bot) (store.Bot, error) {
+func createWithLook(ctx context.Context, st *store.Store, b store.Bot) (store.Bot, error) {
 	if b.Look == "" {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(_looks))))
 		if err != nil {
@@ -37,7 +40,7 @@ func (a *api) createWithLook(ctx context.Context, b store.Bot) (store.Bot, error
 		}
 		b.Look = _looks[n.Int64()]
 	}
-	return a.st.CreateBot(ctx, b)
+	return st.CreateBot(ctx, b)
 }
 
 // botProblem says why b cannot be saved, or "" when it can.
@@ -220,12 +223,24 @@ func chiefHasRepos(b store.Bot) bool {
 }
 
 func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
-	b, err := a.st.Bot(r.Context(), r.PathValue("id"))
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "invalid bot")
+		return
+	}
+	tx, err := a.st.Begin(r.Context())
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	if json.NewDecoder(r.Body).Decode(&b) != nil {
+	defer tx.Rollback()
+	prev, err := tx.Store.Bot(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	b := prev
+	if json.Unmarshal(body, &b) != nil {
 		fail(w, http.StatusBadRequest, "invalid bot")
 		return
 	}
@@ -234,7 +249,7 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.ID = r.PathValue("id")
-	msg, err := a.unknownPicks(r.Context(), b)
+	msg, err := a.botChoiceProblem(r.Context(), b, prev)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -247,8 +262,12 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, _chiefRepoRefusal)
 		return
 	}
-	b, err = a.st.UpdateBot(r.Context(), b)
+	b, err = tx.Store.UpdateBot(r.Context(), b)
 	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		a.fail(w, r, err)
 		return
 	}
@@ -335,7 +354,7 @@ func (a *api) reimportSkill(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	res, _, _, err := a.importSkill(r.Context(), sk.Source, in.Replace)
+	res, _, _, err := a.importSkill(r.Context(), a.st, sk.Source, in.Replace)
 	if err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
@@ -480,6 +499,12 @@ func (a *api) platformCall(
 	if slices.Contains(_readTools, name) {
 		return a.readCall(ctx, name)
 	}
+	tx, err := a.st.Begin(ctx)
+	if err != nil {
+		return nil, a.toolError(err)
+	}
+	defer tx.Rollback()
+	st := tx.Store
 	var before, after, reply any
 	var entity, id, action string
 	action = store.ActionEdit
@@ -496,7 +521,7 @@ func (a *api) platformCall(
 			return nil, rerr
 		}
 		b.CanManagePlatform = false
-		b, err = a.createWithLook(ctx, b)
+		b, err = createWithLook(ctx, st, b)
 		after, entity, id, action = b, store.EntityBot, b.ID, store.ActionCreate
 	case provider.ToolEditBot:
 		var in struct {
@@ -506,7 +531,7 @@ func (a *api) platformCall(
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid bot id"}
 		}
 		var prev, b store.Bot
-		prev, err = a.st.Bot(ctx, in.ID)
+		prev, err = st.Bot(ctx, in.ID)
 		if err == nil {
 			before = prev
 			b = prev
@@ -528,7 +553,7 @@ func (a *api) platformCall(
 			if rerr := a.botChoiceError(ctx, b, prev); rerr != nil {
 				return nil, rerr
 			}
-			b, err = a.st.UpdateBot(ctx, b)
+			b, err = st.UpdateBot(ctx, b)
 		}
 		after, entity, id = b, store.EntityBot, in.ID
 	case provider.ToolCreateSkill:
@@ -536,7 +561,7 @@ func (a *api) platformCall(
 		if derr := decodeSkill(args, &sk); derr != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: derr.Error()}
 		}
-		sk, err = a.st.CreateSkill(ctx, sk)
+		sk, err = st.CreateSkill(ctx, sk)
 		after, entity, id, action = sk, store.EntitySkill, sk.ID, store.ActionCreate
 	case provider.ToolEditSkill:
 		var in struct {
@@ -546,14 +571,14 @@ func (a *api) platformCall(
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid skill id"}
 		}
 		var sk store.Skill
-		sk, err = a.st.Skill(ctx, in.ID)
+		sk, err = st.Skill(ctx, in.ID)
 		if err == nil {
 			before = sk
 			if derr := decodeSkill(args, &sk); derr != nil {
 				return nil, &rpcError{Code: _invalidParams, Message: derr.Error()}
 			}
 			sk.ID = in.ID
-			sk, err = a.st.UpdateSkill(ctx, sk)
+			sk, err = st.UpdateSkill(ctx, sk)
 		}
 		after, entity, id = sk, store.EntitySkill, in.ID
 	case provider.ToolImportSkill:
@@ -566,7 +591,7 @@ func (a *api) platformCall(
 		}
 		var res importResult
 		var prev, sk store.Skill
-		res, prev, sk, err = a.importSkill(ctx, in.Path, in.Replace)
+		res, prev, sk, err = a.importSkill(ctx, st, in.Path, in.Replace)
 		if err == nil && (res.Status == _importUnchanged || res.Status == _importConfirm) {
 			return a.jsonText(res)
 		}
@@ -581,7 +606,7 @@ func (a *api) platformCall(
 		if json.Unmarshal(args, &rp) != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid repo"}
 		}
-		rp, err = a.registerRepo(ctx, rp)
+		rp, err = registerRepo(ctx, st, rp)
 		after, entity, id, action = rp, store.EntityRepo, rp.ID, store.ActionCreate
 	case provider.ToolAttachConnection:
 		var in struct {
@@ -592,10 +617,10 @@ func (a *api) platformCall(
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid connection"}
 		}
 		var b store.Bot
-		b, err = a.st.Bot(ctx, in.BotID)
+		b, err = st.Bot(ctx, in.BotID)
 		if err == nil {
 			var c store.Connection
-			c, err = a.st.Connection(ctx, in.ConnectionID)
+			c, err = st.Connection(ctx, in.ConnectionID)
 			if err == nil && c.Status != store.ConnectionConnected {
 				err = errors.New("connection is not connected")
 			}
@@ -605,7 +630,7 @@ func (a *api) platformCall(
 				if !slices.Contains(b.Connections, in.ConnectionID) {
 					b.Connections = append(b.Connections, in.ConnectionID)
 				}
-				b, err = a.st.UpdateBot(ctx, b)
+				b, err = st.UpdateBot(ctx, b)
 			}
 		}
 		after, entity, id = b, store.EntityBot, in.BotID
@@ -621,11 +646,14 @@ func (a *api) platformCall(
 	if err != nil {
 		return nil, a.toolError(err)
 	}
-	change, err := a.st.RecordChange(ctx, store.Change{
+	change, err := st.RecordChange(ctx, store.Change{
 		Entity: entity, EntityID: id, Action: action, Before: oldJSON, After: newJSON,
 		SourceBotID: source.ID, SourceThreadID: thread.ID, SourceRunID: runID,
 	})
 	if err != nil {
+		return nil, a.toolError(err)
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, a.toolError(err)
 	}
 	a.runs.Changed(token, change)
@@ -635,19 +663,16 @@ func (a *api) platformCall(
 	return a.jsonText(reply)
 }
 
-// botChoiceError rejects a repo id no registered repo has, a model the Bot's provider does not list,
-// and a provider that is not signed in; the model check is skipped when the Bot keeps the provider and
-// model it has.
-func (a *api) botChoiceError(ctx context.Context, b, current store.Bot) *rpcError {
+// botChoiceProblem says why b picks a repo id no registered repo has, a model the Bot's provider
+// does not list, or a provider that is not signed in, or "" when it picks well; the model check is
+// skipped when the Bot keeps the provider and model it has.
+func (a *api) botChoiceProblem(ctx context.Context, b, current store.Bot) (string, error) {
 	msg, err := a.unknownPicks(ctx, b)
-	if err != nil {
-		return a.toolError(err)
-	}
-	if msg != "" {
-		return &rpcError{Code: _invalidParams, Message: msg}
+	if err != nil || msg != "" {
+		return msg, err
 	}
 	if b.Model == "" || (b.Model == current.Model && b.Provider == current.Provider) {
-		return nil
+		return "", nil
 	}
 	var models []string
 	for _, p := range a.cachedProviders(ctx) {
@@ -655,15 +680,25 @@ func (a *api) botChoiceError(ctx context.Context, b, current store.Bot) *rpcErro
 			continue
 		}
 		if !p.SignedIn {
-			return &rpcError{Code: _invalidParams, Message: p.Name + " is not signed in"}
+			return p.Name + " is not signed in", nil
 		}
 		for _, m := range p.Models {
 			models = append(models, m.ID)
 		}
 	}
 	if !slices.Contains(models, b.Model) {
-		return &rpcError{Code: _invalidParams, Message: fmt.Sprintf(
-			"unknown model %q; models: %s", b.Model, strings.Join(models, ", "))}
+		return fmt.Sprintf("unknown model %q; models: %s", b.Model, strings.Join(models, ", ")), nil
+	}
+	return "", nil
+}
+
+func (a *api) botChoiceError(ctx context.Context, b, current store.Bot) *rpcError {
+	msg, err := a.botChoiceProblem(ctx, b, current)
+	if err != nil {
+		return a.toolError(err)
+	}
+	if msg != "" {
+		return &rpcError{Code: _invalidParams, Message: msg}
 	}
 	return nil
 }
@@ -737,16 +772,19 @@ func (a *api) unknownRepos(ctx context.Context, access store.RepoAccess) (string
 		strings.Join(unknown, ", "), strings.Join(ids, ", ")), nil
 }
 
-func (a *api) registerRepo(ctx context.Context, rp store.Repo) (store.Repo, error) {
+func registerRepo(ctx context.Context, st *store.Store, rp store.Repo) (store.Repo, error) {
 	if err := validateRepo(ctx, rp); err != nil {
 		return store.Repo{}, err
 	}
-	return a.st.CreateRepo(ctx, rp.Name, rp.Path)
+	return st.CreateRepo(ctx, rp.Name, rp.Path)
 }
 
 func validateRepo(ctx context.Context, rp store.Repo) error {
 	if rp.Name == "" {
 		return errors.New("name and path are required")
+	}
+	if !_repoName.MatchString(rp.Name) || rp.Name == "." || rp.Name == ".." {
+		return errors.New("name must be one folder name of letters, digits, dot, dash and underscore")
 	}
 	if !filepath.IsAbs(rp.Path) || !repo.IsRepo(ctx, rp.Path) {
 		return errors.New("path must be the top level of a git repo")
@@ -791,7 +829,7 @@ type importedFile struct {
 // from the same folder, or a skill of the same name made in Reef, and asks for replace before it
 // overwrites edits made in Reef. It returns the stored skill before and after.
 func (a *api) importSkill(
-	ctx context.Context, path string, replace bool,
+	ctx context.Context, st *store.Store, path string, replace bool,
 ) (res importResult, prev, next store.Skill, err error) {
 	if rest, ok := strings.CutPrefix(path, "~/"); ok {
 		home, err := os.UserHomeDir()
@@ -813,7 +851,7 @@ func (a *api) importSkill(
 		Status: _importCreated, Added: []string{}, Changed: []string{}, Removed: []string{},
 		Skipped: orEmpty(imp.Skipped), HomePaths: orEmpty(imp.HomePaths),
 	}
-	skills, err := a.st.Skills(ctx)
+	skills, err := st.Skills(ctx)
 	if err != nil {
 		return res, prev, next, err
 	}
@@ -824,7 +862,7 @@ func (a *api) importSkill(
 		})
 	}
 	if i < 0 {
-		next, err = a.st.CreateSkill(ctx, next)
+		next, err = st.CreateSkill(ctx, next)
 		res.Skill = summarize(next)
 		return res, prev, next, err
 	}
@@ -841,7 +879,7 @@ func (a *api) importSkill(
 			"overwritten. Ask the user, then call import_skill again with replace: true."
 		return res, prev, prev, nil
 	}
-	next, err = a.st.UpdateSkill(ctx, next)
+	next, err = st.UpdateSkill(ctx, next)
 	res.Status, res.Skill = _importReplaced, summarize(next)
 	return res, prev, next, err
 }

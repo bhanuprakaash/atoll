@@ -79,7 +79,16 @@ const (
 
 type (
 	// Store is Atoll's data, read and written through one SQLite file.
-	Store struct{ db *sql.DB }
+	Store struct {
+		db   dbConn
+		root *sql.DB
+	}
+
+	// Tx is a Store whose writes commit together on Commit and vanish on Rollback.
+	Tx struct {
+		Store *Store
+		tx    *sql.Tx
+	}
 
 	// Bot is a configured agent. Provider is "claude" or "codex". Connections are the ids of the
 	// connections it may use.
@@ -264,14 +273,14 @@ func OpenWrapped(dir string, wrap func(driver.Connector) driver.Connector) (*Sto
 		_ = db.Close()
 		return nil, fmt.Errorf("retire looks: %w", err)
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, root: db}, nil
 }
 
 // DB is the shared handle, for packages that keep their own tables in the same file.
-func (s *Store) DB() *sql.DB { return s.db }
+func (s *Store) DB() *sql.DB { return s.root }
 
 // Close closes the database.
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error { return s.root.Close() }
 
 // Allows reports whether a Bot with this access may work in the repo with id.
 func (a RepoAccess) Allows(id string) bool {
@@ -1187,7 +1196,10 @@ func (s *Store) Attachment(ctx context.Context, id string) (Attachment, error) {
 }
 
 func (s *Store) tx(ctx context.Context, fn func(*sql.Tx) error) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	if tx, ok := s.db.(*sql.Tx); ok {
+		return fn(tx)
+	}
+	tx, err := s.root.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
@@ -1200,6 +1212,27 @@ func (s *Store) tx(ctx context.Context, fn func(*sql.Tx) error) error {
 	}
 	return nil
 }
+
+// Begin starts a transaction that takes the write lock at once. Call Rollback when done; it does
+// nothing after Commit.
+func (s *Store) Begin(ctx context.Context) (*Tx, error) {
+	tx, err := s.root.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin: %w", err)
+	}
+	return &Tx{Store: &Store{db: tx, root: s.root}, tx: tx}, nil
+}
+
+// Commit makes the writes made through t.Store permanent.
+func (t *Tx) Commit() error {
+	if err := t.tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// Rollback drops the writes made through t.Store.
+func (t *Tx) Rollback() { _ = t.tx.Rollback() }
 
 // FirstWords is the title a thread's first message gives it: the first six words, without the
 // punctuation that ends the last one.
@@ -1314,6 +1347,12 @@ func scanConnection(r *sql.Rows) (c Connection, err error) {
 
 type queryer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+type dbConn interface {
+	execer
+	queryer
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 func query[T any](

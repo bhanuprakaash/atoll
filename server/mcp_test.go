@@ -105,7 +105,16 @@ func (s *urlSession) Send(context.Context, string, []provider.Image) error { ret
 func (s *urlSession) Answer(string, bool) error                            { return nil }
 func (s *urlSession) Interrupt() error                                     { close(s.events); return nil }
 
-func TestPlatform_EditBotUndo(t *testing.T) {
+type platformEnv struct {
+	st     *store.Store
+	srv    *httptest.Server
+	token  string
+	thread store.Thread
+}
+
+// newPlatform starts a server with Chief running a thread; the token is the one its run holds.
+func newPlatform(t *testing.T, providers Providers) platformEnv {
+	t.Helper()
 	ctx := t.Context()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -113,10 +122,6 @@ func TestPlatform_EditBotUndo(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	chief, err := st.CreateBot(ctx, store.Bot{Name: "Chief", Provider: "claude", CanManagePlatform: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	target, err := st.CreateBot(ctx, store.Bot{Name: "Ada", Provider: "claude", Skills: []string{"a", "b"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,20 +138,40 @@ func TestPlatform_EditBotUndo(t *testing.T) {
 		},
 	})
 	t.Cleanup(func() { _ = runs.Close() })
-	srv := httptest.NewServer(New(st, nil, runs, log, nil))
+	srv := httptest.NewServer(New(st, nil, runs, log, providers))
 	t.Cleanup(srv.Close)
 	if _, _, err := runs.Send(ctx, thread.ID, "hi", nil); err != nil {
 		t.Fatal(err)
 	}
-	token := path.Base(<-sess.url)
+	return platformEnv{st: st, srv: srv, token: path.Base(<-sess.url), thread: thread}
+}
 
-	call := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"edit_bot","arguments":{"id":"` +
-		target.ID + `","skills":["c"]}}}`
-	resp, err := http.Post(srv.URL+MCPPath+token, "application/json", strings.NewReader(call))
+// call runs one MCP tool and returns the response body.
+func (e platformEnv) call(t *testing.T, tool, args string) string {
+	t.Helper()
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"` + tool +
+		`","arguments":` + args + `}}`
+	resp, err := http.Post(e.srv.URL+MCPPath+e.token, "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+func TestPlatform_EditBotUndo(t *testing.T) {
+	ctx := t.Context()
+	e := newPlatform(t, nil)
+	st, thread := e.st, e.thread
+	target, err := st.CreateBot(ctx, store.Bot{Name: "Ada", Provider: "claude", Skills: []string{"a", "b"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.call(t, "edit_bot", `{"id":"`+target.ID+`","skills":["c"]}`)
 	got, err := st.Bot(ctx, target.ID)
 	if err != nil || !slices.Equal(got.Skills, []string{"c"}) {
 		t.Fatalf("after edit = %v, %v; want [c]", got.Skills, err)
@@ -163,3 +188,56 @@ func TestPlatform_EditBotUndo(t *testing.T) {
 		t.Fatalf("after undo = %v, %v; want [a b]", got.Skills, err)
 	}
 }
+
+func TestPlatform_Refusals(t *testing.T) {
+	e := newPlatform(t, fakeProviders{{
+		Name: "claude", SignedIn: true, Models: []Model{{ID: "opus"}, {ID: "sonnet"}},
+	}})
+	tests := []struct {
+		name     string
+		tool     string
+		give     string
+		wantBody string
+	}{
+		{"repo name up a folder", "register_repo", `{"name":"../x","path":"/tmp"}`, "name must be one folder name"},
+		{"repo name dot", "register_repo", `{"name":".","path":"/tmp"}`, "name must be one folder name"},
+		{"repo name dot dot", "register_repo", `{"name":"..","path":"/tmp"}`, "name must be one folder name"},
+		{"repo name with a slash", "register_repo", `{"name":"a/b","path":"/tmp"}`, "name must be one folder name"},
+		{"unknown model", "create_bot", `{"name":"Ada","provider":"claude","model":"gpt"}`, `unknown model \"gpt\"; models: opus, sonnet`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := e.call(t, tt.tool, tt.give); !strings.Contains(got, tt.wantBody) {
+				t.Fatalf("response %s, want it to contain %s", got, tt.wantBody)
+			}
+		})
+	}
+	bots, err := e.st.Bots(t.Context())
+	if err != nil || len(bots) != 1 {
+		t.Fatalf("bots = %v, %v; want only Chief", bots, err)
+	}
+}
+
+func TestPlatform_ChangeRecordFailsWithEntity(t *testing.T) {
+	ctx := t.Context()
+	e := newPlatform(t, nil)
+	_, err := e.st.DB().ExecContext(ctx,
+		"CREATE TRIGGER no_changes BEFORE INSERT ON changes BEGIN SELECT RAISE(ABORT, 'no changes'); END")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := e.call(t, "create_bot", `{"name":"Ada","provider":"claude"}`)
+	if !strings.Contains(got, "no changes") {
+		t.Fatalf("response %s, want the record's error", got)
+	}
+	bots, err := e.st.Bots(ctx)
+	if err != nil || len(bots) != 1 {
+		t.Fatalf("bots = %v, %v; want only Chief", bots, err)
+	}
+}
+
+type fakeProviders []Provider
+
+func (fakeProviders) ServeHTTP(http.ResponseWriter, *http.Request) {}
+
+func (f fakeProviders) Cached(context.Context) []Provider { return f }

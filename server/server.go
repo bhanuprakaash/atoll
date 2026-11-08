@@ -190,7 +190,7 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, msg)
 		return
 	}
-	msg, err := a.unknownPicks(r.Context(), b)
+	msg, err := a.botChoiceProblem(r.Context(), b, store.Bot{})
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -199,7 +199,7 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, msg)
 		return
 	}
-	b, err = a.createWithLook(r.Context(), b)
+	b, err = createWithLook(r.Context(), a.st, b)
 	if err != nil {
 		a.fail(w, r, err)
 		return

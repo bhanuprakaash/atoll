@@ -66,7 +66,9 @@ connections, served as Reef's own MCP tools; read tools list Bots, skills, conne
 servers and signed-in models and record no change.
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
-registered repo has (REST answers 400 with the same text). Sign-ins stay with the user. Every change shows in the thread with undo.
+registered repo has (REST answers 400 with the same text, for the model too; a REST edit that keeps
+the model and provider the Bot has skips the model check). Sign-ins stay with the user. Every change shows in the thread with undo.
+A change and its record are written in one transaction, so a failed record leaves nothing changed.
 Other Bots can get the switch later.
 Undo: each change stores the entity before and after; Undo writes `before` back, or removes an entity
 the change created, and keeps the record marked undone. *Records survive restart; no undo of undo.*
@@ -240,7 +242,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   included`. A thread that already has a worktree gets its path and branch back, with no base.
 - The slug is lowercased, every run of characters outside `[a-z0-9]` becomes `-`, and it is cut to
   40 characters. The worktree folder is the branch with `/` replaced by `-`.
-- Repo names are unique, because the worktree folder uses them.
+- Repo names are unique, because the worktree folder uses them. A name is one folder name: letters,
+  digits, `.`, `-` and `_`, never `.` or `..`.
 - Unfinished work is saved as a commit at `refs/atoll/unfinished/<thread id>` before removal. A
   failed save removes nothing and leaves the thread open.
 - A thread's cwd moves from the checkout to its worktree. Claude resumes only the sessions of its own
