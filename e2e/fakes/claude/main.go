@@ -127,6 +127,7 @@ func stream(log *fake.Log, args []string) error {
 		return err
 	}
 	resume := flag(args, "--resume")
+	titling := strings.HasPrefix(flag(args, "--append-system-prompt"), fake.TitleSystem)
 	in := fake.Lines()
 	for in.Scan() {
 		if err := log.Stdin(in.Text()); err != nil {
@@ -144,6 +145,16 @@ func stream(log *fake.Log, args []string) error {
 			continue
 		}
 		if l.Type != "user" {
+			continue
+		}
+		if titling {
+			prompt, err := text(l.Message.Content)
+			if err != nil {
+				return err
+			}
+			if err := title(prompt); err != nil {
+				return err
+			}
 			continue
 		}
 		// Logged at the first turn, so a model-list probe leaves no prompt or skill record.
@@ -198,6 +209,23 @@ func signedOut(session string) {
 		fmt.Println(string(b))
 	}
 	os.Exit(1)
+}
+
+// title answers a title session's turn with fake.TitleFor in one result line.
+func title(prompt string) error {
+	t, ok := fake.TitleFor(prompt)
+	if !ok {
+		return fmt.Errorf("no title for prompt %q", prompt)
+	}
+	const session = "3d9f1c7a-2b4e-4f6a-9c1d-8e7b5a3f2c10"
+	for _, l := range []map[string]any{
+		{"type": "system", "subtype": "init", "session_id": session},
+		{"type": "result", "subtype": "success", "is_error": false, "result": t, "session_id": session},
+	} {
+		b, _ := json.Marshal(l)
+		fmt.Println(string(b))
+	}
+	return nil
 }
 
 // text is the text of a user message: a string, or the text blocks of a content array.

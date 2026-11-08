@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"atoll/e2e/fakes/fake"
 )
 
 // Prompts and answers of the recordings in testdata/claude and testdata/codex.
@@ -123,8 +125,27 @@ func (m *machine) run(t *testing.T, args ...string) (reply, session string) {
 	return strings.TrimSpace(reply), session
 }
 
-// calls returns every run of the fake provider, in the order they started.
+// calls returns every run of the fake provider but title sessions, in the order they started.
 func (m *machine) calls(t *testing.T, provider string) []*call {
+	t.Helper()
+	return slices.DeleteFunc(m.runs(t, provider), isTitle)
+}
+
+// titles returns the title sessions of the fake provider, in the order they started.
+func (m *machine) titles(t *testing.T, provider string) []*call {
+	t.Helper()
+	return slices.DeleteFunc(m.runs(t, provider), func(c *call) bool { return !isTitle(c) })
+}
+
+func isTitle(c *call) bool {
+	return slices.ContainsFunc(c.argv, func(a string) bool { return strings.HasPrefix(a, fake.TitleSystem) }) ||
+		slices.ContainsFunc(c.stdin, func(l string) bool {
+			return strings.Contains(l, `"developerInstructions":"`+fake.TitleSystem)
+		})
+}
+
+// runs returns every run of the fake provider, in the order they started.
+func (m *machine) runs(t *testing.T, provider string) []*call {
 	t.Helper()
 	f, err := os.Open(filepath.Join(m.bin, provider+".log"))
 	if err != nil {

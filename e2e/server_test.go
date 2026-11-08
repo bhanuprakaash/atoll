@@ -127,18 +127,29 @@ func (s *server) kill() {
 	}
 }
 
-// killFakes kills every fake provider process the machine ran; a killed server leaves them.
+// killFakes kills every fake provider process the machine ran; a killed server leaves them. A
+// fake started just before the kill (a title session after a run) logs a moment later, so it
+// kills again until a pause brings no new process.
 func (m *machine) killFakes() {
-	for _, p := range []string{"claude", "codex"} {
-		b, _ := os.ReadFile(filepath.Join(m.bin, p+".log"))
-		for line := range strings.Lines(string(b)) {
-			var r struct {
-				PID int `json:"pid"`
-			}
-			if json.Unmarshal([]byte(line), &r) == nil && r.PID > 0 {
-				_ = syscall.Kill(r.PID, syscall.SIGKILL)
+	killed := map[int]bool{}
+	for round := 0; ; round++ {
+		before := len(killed)
+		for _, p := range []string{"claude", "codex"} {
+			b, _ := os.ReadFile(filepath.Join(m.bin, p+".log"))
+			for line := range strings.Lines(string(b)) {
+				var r struct {
+					PID int `json:"pid"`
+				}
+				if json.Unmarshal([]byte(line), &r) == nil && r.PID > 0 && !killed[r.PID] {
+					killed[r.PID] = true
+					_ = syscall.Kill(r.PID, syscall.SIGKILL)
+				}
 			}
 		}
+		if round > 0 && len(killed) == before {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 
