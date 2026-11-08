@@ -146,7 +146,7 @@ export function Shell() {
             </svg>
           </button>
         </div>
-        <div className="mt-3.5 mb-2 min-h-0 overflow-y-auto">
+        <div className="-mr-2.5 mt-3.5 mb-2 min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-segment">
           <BotList
             search={search}
             open={{ botId, threadId }}
