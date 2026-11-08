@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useMatch, useNavigate } from 'react-router';
+import { NavLink, Outlet, useMatch, useNavigate, useSearchParams } from 'react-router';
 import { api } from '@/lib/api-client';
 import { BotList } from '@/modules/bots/components/bot-list';
 import { Menu } from '@/components/menu';
+import { ThreadsPopup } from '@/app/threads-popup';
 import { useNotifications } from '@/modules/threads/hooks/use-notifications';
 import { TextField } from '@/components/text-field';
 import { useCloseThread, useRenameThread } from '@/modules/threads/api/threads';
@@ -26,6 +27,15 @@ export function Shell() {
   const [creatingGroup, setCreatingGroup] = useState<{ botId?: string } | null>(null);
   const close = useCloseThread();
   const rename = useRenameThread();
+  const [params, setParams] = useSearchParams();
+  const threadsBot = params.get('threads');
+  const setThreadsBot = (id: string | null) =>
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (id) next.set('threads', id);
+      else next.delete('threads');
+      return next;
+    });
   const botMatch = useMatch('/bots/:botId/*')?.params.botId;
   const botId = botMatch === 'new' ? undefined : botMatch;
   const threadId = useMatch('/bots/:botId/threads/:threadId')?.params.threadId;
@@ -110,7 +120,7 @@ export function Shell() {
             open={{ botId, threadId }}
             creatingGroup={creatingGroup}
             onCreatingGroup={setCreatingGroup}
-            onMore={() => undefined}
+            onMore={(id) => setThreadsBot(id)}
             onCloseThread={(id) => close.mutate(id)}
             onRenameThread={(id, title) => rename.mutate({ id, title })}
           />
@@ -153,6 +163,13 @@ export function Shell() {
             { label: 'New Bot', onSelect: () => navigate('/bots/new') },
             { label: 'New group', onSelect: () => setCreatingGroup({}) },
           ]}
+        />
+      )}
+      {threadsBot && (
+        <ThreadsPopup
+          botId={threadsBot}
+          openThreadId={botId === threadsBot ? threadId : undefined}
+          onClose={() => setThreadsBot(null)}
         />
       )}
       <main className="flex min-w-0 flex-1 flex-col">

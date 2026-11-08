@@ -54,7 +54,7 @@ function Pin() {
   );
 }
 
-function ThreadLabel({ thread }: { thread: SidebarThread }) {
+export function ThreadLabel({ thread }: { thread: SidebarThread }) {
   return (
     <>
       {thread.state === 'needs_you' ? (

@@ -73,6 +73,21 @@ export function useRenameThread() {
   });
 }
 
+export function usePinThread() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, pinned, replace }: { id: string; pinned: boolean; replace?: string }) =>
+      api<void>(`/threads/${id}/pin`, {
+        method: pinned ? 'POST' : 'DELETE',
+        body: replace ? { replace } : undefined,
+      }),
+    onSuccess: () =>
+      Promise.all(
+        [['threads'], ['bots']].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+      ),
+  });
+}
+
 export const markOpened = (threadId: string) =>
   api<void>(`/threads/${threadId}/opened`, { method: 'POST' });
 
