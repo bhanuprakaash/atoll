@@ -11,20 +11,26 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"atoll/provider"
 	"atoll/server"
+	"atoll/store"
 )
 
 type providerInfo struct {
 	server.Provider
-	Found   bool   `json:"found"`
-	Path    string `json:"path"`
-	Version string `json:"version"`
+	Found         bool     `json:"found"`
+	Path          string   `json:"path"`
+	PathOverride  string   `json:"path_override"`
+	Version       string   `json:"version"`
+	OwnMCPServers []string `json:"own_mcp_servers"`
+	OwnSkills     []string `json:"own_skills"`
 }
 type loginState struct {
 	Status    string `json:"status"`
@@ -33,6 +39,9 @@ type loginState struct {
 	Error     string `json:"error"`
 }
 type providers struct {
+	st       *store.Store
+	adapters []adapter
+	ready    chan struct{} // closed once the start-up check has run
 	ctx      context.Context
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
@@ -40,35 +49,57 @@ type providers struct {
 	states   map[string]loginState
 	codes    map[string]io.Writer
 	signedIn map[string]bool
-	infos    map[string]providerInfo
-	expired  map[string]bool // refused a run: signed out until a sign-in or Refresh
+	infos    map[string]providerInfo // what the last check found
+	expired  map[string]bool         // refused a run: signed out until a sign-in or Refresh
 }
 
 var _loginURL = regexp.MustCompile(`https://[^\s"'<>]+`)
 
-func newProviders(parent context.Context) *providers {
+// newProviders returns the providers and checks each of them in the background.
+func newProviders(parent context.Context, st *store.Store, adapters []adapter) *providers {
 	ctx, cancel := context.WithCancel(parent)
-	return &providers{ctx: ctx, cancel: cancel, states: map[string]loginState{}, codes: map[string]io.Writer{}, signedIn: map[string]bool{},
+	p := &providers{st: st, adapters: adapters, ready: make(chan struct{}), ctx: ctx, cancel: cancel,
+		states: map[string]loginState{}, codes: map[string]io.Writer{}, signedIn: map[string]bool{},
 		infos: map[string]providerInfo{}, expired: map[string]bool{}}
+	for _, a := range adapters {
+		p.infos[a.name] = blank(a)
+	}
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		defer close(p.ready)
+		for _, a := range adapters {
+			p.info(ctx, a)
+		}
+	}()
+	return p
 }
 func (p *providers) Close() { p.cancel(); p.wg.Wait() }
 func (p *providers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/providers")
 	w.Header().Set("Content-Type", "application/json")
 	if (path == "" && r.Method == http.MethodGet) || (path == "/refresh" && r.Method == http.MethodPost) {
-		if path == "/refresh" {
+		refresh := path == "/refresh"
+		if refresh {
 			p.mu.Lock()
 			clear(p.expired)
 			p.mu.Unlock()
 		}
-		list := make([]providerInfo, 0, len(_adapters))
-		for _, a := range _adapters {
-			list = append(list, p.info(r.Context(), a))
+		list := make([]providerInfo, 0, len(p.adapters))
+		for _, a := range p.adapters {
+			if refresh {
+				p.info(r.Context(), a)
+			}
+			list = append(list, p.view(r.Context(), a))
 		}
 		_ = json.NewEncoder(w).Encode(list)
 		return
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 1 && r.Method == http.MethodPut {
+		p.update(w, r, parts[0])
+		return
+	}
 	if len(parts) == 3 && parts[1] == "sign-in" && parts[2] == "code" && r.Method == http.MethodPost {
 		p.submitCode(w, r, parts[0])
 		return
@@ -77,13 +108,7 @@ func (p *providers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var a *adapter
-	for i := range _adapters {
-		if _adapters[i].name == parts[0] {
-			a = &_adapters[i]
-			break
-		}
-	}
+	a := p.adapter(parts[0])
 	if a == nil {
 		http.NotFound(w, r)
 		return
@@ -107,35 +132,116 @@ func (p *providers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(state)
 }
 
-// Cached lists every provider as GET /api/providers last found it, probing one that has not been
-// looked at yet.
-func (p *providers) Cached(ctx context.Context) []server.Provider {
-	list := make([]server.Provider, 0, len(_adapters))
-	for _, a := range _adapters {
-		p.mu.Lock()
-		info, ok := p.infos[a.name]
-		info.SignedIn = p.signedIn[a.name]
-		p.mu.Unlock()
-		if !ok {
-			info = p.info(ctx, a)
+func (p *providers) adapter(name string) *adapter {
+	for i := range p.adapters {
+		if p.adapters[i].name == name {
+			return &p.adapters[i]
 		}
-		list = append(list, info.Provider)
+	}
+	return nil
+}
+
+// update stores the switch and the path override a PUT body names, and checks the provider again
+// when its path changed.
+func (p *providers) update(w http.ResponseWriter, r *http.Request, name string) {
+	a := p.adapter(name)
+	if a == nil {
+		http.NotFound(w, r)
+		return
+	}
+	var body struct {
+		Enabled      *bool   `json:"enabled"`
+		PathOverride *string `json:"path_override"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	if path := body.PathOverride; path != nil && *path != "" && !filepath.IsAbs(*path) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "path_override must be an absolute path"})
+		return
+	}
+	var err error
+	if body.Enabled != nil {
+		err = p.st.SetSetting(r.Context(), settingKey(name, "enabled"), strconv.FormatBool(*body.Enabled))
+	}
+	if err == nil && body.PathOverride != nil {
+		err = p.st.SetSetting(r.Context(), settingKey(name, "path"), *body.PathOverride)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	if body.PathOverride != nil {
+		p.info(r.Context(), *a)
+	}
+	_ = json.NewEncoder(w).Encode(p.view(r.Context(), *a))
+}
+
+func settingKey(name, field string) string { return "provider_" + name + "_" + field }
+
+func (p *providers) enabled(ctx context.Context, name string) bool {
+	on, _ := p.st.Setting(ctx, settingKey(name, "enabled"))
+	return on != "false"
+}
+
+func (p *providers) pathOverride(ctx context.Context, name string) string {
+	path, _ := p.st.Setting(ctx, settingKey(name, "path"))
+	return path
+}
+
+// Cached lists every provider as the last check found it, without a new one.
+func (p *providers) Cached(ctx context.Context) []server.Provider {
+	list := make([]server.Provider, 0, len(p.adapters))
+	for _, a := range p.adapters {
+		list = append(list, p.view(ctx, a).Provider)
 	}
 	return list
 }
-func (p *providers) info(ctx context.Context, a adapter) (info providerInfo) {
+
+// view is what the last check found for a, with the stored switch and path override. It waits for
+// the start-up check.
+func (p *providers) view(ctx context.Context, a adapter) providerInfo {
+	select {
+	case <-p.ready:
+	case <-ctx.Done():
+	}
+	p.mu.Lock()
+	info := p.infos[a.name]
+	info.SignedIn = p.signedIn[a.name]
+	p.mu.Unlock()
+	info.Enabled = p.enabled(ctx, a.name)
+	info.PathOverride = p.pathOverride(ctx, a.name)
+	return info
+}
+
+func blank(a adapter) providerInfo {
 	label := "Claude Code"
 	if a.name == "codex" {
 		label = "Codex"
 	}
-	info = providerInfo{Provider: server.Provider{Name: a.name, Label: label, Models: []server.Model{}}}
+	return providerInfo{
+		Provider:      server.Provider{Name: a.name, Label: label, Models: []server.Model{}},
+		OwnMCPServers: []string{}, OwnSkills: []string{},
+	}
+}
+
+func (p *providers) info(ctx context.Context, a adapter) (info providerInfo) {
+	info = blank(a)
+	if home, err := os.UserHomeDir(); err == nil {
+		own := a.own(home)
+		info.OwnMCPServers, info.OwnSkills = own.MCPServers, own.Skills
+	}
 	defer func() {
 		info.SignedIn = p.setAvailable(a.name, info.SignedIn)
 		p.mu.Lock()
 		p.infos[a.name] = info
 		p.mu.Unlock()
 	}()
-	bin := a.find(pathDirs(ctx))
+	bin := a.find(pathDirs(ctx), p.pathOverride(ctx, a.name))
 	if bin == "" {
 		return info
 	}
@@ -218,7 +324,7 @@ func probeModels(parent context.Context, name, bin, dir string) []server.Model {
 }
 func (p *providers) login(a adapter) {
 	defer p.wg.Done()
-	bin, dir, err := a.prepare(p.ctx)
+	bin, dir, err := a.prepare(p.ctx, p.pathOverride(p.ctx, a.name))
 	if err != nil {
 		p.finish(a.name, err)
 		return
@@ -284,6 +390,9 @@ func (p *providers) login(a adapter) {
 			err = fmt.Errorf("sign-in did not complete")
 		}
 	}
+	if err == nil {
+		p.info(p.ctx, a)
+	}
 	p.finish(a.name, err)
 }
 func (p *providers) finish(name string, err error) {
@@ -298,7 +407,6 @@ func (p *providers) finish(name string, err error) {
 	p.states[name] = st
 	if err == nil {
 		p.signedIn[name] = true
-		delete(p.infos, name)
 		delete(p.expired, name)
 	}
 }
@@ -346,6 +454,9 @@ func (p *providers) signOut(name string) {
 }
 
 func (p *providers) available(ctx context.Context, name string) bool {
+	if !p.enabled(ctx, name) {
+		return false
+	}
 	p.mu.Lock()
 	signed, ok := p.signedIn[name]
 	p.mu.Unlock()
@@ -356,5 +467,37 @@ func (p *providers) available(ctx context.Context, name string) bool {
 }
 
 func (p *providers) checkAvailable(ctx context.Context, name string) bool {
-	return p.setAvailable(name, available(ctx, name))
+	return p.setAvailable(name, p.signedInNow(ctx, name))
+}
+
+// signedInNow asks the provider whether it is installed and signed in.
+func (p *providers) signedInNow(ctx context.Context, name string) bool {
+	a := p.adapter(name)
+	if a == nil {
+		return false
+	}
+	bin, dir, err := a.prepare(ctx, p.pathOverride(ctx, name))
+	if err != nil {
+		return false
+	}
+	signed, err := a.signedIn(ctx, bin, dir)
+	return err == nil && signed
+}
+
+// launch returns a session for the provider name with its binary and settings folder. A provider
+// that is turned off does not launch.
+func (p *providers) launch(ctx context.Context, name string) (provider.Session, provider.Config, error) {
+	a := p.adapter(name)
+	if a == nil {
+		return nil, provider.Config{}, fmt.Errorf("unknown provider %q", name)
+	}
+	if !p.enabled(ctx, name) {
+		return nil, provider.Config{}, fmt.Errorf("%s is turned off in Settings > Providers", name)
+	}
+	p.checkAvailable(ctx, name)
+	bin, dir, err := a.prepare(ctx, p.pathOverride(ctx, name))
+	if err != nil {
+		return nil, provider.Config{}, err
+	}
+	return a.new(), provider.Config{Bin: bin, Dir: dir}, nil
 }

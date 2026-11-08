@@ -11,14 +11,18 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/BurntSushi/toml"
 
 	"atoll/provider"
 )
@@ -120,6 +124,18 @@ func SignedIn(ctx context.Context, bin, dir string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// Own names the MCP servers and skills of the user's own Codex setup under home.
+func Own(home string) provider.Own {
+	own := provider.Own{MCPServers: []string{}, Skills: provider.SkillNames(filepath.Join(home, ".codex", "skills"))}
+	var cfg struct {
+		MCPServers map[string]any `toml:"mcp_servers"`
+	}
+	if _, err := toml.DecodeFile(filepath.Join(home, ".codex", "config.toml"), &cfg); err == nil {
+		own.MCPServers = append(own.MCPServers, slices.Sorted(maps.Keys(cfg.MCPServers))...)
+	}
+	return own
 }
 
 // Login returns the `codex login` command with CODEX_HOME=dir. The caller wires its stdio.

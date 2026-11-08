@@ -196,7 +196,7 @@ func TestPlatform_EditBotUndo(t *testing.T) {
 
 func TestPlatform_Refusals(t *testing.T) {
 	e := newPlatform(t, fakeProviders{{
-		Name: "claude", SignedIn: true, Models: []Model{{ID: "opus"}, {ID: "sonnet"}},
+		Name: "claude", Enabled: true, SignedIn: true, Models: []Model{{ID: "opus"}, {ID: "sonnet"}},
 	}})
 	tests := []struct {
 		name     string

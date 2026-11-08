@@ -6,9 +6,13 @@ export type Provider = {
   label: string;
   found: boolean;
   path: string;
+  path_override: string;
   version: string;
+  enabled: boolean;
   signed_in: boolean;
   models: { id: string; name: string }[];
+  own_mcp_servers: string[];
+  own_skills: string[];
 };
 export type SignInState = { status: string; url: string; needs_code: boolean; error: string };
 
@@ -21,6 +25,21 @@ export function useRefreshProviders() {
   return useMutation({
     mutationFn: () => api<Provider[]>('/providers/refresh', { method: 'POST' }),
     onSuccess: (providers) => client.setQueryData(['providers'], providers),
+  });
+}
+
+export function useUpdateProvider() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      name,
+      ...body
+    }: { name: Provider['name'] } & Partial<Pick<Provider, 'enabled' | 'path_override'>>) =>
+      api<Provider>(`/providers/${name}`, { method: 'PUT', body }),
+    onSuccess: (provider) =>
+      client.setQueryData<Provider[]>(['providers'], (list) =>
+        list?.map((p) => (p.name === provider.name ? provider : p)),
+      ),
   });
 }
 

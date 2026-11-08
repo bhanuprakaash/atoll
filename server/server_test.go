@@ -318,9 +318,10 @@ func TestCreateRepo_UnsafeName(t *testing.T) {
 }
 
 func TestBots_UnknownModel(t *testing.T) {
-	h, st := newHandlerWith(t, fakeProviders{{
-		Name: "claude", SignedIn: true, Models: []Model{{ID: "opus"}, {ID: "sonnet"}},
-	}})
+	h, st := newHandlerWith(t, fakeProviders{
+		{Name: "claude", Enabled: true, SignedIn: true, Models: []Model{{ID: "opus"}, {ID: "sonnet"}}},
+		{Name: "codex", SignedIn: true, Models: []Model{{ID: "gpt"}}},
+	})
 	bot, err := st.CreateBot(t.Context(), store.Bot{Name: "Ada", Provider: "claude", Model: "retired"})
 	if err != nil {
 		t.Fatal(err)
@@ -335,6 +336,7 @@ func TestBots_UnknownModel(t *testing.T) {
 	}{
 		{"create", http.MethodPost, "/api/bots", `{"name":"Bo","provider":"claude","model":"gpt"}`, 400, `models: opus, sonnet`},
 		{"edit", http.MethodPut, "/api/bots/" + bot.ID, `{"model":"gpt"}`, 400, `models: opus, sonnet`},
+		{"create on a provider that is off", http.MethodPost, "/api/bots", `{"name":"Bo","provider":"codex","model":"gpt"}`, 400, `codex is turned off in Settings`},
 		{"edit keeping the model it has", http.MethodPut, "/api/bots/" + bot.ID, `{"name":"Ada 2"}`, 200, `"model":"retired"`},
 	}
 	for _, tt := range tests {

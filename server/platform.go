@@ -421,6 +421,7 @@ type Providers interface {
 type Provider struct {
 	Name     string  `json:"name"`
 	Label    string  `json:"label"`
+	Enabled  bool    `json:"enabled"`
 	SignedIn bool    `json:"signed_in"`
 	Models   []Model `json:"models"`
 }
@@ -487,7 +488,7 @@ func (a *api) readCall(ctx context.Context, name string) (any, *rpcError) {
 func (a *api) signedInProviders(ctx context.Context) []Provider {
 	signedIn := []Provider{}
 	for _, p := range a.cachedProviders(ctx) {
-		if p.SignedIn {
+		if p.SignedIn && p.Enabled {
 			signedIn = append(signedIn, p)
 		}
 	}
@@ -679,8 +680,8 @@ func (a *api) platformCall(
 }
 
 // botChoiceProblem says why b picks a repo id no registered repo has, a model the Bot's provider
-// does not list, or a provider that is not signed in, or "" when it picks well; the model check is
-// skipped when the Bot keeps the provider and model it has.
+// does not list, or a provider that is turned off or not signed in, or "" when it picks well; the
+// model check is skipped when the Bot keeps the provider and model it has.
 func (a *api) botChoiceProblem(ctx context.Context, b, current store.Bot) (string, error) {
 	msg, err := a.unknownPicks(ctx, b)
 	if err != nil || msg != "" {
@@ -693,6 +694,9 @@ func (a *api) botChoiceProblem(ctx context.Context, b, current store.Bot) (strin
 	for _, p := range a.cachedProviders(ctx) {
 		if p.Name != b.Provider {
 			continue
+		}
+		if !p.Enabled {
+			return p.Name + " is turned off in Settings > Providers", nil
 		}
 		if !p.SignedIn {
 			return p.Name + " is not signed in", nil

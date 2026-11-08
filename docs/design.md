@@ -275,6 +275,17 @@ creation uses Delete Bot's cleanup, including stopping runs and saving unfinishe
   common install folders), version, signed in, enable switch, path override, and a read-only list of
   the provider's own MCP servers and skills marked "not used by Bots". Checked on start, before each
   run and on Refresh. *A Finder-launched app lacks the shell PATH.*
+- The enable switch and the path override are stored per provider in the settings table and set with
+  `PUT /api/providers/{name}` (`enabled`, `path_override`; an empty path clears it, a relative one is
+  refused). The stored path replaces the PATH lookup; changing it checks that provider again. A
+  provider that is off is not offered for new Bots (the model picker, Chief's `list_models`, and the
+  `create_bot` and `edit_bot` check), and a run on a Bot whose provider is off fails before the
+  provider starts, with "<provider> is turned off in Settings > Providers".
+- The provider's own MCP servers and skills are names only, read on each check, never per GET:
+  Claude Code's top-level `mcpServers` keys in `~/.claude.json` and the folders in
+  `~/.claude/skills`; Codex's `[mcp_servers.<name>]` tables in `~/.codex/config.toml` and the folders
+  in `~/.codex/skills`. A missing or unreadable file is an empty list. `GET /api/providers` lists
+  them as `own_mcp_servers` and `own_skills`.
 - Each provider runs from a Reef-owned settings folder (`~/Library/Application Support/Atoll/providers/claude`,
   `…/codex`), signed in once from the Providers page: `CLAUDE_CONFIG_DIR=<dir> claude auth login`,
   `CODEX_HOME=<dir> codex login`. Never copy or link login files; never change `HOME`. *Same pattern
@@ -288,7 +299,7 @@ creation uses Delete Bot's cleanup, including stopping runs and saving unfinishe
     its folder (Codex finds that folder through `HOME`).
 - Env knobs, for tests and dev: `ATOLL_DATA_DIR` replaces `~/Library/Application Support/Atoll`;
   `ATOLL_PROVIDER_PATH` (PATH syntax) is the only place discovery looks; `ATOLL_CLAUDE_PATH` and
-  `ATOLL_CODEX_PATH` are the path override until settings are stored.
+  `ATOLL_CODEX_PATH` are the path override when no path override is stored.
 - Providers get the parent env minus `ANTHROPIC_*`, `CLAUDE*`, `OPENAI_*`, `CODEX_*` and the user's
   GitLab and GitHub tokens (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`,
   `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`) and the settings that carry a login (`OAUTH_TOKEN`,
@@ -771,7 +782,8 @@ Voice
   sends the whole skill; leaving with unsaved changes asks first. A skill with a source folder has
   Re-import (`POST /api/skills/{id}/reimport`, the same rules as `import_skill`): it lists added /
   changed / removed and, when Reef edits would be overwritten, asks Cancel or Confirm. Provider cards show version, models, Bots using them and the CLI path as labelled facts,
-  along with sign-in state.
+  along with sign-in state, an enable switch, a path override field (saved on blur or Enter) and the
+  provider's own MCP servers and skills, marked as not used by Bots.
   Sign in runs the provider's own login (`claude auth login`, `codex login`) in Reef's folder for
   it, opens the URL it prints in the browser and updates when it finishes; no Terminal.
 - First run is three steps over drifting creatures: the user's name; the providers found, with Sign

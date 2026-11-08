@@ -11,10 +11,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -214,6 +216,18 @@ func SignedIn(ctx context.Context, bin, dir string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// Own names the MCP servers and skills of the user's own Claude Code setup under home.
+func Own(home string) provider.Own {
+	own := provider.Own{MCPServers: []string{}, Skills: provider.SkillNames(filepath.Join(home, ".claude", "skills"))}
+	var cfg struct {
+		MCPServers map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if b, err := os.ReadFile(filepath.Join(home, ".claude.json")); err == nil && json.Unmarshal(b, &cfg) == nil {
+		own.MCPServers = append(own.MCPServers, slices.Sorted(maps.Keys(cfg.MCPServers))...)
+	}
+	return own
 }
 
 // Login returns the command that signs claude in to dir. The caller wires its stdio.

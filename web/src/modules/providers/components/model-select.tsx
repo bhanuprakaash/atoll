@@ -18,7 +18,7 @@ export function ModelSelect({
 }) {
   const id = useId();
   const groups = providers
-    .filter((p) => p.signed_in)
+    .filter((p) => p.signed_in && p.enabled)
     .map((p) => ({
       label: p.label,
       meta: 'Ready',
