@@ -342,6 +342,14 @@ func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, error) {
 	return dir, nil
 }
 
+// WorkDir is the folder the thread's runs work in: its worktree, else its own folder.
+func (m *Manager) WorkDir(t store.Thread) string {
+	if t.Worktree != "" {
+		return t.Worktree
+	}
+	return m.threadDir(t.ID)
+}
+
 func (m *Manager) threadDir(threadID string) string {
 	return filepath.Join(m.cfg.DataDir, "threads", threadID)
 }

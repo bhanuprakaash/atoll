@@ -221,10 +221,12 @@ func New(cfg Config) *Manager {
 	}
 }
 
-// Send stores text as the user's message and starts a run for it. It returns ErrBusy when the
-// thread has a run going and wraps store.ErrNotFound for an unknown thread.
-func (m *Manager) Send(ctx context.Context, threadID, text string) (store.Message, store.Run, error) {
-	msg, run, err := m.send(ctx, store.InboxItem{ThreadID: threadID, Text: text})
+// Send stores text and images as the user's message and starts a run for it. It returns ErrBusy
+// when the thread has a run going and wraps store.ErrNotFound for an unknown thread.
+func (m *Manager) Send(
+	ctx context.Context, threadID, text string, images []store.Attachment,
+) (store.Message, store.Run, error) {
+	msg, run, err := m.send(ctx, store.InboxItem{ThreadID: threadID, Text: text, Images: images})
 	if err != nil && !errors.Is(err, ErrBusy) {
 		m.flushLog(threadID)
 	}
@@ -261,7 +263,11 @@ func (m *Manager) send(ctx context.Context, it store.InboxItem) (store.Message, 
 	a.run = run
 	m.tokens[a.token] = a
 	m.mu.Unlock()
-	go m.execute(a, text)
+	images := make([]provider.Image, len(msg.Attachments))
+	for i, att := range msg.Attachments {
+		images[i] = provider.Image{Mime: att.Mime, Data: att.Data}
+	}
+	go m.execute(a, text, images)
 	return msg, run, nil
 }
 
@@ -448,7 +454,7 @@ func (m *Manager) Close() error {
 }
 
 // execute is the goroutine of one run.
-func (m *Manager) execute(a *active, text string) {
+func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	defer m.wg.Done()
 	defer close(a.done)
 	start := time.Now()
@@ -459,7 +465,7 @@ func (m *Manager) execute(a *active, text string) {
 		m.mu.Lock()
 		a.log = f
 		m.mu.Unlock()
-		reply, err = m.drive(a, text)
+		reply, err = m.drive(a, text, images)
 	}
 	res := store.RunResult{Status: store.StatusDone, Reply: strings.TrimSpace(reply)}
 	if err != nil {
@@ -511,7 +517,7 @@ func (m *Manager) execute(a *active, text string) {
 }
 
 // drive runs the provider session for one prompt and returns its reply.
-func (m *Manager) drive(a *active, text string) (string, error) {
+func (m *Manager) drive(a *active, text string, images []provider.Image) (string, error) {
 	thread, err := m.cfg.Store.Thread(a.ctx, a.threadID)
 	if err != nil {
 		return "", fmt.Errorf("load thread: %w", err)
@@ -625,7 +631,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		return "", fmt.Errorf("start %s: %w", bot.Provider, err)
 	}
 	m.publish(a, EventPrompt, Prompt{RunID: a.run.ID, System: cfg.SystemPrompt, Message: prompt})
-	if err := sess.Send(a.ctx, prompt); err != nil {
+	if err := sess.Send(a.ctx, prompt, images); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
 	reply, err := m.stream(a, sess, _showText)
@@ -656,7 +662,7 @@ func (m *Manager) drive(a *active, text string) (string, error) {
 		return reply, nil
 	}
 	// The nudge only asks for the report: its failure keeps the first turn's reply.
-	nerr := sess.Send(a.ctx, _nudge)
+	nerr := sess.Send(a.ctx, _nudge, nil)
 	if nerr == nil {
 		_, nerr = m.stream(a, sess, _hideText)
 	}

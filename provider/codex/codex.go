@@ -5,6 +5,7 @@ package codex
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -147,14 +148,18 @@ func (s *Session) Resume(ctx context.Context, cfg provider.Config, id string) er
 }
 
 // Send starts a turn on the thread.
-func (s *Session) Send(_ context.Context, prompt string) error {
+func (s *Session) Send(_ context.Context, prompt string, images []provider.Image) error {
 	if s.threadID == "" {
 		return errors.New("codex not started")
 	}
-	return s.request("turn/start", map[string]any{
-		"threadId": s.threadID,
-		"input":    []map[string]string{{"type": "text", "text": prompt}},
-	})
+	input := []map[string]string{{"type": "text", "text": prompt}}
+	for _, img := range images {
+		input = append(input, map[string]string{
+			"type": "image",
+			"url":  "data:" + img.Mime + ";base64," + base64.StdEncoding.EncodeToString(img.Data),
+		})
+	}
+	return s.request("turn/start", map[string]any{"threadId": s.threadID, "input": input})
 }
 
 // Events streams events until codex exits, then closes the channel.

@@ -113,7 +113,7 @@ func TestSession(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := s.Send(ctx, tt.prompt); err != nil {
+			if err := s.Send(ctx, tt.prompt, nil); err != nil {
 				t.Fatal(err)
 			}
 			var reply strings.Builder

@@ -123,6 +123,8 @@ func New(
 	mux.HandleFunc("POST /api/threads/{id}/messages", a.sendMessage)
 	mux.HandleFunc("GET /api/threads/{id}/messages", a.listMessages)
 	mux.HandleFunc("GET /api/threads/{id}/events", a.events)
+	mux.HandleFunc("GET /api/threads/{id}/file", a.threadFile)
+	mux.HandleFunc("GET /api/attachments/{id}", a.getAttachment)
 	mux.HandleFunc("GET /api/runs/{id}", a.getRun)
 	mux.HandleFunc("POST /api/runs/{id}/stop", a.stopRun)
 	mux.HandleFunc("POST /api/approvals/{id}", a.answer)
@@ -240,11 +242,17 @@ func (a *api) threadRuns(ctx context.Context) (threads, helpers map[string][]sto
 
 func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		RepoID string `json:"repo_id"`
-		Text   string `json:"text"`
+		RepoID string      `json:"repo_id"`
+		Text   string      `json:"text"`
+		Images []imageBody `json:"images"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		fail(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	images, msg := decodeImages(body.Images)
+	if msg != "" {
+		fail(w, http.StatusBadRequest, msg)
 		return
 	}
 	botID := r.PathValue("id")
@@ -272,8 +280,8 @@ func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	if body.Text != "" {
-		m, ru, err := a.runs.Send(r.Context(), t.ID, body.Text)
+	if body.Text != "" || len(images) > 0 {
+		m, ru, err := a.runs.Send(r.Context(), t.ID, body.Text, images)
 		if err != nil {
 			a.fail(w, r, err)
 			return
@@ -443,10 +451,17 @@ func (a *api) patchThread(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Text string `json:"text"`
+		Text   string      `json:"text"`
+		Images []imageBody `json:"images"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Text == "" {
-		fail(w, http.StatusBadRequest, "text is required")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil ||
+		(body.Text == "" && len(body.Images) == 0) {
+		fail(w, http.StatusBadRequest, "text or an image is required")
+		return
+	}
+	images, msg := decodeImages(body.Images)
+	if msg != "" {
+		fail(w, http.StatusBadRequest, msg)
 		return
 	}
 	id := r.PathValue("id")
@@ -461,7 +476,7 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	m, ru, err := a.runs.Send(r.Context(), id, body.Text)
+	m, ru, err := a.runs.Send(r.Context(), id, body.Text, images)
 	if err != nil {
 		a.fail(w, r, err)
 		return

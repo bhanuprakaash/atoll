@@ -100,10 +100,10 @@ func (s *urlSession) Start(_ context.Context, cfg provider.Config) error {
 func (s *urlSession) Resume(ctx context.Context, cfg provider.Config, _ string) error {
 	return s.Start(ctx, cfg)
 }
-func (s *urlSession) Events() <-chan provider.Event      { return s.events }
-func (s *urlSession) Send(context.Context, string) error { return nil }
-func (s *urlSession) Answer(string, bool) error          { return nil }
-func (s *urlSession) Interrupt() error                   { close(s.events); return nil }
+func (s *urlSession) Events() <-chan provider.Event                        { return s.events }
+func (s *urlSession) Send(context.Context, string, []provider.Image) error { return nil }
+func (s *urlSession) Answer(string, bool) error                            { return nil }
+func (s *urlSession) Interrupt() error                                     { close(s.events); return nil }
 
 func TestPlatform_EditBotUndo(t *testing.T) {
 	ctx := t.Context()
@@ -135,7 +135,7 @@ func TestPlatform_EditBotUndo(t *testing.T) {
 	t.Cleanup(func() { _ = runs.Close() })
 	srv := httptest.NewServer(New(st, nil, runs, log, nil))
 	t.Cleanup(srv.Close)
-	if _, _, err := runs.Send(ctx, thread.ID, "hi"); err != nil {
+	if _, _, err := runs.Send(ctx, thread.ID, "hi", nil); err != nil {
 		t.Fatal(err)
 	}
 	token := path.Base(<-sess.url)

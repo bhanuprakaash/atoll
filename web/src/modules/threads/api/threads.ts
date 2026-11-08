@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
-import type { Message, Run } from '@/modules/threads/api/messages';
+import type { ImageInput, Message, Run } from '@/modules/threads/api/messages';
 
 export type Thread = {
   id: string;
@@ -76,10 +76,18 @@ export function useCreateThread(botId: string) {
 export function useCreateThreadWithMessage(botId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ repoId, text }: { repoId: string; text: string }) =>
+    mutationFn: ({
+      repoId,
+      text,
+      images,
+    }: {
+      repoId: string;
+      text: string;
+      images?: ImageInput[];
+    }) =>
       api<Thread & { thread?: Thread; message: Message; run: Run }>(`/bots/${botId}/threads`, {
         method: 'POST',
-        body: { text, ...(repoId ? { repo_id: repoId } : {}) },
+        body: { text, images, ...(repoId ? { repo_id: repoId } : {}) },
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['threads', botId] }),
   });

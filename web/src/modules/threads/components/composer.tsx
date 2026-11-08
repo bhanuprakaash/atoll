@@ -1,10 +1,36 @@
-import { useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { TextArea } from '@/components/text-field';
-import { useSendMessage, type Run } from '@/modules/threads/api/messages';
+import { ZoomImage } from '@/components/zoom-image';
+import { useSendMessage, type ImageInput, type Run } from '@/modules/threads/api/messages';
 import { useStopRun } from '@/modules/threads/api/runs';
 
 const roundButton =
   'flex size-10 flex-none items-center justify-center rounded-full bg-accent text-accent-ink disabled:bg-segment disabled:text-muted';
+
+const imageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+const maxImageBytes = 5 * 1024 * 1024;
+const maxImages = 10;
+
+type Attachment = ImageInput & { id: number; url: string };
+
+const readImage = (file: File, id: number) =>
+  new Promise<Attachment>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    reader.onload = () => {
+      const url = reader.result as string;
+      resolve({ id, mime: file.type, data: url.slice(url.indexOf(',') + 1), url });
+    };
+    reader.readAsDataURL(file);
+  });
 
 export function Composer({
   threadId,
@@ -21,13 +47,16 @@ export function Composer({
   disabled: boolean;
   onSent: (run: Run) => void;
   context?: ReactNode;
-  onFirstSend?: (text: string) => void;
+  onFirstSend?: (text: string, images: ImageInput[]) => void;
 }) {
   const [text, setText] = useState('');
+  const [images, setImages] = useState<Attachment[]>([]);
+  const [imageError, setImageError] = useState('');
+  const nextImageId = useRef(0);
   const box = useRef<HTMLTextAreaElement>(null);
   const send = useSendMessage(threadId);
   const stop = useStopRun();
-  const canSend = !disabled && !send.isPending && text.trim() !== '';
+  const canSend = !disabled && !send.isPending && (text.trim() !== '' || images.length > 0);
 
   useLayoutEffect(() => {
     const el = box.current;
@@ -36,20 +65,53 @@ export function Composer({
     el.style.height = `${Math.min(el.scrollHeight, 194)}px`;
   }, [text]);
 
+  const addImages = async (files: File[]) => {
+    if (files.length === 0) return;
+    const bad = files.find((f) => !imageTypes.includes(f.type));
+    if (bad)
+      return setImageError(`${bad.name || 'That file'} is not a PNG, JPEG, GIF or WebP image`);
+    if (files.some((f) => f.size > maxImageBytes))
+      return setImageError('Images can be at most 5 MB each');
+    if (images.length + files.length > maxImages)
+      return setImageError(`A message can have at most ${maxImages} images`);
+    try {
+      const added = await Promise.all(files.map((f) => readImage(f, nextImageId.current++)));
+      setImageError('');
+      setImages((current) => [...current, ...added]);
+    } catch (err) {
+      setImageError((err as Error).message);
+    }
+  };
+  const onPaste = (e: ClipboardEvent) => {
+    const files = Array.from(e.clipboardData.files);
+    if (files.length === 0) return;
+    e.preventDefault();
+    void addImages(files);
+  };
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    void addImages(Array.from(e.dataTransfer.files));
+  };
+
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
     if (!canSend) return;
     if (onFirstSend) {
-      onFirstSend(text);
+      onFirstSend(text, images);
       setText('');
+      setImages([]);
       return;
     }
-    send.mutate(text, {
-      onSuccess: ({ run }) => {
-        setText('');
-        onSent(run);
+    send.mutate(
+      { text, images },
+      {
+        onSuccess: ({ run }) => {
+          setText('');
+          setImages([]);
+          onSent(run);
+        },
       },
-    });
+    );
   };
 
   const input = (
@@ -67,6 +129,7 @@ export function Composer({
       rows={1}
       value={text}
       onChange={(e) => setText(e.target.value)}
+      onPaste={onPaste}
       onKeyDown={(e) => {
         if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
           e.preventDefault();
@@ -107,7 +170,28 @@ export function Composer({
   );
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-1.5">
+          {images.map((img) => (
+            <div key={img.id} data-testid="composer-attachment" className="relative">
+              <ZoomImage
+                src={img.url}
+                alt="Attachment"
+                className="size-16 rounded-xl object-cover"
+              />
+              <button
+                type="button"
+                aria-label="Remove image"
+                onClick={() => setImages((current) => current.filter((i) => i.id !== img.id))}
+                className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-accent text-xs leading-none text-accent-ink"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <form
         onSubmit={submit}
         className={
@@ -137,6 +221,11 @@ export function Composer({
           </>
         )}
       </form>
+      {imageError && (
+        <p role="alert" className="text-[13px] text-danger">
+          {imageError}
+        </p>
+      )}
       {(send.isError || stop.isError) && (
         <p className="text-[13px] text-danger">{send.error?.message || stop.error?.message}</p>
       )}
