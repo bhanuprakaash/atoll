@@ -168,21 +168,27 @@ func TestHelperWork_BranchesOffTheBoss(t *testing.T) {
 
 // TestHelperWork_GitHubConnectionOnlyOwnBranch: on a GitHub repo, a helper without the GitHub
 // connection gets its worktree off a boss branch, but its start_work for a branch of its own (boss
-// with no worktree) is refused as today.
+// with no worktree) is refused as today, and delegate notes that up front. A helper with the
+// connection gets no such note.
 func TestHelperWork_GitHubConnectionOnlyOwnBranch(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newGitHubRepoFixture(t, p)
 			repo := f.register(t, "octo-hello", f.hello(t))
-			var poteto bot
-			f.s.do(t, "POST", "/api/bots", map[string]any{"name": "Poteto", "persona": "Works on GitHub.", "provider": p, "connections": []string{f.connect(t)}}, &poteto, http.StatusCreated)
+			conn := f.connect(t)
+			var poteto, coder bot
+			f.s.do(t, "POST", "/api/bots", map[string]any{"name": "Poteto", "persona": "Works on GitHub.", "provider": p, "connections": []string{conn}}, &poteto, http.StatusCreated)
+			f.s.do(t, "POST", "/api/bots", map[string]any{"name": "Coder", "persona": "Works on GitHub.", "provider": p, "connections": []string{conn}}, &coder, http.StatusCreated)
 			tester := f.s.newBot(t, "Tester", p)
-			setDelegates(t, f.s, poteto, tester)
+			setDelegates(t, f.s, poteto, tester, coder)
 
 			boss := f.thread(t, poteto, repo)
 			ev := f.s.events(t, boss)
 			own := bossWorktree(t, f.s, boss, ev)
 			h := handedOff(t, useAtoll(t, f.s, boss, ev, delegateCall("Tester", _unfinishedRepoPrompt, ""))[0])
+			if strings.Contains(h.Note, "cannot edit") {
+				t.Errorf("delegate from a boss with a worktree: note %q, want no GitHub connection note", h.Note)
+			}
 			helper := settled(t, f.s, h.ThreadID)
 			if helper.Status != "done" {
 				t.Fatalf("helper without the GitHub connection on the boss's branch: status %q, error %q; want done", helper.Status, helper.Error)
@@ -193,14 +199,22 @@ func TestHelperWork_GitHubConnectionOnlyOwnBranch(t *testing.T) {
 
 			exploring := f.thread(t, poteto, repo)
 			h = handedOff(t, useAtoll(t, f.s, exploring, f.s.events(t, exploring), delegateCall("Tester", _githubFixPrompt, ""))[0])
-			if h.Branch != "" || h.Note != "" {
-				t.Errorf("delegate from a boss with no worktree: %+v, want no branch and no note", h)
+			const note = "Tester can read octo-hello but cannot edit it until it has the GitHub connection."
+			if h.ThreadID == "" || h.Branch != "" || h.Note != note {
+				t.Errorf("delegate from a boss with no worktree: %+v, want a thread, no branch and note %q", h, note)
 			}
 			helper = settled(t, f.s, h.ThreadID)
 			if helper.Status != "done" || !strings.Contains(helper.Reply, "start_work failed: ") || !strings.Contains(helper.Reply, "give this Bot the GitHub connection") {
 				t.Errorf("helper without the GitHub connection, boss with no worktree: status %q, reply %q, error %q; want start_work refused with %q",
 					helper.Status, helper.Reply, helper.Error, "give this Bot the GitHub connection")
 			}
+
+			withConn := f.thread(t, poteto, repo)
+			h = handedOff(t, useAtoll(t, f.s, withConn, f.s.events(t, withConn), delegateCall("Coder", _githubFixPrompt, ""))[0])
+			if h.Branch != "" || h.Note != "" {
+				t.Errorf("delegate to a helper with the GitHub connection, boss with no worktree: %+v, want no branch and no note", h)
+			}
+			settled(t, f.s, h.ThreadID)
 		})
 	}
 }
