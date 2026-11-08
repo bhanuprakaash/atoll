@@ -150,7 +150,15 @@ export function BotPage() {
   const [params, setParams] = useSearchParams();
   const settingsOpen = params.has('settings');
   const setSettingsOpen = (open: boolean) =>
-    setParams(open ? { settings: '' } : {}, { replace: true });
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (open) next.set('settings', '');
+        else next.delete('settings');
+        return next;
+      },
+      { replace: true },
+    );
   const [list, setList] = useState(false);
   const notifications = useOutletContext<Notifications>();
   const { drop, widened, dismiss } = notifications;
@@ -161,7 +169,7 @@ export function BotPage() {
       setList(false);
       dismiss();
     };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && shrink();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !e.defaultPrevented && shrink();
     const onDown = (e: PointerEvent) => !(e.target as Element).closest('[data-island]') && shrink();
     window.addEventListener('keydown', onKey);
     window.addEventListener('pointerdown', onDown);

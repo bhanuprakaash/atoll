@@ -22,11 +22,7 @@ const rank = (t: SidebarThread) =>
           ? 3
           : 4;
 
-/**
- * Picks the rows under a Bot from its open threads, newest first. Needs-you threads, pins and the
- * open thread are never hidden, even past maxRows; the rest fill the room left, in the order needs
- * you, pinned, new, running. Unfolded adds the hidden running threads.
- */
+// Needs-you, pinned and the open thread always show, even past maxRows.
 export function threadTree(
   threads: SidebarThread[],
   openId: string | undefined,

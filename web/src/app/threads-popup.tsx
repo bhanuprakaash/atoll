@@ -15,6 +15,8 @@ import {
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 import { relativeTime } from '@/utils/time';
 
+const isPinLimit = (error: Error) => error instanceof ApiError && error.status === 409;
+
 const actionButton =
   'flex h-6 items-center justify-center rounded-md bg-tile px-1.5 text-xs text-ink';
 
@@ -101,28 +103,30 @@ export function ThreadsPopup({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      event.preventDefault();
       if (replacing) setReplacing(null);
       else onClose();
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [replacing, onClose]);
   const bot = bots.find((b) => b.id === botId);
   if (!bot) return null;
 
+  const openThreads = bot.threads ?? [];
   const detail = new Map(threads.map((t) => [t.id, t]));
   const q = query.trim().toLowerCase();
   const matches = (t: SidebarThread) => {
     const d = detail.get(t.id);
     return [t.title, d?.branch, mrRef(d?.mr_url)].some((s) => s?.toLowerCase().includes(q));
   };
-  const inSidebar = new Set(threadTree(bot.threads, openThreadId, false).rows.map((t) => t.id));
+  const inSidebar = new Set(threadTree(openThreads, openThreadId, false).rows.map((t) => t.id));
   const closedThreads = threads
     .filter((t) => t.closed)
     .map((t): SidebarThread => ({ id: t.id, title: t.title, state: '', pinned: false }));
   const sections = [
-    { title: 'In the sidebar', rows: bot.threads.filter((t) => inSidebar.has(t.id)) },
-    { title: 'Other open threads', rows: bot.threads.filter((t) => !inSidebar.has(t.id)) },
+    { title: 'In the sidebar', rows: openThreads.filter((t) => inSidebar.has(t.id)) },
+    { title: 'Other open threads', rows: openThreads.filter((t) => !inSidebar.has(t.id)) },
   ].map((s) => ({ ...s, rows: s.rows.filter(matches) }));
   const closedRows = closedThreads.filter(matches);
   const setPinned = (thread: SidebarThread, pinned: boolean, replace?: string) =>
@@ -131,7 +135,7 @@ export function ThreadsPopup({
       {
         onSuccess: () => setReplacing(null),
         onError: (error) => {
-          if (error instanceof ApiError && error.status === 409) setReplacing(thread);
+          if (isPinLimit(error)) setReplacing(thread);
         },
       },
     );
@@ -163,7 +167,7 @@ export function ThreadsPopup({
             <span className="min-w-0 flex-1">
               <span className="block truncate text-base">{bot.name}</span>
               <span className="block text-[12.5px] text-muted">
-                {bot.threads.length} open threads · {closedThreads.length} closed
+                {openThreads.length} open threads · {closedThreads.length} closed
               </span>
             </span>
             <button
@@ -205,6 +209,9 @@ export function ThreadsPopup({
               className="h-9.5 w-full rounded-xl border border-outline bg-field px-3"
             />
           </div>
+          {pin.isError && !isPinLimit(pin.error) && (
+            <p className="px-4 pb-2 text-[13px] text-danger">{pin.error.message}</p>
+          )}
           <div className="min-h-0 flex-1 overflow-y-auto border-t border-line px-2 pb-2">
             {sections.map(
               ({ title, rows }) =>
@@ -259,7 +266,7 @@ export function ThreadsPopup({
               Three threads fit in the sidebar. Pick the one to unpin.
             </p>
             <div className="flex flex-col gap-1">
-              {bot.threads
+              {openThreads
                 .filter((t) => t.pinned)
                 .sort((a, b) =>
                   (detail.get(a.id)?.created_at ?? '').localeCompare(

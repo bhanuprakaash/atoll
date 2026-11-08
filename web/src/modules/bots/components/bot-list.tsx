@@ -7,6 +7,7 @@ import { useCreateGroup, useGroups, useSetBotGroup, type Group } from '@/modules
 import { BotGroup, botDragType } from '@/modules/bots/components/bot-group';
 import { GroupNameField } from '@/modules/bots/components/group-name-field';
 import { ThreadTree } from '@/modules/bots/components/thread-tree';
+import { threadTree } from '@/modules/bots/utils/thread-tree';
 import { relativeTime } from '@/utils/time';
 
 function PinButton({ bot }: { bot: Bot }) {
@@ -181,6 +182,16 @@ export function BotList({
     setOpenBot(open.botId);
     setUnfolded(null);
   }
+  const unfoldedBot = bots.find((bot) => bot.id === unfolded);
+  if (
+    unfoldedBot &&
+    threadTree(
+      unfoldedBot.threads ?? [],
+      open.botId === unfoldedBot.id ? open.threadId : undefined,
+      false,
+    ).more?.kind !== 'running'
+  )
+    setUnfolded(null);
   const matching = bots
     .filter((bot) => bot.name.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => Number(b.id === 'chief') - Number(a.id === 'chief'));
@@ -204,7 +215,7 @@ export function BotList({
     />
   );
   const needsYou = (members: Bot[]) =>
-    members.some((bot) => bot.threads.some((thread) => thread.state === 'needs_you'));
+    members.some((bot) => bot.threads?.some((thread) => thread.state === 'needs_you'));
   const moveTo = (groupId: string | null) => (botId: string) => setGroup.mutate({ botId, groupId });
   return (
     <div className="flex flex-col gap-0.5">
@@ -237,9 +248,11 @@ export function BotList({
           onDone={(name) => {
             onCreatingGroup(null);
             if (!name) return;
-            createGroup.mutateAsync(name).then((group) => {
-              if (creatingGroup.botId)
-                setGroup.mutate({ botId: creatingGroup.botId, groupId: group.id });
+            createGroup.mutate(name, {
+              onSuccess: (group) => {
+                if (creatingGroup.botId)
+                  setGroup.mutate({ botId: creatingGroup.botId, groupId: group.id });
+              },
             });
           }}
         />

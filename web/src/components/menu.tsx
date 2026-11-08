@@ -26,7 +26,10 @@ export function Menu({
     enabled()[0]?.focus();
   }, []);
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') onClose();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onClose();
+    }
     const step = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
     if (!step) return;
     event.preventDefault();
@@ -55,9 +58,9 @@ export function Menu({
         }}
         className="fixed z-50 rounded-card border border-outline bg-composer p-1.25 shadow-[0_12px_32px_rgba(0,0,0,.5)]"
       >
-        {items.map((item) => (
+        {items.map((item, index) => (
           <button
-            key={item.label}
+            key={index}
             type="button"
             role="menuitem"
             disabled={item.disabled}
