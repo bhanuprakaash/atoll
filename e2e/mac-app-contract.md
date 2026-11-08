@@ -111,7 +111,8 @@ Found by role and accessible name. Colours, sizes and motion curves are not test
 
 - **Sidebar**: `navigation` "Bots". One `link` per Bot, Chief first, with its creature as an `img`
   named `<Creature>, <state>` (`Jellyfish, idle`, `Shark, needs you`, `Narwhal, asleep`,
-  `Shark, working`, `Shark, failed`). A needs-you row's activity names what it waits for. Also a
+  `Shark, working`, `Shark, failed`). A needs-you row's activity names what it waits for; an
+  idle row shows no activity (see [sidebar-tree-contract.md](sidebar-tree-contract.md)). Also a
   `button` "New Bot" and a `link` whose name contains "Settings".
 - **Bot page**: a `button` named `Threads` (when threads wait on the user, the name also carries
   their count, e.g. `Threads, 1 waiting`) and a `button` "Bot settings". Clicking a Bot with no
