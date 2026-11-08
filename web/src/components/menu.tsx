@@ -1,9 +1,10 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 export type MenuItem = {
   label: string;
   onSelect?: () => void;
   disabled?: boolean;
+  items?: MenuItem[];
 };
 
 const width = 220;
@@ -19,6 +20,7 @@ export function Menu({
   onClose: () => void;
 }) {
   const menu = useRef<HTMLDivElement>(null);
+  const [sub, setSub] = useState<{ at: { x: number; y: number }; items: MenuItem[] } | null>(null);
   const enabled = () => [...menu.current!.querySelectorAll<HTMLElement>('button:enabled')];
   useEffect(() => {
     enabled()[0]?.focus();
@@ -59,7 +61,12 @@ export function Menu({
             type="button"
             role="menuitem"
             disabled={item.disabled}
-            onClick={() => {
+            onClick={(event) => {
+              if (item.items) {
+                const box = event.currentTarget.getBoundingClientRect();
+                setSub({ at: { x: box.right + 4, y: box.top - 6 }, items: item.items });
+                return;
+              }
               item.onSelect?.();
               onClose();
             }}
@@ -69,6 +76,7 @@ export function Menu({
           </button>
         ))}
       </div>
+      {sub && <Menu at={sub.at} items={sub.items} onClose={onClose} />}
     </>
   );
 }

@@ -23,6 +23,7 @@ export function Shell() {
   const [search, setSearch] = useState('');
   const notifications = useNotifications();
   const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
+  const [creatingGroup, setCreatingGroup] = useState<{ botId?: string } | null>(null);
   const close = useCloseThread();
   const rename = useRenameThread();
   const botMatch = useMatch('/bots/:botId/*')?.params.botId;
@@ -107,6 +108,8 @@ export function Shell() {
           <BotList
             search={search}
             open={{ botId, threadId }}
+            creatingGroup={creatingGroup}
+            onCreatingGroup={setCreatingGroup}
             onMore={() => undefined}
             onCloseThread={(id) => close.mutate(id)}
             onRenameThread={(id, title) => rename.mutate({ id, title })}
@@ -146,7 +149,10 @@ export function Shell() {
         <Menu
           at={newMenu}
           onClose={() => setNewMenu(null)}
-          items={[{ label: 'New Bot', onSelect: () => navigate('/bots/new') }]}
+          items={[
+            { label: 'New Bot', onSelect: () => navigate('/bots/new') },
+            { label: 'New group', onSelect: () => setCreatingGroup({}) },
+          ]}
         />
       )}
       <main className="flex min-w-0 flex-1 flex-col">

@@ -3,6 +3,9 @@ import { NavLink, useNavigate } from 'react-router';
 import { Creature } from '@/components/creature';
 import { Menu } from '@/components/menu';
 import { useBots, usePinBot, type Bot } from '@/modules/bots/api/bots';
+import { useCreateGroup, useGroups, useSetBotGroup, type Group } from '@/modules/bots/api/groups';
+import { BotGroup, botDragType } from '@/modules/bots/components/bot-group';
+import { GroupNameField } from '@/modules/bots/components/group-name-field';
 import { ThreadTree } from '@/modules/bots/components/thread-tree';
 import { relativeTime } from '@/utils/time';
 
@@ -40,6 +43,9 @@ function PinButton({ bot }: { bot: Bot }) {
 function BotRow({
   bot,
   open,
+  groups,
+  onMoveToGroup,
+  onNewGroup,
   unfolded,
   onUnfold,
   onMore,
@@ -48,6 +54,9 @@ function BotRow({
 }: {
   bot: Bot;
   open: { botId?: string; threadId?: string };
+  groups: Group[];
+  onMoveToGroup: (groupId: string | null) => void;
+  onNewGroup: () => void;
   unfolded: boolean;
   onUnfold: (unfolded: boolean) => void;
   onMore: (botId: string) => void;
@@ -61,6 +70,8 @@ function BotRow({
   return (
     <li>
       <div
+        draggable={bot.id !== 'chief'}
+        onDragStart={(event) => event.dataTransfer.setData(botDragType, bot.id)}
         onContextMenu={(event) => {
           event.preventDefault();
           setMenu({ x: event.clientX, y: event.clientY });
@@ -123,7 +134,17 @@ function BotRow({
                     label: bot.pinned ? 'Unpin' : 'Pin to sidebar',
                     onSelect: () => pin.mutate(!bot.pinned),
                   },
-                  { label: 'Move to group', disabled: true },
+                  {
+                    label: 'Move to group',
+                    items: [
+                      ...groups.map((group) => ({
+                        label: group.name,
+                        onSelect: () => onMoveToGroup(group.id),
+                      })),
+                      { label: 'No group', onSelect: () => onMoveToGroup(null) },
+                      { label: 'New group…', onSelect: onNewGroup },
+                    ],
+                  },
                 ]),
             { label: 'Bot settings', onSelect: () => navigate(`/bots/${bot.id}?settings`) },
           ]}
@@ -136,43 +157,101 @@ function BotRow({
 export function BotList({
   search,
   open,
+  creatingGroup,
+  onCreatingGroup,
   onMore,
   onCloseThread,
   onRenameThread,
 }: {
   search: string;
   open: { botId?: string; threadId?: string };
+  creatingGroup: { botId?: string } | null;
+  onCreatingGroup: (creating: { botId?: string } | null) => void;
   onMore: (botId: string) => void;
   onCloseThread: (threadId: string) => void;
   onRenameThread: (threadId: string, title: string) => void;
 }) {
   const { data: bots = [] } = useBots();
+  const { data: groups = [] } = useGroups();
+  const createGroup = useCreateGroup();
+  const setGroup = useSetBotGroup();
   const [unfolded, setUnfolded] = useState<string | null>(null);
   const [openBot, setOpenBot] = useState(open.botId);
   if (openBot !== open.botId) {
     setOpenBot(open.botId);
     setUnfolded(null);
   }
-  const ordered = bots
+  const matching = bots
     .filter((bot) => bot.name.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => Number(b.id === 'chief') - Number(a.id === 'chief'));
+  const top = matching.filter((bot) => bot.id === 'chief' || bot.pinned);
+  const rest = matching.filter((bot) => !top.includes(bot));
+  const inGroup = (id: string) => rest.filter((bot) => bot.group_id === id);
+  const ungrouped = rest.filter((bot) => !groups.some((group) => group.id === bot.group_id));
+  const row = (bot: Bot) => (
+    <BotRow
+      key={bot.id}
+      bot={bot}
+      open={open}
+      groups={groups}
+      onMoveToGroup={(groupId) => setGroup.mutate({ botId: bot.id, groupId })}
+      onNewGroup={() => onCreatingGroup({ botId: bot.id })}
+      unfolded={unfolded === bot.id}
+      onUnfold={(on) => setUnfolded(on ? bot.id : null)}
+      onMore={onMore}
+      onCloseThread={onCloseThread}
+      onRenameThread={onRenameThread}
+    />
+  );
+  const needsYou = (members: Bot[]) =>
+    members.some((bot) => bot.threads.some((thread) => thread.state === 'needs_you'));
+  const moveTo = (groupId: string | null) => (botId: string) => setGroup.mutate({ botId, groupId });
   return (
-    <ul className="flex flex-col gap-0.5">
-      {search && ordered.length === 0 && (
-        <li className="px-2.5 py-2 text-sm text-muted">No Bots match</li>
-      )}
-      {ordered.map((bot) => (
-        <BotRow
-          key={bot.id}
-          bot={bot}
-          open={open}
-          unfolded={unfolded === bot.id}
-          onUnfold={(on) => setUnfolded(on ? bot.id : null)}
-          onMore={onMore}
-          onCloseThread={onCloseThread}
-          onRenameThread={onRenameThread}
+    <div className="flex flex-col gap-0.5">
+      <ul className="flex flex-col gap-0.5">
+        {search && matching.length === 0 && (
+          <li className="px-2.5 py-2 text-sm text-muted">No Bots match</li>
+        )}
+        {top.map(row)}
+      </ul>
+      {groups.map((group, index) => {
+        const members = inGroup(group.id);
+        if (search && members.length === 0) return null;
+        return (
+          <BotGroup
+            key={group.id}
+            group={group}
+            name={group.name}
+            heading
+            first={index === 0}
+            last={index === groups.length - 1}
+            needsYou={needsYou(members)}
+            onDropBot={moveTo(group.id)}
+          >
+            {members.map(row)}
+          </BotGroup>
+        );
+      })}
+      {creatingGroup && (
+        <GroupNameField
+          onDone={(name) => {
+            onCreatingGroup(null);
+            if (!name) return;
+            createGroup.mutateAsync(name).then((group) => {
+              if (creatingGroup.botId)
+                setGroup.mutate({ botId: creatingGroup.botId, groupId: group.id });
+            });
+          }}
         />
-      ))}
-    </ul>
+      )}
+      <BotGroup
+        name="Ungrouped"
+        heading={groups.length > 0}
+        needsYou={false}
+        onDropBot={moveTo(null)}
+      >
+        {ungrouped.map(row)}
+      </BotGroup>
+    </div>
   );
 }
