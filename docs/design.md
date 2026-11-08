@@ -606,11 +606,13 @@ Voice
 - Sidebar: a search field on top filters Bots by name, `+` beside it; no logo (the user found it
   redundant). Mockups: the "Reef thread tracking" canvas
   (https://claude.ai/artifact/McPffSMXRCir3g17QQJTGQ).
-  One row per Bot (creature, name, latest activity, time): Chief first, then pinned Bots in the order
-  pinned, then the user's groups in their order, then Ungrouped. Hovering a row shows a pin button
-  and `+` (New thread); Bot settings has Pin to sidebar; Chief cannot be pinned. The activity
-  line is the live verb while a run works ("Running make build"), "Needs you: ..." while an approval waits, otherwise the first line of the latest reply, at most
-  60 characters cut at a word boundary with "…" when cut. `+` at the top opens New Bot and New
+  One row per Bot (36 px creature, name, time; 9 px 10 px padding, 4 px between rows): Chief
+  first, then pinned Bots in the order pinned, then the user's groups in their order, then Ungrouped. Hovering a row shows a pin button
+  and `+` (New thread); Bot settings has Pin to sidebar; Chief cannot be pinned. A second
+  line shows only while a run works (the live verb, "Running make build", with three wave dots) or
+  while an approval waits ("Needs you: ..." in the same colour as a thread's "Needs you"); an
+  idle, asleep or failed Bot is one line. *Two lines for every Bot made the list twice as tall as
+  Claude's; the user wanted a calm list.* `+` at the top opens New Bot and New
   group; the bottom user row opens Settings. No group chats. A thread's activity time moves when a run
   starts, an approval opens or closes, and a run ends, not on every event. *The sidebar polls
   every 2 s; a write per text delta would cost more than the time is worth.* Clicking a Bot opens
@@ -622,8 +624,8 @@ Voice
   never draws over a row. *The user wanted room for longer names and thread titles, and the
   scrollbar cut through the rows.*
 - Thread tree: under each Bot, at most 3 thread rows (32 px, no gap) hang from one thin rail under
-  the creature's centre. The rail starts at the bottom of the Bot row and ends in a rounded hook at
-  the middle of the last row, the overflow line included; it never touches a row. A Bot with
+  the creature's centre (28 px from the row's left edge; rows start 14 px right of it, at 42 px).
+  The rail starts at the bottom of the Bot row and ends in a rounded hook at the middle of the last row, the overflow line included; it never touches a row. A Bot with
   nothing to show is its plain row. A row is the title and one marker at its right end: "Needs
   you" and a red dot; a blue dot and a bold title for New; three wave dots while running; a pin
   when pinned and nothing else applies (a pinned thread that needs you, is New or runs shows that

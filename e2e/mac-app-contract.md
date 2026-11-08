@@ -112,7 +112,8 @@ not tested.
 
 - **Sidebar**: `navigation` "Bots". One `link` per Bot, Chief first, with its creature as an `img`
   named `<Creature>, <state>` (`Jellyfish, idle`, `Shark, needs you`, `Narwhal, asleep`,
-  `Shark, working`, `Shark, failed`). A needs-you row's activity names what it waits for. Also a
+  `Shark, working`, `Shark, failed`). A needs-you row's activity names what it waits for; an
+  idle row shows no activity (see [sidebar-tree-contract.md](sidebar-tree-contract.md)). Also a
   `button` "New Bot" and a `link` whose name contains "Settings". The sidebar's width is the
   `navigation`'s box, 340px on first launch. Its right edge is a focusable `separator` "Resize
   sidebar" (`aria-orientation="vertical"`, `aria-valuenow` the width, `aria-valuemin` 260,

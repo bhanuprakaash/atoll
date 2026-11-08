@@ -124,7 +124,7 @@ export function BotGroup({
             )}
           </h3>
         ))}
-      {!folded && <ul className="flex flex-col gap-0.5">{children}</ul>}
+      {!folded && <ul className="flex flex-col gap-1">{children}</ul>}
       {menu && group && (
         <Menu
           at={menu}

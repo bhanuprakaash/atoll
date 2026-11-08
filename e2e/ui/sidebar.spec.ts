@@ -1,6 +1,6 @@
 // Slice 6 sidebar: one row per Bot, Chief first, its creature showing the Bot's state; reduced
 // motion stops every animation.
-import { expect, test } from '@playwright/test';
+import { expect, type Locator, test } from '@playwright/test';
 import {
   api,
   type Machine,
@@ -10,6 +10,7 @@ import {
   running,
   sidebarRow,
   startAtoll,
+  threadTree,
 } from './atoll';
 
 let m: Machine;
@@ -64,4 +65,72 @@ test('reduced motion stops the animations', async ({ page }) => {
   await page.reload();
   await expect(page.getByRole('log', { name: 'Messages' }).getByRole('status')).toBeVisible();
   await expect.poll(() => running(page)).toBe(0);
+});
+
+async function waitStatus(threadID: string, status: string) {
+  await expect
+    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
+      timeout: 15_000,
+    })
+    .toBe(status);
+}
+
+// waves counts the wave-dot animations playing inside el.
+const waves = (el: Locator) =>
+  el.evaluate(
+    (node) =>
+      node
+        .getAnimations({ subtree: true })
+        .filter((a) => (a as CSSAnimation).animationName === 'wave').length,
+  );
+
+test('an idle Bot row is one line with a 36px creature; the activity line shows only while a run works or an approval waits', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const bot = await newBotAPI(m, 'Calm', 'claude', { look: 'whale' });
+  await waitStatus((await openThreadAPI(m, bot.id, prompts.keep)).id, 'done');
+  const replied = (await api(m, 'GET', `/api/bots/${bot.id}`)).activity;
+  expect(replied).toBe('ok');
+
+  await page.goto(m.url);
+  const row = sidebarRow(page, 'Calm');
+  const idle = row.getByRole('img', { name: 'Whale, idle', exact: true });
+  await expect(idle).toBeVisible();
+  expect(Math.abs((await idle.boundingBox())!.width - 36)).toBeLessThanOrEqual(1);
+  await expect(row).not.toContainText(replied);
+  expect(await waves(row)).toBe(0);
+
+  const busy = await openThreadAPI(m, bot.id, prompts.hang);
+  await waitStatus(busy.id, 'running');
+  await expect(row.getByRole('img', { name: 'Whale, working', exact: true })).toBeVisible();
+  await expect(row).toContainText('Running Run the build');
+  await expect.poll(() => waves(row)).toBe(3);
+
+  await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
+  await waitStatus(busy.id, 'stopped');
+  await expect(idle).toBeVisible();
+  expect((await api(m, 'GET', `/api/bots/${bot.id}`)).activity).toBe('Stopped');
+  await expect(row).not.toContainText('Running');
+  await expect(row).not.toContainText('Stopped');
+  await expect.poll(() => waves(row)).toBe(0);
+
+  const asking = await openThreadAPI(m, bot.id, prompts.write);
+  await waitStatus(asking.id, 'waiting');
+  const needs = row.getByText(/^Needs you: /);
+  await expect(needs).toHaveText('Needs you: Write hello.txt');
+  const needsInk = await threadTree(page, 'Calm')
+    .getByText('Needs you', { exact: true })
+    .evaluate((el) => getComputedStyle(el).color);
+  await expect(needs).toHaveCSS('color', needsInk);
+
+  const { approval } = await api(m, 'GET', `/api/threads/${asking.id}`);
+  await api(m, 'POST', `/api/approvals/${approval.id}`, { approve: true });
+  await waitStatus(asking.id, 'done');
+  await expect(idle).toBeVisible();
+  await expect(row).not.toContainText('Needs you');
+  const done = (await api(m, 'GET', `/api/bots/${bot.id}`)).activity;
+  expect(done).not.toBe('');
+  await expect(row).not.toContainText(done);
+  expect(await waves(row)).toBe(0);
 });
