@@ -17,6 +17,7 @@ import (
 
 type fakeProvider struct {
 	bin       string
+	st        *store.Store
 	probes    atomic.Int32
 	launches  atomic.Int32
 	providers *providers
@@ -40,7 +41,7 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	f := &fakeProvider{bin: bin}
+	f := &fakeProvider{bin: bin, st: st}
 	adapters := []adapter{{
 		name: "claude",
 		new:  func() provider.Session { f.launches.Add(1); return nil },
@@ -146,6 +147,20 @@ func TestProviders_Update(t *testing.T) {
 	}
 	if code, _ := f.call(t, http.MethodPut, "/api/providers/nope", `{}`); code != http.StatusNotFound {
 		t.Errorf("PUT unknown provider = %d, want 404", code)
+	}
+}
+
+func TestProviders_StoredSettingsSurviveRestart(t *testing.T) {
+	f := newFakeProvider(t)
+	if code, body := f.call(t, http.MethodPut, "/api/providers/claude", `{"enabled":false,"path_override":"/x/claude"}`); code != 200 {
+		t.Fatalf("PUT = %d %s", code, body)
+	}
+	again := newProviders(t.Context(), f.st, f.providers.adapters)
+	t.Cleanup(again.Close)
+	got := again.Cached(t.Context())
+	if len(got) != 1 || got[0].Enabled || again.available(t.Context(), "claude") ||
+		again.pathOverride("claude") != "/x/claude" {
+		t.Fatalf("after restart: %+v, path %q; want off with path /x/claude", got, again.pathOverride("claude"))
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,6 +52,8 @@ type providers struct {
 	signedIn map[string]bool
 	infos    map[string]providerInfo // what the last check found
 	expired  map[string]bool         // refused a run: signed out until a sign-in or Refresh
+	off      map[string]bool         // switched off in Settings, as stored
+	paths    map[string]string       // path overrides, as stored
 }
 
 var _loginURL = regexp.MustCompile(`https://[^\s"'<>]+`)
@@ -58,11 +61,15 @@ var _loginURL = regexp.MustCompile(`https://[^\s"'<>]+`)
 // newProviders returns the providers and checks each of them in the background.
 func newProviders(parent context.Context, st *store.Store, adapters []adapter) *providers {
 	ctx, cancel := context.WithCancel(parent)
-	p := &providers{st: st, adapters: adapters, ready: make(chan struct{}), ctx: ctx, cancel: cancel,
-		states: map[string]loginState{}, codes: map[string]io.Writer{}, signedIn: map[string]bool{},
-		infos: map[string]providerInfo{}, expired: map[string]bool{}}
+	p := &providers{st: st, adapters: slices.Clone(adapters), ready: make(chan struct{}), ctx: ctx,
+		cancel: cancel, states: map[string]loginState{}, codes: map[string]io.Writer{},
+		signedIn: map[string]bool{}, infos: map[string]providerInfo{}, expired: map[string]bool{},
+		off: map[string]bool{}, paths: map[string]string{}}
 	for _, a := range adapters {
 		p.infos[a.name] = blank(a)
+		on, _ := st.Setting(parent, settingKey(a.name, "enabled"))
+		p.off[a.name] = on == "false"
+		p.paths[a.name], _ = st.Setting(parent, settingKey(a.name, "path"))
 	}
 	p.wg.Add(1)
 	go func() {
@@ -166,9 +173,19 @@ func (p *providers) update(w http.ResponseWriter, r *http.Request, name string) 
 	var err error
 	if body.Enabled != nil {
 		err = p.st.SetSetting(r.Context(), settingKey(name, "enabled"), strconv.FormatBool(*body.Enabled))
+		if err == nil {
+			p.mu.Lock()
+			p.off[name] = !*body.Enabled
+			p.mu.Unlock()
+		}
 	}
 	if err == nil && body.PathOverride != nil {
 		err = p.st.SetSetting(r.Context(), settingKey(name, "path"), *body.PathOverride)
+		if err == nil {
+			p.mu.Lock()
+			p.paths[name] = *body.PathOverride
+			p.mu.Unlock()
+		}
 	}
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -183,14 +200,16 @@ func (p *providers) update(w http.ResponseWriter, r *http.Request, name string) 
 
 func settingKey(name, field string) string { return "provider_" + name + "_" + field }
 
-func (p *providers) enabled(ctx context.Context, name string) bool {
-	on, _ := p.st.Setting(ctx, settingKey(name, "enabled"))
-	return on != "false"
+func (p *providers) enabled(name string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return !p.off[name]
 }
 
-func (p *providers) pathOverride(ctx context.Context, name string) string {
-	path, _ := p.st.Setting(ctx, settingKey(name, "path"))
-	return path
+func (p *providers) pathOverride(name string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.paths[name]
 }
 
 // Cached lists every provider as the last check found it, without a new one.
@@ -212,9 +231,12 @@ func (p *providers) view(ctx context.Context, a adapter) providerInfo {
 	p.mu.Lock()
 	info := p.infos[a.name]
 	info.SignedIn = p.signedIn[a.name]
+	info.Enabled = !p.off[a.name]
+	info.PathOverride = p.paths[a.name]
 	p.mu.Unlock()
-	info.Enabled = p.enabled(ctx, a.name)
-	info.PathOverride = p.pathOverride(ctx, a.name)
+	info.Models = slices.Clone(info.Models)
+	info.OwnMCPServers = slices.Clone(info.OwnMCPServers)
+	info.OwnSkills = slices.Clone(info.OwnSkills)
 	return info
 }
 
@@ -241,7 +263,7 @@ func (p *providers) info(ctx context.Context, a adapter) (info providerInfo) {
 		p.infos[a.name] = info
 		p.mu.Unlock()
 	}()
-	bin := a.find(pathDirs(ctx), p.pathOverride(ctx, a.name))
+	bin := a.find(pathDirs(ctx), p.pathOverride(a.name))
 	if bin == "" {
 		return info
 	}
@@ -324,7 +346,7 @@ func probeModels(parent context.Context, name, bin, dir string) []server.Model {
 }
 func (p *providers) login(a adapter) {
 	defer p.wg.Done()
-	bin, dir, err := a.prepare(p.ctx, p.pathOverride(p.ctx, a.name))
+	bin, dir, err := a.prepare(p.ctx, p.pathOverride(a.name))
 	if err != nil {
 		p.finish(a.name, err)
 		return
@@ -454,7 +476,7 @@ func (p *providers) signOut(name string) {
 }
 
 func (p *providers) available(ctx context.Context, name string) bool {
-	if !p.enabled(ctx, name) {
+	if !p.enabled(name) {
 		return false
 	}
 	p.mu.Lock()
@@ -476,7 +498,7 @@ func (p *providers) signedInNow(ctx context.Context, name string) bool {
 	if a == nil {
 		return false
 	}
-	bin, dir, err := a.prepare(ctx, p.pathOverride(ctx, name))
+	bin, dir, err := a.prepare(ctx, p.pathOverride(name))
 	if err != nil {
 		return false
 	}
@@ -491,11 +513,11 @@ func (p *providers) launch(ctx context.Context, name string) (provider.Session, 
 	if a == nil {
 		return nil, provider.Config{}, fmt.Errorf("unknown provider %q", name)
 	}
-	if !p.enabled(ctx, name) {
+	if !p.enabled(name) {
 		return nil, provider.Config{}, fmt.Errorf("%s is turned off in Settings > Providers", name)
 	}
 	p.checkAvailable(ctx, name)
-	bin, dir, err := a.prepare(ctx, p.pathOverride(ctx, name))
+	bin, dir, err := a.prepare(ctx, p.pathOverride(name))
 	if err != nil {
 		return nil, provider.Config{}, err
 	}
