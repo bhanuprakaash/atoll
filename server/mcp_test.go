@@ -164,6 +164,7 @@ func (e platformEnv) call(t *testing.T, tool, args string) string {
 }
 
 func TestPlatform_EditBotUndo(t *testing.T) {
+	t.Setenv("ATOLL_TOKEN", "secret")
 	ctx := t.Context()
 	e := newPlatform(t, nil)
 	st, thread := e.st, e.thread

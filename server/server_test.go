@@ -67,36 +67,81 @@ func TestAnswer_RequiresApprove(t *testing.T) {
 }
 
 func TestLocalOnly(t *testing.T) {
-	h := newHandler(t)
-
 	tests := []struct {
 		name       string
 		path       string
 		host       string
 		origin     string
 		wantStatus int
+		token      string
+		cookie     string
 	}{
-		{"127.0.0.1 with a port", "/api/bots", "127.0.0.1:4317", "", 200},
-		{"localhost", "/api/bots", "localhost:4317", "", 200},
-		{"IPv6 loopback", "/api/bots", "[::1]:4317", "", 200},
-		{"same-origin page", "/api/bots", "127.0.0.1:4317", "http://127.0.0.1:4317", 200},
-		{"rebinding host", "/api/bots", "evil.example:4317", "", 403},
-		{"other origin", "/api/bots", "127.0.0.1:4317", "https://evil.example", 403},
-		{"other port as origin", "/api/bots", "127.0.0.1:4317", "http://127.0.0.1:80", 403},
-		{"null origin", "/api/bots", "127.0.0.1:4317", "null", 403},
-		{"mcp rebinding host", MCPPath + "tok", "evil.example", "", 403},
+		{"127.0.0.1 with a port", "/api/bots", "127.0.0.1:4317", "", 200, "", ""},
+		{"localhost", "/api/bots", "localhost:4317", "", 200, "", ""},
+		{"IPv6 loopback", "/api/bots", "[::1]:4317", "", 200, "", ""},
+		{"same-origin page", "/api/bots", "127.0.0.1:4317", "http://127.0.0.1:4317", 200, "", ""},
+		{"rebinding host", "/api/bots", "evil.example:4317", "", 403, "", ""},
+		{"other origin", "/api/bots", "127.0.0.1:4317", "https://evil.example", 403, "", ""},
+		{"other port as origin", "/api/bots", "127.0.0.1:4317", "http://127.0.0.1:80", 403, "", ""},
+		{"null origin", "/api/bots", "127.0.0.1:4317", "null", 403, "", ""},
+		{"mcp rebinding host", MCPPath + "tok", "evil.example", "", 403, "", ""},
+		{"missing cookie", "/api/bots", "127.0.0.1:4317", "", 401, "secret", ""},
+		{"wrong cookie", "/api/bots", "127.0.0.1:4317", "", 401, "secret", "wrong"},
+		{"valid cookie", "/api/bots", "127.0.0.1:4317", "", 200, "secret", "secret"},
+		{"query cannot authorize API", "/api/bots?token=secret", "127.0.0.1:4317", "", 401, "secret", ""},
+		{"cookie cannot bypass origin", "/api/bots", "127.0.0.1:4317", "https://evil.example", 403, "secret", "secret"},
+		{"mcp missing cookie", MCPPath + "tok", "127.0.0.1:4317", "", 401, "secret", ""},
+		{"mcp valid cookie", MCPPath + "tok", "127.0.0.1:4317", "", 405, "secret", "secret"},
+		{"mcp bare endpoint", MCPPath, "127.0.0.1:4317", "", 401, "secret", ""},
+		{"token exchange rebinding host", "/?token=secret", "evil.example:4317", "", 403, "secret", ""},
+		{"token exchange other origin", "/?token=secret", "127.0.0.1:4317", "https://evil.example", 403, "secret", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("ATOLL_TOKEN", tt.token)
+			h := newHandler(t)
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.path, nil)
 			req.Host = tt.host
 			if tt.origin != "" {
 				req.Header.Set("Origin", tt.origin)
 			}
+			if tt.cookie != "" {
+				req.AddCookie(&http.Cookie{Name: "atoll_token", Value: tt.cookie})
+			}
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 			if rec.Code != tt.wantStatus {
 				t.Errorf("status %d, want %d; body: %s", rec.Code, tt.wantStatus, rec.Body)
+			}
+		})
+	}
+}
+
+func TestLocalOnly_TokenExchange(t *testing.T) {
+	t.Setenv("ATOLL_TOKEN", "secret")
+	h := newHandler(t)
+	tests := []struct {
+		name       string
+		query      string
+		wantStatus int
+		wantCookie string
+		wantURL    string
+	}{
+		{"valid token", "secret", 302, "atoll_token=secret; Path=/; HttpOnly; SameSite=Strict", "/"},
+		{"wrong token", "wrong", 401, "", ""},
+		{"empty token", "", 401, "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := serve(h, http.MethodGet, "/?token="+tt.query, "")
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status %d, want %d", rec.Code, tt.wantStatus)
+			}
+			if got := rec.Header().Get("Set-Cookie"); got != tt.wantCookie {
+				t.Errorf("Set-Cookie %q, want %q", got, tt.wantCookie)
+			}
+			if got := rec.Header().Get("Location"); got != tt.wantURL {
+				t.Errorf("Location %q, want %q", got, tt.wantURL)
 			}
 		})
 	}

@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -143,19 +145,49 @@ func New(
 	// fs.Sub fails only for an invalid dir name.
 	sub, _ := fs.Sub(_ui, "ui")
 	mux.Handle("/", uiHandler(sub))
-	return localOnly(mux)
+	return a.localOnly(mux)
 }
 
 // localOnly refuses an API or MCP request that is not for a local host, or that a page on
 // another origin sent: otherwise any web page could drive Bots, which run code.
-func localOnly(next http.Handler) http.Handler {
+func (a *api) localOnly(next http.Handler) http.Handler {
+	token := os.Getenv("ATOLL_TOKEN")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		guarded := strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, MCPPath)
-		if !guarded || (isLocalHost(r.Host) && sameOrigin(r)) {
-			next.ServeHTTP(w, r)
+		exchange := token != "" && r.Method == http.MethodGet && r.URL.Path == "/" &&
+			r.URL.Query().Has("token")
+		if (guarded || exchange) && (!isLocalHost(r.Host) || !sameOrigin(r)) {
+			fail(w, http.StatusForbidden, "forbidden")
 			return
 		}
-		fail(w, http.StatusForbidden, "forbidden")
+		if exchange {
+			if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("token")), []byte(token)) != 1 {
+				fail(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			http.SetCookie(w, &http.Cookie{
+				Name: "atoll_token", Value: token, Path: "/",
+				HttpOnly: true, SameSite: http.SameSiteStrictMode,
+			})
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Referrer-Policy", "no-referrer")
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+		if token != "" && guarded {
+			cookie, err := r.Cookie("atoll_token")
+			authenticated := err == nil &&
+				subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(token)) == 1
+			if !authenticated && strings.HasPrefix(r.URL.Path, MCPPath) {
+				_, _, _, err := a.runs.Source(strings.TrimPrefix(r.URL.Path, MCPPath))
+				authenticated = err == nil
+			}
+			if !authenticated {
+				fail(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 

@@ -776,8 +776,16 @@ Voice
 - The desktop shell uses an overlay title bar; the Bot header’s empty space is a window drag region.
 - The Tauri shell (`desktop/`, `make app`) starts `atoll serve --addr 127.0.0.1:4317
   --exit-on-stdin-close`, keeps its stdin pipe open as the sidecar's lifeline, loads the URL it
-  prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
-  SIGTERM; an occupied port stops retries and shows an error. The page shows Reconnecting meanwhile.
+  prints and restarts it when it exits (every 2 s while it keeps failing). On quit or SIGTERM it
+  closes the lifeline so Go shuts down runs and providers, waits up to 5 s, then kills the child
+  if it has not exited; an occupied port stops retries and shows an error. The page shows
+  Reconnecting meanwhile.
+  The shell generates a random token per launch, passes it as `ATOLL_TOKEN` to the sidecar (also
+  on restarts) and first loads `/?token=<token>`. That sets an HttpOnly, SameSite=Strict session
+  cookie and redirects to `/`. When `ATOLL_TOKEN` is set, every `/api/` and MCP request requires
+  the cookie (401 otherwise); MCP URLs with a valid per-run token also work without the cookie.
+  Local host and same-origin checks still apply. With `ATOLL_TOKEN` unset, `make run` and e2e
+  keep their existing access without a cookie.
   A page's `window.open` (provider sign-in) opens in the default browser (`on_new_window`), and so
   does any navigation of the window to a URL that is not Reef's own server (`on_navigation`), which
   is cancelled in the app. Only `http`, `https` and `mailto` URLs are handed to the browser; any
