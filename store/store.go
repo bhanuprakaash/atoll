@@ -633,8 +633,7 @@ func (s *Store) LatestRun(ctx context.Context, threadID string) (string, error) 
 
 // ThreadRun is a thread with the status and the reply of its newest run; Status is empty for a
 // thread with no run. Reply is only its first 300 characters: enough for a one-line preview.
-// Opened is when the user last opened the thread; Finished is when the newest run ended, zero
-// while it goes.
+// Unseen is set when the newest run ended after the user last opened the thread.
 type ThreadRun struct {
 	BotID          string
 	ThreadID       string
@@ -643,8 +642,7 @@ type ThreadRun struct {
 	Closed         bool
 	Pinned         bool
 	LastActivity   time.Time
-	Opened         time.Time
-	Finished       time.Time
+	Unseen         bool
 	Status         string
 	Reply          string
 }
@@ -654,21 +652,17 @@ type ThreadRun struct {
 func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, error) {
 	return query(ctx, s.db,
 		`SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.closed, t.pinned_at IS NOT NULL,
-		        t.last_activity, t.last_opened_at, coalesce(r.finished_at, 0),
+		        t.last_activity, coalesce(r.finished_at, 0) > t.last_opened_at,
 		        coalesce(r.status, ''), substr(coalesce(r.reply, ''), 1, 300)
 		 FROM threads t
 		 LEFT JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = t.id)
 		 WHERE ? = '' OR t.bot_id = ?
 		 ORDER BY t.last_activity DESC, t.rowid DESC`,
 		func(r *sql.Rows) (tr ThreadRun, err error) {
-			var active, opened, finished int64
+			var active int64
 			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &tr.Title, &tr.Closed,
-				&tr.Pinned, &active, &opened, &finished, &tr.Status, &tr.Reply)
+				&tr.Pinned, &active, &tr.Unseen, &tr.Status, &tr.Reply)
 			tr.LastActivity = time.UnixMicro(active).UTC()
-			tr.Opened = time.UnixMicro(opened).UTC()
-			if finished != 0 {
-				tr.Finished = time.UnixMicro(finished).UTC()
-			}
 			return tr, err
 		}, botID, botID)
 }

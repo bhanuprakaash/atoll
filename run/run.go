@@ -351,12 +351,6 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 	}
 }
 
-// _notices are the event types SubscribeAll carries.
-var _notices = map[string]bool{
-	EventApproval: true, EventApprovalEnd: true, EventRunFinished: true,
-	EventMRUpdated: true, EventPlatformChanged: true,
-}
-
 // SubscribeAll streams the notice events of every thread from now on, until cancel is called. It
 // starts with an approval event for each approval open now.
 func (m *Manager) SubscribeAll() (events <-chan Event, cancel func()) {
@@ -899,7 +893,9 @@ func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data
 			m.cfg.Log.Warn("subscriber full, stream closed", "run_id", runID, "type", typ)
 		}
 	}
-	if !_notices[typ] {
+	switch typ {
+	case EventApproval, EventApprovalEnd, EventRunFinished, EventMRUpdated, EventPlatformChanged:
+	default:
 		return
 	}
 	for ch := range m.all {

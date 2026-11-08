@@ -208,30 +208,33 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) listBots(w http.ResponseWriter, r *http.Request) {
-	responses, err := a.botList(r.Context())
+	responses, threads, helpers, err := a.botList(r.Context())
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
+	for i, resp := range responses {
+		responses[i].Threads = a.sidebarThreads(threads[resp.ID], helpers[resp.ID])
+	}
 	write(w, http.StatusOK, responses)
 }
 
-func (a *api) botList(ctx context.Context) ([]botResponse, error) {
+func (a *api) botList(
+	ctx context.Context,
+) (responses []botResponse, threads, helpers map[string][]store.ThreadRun, err error) {
 	bots, err := a.st.Bots(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
-	threads, helpers, err := a.threadRuns(ctx)
+	threads, helpers, err = a.threadRuns(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
-	responses := make([]botResponse, 0, len(bots))
+	responses = make([]botResponse, 0, len(bots))
 	for _, b := range bots {
-		resp := responseBot(a.botSummary(ctx, b, threads[b.ID], helpers[b.ID]))
-		resp.Threads = a.sidebarThreads(threads[b.ID], helpers[b.ID])
-		responses = append(responses, resp)
+		responses = append(responses, responseBot(a.botSummary(ctx, b, threads[b.ID], helpers[b.ID])))
 	}
-	return responses, nil
+	return responses, threads, helpers, nil
 }
 
 func (a *api) threadRuns(ctx context.Context) (threads, helpers map[string][]store.ThreadRun, err error) {

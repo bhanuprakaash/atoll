@@ -70,7 +70,7 @@ func (a *api) marker(t store.ThreadRun, helpers []store.ThreadRun) string {
 	if waiting(t) {
 		return "needs_you"
 	}
-	if state == "" && t.Finished.After(t.Opened) {
+	if state == "" && t.Unseen {
 		return "new"
 	}
 	return state

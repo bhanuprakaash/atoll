@@ -55,6 +55,10 @@ func TestSidebar_Routes(t *testing.T) {
 				`{"id":"` + ids[3] + `","title":"","state":"","pinned":false},` +
 				`{"id":"` + ids[2] + `","title":"","state":"","pinned":false},` +
 				`{"id":"` + ids[1] + `","title":"","state":"","pinned":false}]`},
+		{"list has group_id and threads", "GET", "/api/bots", "", 200,
+			`"can_manage_platform":false,"group_id":"","threads":[{`},
+		{"one Bot has group_id and no threads", "GET", "/api/bots/" + bot.ID, "", 200,
+			`"can_manage_platform":false,"group_id":""}`},
 		{"open it", "POST", "/api/threads/" + ids[0] + "/opened", "", 204, ""},
 		{"opened clears New", "GET", "/api/bots", "", 200,
 			`{"id":"` + ids[0] + `","title":"hello there","state":"","pinned":false}`},

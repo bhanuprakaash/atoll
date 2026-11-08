@@ -592,34 +592,34 @@ func TestStore_ThreadRuns_New(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
 	th, _ := st.CreateThread(ctx, bot.ID, "")
-	state := func() (status string, finished, opened bool) {
+	state := func() (status string, finished bool) {
 		runs, err := st.ThreadRuns(ctx, bot.ID)
 		if err != nil || len(runs) != 1 {
 			t.Fatalf("ThreadRuns = %v, %v", runs, err)
 		}
 		r := runs[0]
-		return r.Status, r.Finished.After(r.Opened), !r.Opened.IsZero()
+		return r.Status, r.Unseen
 	}
-	if status, finished, _ := state(); status != "" || finished {
+	if status, finished := state(); status != "" || finished {
 		t.Errorf("thread without a run: status %q, finished after opened %v; want \"\", false", status, finished)
 	}
 	_, ru, err := st.StartRun(ctx, th.ID, "hi")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status, finished, _ := state(); status != "running" || finished {
+	if status, finished := state(); status != "running" || finished {
 		t.Errorf("running: status %q, finished after opened %v; want running, false", status, finished)
 	}
 	if err := st.FinishRun(ctx, ru.ID, store.RunResult{Status: store.StatusDone, Reply: "ok"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if status, finished, _ := state(); status != "done" || !finished {
+	if status, finished := state(); status != "done" || !finished {
 		t.Errorf("finished: status %q, finished after opened %v; want done, true", status, finished)
 	}
 	if err := st.MarkOpened(ctx, th.ID); err != nil {
 		t.Fatal(err)
 	}
-	if status, finished, _ := state(); status != "done" || finished {
+	if status, finished := state(); status != "done" || finished {
 		t.Errorf("opened: status %q, finished after opened %v; want done, false", status, finished)
 	}
 }

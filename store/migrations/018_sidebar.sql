@@ -12,3 +12,4 @@ CREATE TABLE bot_groups (
 ALTER TABLE bots ADD COLUMN group_id TEXT REFERENCES bot_groups (id) ON DELETE SET NULL;
 
 CREATE INDEX runs_thread ON runs (thread_id);
+CREATE INDEX threads_activity ON threads (last_activity);

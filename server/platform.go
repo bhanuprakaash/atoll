@@ -68,21 +68,20 @@ type botResponse struct {
 // always, and threads when there are any to show, even none.
 func (r botResponse) MarshalJSON() ([]byte, error) {
 	b := r.Bot
-	groupID := b.GroupID
 	b.GroupID = ""
-	raw, err := json.Marshal(b)
+	raw, err := b.MarshalJSON()
 	if err != nil {
 		return nil, err
 	}
-	var fields map[string]any
-	if err := json.Unmarshal(raw, &fields); err != nil {
+	extra, err := json.Marshal(struct {
+		GroupID string          `json:"group_id"`
+		Threads []sidebarThread `json:"threads,omitzero"`
+	}{r.GroupID, r.Threads})
+	if err != nil {
 		return nil, err
 	}
-	fields["group_id"] = groupID
-	if r.Threads != nil {
-		fields["threads"] = r.Threads
-	}
-	return json.Marshal(fields)
+	raw[len(raw)-1] = ','
+	return append(raw, extra[1:]...), nil
 }
 
 func responseBot(b store.Bot) botResponse {
@@ -417,10 +416,7 @@ func (a *api) readCall(ctx context.Context, name string) (any, *rpcError) {
 	switch name {
 	case provider.ToolListBots:
 		var bots []botResponse
-		bots, err = a.botList(ctx)
-		for i := range bots {
-			bots[i].Threads = nil
-		}
+		bots, _, _, err = a.botList(ctx)
 		v = bots
 	case provider.ToolListSkills:
 		var skills []store.Skill
