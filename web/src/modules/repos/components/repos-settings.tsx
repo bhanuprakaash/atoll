@@ -48,6 +48,8 @@ function RepoForm({ onDone, onCancel }: { onDone?: () => void; onCancel?: () => 
           placeholder="atoll"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          pattern="[A-Za-z0-9._\-]+"
+          title="Letters, digits, dot, dash and underscore"
           required
         />
       </label>
