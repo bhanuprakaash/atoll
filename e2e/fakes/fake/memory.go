@@ -12,6 +12,12 @@ const DecisionBody = "Use SQLite WAL for the journal."
 // DecisionWhy is its rationale, carried through MCP and the thread.
 const DecisionWhy = "Readers must not block journal writes."
 
+// PairFindingBody and PairDecisionBody are the two items the save-pair scenario writes in one run.
+const (
+	PairFindingBody  = "The journal fsync takes 40 ms on CI."
+	PairDecisionBody = "Batch journal writes every 50 ms."
+)
+
 // MemoryItem is only the wire contract exercised by the scripted providers.
 type MemoryItem struct {
 	ID             string `json:"id"`
@@ -55,6 +61,21 @@ func MemoryStep(c *MCP, mode, prompt string, beforeCall func(string, json.RawMes
 			return fmt.Errorf("%s result %q: %w", tool, text, err)
 		}
 		return nil
+	}
+	if mode == "save-pair" {
+		for _, args := range []map[string]any{
+			{"kind": "finding", "body": PairFindingBody, "why": "Measured on the CI runners.", "scope": "user"},
+			{"kind": "decision", "body": PairDecisionBody, "why": "Keeps fsync off the hot path.", "scope": "user"},
+		} {
+			var item MemoryItem
+			if err := call("remember", args, &item); err != nil {
+				return "", err
+			}
+			if item.ID == "" || item.Status != "accepted" || item.Body != args["body"] {
+				return "", fmt.Errorf("remember returned invalid item: %+v", item)
+			}
+		}
+		return "Saved a finding and a decision.", nil
 	}
 	if mode == "save" || mode == "save-user" {
 		scope := "repo"

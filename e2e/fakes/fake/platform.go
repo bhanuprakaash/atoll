@@ -56,6 +56,9 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 	if mode == "call" {
 		return callOne(c, prompt, before)
 	}
+	if mode == "calls" {
+		return callMany(c, prompt, before)
+	}
 	raw := func(name string, args any) (string, error) {
 		b, _ := json.Marshal(args)
 		if before != nil {
@@ -377,4 +380,27 @@ func callOne(c *MCP, prompt string, before func(string, json.RawMessage) error) 
 		return "Error: " + text, nil
 	}
 	return text, nil
+}
+
+// callMany makes each call of the JSON array the prompt names after "Call platform tools. ", in
+// one run, as callOne makes one. Its reply counts the calls.
+func callMany(c *MCP, prompt string, before func(string, json.RawMessage) error) (string, error) {
+	_, payload, ok := strings.Cut(prompt, "Call platform tools. ")
+	if !ok {
+		return "", fmt.Errorf("calls payload absent")
+	}
+	var calls []json.RawMessage
+	if err := json.Unmarshal([]byte(strings.TrimSpace(payload)), &calls); err != nil {
+		return "", err
+	}
+	for _, call := range calls {
+		text, err := callOne(c, "Call a platform tool. "+string(call), before)
+		if err != nil {
+			return "", err
+		}
+		if strings.HasPrefix(text, "Error: ") {
+			return "", fmt.Errorf("%s: %s", call, text)
+		}
+	}
+	return fmt.Sprintf("Made %d platform calls.", len(calls)), nil
 }
