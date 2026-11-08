@@ -14,7 +14,7 @@ function Dot({ className = '' }: { className?: string }) {
   return <span aria-hidden="true" className={`size-1.5 flex-none rounded-full ${className}`} />;
 }
 
-function Wave({ label }: { label?: string }) {
+export function Wave({ label }: { label?: string }) {
   return (
     <span
       {...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true })}
@@ -139,7 +139,7 @@ export function ThreadTree({
     <>
       <ul
         aria-label={`${bot.name} threads`}
-        className={`relative mb-1.5 pr-1 pl-11.5 before:absolute before:top-0 before:bottom-4 before:left-[31.25px] before:w-2.5 before:rounded-bl-[9px] before:border-b-[1.5px] before:border-l-[1.5px] before:border-composer-line ${selected ? 'mt-1' : ''}`}
+        className={`relative mb-1.5 pr-1 pl-10.5 before:absolute before:top-0 before:bottom-4 before:left-[27.25px] before:w-2.5 before:rounded-bl-[9px] before:border-b-[1.5px] before:border-l-[1.5px] before:border-composer-line ${selected ? 'mt-1' : ''}`}
       >
         {rows.map((thread) => (
           <li
