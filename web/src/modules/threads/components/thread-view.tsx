@@ -415,8 +415,20 @@ export function ThreadView({
   }, [fetchNextPage, hasNextPage, isFetching, messages.length]);
   const answered = new Set(messages.filter((m) => m.role === 'bot').map((m) => m.run_id));
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
-  const retry = () => {
-    if (lastUser) send.mutate({ text: lastUser.text }, { onSuccess: ({ run }) => begin(run.id) });
+  const retry = async () => {
+    if (!lastUser) return;
+    const images = await Promise.all(
+      lastUser.attachments.map(async (a) => {
+        const blob = await (await fetch(`/api/attachments/${a.id}`)).blob();
+        const url = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+        return { mime: a.mime, data: url.slice(url.indexOf(',') + 1) };
+      }),
+    );
+    send.mutate({ text: lastUser.text, images }, { onSuccess: ({ run }) => begin(run.id) });
   };
   const sendFirst = (text: string, images?: ImageInput[]) => {
     if (repoId && !thread?.repo_id)
