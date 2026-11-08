@@ -114,7 +114,7 @@ export function Shell() {
             </svg>
           </button>
         </div>
-        <div className="mt-3.5 min-h-0 overflow-y-auto">
+        <div className="mt-3.5 mb-2 min-h-0 overflow-y-auto">
           <BotList
             search={search}
             open={{ botId, threadId }}

@@ -115,6 +115,7 @@ function BotRow({
       </div>
       <ThreadTree
         bot={bot}
+        selected={open.botId === bot.id}
         openThreadId={open.botId === bot.id ? open.threadId : undefined}
         unfolded={unfolded}
         onUnfold={onUnfold}

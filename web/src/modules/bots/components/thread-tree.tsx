@@ -9,7 +9,7 @@ const marker = (t: SidebarThread) =>
   t.state ? t.state.replace('_', '-') : t.pinned ? 'pinned' : undefined;
 
 const treeItem =
-  'relative before:absolute before:top-0 before:-left-3.75 before:bottom-0 before:border-l-[1.5px] before:border-composer-line first:before:-top-2.5 after:absolute after:top-1/2 after:-left-3.75 after:w-2.25 after:border-t-[1.5px] after:border-composer-line last:before:bottom-1/2 last:before:w-2.25 last:before:rounded-bl-lg last:before:border-b-[1.5px] last:after:hidden';
+  'relative before:absolute before:top-0 before:-left-3.75 before:bottom-0 before:border-l-[1.5px] before:border-composer-line after:absolute after:top-1/2 after:-left-3.75 after:w-2.25 after:border-t-[1.5px] after:border-composer-line last:before:bottom-1/2 last:before:w-2.25 last:before:rounded-bl-lg last:before:border-b-[1.5px] last:after:hidden';
 
 const rowStyle = 'flex h-7 items-center gap-2 rounded-lg px-2 text-[13px]';
 
@@ -97,6 +97,7 @@ function RenameField({ title, onDone }: { title: string; onDone: (title?: string
 
 export function ThreadTree({
   bot,
+  selected,
   openThreadId,
   unfolded,
   onUnfold,
@@ -105,6 +106,7 @@ export function ThreadTree({
   onRenameThread,
 }: {
   bot: Pick<Bot, 'id' | 'name' | 'threads'>;
+  selected: boolean;
   openThreadId?: string;
   unfolded: boolean;
   onUnfold: (unfolded: boolean) => void;
@@ -118,12 +120,15 @@ export function ThreadTree({
   if (rows.length === 0) return null;
   return (
     <>
-      <ul aria-label={`${bot.name} threads`} className="mb-1.5 pr-1 pl-11.5">
+      <ul
+        aria-label={`${bot.name} threads`}
+        className={`mb-1.5 pr-1 pl-11.5 ${selected ? 'mt-1' : ''}`}
+      >
         {rows.map((thread) => (
           <li
             key={thread.id}
             data-marker={marker(thread)}
-            className={`group ${treeItem}`}
+            className={`group ${treeItem} ${selected ? 'first:before:-top-1' : 'first:before:-top-2.5'}`}
             onContextMenu={(event) => {
               event.preventDefault();
               setMenu({ x: event.clientX, y: event.clientY, thread });
