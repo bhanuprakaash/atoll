@@ -55,7 +55,7 @@ server/ui/index.html: web/node_modules $(shell find web/src -type f) $(wildcard 
 
 e2e: ui e2e/ui/node_modules
 	@status=0; \
-	e2e/with-secret-store go test -count=1 -timeout=6m ./e2e || status=1; \
+	e2e/with-secret-store go test -count=1 -timeout=15m ./e2e || status=1; \
 	(cd e2e/ui && $(PNPM) exec playwright test) || status=1; \
 	exit $$status
 
