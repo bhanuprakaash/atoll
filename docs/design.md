@@ -67,16 +67,21 @@ servers and signed-in models and record no change.
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
 registered repo has (REST answers 400 with the same text for repo, delegate and MCP server ids, and
-for a provider that is turned off; REST takes any model, so a Bot on a retired model stays
-editable). Sign-ins stay with the user. Every change shows in the thread with undo.
+for a provider that is turned off; POST takes any model, and PUT checks a model only when it or
+the provider changes, so a Bot on a retired model stays editable). Picking a provider that is
+turned off fails even without a model. Sign-ins stay with the user. Every change shows in the
+thread with undo.
 A change and its record are written in one transaction, so a failed record leaves nothing changed.
+The provider list, git checks and skill folder reads come first; the transaction holds only
+re-reads, the write and the record.
 Other Bots can get the switch later.
 Undo: each change stores the entity before and after; Undo writes `before` back, or removes an entity
 the change created, and keeps the record marked undone. *Records survive restart; no undo of undo.*
 Undo of a repo registration is refused while a thread uses the repo.
 Otherwise it drops the repo from Bots' access lists in the same transaction. Undo of a Bot edit
 restores only repo, delegate, MCP server, skill and connection ids that still exist. Undo of Bot
-creation uses Delete Bot's cleanup, including stopping runs and saving unfinished work.
+creation uses Delete Bot's cleanup, including stopping runs and saving unfinished work; a retry
+after a failed undo counts a Bot that is already gone as removed.
 
 ## Threads and runs
 
@@ -276,7 +281,8 @@ creation uses Delete Bot's cleanup, including stopping runs and saving unfinishe
   common install folders), version, signed in, enable switch, path override, and a read-only list of
   the provider's own MCP servers and skills marked "not used by Bots". Checked on start, before each
   run and on Refresh. *A Finder-launched app lacks the shell PATH.*
-- The enable switch and the path override are stored per provider in the settings table and set with
+- The enable switch and the path override are stored per provider in the settings table, kept in
+  memory from start-up (so a Bot list poll reads no setting), and set with
   `PUT /api/providers/{name}` (`enabled`, `path_override`; an empty path clears it, a relative one is
   refused). The stored path replaces the PATH lookup; changing it checks that provider again. A
   provider that is off is not offered for new Bots (the model picker, Chief's `list_models`, and the

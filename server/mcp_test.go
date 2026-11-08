@@ -195,9 +195,10 @@ func TestPlatform_EditBotUndo(t *testing.T) {
 }
 
 func TestPlatform_Refusals(t *testing.T) {
-	e := newPlatform(t, fakeProviders{{
-		Name: "claude", Enabled: true, SignedIn: true, Models: []Model{{ID: "opus"}, {ID: "sonnet"}},
-	}})
+	e := newPlatform(t, fakeProviders{
+		{Name: "claude", Enabled: true, SignedIn: true, Models: []Model{{ID: "opus"}, {ID: "sonnet"}}},
+		{Name: "codex", SignedIn: true},
+	})
 	tests := []struct {
 		name     string
 		tool     string
@@ -208,6 +209,7 @@ func TestPlatform_Refusals(t *testing.T) {
 		{"repo name dot", "register_repo", `{"name":".","path":"/tmp"}`, "name must be one folder name"},
 		{"repo name dot dot", "register_repo", `{"name":"..","path":"/tmp"}`, "name must be one folder name"},
 		{"repo name with a slash", "register_repo", `{"name":"a/b","path":"/tmp"}`, "name must be one folder name"},
+		{"provider that is off, no model", "create_bot", `{"name":"Ada","provider":"codex"}`, "codex is turned off in Settings"},
 		{"unknown model", "create_bot", `{"name":"Ada","provider":"claude","model":"gpt"}`, `unknown model \"gpt\"; models: opus, sonnet`},
 	}
 	for _, tt := range tests {

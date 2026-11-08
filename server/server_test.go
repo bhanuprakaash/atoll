@@ -74,6 +74,21 @@ func TestUndoChange_BotSave(t *testing.T) {
 	}
 }
 
+func TestUndoChange_CreateBotAlreadyDeleted(t *testing.T) {
+	h, st := newHandlerWith(t, nil)
+	c, err := st.RecordChange(t.Context(), store.Change{Entity: store.EntityBot, EntityID: "gone",
+		Action: store.ActionCreate, After: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []int{204, 409} {
+		rec := serve(h, http.MethodPost, "/api/platform/changes/"+c.ID+"/undo", "")
+		if rec.Code != want {
+			t.Fatalf("undo status = %d, body %s; want %d", rec.Code, rec.Body, want)
+		}
+	}
+}
+
 func TestUndoChange_CreateBotStopsRun(t *testing.T) {
 	ctx := t.Context()
 	st, err := store.Open(t.TempDir())
@@ -335,7 +350,7 @@ func TestBots_RESTModelAndProvider(t *testing.T) {
 		wantBody   string
 	}{
 		{"create with a model the provider does not list", http.MethodPost, "/api/bots", `{"name":"Bo","provider":"claude","model":"gpt"}`, 201, `"model":"gpt"`},
-		{"edit to a model the provider does not list", http.MethodPut, "/api/bots/" + bot.ID, `{"model":"gpt"}`, 200, `"model":"gpt"`},
+		{"edit to a model the provider does not list", http.MethodPut, "/api/bots/" + bot.ID, `{"model":"gpt"}`, 400, `unknown model \"gpt\"; models: opus, sonnet`},
 		{"edit onto a provider that is off", http.MethodPut, "/api/bots/" + bot.ID, `{"provider":"codex"}`, 400, `codex is turned off in Settings`},
 		{"create on a provider that is off", http.MethodPost, "/api/bots", `{"name":"Bo","provider":"codex","model":"gpt"}`, 400, `codex is turned off in Settings`},
 		{"edit keeping the model it has", http.MethodPut, "/api/bots/" + bot.ID, `{"name":"Ada 2"}`, 200, `"name":"Ada 2"`},
@@ -347,6 +362,50 @@ func TestBots_RESTModelAndProvider(t *testing.T) {
 				t.Errorf("status %d, body %s; want %d containing %s", rec.Code, rec.Body, tt.wantStatus, tt.wantBody)
 			}
 		})
+	}
+}
+
+// lockProbe writes to the store when asked for providers, and sends the error: the write fails
+// when the caller still holds the store's write lock.
+type lockProbe struct {
+	st   *store.Store
+	errs chan error
+}
+
+func (*lockProbe) ServeHTTP(http.ResponseWriter, *http.Request) {}
+
+func (p *lockProbe) Cached(ctx context.Context) []Provider {
+	p.errs <- p.st.SetSetting(ctx, "probe", "1")
+	return nil
+}
+
+func TestBotWrites_ReadProvidersOutsideTransaction(t *testing.T) {
+	probe := &lockProbe{errs: make(chan error, 1)}
+	h, st := newHandlerWith(t, probe)
+	probe.st = st
+	bot, err := st.CreateBot(t.Context(), store.Bot{Name: "Ada", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := serve(h, http.MethodPut, "/api/bots/"+bot.ID, `{"name":"Ada 2"}`); rec.Code != http.StatusOK {
+		t.Fatalf("PUT status %d, body %s", rec.Code, rec.Body)
+	}
+	probed(t, probe, "PUT")
+	e := newPlatform(t, probe)
+	probe.st = e.st
+	e.call(t, "create_bot", `{"name":"Bo","provider":"claude"}`)
+	probed(t, probe, "create_bot")
+}
+
+func probed(t *testing.T, p *lockProbe, what string) {
+	t.Helper()
+	select {
+	case err := <-p.errs:
+		if err != nil {
+			t.Errorf("%s holds the write lock while it reads providers: %v", what, err)
+		}
+	default:
+		t.Errorf("%s did not read providers", what)
 	}
 }
 
