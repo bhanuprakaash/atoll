@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
-  BrowserRouter,
+  createBrowserRouter,
   Navigate,
   Route,
+  RouterProvider,
   Routes,
   useNavigate,
   useParams,
@@ -213,12 +214,12 @@ function AppRoutes() {
   );
 }
 
+const router = createBrowserRouter([{ path: '*', element: <AppRoutes /> }]);
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter useTransitions={false}>
-        <AppRoutes />
-      </BrowserRouter>
+      <RouterProvider router={router} useTransitions={false} />
     </QueryClientProvider>
   );
 }

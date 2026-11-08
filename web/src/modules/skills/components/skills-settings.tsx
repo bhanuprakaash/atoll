@@ -1,4 +1,4 @@
-import { useNavigate, useSearchParams } from 'react-router';
+import { useBlocker, useSearchParams } from 'react-router';
 import { useEffect, useRef, useState } from 'react';
 import type { CreatureLook } from '@/components/creature';
 import { Creature } from '@/components/creature';
@@ -525,7 +525,7 @@ export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [leave, setLeave] = useState<{ go: () => void } | null>(null);
-  const navigate = useNavigate();
+  const blocker = useBlocker(dirty);
   const skill = selected === 'new' ? draft : skills.find((s) => s.id === selected);
   const [params, setParams] = useSearchParams();
   const wantsNew = params.has('new');
@@ -539,24 +539,11 @@ export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
   }, [wantsNew]);
   useEffect(() => {
     if (!dirty) return;
-    // A link elsewhere in the app would unmount the editor without asking.
-    function onClick(e: MouseEvent) {
-      const link = e.target instanceof Element ? e.target.closest('a[href]') : null;
-      if (!link) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const href = link.getAttribute('href') ?? '/';
-      setLeave({ go: () => navigate(href) });
-    }
     function onUnload(e: BeforeUnloadEvent) {
       e.preventDefault();
     }
-    document.addEventListener('click', onClick, true);
     window.addEventListener('beforeunload', onUnload);
-    return () => {
-      document.removeEventListener('click', onClick, true);
-      window.removeEventListener('beforeunload', onUnload);
-    };
+    return () => window.removeEventListener('beforeunload', onUnload);
   }, [dirty]);
   return (
     <>
@@ -631,13 +618,17 @@ export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
           onDirty={setDirty}
         />
       )}
-      {leave && (
+      {(leave || blocker.state === 'blocked') && (
         <DiscardDialog
-          keep={() => setLeave(null)}
+          keep={() => {
+            setLeave(null);
+            if (blocker.state === 'blocked') blocker.reset();
+          }}
           discard={() => {
             setLeave(null);
             setDirty(false);
-            leave.go();
+            if (blocker.state === 'blocked') blocker.proceed();
+            else leave?.go();
           }}
         />
       )}
