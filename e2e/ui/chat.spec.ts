@@ -58,10 +58,10 @@ test('one working line by tool kind, a summary above the reply, the user message
   });
   await expect(reply).toBeVisible();
   await expect(working).toHaveCount(0);
-  const summary = log.getByText(/^Worked \d+(m \d+)?s · /);
+  const summary = log.getByText(/ · Worked \d+(m \d+)?s · /);
   await expect(summary).toContainText('read 1 file');
   await expect(summary).toContainText('edited 1');
-  expect((await summary.boundingBox())!.y).toBeLessThan((await reply.boundingBox())!.y);
+  expect((await summary.boundingBox())!.y).toBeGreaterThan((await reply.boundingBox())!.y);
 
   const bubbles = log.getByRole('article');
   await expect(bubbles).toHaveCount(1);
@@ -70,7 +70,7 @@ test('one working line by tool kind, a summary above the reply, the user message
 
   // The summary comes from the run, not from events this page happened to see.
   await page.reload();
-  await expect(log.getByText(/^Worked \d+(m \d+)?s · /)).toContainText('edited 1');
+  await expect(log.getByText(/ · Worked \d+(m \d+)?s · /)).toContainText('edited 1');
 });
 
 test('an approval shows Allow and Deny, leaves once answered; Deny ends in a blocked line', async ({ page }) => {

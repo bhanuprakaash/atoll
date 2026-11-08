@@ -9,3 +9,6 @@ export function Button({ className = '', ...props }: ButtonHTMLAttributes<HTMLBu
     />
   );
 }
+
+// quiet is the one style of a message's inline actions: Undo, Open, Retire, Details.
+export const quiet = 'text-[13px] text-muted hover:text-ink disabled:opacity-50';

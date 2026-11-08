@@ -123,6 +123,7 @@ func serve(log *fake.Log, args []string) error {
 	var extraRoots []string
 	var thread *recording
 	var t *turn
+	titling := false
 	in := fake.Lines()
 	for in.Scan() {
 		if err := log.Stdin(in.Text()); err != nil {
@@ -145,8 +146,11 @@ func serve(log *fake.Log, args []string) error {
 			if p.DeveloperInstructions != nil {
 				addition = *p.DeveloperInstructions
 			}
-			if err := log.Prompt("system", addition); err != nil {
-				return err
+			titling = strings.HasPrefix(addition, fake.TitleSystem)
+			if !titling {
+				if err := log.Prompt("system", addition); err != nil {
+					return err
+				}
 			}
 		}
 		switch m.Method {
@@ -177,6 +181,10 @@ func serve(log *fake.Log, args []string) error {
 			prompt := ""
 			if len(p.Input) > 0 {
 				prompt = p.Input[0].Text
+			}
+			if titling {
+				title(m.ID, p.ThreadID, prompt)
+				continue
 			}
 			if err := log.Prompt("user", prompt); err != nil {
 				return err
@@ -232,6 +240,26 @@ func signedOut(id json.RawMessage, thread string) {
 		{"method": "error", "params": map[string]any{"error": e, "willRetry": false, "threadId": thread, "turnId": turn}},
 		{"method": "turn/completed", "params": map[string]any{"threadId": thread,
 			"turn": map[string]any{"id": turn, "items": []any{}, "status": "failed", "error": e}}},
+	} {
+		b, _ := json.Marshal(n)
+		fmt.Println(string(b))
+	}
+}
+
+// title answers a title session's turn with fake.TitleFor in one message delta, or fails it.
+func title(id json.RawMessage, thread, prompt string) {
+	t, ok := fake.TitleFor(prompt)
+	if !ok {
+		reply(id, nil, fmt.Sprintf("fake codex: no title for prompt %q", prompt))
+		return
+	}
+	const turn = "01a1a5d2-7c4e-7b19-9f30-5e1b7a2c9d40"
+	b, _ := json.Marshal(map[string]any{"turn": map[string]any{"id": turn, "items": []any{}, "status": "inProgress"}})
+	reply(id, b, "")
+	for _, n := range []map[string]any{
+		{"method": "item/agentMessage/delta", "params": map[string]any{"threadId": thread, "turnId": turn, "delta": t}},
+		{"method": "turn/completed", "params": map[string]any{"threadId": thread,
+			"turn": map[string]any{"id": turn, "items": []any{}, "status": "completed"}}},
 	} {
 		b, _ := json.Marshal(n)
 		fmt.Println(string(b))

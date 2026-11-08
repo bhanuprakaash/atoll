@@ -79,7 +79,7 @@ export function Shell() {
             </svg>
           </button>
         </div>
-        <div className="mt-3.5">
+        <div className="mt-3.5 min-h-0 overflow-y-auto">
           <BotList search={search} />
         </div>
         <NavLink

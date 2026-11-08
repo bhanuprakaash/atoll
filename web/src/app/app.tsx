@@ -98,8 +98,14 @@ function ThreadPage() {
       signedOut={(provider) => <SignInExpired provider={provider} />}
       afterRun={(runId) => (
         <>
+          <PlatformChanges
+            threadId={threadId}
+            runId={runId}
+            botId={botId}
+            botNames={botNames}
+            looks={botLooks}
+          />
           <SavedMemory runId={runId} botNames={botNames} />
-          <PlatformChanges threadId={threadId} runId={runId} botNames={botNames} looks={botLooks} />
         </>
       )}
     />

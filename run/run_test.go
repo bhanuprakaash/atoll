@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -96,6 +97,13 @@ func (f *fakeSession) close() {
 	}
 }
 
+// exited is a session whose provider has exited: a later launch, such as a title session.
+func exited() *fakeSession {
+	f := &fakeSession{events: make(chan provider.Event)}
+	f.close()
+	return f
+}
+
 type env struct {
 	m      *Manager
 	st     *store.Store
@@ -120,9 +128,13 @@ func newEnv(t *testing.T, sess *fakeSession) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var launched atomic.Bool
 	m := New(Config{
 		Store: st,
 		Launch: func(context.Context, string) (provider.Session, provider.Config, error) {
+			if launched.Swap(true) {
+				return exited(), provider.Config{}, nil
+			}
 			return sess, provider.Config{}, nil
 		},
 		MCPURL:  "http://atoll/mcp/",
