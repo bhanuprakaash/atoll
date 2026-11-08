@@ -427,7 +427,8 @@ after a failed undo counts a Bot that is already gone as removed.
   library. An unknown id fails with the known ones named. Remove drops the server from every Bot.
 - A run gets Atoll's own server, `github` when the Bot has a GitHub connection, and exactly its
   Bot's servers, read from the library when the run starts: Claude through `--mcp-config` (still
-  `--strict-mcp-config`), Codex through `mcp_servers` in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
+  `--strict-mcp-config`; URLs, header values and env values are `${NAME}` placeholders, filled from the
+  process environment so none shows in the process list), Codex through `mcp_servers` in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
   Remove apply from the next run; a live run keeps its config. *A Bot that picks nothing gets none.*
 - A tool call to a user-added server is an approval in the thread, like any other tool. Claude's
   allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex gets

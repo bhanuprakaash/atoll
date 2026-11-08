@@ -18,6 +18,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"atoll/e2e/fakes/fake"
 )
 
 const (
@@ -402,9 +404,14 @@ func mcpServersOf(t *testing.T, provider string, c *call) map[string]struct {
 		if err := json.Unmarshal([]byte(flagValue(c.argv, "--mcp-config")), &cfg); err != nil {
 			t.Fatalf("claude --mcp-config is not inline JSON: %v", err)
 		}
+		getenv := func(k string) string { return c.env[k] }
 		for name, s := range cfg.MCPServers {
 			if s.Type != "http" {
 				t.Errorf("claude MCP server %s has type %q, want http", name, s.Type)
+			}
+			s.URL = fake.ExpandEnv(s.URL, getenv)
+			for k, v := range s.Headers {
+				s.Headers[k] = fake.ExpandEnv(v, getenv)
 			}
 			out[name] = struct {
 				URL     string
