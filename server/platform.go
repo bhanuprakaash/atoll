@@ -25,7 +25,7 @@ import (
 	"atoll/store"
 )
 
-var _looks = []string{"jellyfish", "whale", "penguin", "shark", "starfish", "anglerfish", "sand_dollar", "sponge", "kelp", "shell", "wave", "island", "sun", "sailboat"}
+var _looks = []string{"jellyfish", "whale", "shark", "penguin", "anglerfish", "pufferfish", "octopus", "crab", "seal", "manta", "scallop", "narwhal"}
 
 var _modes = []string{provider.ModeAuto, provider.ModeAsk, provider.ModeFull}
 
