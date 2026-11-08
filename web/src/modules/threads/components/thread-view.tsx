@@ -247,7 +247,7 @@ function MessageLine({
         </span>
         {brief ? (
           <Clamp className="self-stretch text-[15px] leading-normal">
-            <Markdown>{report.prose}</Markdown>
+            <Markdown threadId={threadId}>{report.prose}</Markdown>
           </Clamp>
         ) : (
           text
