@@ -11,12 +11,14 @@ import (
 	"atoll/store"
 )
 
-// sidebarThread is an open thread of a Bot, not a helper's, with the one marker the sidebar shows.
+// sidebarThread is an open thread of a Bot with the one marker the sidebar shows. Helper is set
+// for a thread another Bot handed to this one: the user cannot close it.
 type sidebarThread struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
 	State  string `json:"state"` // "needs_you", "running", "new" or ""
 	Pinned bool   `json:"pinned"`
+	Helper bool   `json:"helper,omitempty"`
 }
 
 // notice is one /api/events payload: an event of a thread with the thread's Bot and title.
@@ -28,9 +30,9 @@ type notice struct {
 	Data     any    `json:"data"`
 }
 
-// sidebarThreads keeps the open threads that are not a helper's, in the order given, and marks
-// each: needs_you when its run or a helper's waits on an approval, running when its run or a
-// helper's goes, new when its newest run finished after the user last opened it.
+// sidebarThreads keeps the open threads in the order given and marks each: needs_you when its run
+// or a helper's waits on an approval, running when its run or a helper's goes, new when its newest
+// run finished after the user last opened it.
 func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread {
 	byBoss := map[string][]store.ThreadRun{}
 	for _, h := range helpers {
@@ -38,11 +40,13 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 	}
 	out := []sidebarThread{}
 	for _, t := range threads {
-		if t.Closed || t.ParentThreadID != "" {
+		if t.Closed {
 			continue
 		}
 		state := a.marker(t, byBoss[t.ThreadID])
-		out = append(out, sidebarThread{ID: t.ThreadID, Title: t.Title, State: state, Pinned: t.Pinned})
+		out = append(out, sidebarThread{
+			ID: t.ThreadID, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
+		})
 	}
 	return out
 }
