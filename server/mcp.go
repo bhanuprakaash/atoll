@@ -207,7 +207,7 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
 		if err := a.runs.TrackMR(r.Context(), token, in.URL, in.Title); err != nil {
-			return nil, a.toolError(err)
+			return a.refusal(err)
 		}
 		return text("MR tracked."), nil
 	case provider.ToolRemember:

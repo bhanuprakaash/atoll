@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
 import { Creature, type CreatureLook } from '@/components/creature';
+import { Switch } from '@/components/switch';
 import { TextField } from '@/components/text-field';
 import { outlineButton, SectionHead, solidButton, Tag, Tile } from '@/components/settings-ui';
 import {
@@ -12,6 +13,7 @@ import {
   useSignIn,
   useSignInState,
   useSubmitSignInCode,
+  useUpdateProvider,
 } from '@/modules/providers/api/providers';
 
 type Bot = { id: string; name: string; look: CreatureLook; provider: Provider['name'] };
@@ -95,8 +97,64 @@ const tone = (p: Provider) => (!p.found ? 'plain' : p.signed_in ? 'ok' : 'warn')
 const status = (p: Provider) =>
   !p.found ? 'Not found' : p.signed_in ? 'Signed in' : 'Not signed in';
 
+function PathOverride({ provider }: { provider: Provider }) {
+  const [path, setPath] = useState(provider.path_override);
+  const [editing, setEditing] = useState(false);
+  const update = useUpdateProvider();
+  function persist() {
+    const next = path.trim();
+    if (next !== provider.path_override)
+      update.mutate({ name: provider.name, path_override: next });
+    if (next === '') setEditing(false);
+  }
+  if (!editing && provider.path_override === '')
+    return (
+      <button type="button" className={outlineButton} onClick={() => setEditing(true)}>
+        Use another executable
+      </button>
+    );
+  return (
+    <>
+      <TextField
+        size="sm"
+        width="min-w-0 flex-1"
+        aria-label={`${provider.label} path override`}
+        className="font-mono text-[13px]"
+        placeholder="/absolute/path/to/executable"
+        autoFocus={editing}
+        value={path}
+        onChange={(e) => setPath(e.target.value)}
+        onBlur={persist}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+      />
+      {update.isError && (
+        <p className="basis-full text-[12.5px] text-danger">{update.error.message}</p>
+      )}
+    </>
+  );
+}
+
+function OwnNames({ title, names }: { title: string; names: string[] }) {
+  return (
+    <>
+      <dt className="self-start pt-0.5 text-xs text-muted">{title}</dt>
+      <dd className="flex flex-wrap gap-1">
+        {names.length === 0 && <span className="text-muted">None</span>}
+        {names.map((name) => (
+          <span key={name} className="rounded-full bg-tile px-2 py-0.5">
+            {name}
+          </span>
+        ))}
+      </dd>
+    </>
+  );
+}
+
 function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
   const { start, busy, needsCode, submitCode, error } = useProviderSignIn(provider.name);
+  const update = useUpdateProvider();
   const users = bots.filter((b) => b.provider === provider.name);
   const slash = provider.path.lastIndexOf('/');
   return (
@@ -116,6 +174,11 @@ function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
             Sign in
           </button>
         )}
+        <Switch
+          aria-label={`Use ${provider.label}`}
+          checked={provider.enabled}
+          onChange={(enabled) => update.mutate({ name: provider.name, enabled })}
+        />
       </div>
       {provider.found && (
         <dl className="mt-4 grid grid-cols-[76px_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-[13px]">
@@ -161,6 +224,22 @@ function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
             </button>
           </dd>
         </dl>
+      )}
+      <dl className="mt-2 grid grid-cols-[76px_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-[13px]">
+        <dt className="text-xs text-muted">Override</dt>
+        <dd className="flex min-w-0 flex-wrap items-center gap-2">
+          <PathOverride key={provider.path_override} provider={provider} />
+        </dd>
+      </dl>
+      <p className="mt-4 text-xs text-muted">Its own setup, not used by Bots</p>
+      <dl className="mt-2 grid grid-cols-[76px_minmax(0,1fr)] gap-x-3 gap-y-2 text-[13px]">
+        <OwnNames title="MCP servers" names={provider.own_mcp_servers} />
+        <OwnNames title="Skills" names={provider.own_skills} />
+      </dl>
+      {!provider.enabled && (
+        <p className="mt-4 rounded-xl bg-field p-3 text-[13px] text-muted">
+          {provider.label} is off: Bots cannot pick it and their runs on it stop before they start.
+        </p>
       )}
       {provider.found && !provider.signed_in && (
         <p className="mt-4 rounded-xl bg-field p-3 text-[13px] text-muted">

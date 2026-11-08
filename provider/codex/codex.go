@@ -11,14 +11,18 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/BurntSushi/toml"
 
 	"atoll/provider"
 )
@@ -78,6 +82,7 @@ type (
 		Delta      string          `json:"delta"`
 		ItemID     string          `json:"itemId"`
 		ServerName string          `json:"serverName"`
+		RequestID  json.RawMessage `json:"requestId"`
 		Item       json.RawMessage `json:"item"`
 		Turn       struct {
 			Status string `json:"status"`
@@ -119,6 +124,18 @@ func SignedIn(ctx context.Context, bin, dir string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// Own names the MCP servers and skills of the user's own Codex setup under home.
+func Own(home string) provider.Own {
+	own := provider.Own{MCPServers: []string{}, Skills: provider.SkillNames(filepath.Join(home, ".codex", "skills"))}
+	var cfg struct {
+		MCPServers map[string]any `toml:"mcp_servers"`
+	}
+	if _, err := toml.DecodeFile(filepath.Join(home, ".codex", "config.toml"), &cfg); err == nil {
+		own.MCPServers = append(own.MCPServers, slices.Sorted(maps.Keys(cfg.MCPServers))...)
+	}
+	return own
 }
 
 // Login returns the `codex login` command with CODEX_HOME=dir. The caller wires its stdio.
@@ -172,7 +189,7 @@ func (s *Session) Answer(id string, allow bool) error {
 	delete(s.asks, id)
 	s.askMu.Unlock()
 	if !ok {
-		return fmt.Errorf("no open approval request %s", id)
+		return fmt.Errorf("no open approval request %s: %w", id, provider.ErrApprovalEnded)
 	}
 	reply, answer := "decision", "decline"
 	if a.elicitation {
@@ -466,6 +483,13 @@ func (s *Session) handle(m message) bool {
 			return false
 		}
 		s.msgID, s.wrote = itemID, true
+	case "serverRequest/resolved":
+		id := string(m.body().RequestID)
+		s.askMu.Lock()
+		_, open := s.asks[id]
+		delete(s.asks, id)
+		s.askMu.Unlock()
+		return !open || s.emit(provider.Event{Kind: provider.KindApprovalEnd, ID: id})
 	}
 	ev, ok := m.event()
 	if !ok {
@@ -529,9 +553,10 @@ func (m message) event() (ev provider.Event, ok bool) {
 // toolCall is the KindToolCall event for a started item, unless the item is a message.
 func toolCall(item json.RawMessage) (ev provider.Event, ok bool) {
 	var it struct {
-		Type string `json:"type"`
-		ID   string `json:"id"`
-		Tool string `json:"tool"`
+		Type   string `json:"type"`
+		ID     string `json:"id"`
+		Tool   string `json:"tool"`
+		Server string `json:"server"`
 	}
 	if json.Unmarshal(item, &it) != nil {
 		return provider.Event{}, false
@@ -542,7 +567,7 @@ func toolCall(item json.RawMessage) (ev provider.Event, ok bool) {
 	case "mcpToolCall":
 		it.Type = it.Tool
 	}
-	return provider.Event{Kind: provider.KindToolCall, ID: it.ID, Name: it.Type, Input: item}, true
+	return provider.Event{Kind: provider.KindToolCall, ID: it.ID, Name: it.Type, Server: it.Server, Input: item}, true
 }
 
 func (t *tail) Write(p []byte) (int, error) {
@@ -567,13 +592,17 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 		return nil, err
 	}
 	params := map[string]any{"cwd": cfg.Cwd, "approvalPolicy": "never", "config": config}
+	if cfg.NoTools {
+		params["sandbox"] = "read-only"
+		config["web_search"] = "disabled"
+	}
 	if cfg.Model != "" {
 		params["model"] = cfg.Model
 	}
 	if cfg.SystemPrompt != "" {
 		params["developerInstructions"] = cfg.SystemPrompt
 	}
-	if cfg.MCPURL != "" {
+	if cfg.MCPURL != "" && !cfg.NoTools {
 		servers := map[string]any{provider.MCPServer: map[string]string{"url": cfg.MCPURL}}
 		if cfg.GitHubMCPURL != "" {
 			servers[provider.GitHubMCPServer] = map[string]any{

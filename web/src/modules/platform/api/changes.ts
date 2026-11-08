@@ -53,28 +53,3 @@ export function useUndoChange(ids: string[]) {
     },
   });
 }
-
-export function useChangeNames() {
-  const skills = useQuery({
-    queryKey: ['skills'],
-    queryFn: () => api<{ id: string; name: string }[]>('/skills'),
-  });
-  const repos = useQuery({
-    queryKey: ['repos'],
-    queryFn: () => api<{ id: string; name: string }[]>('/repos'),
-  });
-  const connections = useQuery({
-    queryKey: ['connections'],
-    queryFn: () => api<{ id: string; kind: string }[]>('/connections'),
-  });
-  const bots = useQuery({
-    queryKey: ['bots'],
-    queryFn: () => api<{ id: string; name: string }[]>('/bots'),
-  });
-  return {
-    bots: bots.data ?? [],
-    skills: skills.data ?? [],
-    repos: repos.data ?? [],
-    connections: connections.data ?? [],
-  };
-}

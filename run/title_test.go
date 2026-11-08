@@ -1,6 +1,49 @@
 package run
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"testing"
+
+	"atoll/provider"
+)
+
+func TestWriteTitle(t *testing.T) {
+	for _, name := range []string{"claude", "codex"} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("GH_CONFIG_DIR", "/personal/gh")
+			t.Setenv("GLAB_CONFIG_DIR", "/personal/glab")
+			e := newEnv(t, &fakeSession{script: []provider.Event{
+				{Kind: provider.KindText, Text: "A title"}, {Kind: provider.KindTurnEnd},
+			}})
+			title, err := e.m.writeTitle(t.Context(), name, "message", "reply")
+			if err != nil || title != "A title" {
+				t.Fatalf("title = %q, %v; want A title", title, err)
+			}
+			cfg := e.sess.cfgs[0]
+			if !cfg.NoTools {
+				t.Error("title session has tools enabled")
+			}
+			for _, want := range []string{
+				"GH_CONFIG_DIR=" + filepath.Join(e.m.cfg.DataDir, "empty", "gh"),
+				"GLAB_CONFIG_DIR=" + filepath.Join(e.m.cfg.DataDir, "empty", "glab"),
+				"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
+				"GIT_SSH_COMMAND=ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityFile=/dev/null -o IdentityAgent=none",
+			} {
+				if !slices.Contains(cfg.Env, want) {
+					t.Errorf("title env lacks %q", want)
+				}
+			}
+			for _, path := range []string{"empty/gh/hosts.yml", "empty/glab/config.yml"} {
+				data, err := os.ReadFile(filepath.Join(e.m.cfg.DataDir, path))
+				if err != nil || string(data) != "" {
+					t.Errorf("empty config %s = %q, %v", path, data, err)
+				}
+			}
+		})
+	}
+}
 
 func TestCleanTitle(t *testing.T) {
 	tests := []struct {

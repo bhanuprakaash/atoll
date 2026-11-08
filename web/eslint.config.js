@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import js from '@eslint/js';
 import globals from 'globals';
 import importPlugin from 'eslint-plugin-import';
@@ -16,7 +17,7 @@ export default tseslint.config(
       'import/no-restricted-paths': [
         'error',
         {
-          zones: ['bots', 'threads', 'repos', 'connections'].map((m) => ({
+          zones: readdirSync('./src/modules').map((m) => ({
             target: `./src/modules/${m}`,
             from: './src/modules',
             except: [`./${m}`],

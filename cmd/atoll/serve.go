@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"atoll/memory"
-	"atoll/provider"
 	threadrun "atoll/run"
 	"atoll/server"
 	"atoll/store"
@@ -39,6 +38,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithCancel(ctx)
 		defer cancel()
+		// The stdin read cannot be unblocked portably, so this goroutine cannot be joined.
 		go func() {
 			_, _ = io.Copy(io.Discard, os.Stdin)
 			cancel()
@@ -103,15 +103,12 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	providers := newProviders(ctx)
+	providers := newProviders(ctx, st, _adapters)
 	defer providers.Close()
 	runs := threadrun.New(threadrun.Config{
-		Store:  st,
-		Memory: mem,
-		Launch: func(ctx context.Context, name string) (provider.Session, provider.Config, error) {
-			providers.checkAvailable(ctx, name)
-			return launch(ctx, name)
-		},
+		Store:        st,
+		Memory:       mem,
+		Launch:       providers.launch,
 		Available:    providers.available,
 		SignedOut:    providers.signOut,
 		MCPURL:       url + server.MCPPath,
@@ -154,7 +151,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 func chiefProvider(ctx context.Context) string {
 	dirs := pathDirs(ctx)
 	for _, adapter := range _adapters {
-		bin := adapter.find(dirs)
+		bin := adapter.find(dirs, "")
 		if bin == "" {
 			continue
 		}
@@ -178,34 +175,4 @@ func pollInterval() time.Duration {
 		return time.Minute
 	}
 	return d
-}
-
-// launch returns a session for the provider name with its binary and settings folder.
-func launch(ctx context.Context, name string) (provider.Session, provider.Config, error) {
-	for _, a := range _adapters {
-		if a.name != name {
-			continue
-		}
-		bin, dir, err := a.prepare(ctx)
-		if err != nil {
-			return nil, provider.Config{}, err
-		}
-		return a.new(), provider.Config{Bin: bin, Dir: dir}, nil
-	}
-	return nil, provider.Config{}, fmt.Errorf("unknown provider %q", name)
-}
-
-func available(ctx context.Context, name string) bool {
-	for _, a := range _adapters {
-		if a.name != name {
-			continue
-		}
-		bin, dir, err := a.prepare(ctx)
-		if err != nil {
-			return false
-		}
-		signed, err := a.signedIn(ctx, bin, dir)
-		return err == nil && signed
-	}
-	return false
 }

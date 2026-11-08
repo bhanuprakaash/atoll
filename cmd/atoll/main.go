@@ -33,6 +33,7 @@ type adapter struct {
 	new      func() provider.Session
 	signedIn func(ctx context.Context, bin, dir string) (bool, error)
 	login    func(ctx context.Context, bin, dir string) *exec.Cmd
+	own      func(home string) provider.Own
 }
 
 var _adapters = []adapter{
@@ -41,12 +42,14 @@ var _adapters = []adapter{
 		new:      func() provider.Session { return claude.New() },
 		signedIn: claude.SignedIn,
 		login:    claude.Login,
+		own:      claude.Own,
 	},
 	{
 		name:     "codex",
 		new:      func() provider.Session { return codex.New() },
 		signedIn: codex.SignedIn,
 		login:    codex.Login,
+		own:      codex.Own,
 	},
 }
 
@@ -97,7 +100,7 @@ func run(ctx context.Context, args []string, w io.Writer) error {
 func status(ctx context.Context, w io.Writer) error {
 	dirs := pathDirs(ctx)
 	for _, a := range _adapters {
-		bin := a.find(dirs)
+		bin := a.find(dirs, "")
 		if bin == "" {
 			if _, err := fmt.Fprintf(w, "%s\tnot installed\n", a.name); err != nil {
 				return err
@@ -146,7 +149,7 @@ func (a adapter) chat(ctx context.Context, args []string, w io.Writer) error {
 	if err := fs.Parse(args); err != nil || fs.NArg() != 1 {
 		return usage()
 	}
-	bin, dir, err := a.prepare(ctx)
+	bin, dir, err := a.prepare(ctx, "")
 	if err != nil {
 		return err
 	}
@@ -195,7 +198,7 @@ func (a adapter) chat(ctx context.Context, args []string, w io.Writer) error {
 }
 
 func (a adapter) signIn(ctx context.Context) error {
-	bin, dir, err := a.prepare(ctx)
+	bin, dir, err := a.prepare(ctx, "")
 	if err != nil {
 		return err
 	}
@@ -204,8 +207,8 @@ func (a adapter) signIn(ctx context.Context) error {
 	return cmd.Run()
 }
 
-func (a adapter) prepare(ctx context.Context) (bin, dir string, err error) {
-	if bin = a.find(pathDirs(ctx)); bin == "" {
+func (a adapter) prepare(ctx context.Context, override string) (bin, dir string, err error) {
+	if bin = a.find(pathDirs(ctx), override); bin == "" {
 		return "", "", fmt.Errorf("%s is not installed", a.name)
 	}
 	if dir, err = a.dir(); err != nil {
@@ -214,8 +217,12 @@ func (a adapter) prepare(ctx context.Context) (bin, dir string, err error) {
 	return bin, dir, os.MkdirAll(dir, 0o700)
 }
 
-func (a adapter) find(dirs []string) string {
-	override := os.Getenv("ATOLL_" + strings.ToUpper(a.name) + "_PATH")
+// find returns the executable at override, else at the ATOLL_<NAME>_PATH override, else the first
+// match in dirs.
+func (a adapter) find(dirs []string, override string) string {
+	if override == "" {
+		override = os.Getenv("ATOLL_" + strings.ToUpper(a.name) + "_PATH")
+	}
 	return provider.Find(a.name, override, dirs)
 }
 

@@ -56,6 +56,9 @@ const (
 // ErrSignedOut is the error of a run that failed because the provider refused its sign-in.
 var ErrSignedOut = errors.New("provider is signed out")
 
+// ErrApprovalEnded means the provider resolved an approval before Answer reached it.
+var ErrApprovalEnded = errors.New("approval request has ended")
+
 // Session drives one provider process holding one session. Call Start or Resume once; Send one
 // prompt per turn; read Events until it closes. Interrupt is the only way to stop it.
 type Session interface {
@@ -100,6 +103,8 @@ type Config struct {
 	MCPServers []UserMCPServer
 	// Mode is the Bot's mode; other values run as the provider's default.
 	Mode string
+	// NoTools disables tools, or confines them to a read-only, no-network sandbox.
+	NoTools bool
 }
 
 // UserMCPServer is local with Command, Args and Env, or remote with URL and Headers.
@@ -120,9 +125,10 @@ const (
 	KindText    Kind = iota + 1 // Text is a piece of the reply
 	KindSession                 // SessionID is the id Resume takes
 	KindTurnEnd
-	KindError    // Text is the error; SignedOut when the provider refused its sign-in
-	KindToolCall // ID, Name and Input: a tool call started
-	KindApproval // ID, Name and Input: the provider waits for Answer(ID, ...)
+	KindError       // Text is the error; SignedOut when the provider refused its sign-in
+	KindToolCall    // ID, Server, Name and Input: a tool call started
+	KindApproval    // ID, Name and Input: the provider waits for Answer(ID, ...)
+	KindApprovalEnd // ID: the provider ended the request without an Answer
 )
 
 // Event is one step of a session.
@@ -132,6 +138,7 @@ type Event struct {
 	SessionID string
 	ID        string
 	Name      string
+	Server    string
 	Input     json.RawMessage
 	SignedOut bool
 }
@@ -140,7 +147,8 @@ type Event struct {
 // session state (ANTHROPIC_*, CLAUDE*, OPENAI_*, CODEX_*) or the user's own GitLab and GitHub
 // tokens (GITLAB_TOKEN, GITLAB_ACCESS_TOKEN, GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN,
 // GITHUB_ENTERPRISE_TOKEN: the CLIs would prefer them to a Bot's own login), the settings that
-// carry a login (OAUTH_TOKEN, GITLAB_HOST, GIT_CONFIG_PARAMETERS, SSH_AUTH_SOCK), followed by kv.
+// carry a login (OAUTH_TOKEN, GITLAB_HOST, GIT_CONFIG_PARAMETERS, SSH_AUTH_SOCK), and the local
+// API credential (ATOLL_TOKEN), followed by kv.
 func Env(kv ...string) []string {
 	var env []string
 	for _, e := range os.Environ() {
@@ -155,5 +163,5 @@ func Env(kv ...string) []string {
 
 var _loginTokens = []string{
 	"GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
-	"OAUTH_TOKEN", "GITLAB_HOST", "GIT_CONFIG_PARAMETERS", "SSH_AUTH_SOCK",
+	"OAUTH_TOKEN", "GITLAB_HOST", "GIT_CONFIG_PARAMETERS", "SSH_AUTH_SOCK", "ATOLL_TOKEN",
 }

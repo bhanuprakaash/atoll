@@ -25,29 +25,29 @@ func (m *Manager) Remember(
 	if err != nil {
 		return memory.Item{}, nil, err
 	}
-	t, err := m.cfg.Store.Thread(ctx, a.threadID)
+	sh, err := m.shelf(ctx, token)
 	if err != nil {
-		return memory.Item{}, nil, fmt.Errorf("load thread: %w", err)
+		return memory.Item{}, nil, err
 	}
 	var scopeID string
 	switch scope {
 	case memory.ScopeRepo:
-		if t.RepoID == "" {
-			return memory.Item{}, nil, fmt.Errorf("%w: thread has no repo", memory.ErrInvalid)
+		if sh.RepoID == "" {
+			return memory.Item{}, nil, fmt.Errorf("%w: thread has no accessible repo", memory.ErrInvalid)
 		}
-		scopeID = t.RepoID
+		scopeID = sh.RepoID
 	case memory.ScopeBot:
-		scopeID = t.BotID
+		scopeID = sh.BotID
 	}
 	item, similar, err := m.cfg.Memory.Remember(ctx, memory.Note{
 		Kind: kind, Body: body, Why: why, Scope: scope, ScopeID: scopeID, Replaces: replaces,
-		SourceBotID: t.BotID, SourceThreadID: t.ID, SourceRunID: a.run.ID,
+		SourceBotID: sh.BotID, SourceThreadID: a.threadID, SourceRunID: a.run.ID,
 	})
 	if err != nil {
 		return memory.Item{}, nil, err
 	}
 	m.publish(a, EventMemorySaved,
-		MemorySaved{Item: item, SourceBotID: t.BotID, ThreadID: t.ID, RunID: a.run.ID})
+		MemorySaved{Item: item, SourceBotID: sh.BotID, ThreadID: a.threadID, RunID: a.run.ID})
 	m.show(token, item)
 	return item, similar, nil
 }
@@ -114,6 +114,12 @@ func (m *Manager) shelf(ctx context.Context, token string) (memory.Shelf, error)
 	t, err := m.cfg.Store.Thread(ctx, a.threadID)
 	if err != nil {
 		return memory.Shelf{}, fmt.Errorf("load thread: %w", err)
+	}
+	m.mu.Lock()
+	allowed := a.bot.RepoAccess.Allows(t.RepoID)
+	m.mu.Unlock()
+	if !allowed {
+		t.RepoID = ""
 	}
 	return memory.Shelf{RepoID: t.RepoID, BotID: t.BotID}, nil
 }

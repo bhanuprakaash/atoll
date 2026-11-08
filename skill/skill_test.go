@@ -1,10 +1,64 @@
 package skill
 
 import (
+	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
 
 	"atoll/store"
 )
+
+func TestReadSymlinks(t *testing.T) {
+	tests := []struct {
+		name    string
+		link    string
+		target  string
+		wantErr bool
+	}{
+		{name: "outside file", link: "reference.md", target: "outside.md"},
+		{name: "outside directory", link: "references", target: "."},
+		{name: "dangling link", link: "missing.md", target: "missing.md"},
+		{name: "skill file", link: "SKILL.md", target: "outside.md", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Join(root, "skill")
+			if err := os.Mkdir(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "outside.md"), []byte("private"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if tt.link != "SKILL.md" {
+				if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("local skill"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Symlink(filepath.Join(root, tt.target), filepath.Join(dir, tt.link)); err != nil {
+				t.Fatal(err)
+			}
+			got, err := Read(dir)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("Read accepted a symlink as SKILL.md")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Skill.Content != "local skill" || len(got.Skill.Files) != 0 {
+				t.Errorf("Read imported linked content: %+v", got.Skill)
+			}
+			want := []Skipped{{Path: tt.link, Reason: SkippedOther}}
+			if !reflect.DeepEqual(got.Skipped, want) {
+				t.Errorf("Skipped = %v, want %v", got.Skipped, want)
+			}
+		})
+	}
+}
 
 func TestStrip(t *testing.T) {
 	const greeting = "---\nname: reef-greeting\ndescription: Give the Reef greeting.\n" +

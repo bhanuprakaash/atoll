@@ -111,34 +111,109 @@ func TestArgv(t *testing.T) {
 		"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
 		"--include-partial-messages", "--strict-mcp-config", "--settings", `{"disableAllHooks":true,"disableBundledSkills":true,"skillOverrides":{"design":"off","doctor":"off","plugin-authoring":"off"}}`,
 	}
-	mcp := []string{
-		"--mcp-config", `{"mcpServers":{"atoll":{"type":"http","url":"http://127.0.0.1:9/mcp/t0k"}}}`,
-		"--permission-prompt-tool", "mcp__atoll__approve",
-		"--allowedTools", "mcp__atoll",
+	mcp := func(servers string) []string {
+		return []string{
+			"--mcp-config", servers,
+			"--permission-prompt-tool", "mcp__atoll__approve",
+			"--allowedTools", "mcp__atoll",
+		}
 	}
+	atoll := mcp(`{"mcpServers":{"atoll":{"type":"http","url":"${ATOLL_MCP_0}"}}}`)
+	atollSecrets := []string{"ATOLL_MCP_0=http://127.0.0.1:9/mcp/t0k"}
 	tests := []struct {
-		name   string
-		mcpURL string
-		system string
-		extra  []string
-		want   []string
+		name        string
+		cfg         provider.Config
+		extra       []string
+		want        []string
+		wantSecrets []string
 	}{
-		{"without MCP", "", "", nil, base},
-		{"with MCP", "http://127.0.0.1:9/mcp/t0k", "", nil, append(base[:len(base):len(base)], mcp...)},
-		{"resume comes last", "http://127.0.0.1:9/mcp/t0k", "", []string{"--resume", "abc"},
-			append(append(base[:len(base):len(base)], mcp...), "--resume", "abc")},
-		{"system on resume", "", "addition", []string{"--resume", "abc"}, append(base[:len(base):len(base)], "--append-system-prompt", "addition", "--resume", "abc")},
+		{"without MCP", provider.Config{}, nil, base, nil},
+		{"with MCP", provider.Config{MCPURL: "http://127.0.0.1:9/mcp/t0k"}, nil,
+			append(base[:len(base):len(base)], atoll...), atollSecrets},
+		{"resume comes last", provider.Config{MCPURL: "http://127.0.0.1:9/mcp/t0k"}, []string{"--resume", "abc"},
+			append(append(base[:len(base):len(base)], atoll...), "--resume", "abc"), atollSecrets},
+		{"system on resume", provider.Config{SystemPrompt: "addition"}, []string{"--resume", "abc"},
+			append(base[:len(base):len(base)], "--append-system-prompt", "addition", "--resume", "abc"), nil},
+		{"tokens, headers and env stay out of argv", provider.Config{
+			MCPURL:       "http://127.0.0.1:9/mcp/t0k",
+			GitHubMCPURL: "https://api.githubcopilot.com/mcp/",
+			GitHubToken:  "gho_abc",
+			MCPServers: []provider.UserMCPServer{
+				{Name: "docs", URL: "https://docs.example/mcp?key=k1", Headers: map[string]string{"X-Key": "h1", "Authorization": "Bearer b1"}},
+				{Name: "local", Command: "srv", Args: []string{"--stdio"}, Env: map[string]string{"TOKEN": "e1"}},
+			},
+		}, nil,
+			append(base[:len(base):len(base)], mcp(`{"mcpServers":{`+
+				`"atoll":{"type":"http","url":"${ATOLL_MCP_0}"},`+
+				`"docs":{"headers":{"Authorization":"${ATOLL_MCP_3}","X-Key":"${ATOLL_MCP_4}"},"type":"http","url":"${ATOLL_MCP_2}"},`+
+				`"github":{"headers":{"Authorization":"Bearer ${ATOLL_MCP_1}"},"type":"http","url":"https://api.githubcopilot.com/mcp/"},`+
+				`"local":{"args":["--stdio"],"command":"srv","env":{"TOKEN":"${ATOLL_MCP_5}"},"type":"stdio"}`+
+				`}}`)...),
+			[]string{
+				"ATOLL_MCP_0=http://127.0.0.1:9/mcp/t0k", "ATOLL_MCP_1=gho_abc",
+				"ATOLL_MCP_2=https://docs.example/mcp?key=k1", "ATOLL_MCP_3=Bearer b1", "ATOLL_MCP_4=h1",
+				"ATOLL_MCP_5=e1",
+			}},
+		{"title without tools", provider.Config{NoTools: true}, nil,
+			append(base[:len(base):len(base)], "--tools", ""), nil},
+		{"no tools ignores MCP", provider.Config{MCPURL: "http://127.0.0.1:9/mcp/t0k", NoTools: true}, nil,
+			append(base[:len(base):len(base)], "--tools", ""), nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := argv(provider.Config{MCPURL: tt.mcpURL, SystemPrompt: tt.system}, tt.extra...)
+			got, secrets, err := argv(tt.cfg, tt.extra...)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("argv = %q, want %q", got, tt.want)
 			}
+			if !reflect.DeepEqual(secrets, tt.wantSecrets) {
+				t.Errorf("secrets = %q, want %q", secrets, tt.wantSecrets)
+			}
 		})
+	}
+}
+
+func TestStartKeepsSecretsOutOfArgv(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "claude")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + dir + "/args\nenv > " + dir + "/env\n"
+	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s := New()
+	cfg := provider.Config{
+		Bin: bin, Dir: t.TempDir(), Cwd: t.TempDir(),
+		MCPURL: "http://127.0.0.1:9/mcp/t0k", GitHubMCPURL: "https://api.githubcopilot.com/mcp/", GitHubToken: "gho_abc",
+		MCPServers: []provider.UserMCPServer{{Name: "local", Command: "srv", Env: map[string]string{"TOKEN": "e1"}}},
+	}
+	if err := s.Start(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Interrupt() })
+	for range s.Events() {
+	}
+
+	args, err := os.ReadFile(filepath.Join(dir, "args"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := os.ReadFile(filepath.Join(dir, "env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"t0k", "gho_abc", "e1"} {
+		if strings.Contains(string(args), secret) {
+			t.Errorf("argv holds %q:\n%s", secret, args)
+		}
+	}
+	for _, want := range []string{
+		"ATOLL_MCP_0=http://127.0.0.1:9/mcp/t0k\n", "ATOLL_MCP_1=gho_abc\n", "ATOLL_MCP_2=e1\n",
+	} {
+		if !strings.Contains(string(env), want) {
+			t.Errorf("environment lacks %q", want)
+		}
 	}
 }
 
@@ -174,22 +249,57 @@ func TestParse(t *testing.T) {
 }
 
 func TestAdoptSession(t *testing.T) {
-	dir := t.TempDir()
-	from := filepath.Join(dir, "projects", "-data-threads-t1")
-	if err := os.MkdirAll(from, 0o700); err != nil {
-		t.Fatal(err)
+	const (
+		worktree = "-data-trees-seeded-fix-seeded-bug"
+		checkout = "-data-threads-t1"
+	)
+	tests := []struct {
+		name string
+		// files maps a project folder to its content and age (seconds before now).
+		files map[string]struct {
+			body string
+			age  int
+		}
+		cwd, want string
+	}{
+		{"copies from another folder", map[string]struct {
+			body string
+			age  int
+		}{checkout: {"history", 0}}, "/data/trees/seeded/fix-seeded.bug", "history"},
+		{"newer elsewhere replaces the stale copy", map[string]struct {
+			body string
+			age  int
+		}{worktree: {"stale", 60}, checkout: {"latest", 0}}, "/data/trees/seeded/fix-seeded.bug", "latest"},
+		{"newer here is kept", map[string]struct {
+			body string
+			age  int
+		}{worktree: {"latest", 0}, checkout: {"stale", 60}}, "/data/trees/seeded/fix-seeded.bug", "latest"},
 	}
-	if err := os.WriteFile(filepath.Join(from, "s1.jsonl"), []byte("history"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for folder, f := range tt.files {
+				path := filepath.Join(dir, "projects", folder, "s1.jsonl")
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(f.body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				at := time.Now().Add(-time.Duration(f.age) * time.Second)
+				if err := os.Chtimes(path, at, at); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-	cfg := provider.Config{Dir: dir, Cwd: "/data/trees/seeded/fix-seeded.bug"}
-	if err := adoptSession(cfg, "s1"); err != nil {
-		t.Fatal(err)
-	}
+			if err := adoptSession(provider.Config{Dir: dir, Cwd: tt.cwd}, "s1"); err != nil {
+				t.Fatal(err)
+			}
 
-	to := filepath.Join(dir, "projects", "-data-trees-seeded-fix-seeded-bug", "s1.jsonl")
-	if got, err := os.ReadFile(to); err != nil || string(got) != "history" {
-		t.Fatalf("copied session = %q, %v; want %q", got, err, "history")
+			to := filepath.Join(dir, "projects", worktree, "s1.jsonl")
+			if got, err := os.ReadFile(to); err != nil || string(got) != tt.want {
+				t.Errorf("session = %q, %v; want %q", got, err, tt.want)
+			}
+		})
 	}
 }

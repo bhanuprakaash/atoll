@@ -50,6 +50,7 @@ const (
 	StatusWaiting = "waiting" // an approval is open
 	StatusDone    = "done"
 	StatusFailed  = "failed"
+	StatusStopped = "stopped"
 )
 
 // ErrorSignedOut is the error kind of a run that failed because its provider is signed out.
@@ -79,7 +80,16 @@ const (
 
 type (
 	// Store is Atoll's data, read and written through one SQLite file.
-	Store struct{ db *sql.DB }
+	Store struct {
+		db   dbConn
+		root *sql.DB
+	}
+
+	// Tx is a Store whose writes commit together on Commit and vanish on Rollback.
+	Tx struct {
+		Store *Store
+		tx    *sql.Tx
+	}
 
 	// Bot is a configured agent. Provider is "claude" or "codex". Connections are the ids of the
 	// connections it may use.
@@ -142,6 +152,7 @@ type (
 		ParentThreadID  string     `json:"parent_thread_id"`
 		Title           string     `json:"title"`
 		Session         string     `json:"-"`
+		SessionProvider string     `json:"-"`
 		RepoID          string     `json:"repo_id"`
 		Branch          string     `json:"branch"`
 		Worktree        string     `json:"worktree"`
@@ -212,7 +223,7 @@ type (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider"
 	_messagePageSize = 50
 )
 
@@ -264,14 +275,14 @@ func OpenWrapped(dir string, wrap func(driver.Connector) driver.Connector) (*Sto
 		_ = db.Close()
 		return nil, fmt.Errorf("retire looks: %w", err)
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, root: db}, nil
 }
 
 // DB is the shared handle, for packages that keep their own tables in the same file.
-func (s *Store) DB() *sql.DB { return s.db }
+func (s *Store) DB() *sql.DB { return s.root }
 
 // Close closes the database.
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error { return s.root.Close() }
 
 // Allows reports whether a Bot with this access may work in the repo with id.
 func (a RepoAccess) Allows(id string) bool {
@@ -819,21 +830,17 @@ func (s *Store) SetGroup(ctx context.Context, botID, groupID string) error {
 }
 
 // SetSession records the provider session the thread's next runs resume.
-func (s *Store) SetSession(ctx context.Context, threadID, session string) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE threads SET session = ? WHERE id = ?",
-		session, threadID)
+func (s *Store) SetSession(ctx context.Context, threadID, session, provider string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET session = ?, session_provider = ? WHERE id = ?",
+		session, provider, threadID)
 	if err != nil {
 		return fmt.Errorf("set session: %w", err)
 	}
 	return found(res, "thread", threadID)
 }
 
-// StartRun stores the user's message and a running run for it, in one transaction.
-func (s *Store) StartRun(ctx context.Context, threadID, text string) (Message, Run, error) {
-	return s.startRun(ctx, threadID, "", text, "", nil)
-}
-
-// StartRunFrom is StartRun for an inbox item, removing it in the same transaction.
+// StartRunFrom stores the message and a running run, removing the inbox item when it has an ID,
+// in one transaction.
 func (s *Store) StartRunFrom(ctx context.Context, it InboxItem) (Message, Run, error) {
 	return s.startRun(ctx, it.ThreadID, it.FromBotID, it.Text, it.ID, it.Images)
 }
@@ -1044,9 +1051,9 @@ func (s *Store) FailUnfinished(
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		var err error
 		ids, err = query(ctx, tx,
-			"UPDATE runs SET status = ?, error = ? WHERE status IN (?, ?) RETURNING id",
+			"UPDATE runs SET status = ?, error = ?, finished_at = ? WHERE status IN (?, ?) RETURNING id",
 			func(r *sql.Rows) (id string, err error) { return id, r.Scan(&id) },
-			StatusFailed, reason, StatusRunning, StatusWaiting)
+			StatusFailed, reason, time.Now().UTC().UnixMicro(), StatusRunning, StatusWaiting)
 		if err != nil {
 			return err
 		}
@@ -1187,7 +1194,10 @@ func (s *Store) Attachment(ctx context.Context, id string) (Attachment, error) {
 }
 
 func (s *Store) tx(ctx context.Context, fn func(*sql.Tx) error) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	if tx, ok := s.db.(*sql.Tx); ok {
+		return fn(tx)
+	}
+	tx, err := s.root.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
@@ -1200,6 +1210,27 @@ func (s *Store) tx(ctx context.Context, fn func(*sql.Tx) error) error {
 	}
 	return nil
 }
+
+// Begin starts a transaction that takes the write lock at once. Call Rollback when done; it does
+// nothing after Commit.
+func (s *Store) Begin(ctx context.Context) (*Tx, error) {
+	tx, err := s.root.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin: %w", err)
+	}
+	return &Tx{Store: &Store{db: tx, root: s.root}, tx: tx}, nil
+}
+
+// Commit makes the writes made through t.Store permanent.
+func (t *Tx) Commit() error {
+	if err := t.tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// Rollback drops the writes made through t.Store.
+func (t *Tx) Rollback() { _ = t.tx.Rollback() }
 
 // FirstWords is the title a thread's first message gives it: the first six words, without the
 // punctuation that ends the last one.
@@ -1260,7 +1291,7 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	var closedAt sql.NullInt64
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
 		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
-		&t.Title, &t.ParentThreadID)
+		&t.Title, &t.ParentThreadID, &t.SessionProvider)
 	if err != nil {
 		return Thread{}, err
 	}
@@ -1314,6 +1345,12 @@ func scanConnection(r *sql.Rows) (c Connection, err error) {
 
 type queryer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+type dbConn interface {
+	execer
+	queryer
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 func query[T any](

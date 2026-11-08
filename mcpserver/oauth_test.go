@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -28,36 +29,46 @@ func TestToken(t *testing.T) {
 		wantFail    bool
 	}{
 		{
+			name:       "grant for another URL needs sign-in",
+			give:       Tokens{URL: "https://old.example/mcp", AccessToken: "old", RefreshToken: "r"},
+			wantStatus: store.MCPNeedsSignIn,
+		},
+		{
+			name: "grant saved before URLs were recorded is used",
+			give: Tokens{AccessToken: "old", RefreshToken: "r"},
+			want: "old", wantRefresh: "r",
+		},
+		{
 			name: "no expiry is never refreshed",
-			give: Tokens{ClientID: "c", AccessToken: "old", RefreshToken: "r"},
+			give: Tokens{URL: "$server/mcp", ClientID: "c", AccessToken: "old", RefreshToken: "r"},
 			want: "old", wantRefresh: "r",
 		},
 		{
 			name: "no refresh token near expiry needs sign-in",
-			give: Tokens{ClientID: "c", AccessToken: "old", ExpiresAt: soon},
+			give: Tokens{URL: "$server/mcp", ClientID: "c", AccessToken: "old", ExpiresAt: soon},
 			want: "", wantStatus: store.MCPNeedsSignIn,
 		},
 		{
 			name:  "a reply without a refresh token keeps the old one",
-			give:  Tokens{ClientID: "c", AccessToken: "old", RefreshToken: "r", ExpiresAt: soon},
+			give:  Tokens{URL: "$server/mcp", ClientID: "c", AccessToken: "old", RefreshToken: "r", ExpiresAt: soon},
 			reply: map[string]any{"access_token": "new", "expires_in": 3600},
 			want:  "new", wantRefresh: "r", wantCalls: 1,
 		},
 		{
 			name:  "a revoked Slack grant needs sign-in",
-			give:  Tokens{ClientID: "c", AccessToken: "old", RefreshToken: "r", ExpiresAt: soon},
+			give:  Tokens{URL: "$server/mcp", ClientID: "c", AccessToken: "old", RefreshToken: "r", ExpiresAt: soon},
 			reply: map[string]any{"ok": false, "error": "token_revoked"},
 			want:  "", wantStatus: store.MCPNeedsSignIn, wantCalls: 1,
 		},
 		{
 			name:  "an expired Slack grant needs sign-in",
-			give:  Tokens{ClientID: "c", AccessToken: "old", RefreshToken: "r", ExpiresAt: soon},
+			give:  Tokens{URL: "$server/mcp", ClientID: "c", AccessToken: "old", RefreshToken: "r", ExpiresAt: soon},
 			reply: map[string]any{"ok": false, "error": "token_expired"},
 			want:  "", wantStatus: store.MCPNeedsSignIn, wantCalls: 1,
 		},
 		{
 			name:  "another Slack error is a plain failure",
-			give:  Tokens{ClientID: "c", AccessToken: "old", RefreshToken: "r", ExpiresAt: soon},
+			give:  Tokens{URL: "$server/mcp", ClientID: "c", AccessToken: "old", RefreshToken: "r", ExpiresAt: soon},
 			reply: map[string]any{"ok": false, "error": "ratelimited"},
 			want:  "", wantRefresh: "r", wantCalls: 1, wantFail: true,
 		},
@@ -87,7 +98,13 @@ func TestToken(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			s := store.MCPServer{ID: "s1", Name: "docs", URL: srv.URL + "/mcp", Status: store.MCPConnected}
+			s, err := st.CreateMCPServer(t.Context(), store.MCPServer{
+				Name: "docs", Kind: store.MCPRemote, URL: srv.URL + "/mcp",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.give.URL = strings.ReplaceAll(tt.give.URL, "$server", srv.URL)
 			if err := saveTokens(s.ID, tt.give); err != nil {
 				t.Fatal(err)
 			}
@@ -137,7 +154,7 @@ func TestReplaceSignIn(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := errors.Join(saveTokens(s.ID, Tokens{AccessToken: "a"}), st.SetMCPSignIn(ctx, s.ID, store.MCPConnected)); err != nil {
+			if err := errors.Join(saveTokens(s.ID, Tokens{URL: s.URL, AccessToken: "a"}), st.SetMCPSignIn(ctx, s.ID, store.MCPConnected)); err != nil {
 				t.Fatal(err)
 			}
 			offline := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -155,7 +172,44 @@ func TestReplaceSignIn(t *testing.T) {
 			if kept := tokenErr == nil && signIns[s.ID] == store.MCPConnected; kept != tt.wantKept {
 				t.Errorf("sign-in kept = %t (token error %v, status %q), want %t", kept, tokenErr, signIns[s.ID], tt.wantKept)
 			}
+			cur, err := Get(ctx, st, s.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			token, err := Token(ctx, offline, st, cur)
+			if tt.wantKept && (err != nil || token != "a") || !tt.wantKept && (err == nil || token != "") {
+				t.Errorf("Token after replacement = %q, %v, want kept: %t", token, err, tt.wantKept)
+			}
 		})
+	}
+}
+
+func TestReplaceStopsBeforePublishingOnSecretFailure(t *testing.T) {
+	keyring.MockInitWithError(errors.New("secret store unavailable"))
+	t.Cleanup(keyring.MockInit)
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	s, err := st.CreateMCPServer(t.Context(), store.MCPServer{
+		Name: "docs", Kind: store.MCPRemote, URL: "https://old.example/mcp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Replace(t.Context(), st, http.DefaultClient, s.ID, Input{
+		Name: "docs", URL: "https://new.example/mcp", Headers: map[string]string{"Authorization": "new"},
+	})
+	if err == nil {
+		t.Fatal("Replace succeeded without deleting the old grant")
+	}
+	cur, err := st.MCPServer(t.Context(), s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cur.URL != s.URL {
+		t.Errorf("URL = %q, want %q after secret store failure", cur.URL, s.URL)
 	}
 }
 
@@ -200,8 +254,13 @@ func TestTokenRefreshesOnceAtATime(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	s := store.MCPServer{ID: "s1", Name: "docs", URL: srv.URL + "/mcp", Status: store.MCPConnected}
-	give := Tokens{ClientID: "c", AccessToken: "old", RefreshToken: "r1", ExpiresAt: time.Now().Add(time.Minute)}
+	s, err := st.CreateMCPServer(t.Context(), store.MCPServer{
+		Name: "docs", Kind: store.MCPRemote, URL: srv.URL + "/mcp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	give := Tokens{URL: s.URL, ClientID: "c", AccessToken: "old", RefreshToken: "r1", ExpiresAt: time.Now().Add(time.Minute)}
 	if err := saveTokens(s.ID, give); err != nil {
 		t.Fatal(err)
 	}

@@ -12,6 +12,7 @@ import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { BotMemory } from '@/modules/memory/components/bot-memory';
 import { BotSettings } from '@/modules/bots/components/bot-settings';
 import { useConnections } from '@/modules/connections/api/connections';
+import { ReconnectButton } from '@/modules/connections/components/reconnect-button';
 import { useMcpServers } from '@/modules/mcp-servers/api/mcp-servers';
 import { useProviders } from '@/modules/providers/api/providers';
 import { ModelSelect } from '@/modules/providers/components/model-select';
@@ -231,6 +232,7 @@ export function BotPage() {
           bots={bots}
           skills={skills}
           connections={connections}
+          reconnect={(connection) => <ReconnectButton connection={connection} />}
           mcpServers={mcpServers.filter((s) => s.kind !== 'connection')}
           modelControl={(provider, model, onChange) => (
             <ModelSelect

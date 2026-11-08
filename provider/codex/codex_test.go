@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,7 @@ func TestSession(t *testing.T) {
 		wantErr     string
 		mcpURL      string
 		allow       bool
+		wantServers string
 		wantCalls   string // names of the KindToolCall events, joined by ","
 		wantAsk     string // name and ID of the KindApproval event, if any
 	}{
@@ -65,6 +67,7 @@ func TestSession(t *testing.T) {
 			wantReply:   "- Skills: none.\n- MCP servers: none connected or exposed.",
 			wantSession: _threadID,
 			wantCalls:   "list_mcp_resource_templates,list_mcp_resources",
+			wantServers: "codex,codex",
 		},
 		{
 			name:        "approval accepted",
@@ -74,6 +77,7 @@ func TestSession(t *testing.T) {
 			wantReply:   "Created hello.txt containing hi.",
 			wantSession: _threadID,
 			wantCalls:   "commandExecution,finish_run",
+			wantServers: "atoll",
 			wantAsk:     "commandExecution 0",
 		},
 		{
@@ -83,6 +87,7 @@ func TestSession(t *testing.T) {
 			wantReply:   "I didn't create hello.txt because you declined the command.",
 			wantSession: _threadID,
 			wantCalls:   "commandExecution,finish_run",
+			wantServers: "atoll",
 			wantAsk:     "commandExecution 0",
 		},
 		{
@@ -117,11 +122,15 @@ func TestSession(t *testing.T) {
 				t.Fatal(err)
 			}
 			var reply strings.Builder
+			var servers []string
 			session, calls, ask := "", []string{}, ""
 			for ev := range s.Events() {
 				switch ev.Kind {
 				case provider.KindToolCall:
 					calls = append(calls, ev.Name)
+					if ev.Server != "" {
+						servers = append(servers, ev.Server)
+					}
 				case provider.KindApproval:
 					ask = ev.Name + " " + ev.ID
 					if err := s.Answer(ev.ID, tt.allow); err != nil {
@@ -140,6 +149,9 @@ func TestSession(t *testing.T) {
 				if ev.Kind == provider.KindTurnEnd {
 					break
 				}
+			}
+			if got := strings.Join(servers, ","); got != tt.wantServers {
+				t.Errorf("MCP servers = %q, want %q", got, tt.wantServers)
 			}
 			if reply.String() != tt.wantReply || session != tt.wantSession ||
 				strings.Join(calls, ",") != tt.wantCalls || ask != tt.wantAsk {
@@ -269,10 +281,11 @@ func TestThreadConfig(t *testing.T) {
 
 func TestThreadParams(t *testing.T) {
 	tests := []struct {
-		name   string
-		mcpURL string
-		system string
-		want   string
+		name    string
+		mcpURL  string
+		system  string
+		want    string
+		noTools bool
 	}{
 		{
 			name: "without MCP",
@@ -288,11 +301,21 @@ func TestThreadParams(t *testing.T) {
 		},
 		{name: "system addition", system: "addition", want: `{"approvalPolicy":"never","config":{"features":{"apps":false,"plugins":false,` +
 			`"remote_plugin":false},"skills":{"bundled":{"enabled":false}}},"cwd":"/work","developerInstructions":"addition"}`},
+		{
+			name: "title without tools", noTools: true,
+			want: `{"approvalPolicy":"never","config":{"features":{"apps":false,"plugins":false,` +
+				`"remote_plugin":false},"skills":{"bundled":{"enabled":false}},"web_search":"disabled"},"cwd":"/work","sandbox":"read-only"}`,
+		},
+		{
+			name: "no tools ignores MCP", noTools: true, mcpURL: "http://127.0.0.1:9/mcp/t0k",
+			want: `{"approvalPolicy":"never","config":{"features":{"apps":false,"plugins":false,` +
+				`"remote_plugin":false},"skills":{"bundled":{"enabled":false}},"web_search":"disabled"},"cwd":"/work","sandbox":"read-only"}`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			params, err := threadParams(provider.Config{Cwd: "/work", MCPURL: tt.mcpURL, SystemPrompt: tt.system})
+			params, err := threadParams(provider.Config{Cwd: "/work", MCPURL: tt.mcpURL, SystemPrompt: tt.system, NoTools: tt.noTools})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -302,6 +325,40 @@ func TestThreadParams(t *testing.T) {
 			}
 			if string(got) != tt.want {
 				t.Errorf("threadParams = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSession_requestResolved(t *testing.T) {
+	tests := []struct {
+		name    string
+		request string
+		resolve string
+		want    string // ID of the KindApprovalEnd event, empty for none
+	}{
+		{name: "pending request", request: `7`, resolve: `{"requestId":7,"threadId":"t"}`, want: "7"},
+		{name: "string id", request: `"a"`, resolve: `{"requestId":"a","threadId":"t"}`, want: `"a"`},
+		{name: "unknown request", request: `7`, resolve: `{"requestId":8,"threadId":"t"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New()
+			s.serverRequest(message{ID: json.RawMessage(tt.request), Method: "item/commandExecution/requestApproval"})
+			<-s.Events()
+			s.handle(message{Method: "serverRequest/resolved", Params: json.RawMessage(tt.resolve)})
+			ev := provider.Event{}
+			select {
+			case ev = <-s.Events():
+			default:
+			}
+			if ev.ID != tt.want || (tt.want != "" && ev.Kind != provider.KindApprovalEnd) {
+				t.Errorf("event %+v, want KindApprovalEnd with ID %q", ev, tt.want)
+			}
+			if tt.want != "" {
+				if err := s.Answer(tt.want, true); !errors.Is(err, provider.ErrApprovalEnded) {
+					t.Errorf("Answer = %v, want ErrApprovalEnded", err)
+				}
 			}
 		})
 	}

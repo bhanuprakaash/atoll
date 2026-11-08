@@ -1,6 +1,6 @@
 # Reef (working name: atoll) — design
 
-Status: draft for review. Design only; nothing is built. Organised by topic; each rule is stated once.
+Status: v1 is built; this design is the source of truth. Organised by topic; each rule is stated once.
 
 ## What it is
 
@@ -66,11 +66,22 @@ connections, served as Reef's own MCP tools; read tools list Bots, skills, conne
 servers and signed-in models and record no change.
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
-registered repo has (REST answers 400 with the same text). Sign-ins stay with the user. Every change shows in the thread with undo.
+registered repo has (REST answers 400 with the same text for repo, delegate and MCP server ids, and
+for a provider that is turned off; POST takes any model, and PUT checks a model only when it or
+the provider changes, so a Bot on a retired model stays editable). Picking a provider that is
+turned off fails even without a model. Sign-ins stay with the user. Every change shows in the
+thread with undo.
+A change and its record are written in one transaction, so a failed record leaves nothing changed.
+The provider list, git checks and skill folder reads come first; the transaction holds only
+re-reads, the write and the record.
 Other Bots can get the switch later.
 Undo: each change stores the entity before and after; Undo writes `before` back, or removes an entity
 the change created, and keeps the record marked undone. *Records survive restart; no undo of undo.*
 Undo of a repo registration is refused while a thread uses the repo.
+Otherwise it drops the repo from Bots' access lists in the same transaction. Undo of a Bot edit
+restores only repo, delegate, MCP server, skill and connection ids that still exist. Undo of Bot
+creation uses Delete Bot's cleanup, including stopping runs and saving unfinished work; a retry
+after a failed undo counts a Bot that is already gone as removed.
 
 ## Threads and runs
 
@@ -92,7 +103,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   sends the approvals open now. It is live only: nothing is stored, so the island's Earlier list
   lasts until the app reloads. *A notifications table would need read state and cleanup for
   little gain; open approvals, the only thing that must survive, are replayed.*
-- Resume by default. A fresh session only comes from starting a new thread or delegation.
+- Resume by default. Each thread records the provider that owns its session. If the Bot's provider
+  changes, its next run starts a fresh session and says so in the thread. New threads and delegation
+  also start fresh sessions.
 - Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply stays
   2–3 plain lines. *The report feeds memory, parents and fresh starts.* `blocked` is only what
   the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
@@ -122,8 +135,6 @@ Undo of a repo registration is refused while a thread uses the repo.
   permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes). *The
   variable covers every MCP server of the run, not only Reef's: Claude Code has no per-server
   timeout, so a hung user tool also waits up to 30 minutes.*
-- Processes a Bot starts (dev server, watcher, browser) belong to the thread and outlive the run.
-  When the thread closes or the app quits, the app asks whether to stop them.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
   into a pane the user can take over (v2).
 
@@ -221,9 +232,10 @@ Undo of a repo registration is refused while a thread uses the repo.
 - Repos are registered once. A thread works in one repo.
 - A repo registers without a commit; a thread on it is refused until it has one.
 - Access is checked when the thread is created and at every run. When the Bot's repo access no
-  longer allows the thread's repo, its runs work as in a thread with no repo: the thread folder, no
-  repo block, no worktree, no `start_work`. The thread says the Bot no longer has access. Existing
-  worktrees stay where they are.
+  longer allows the thread's repo, its runs work as in a thread with no repo: a folder of their own
+  (`<data>/threads/<id>-noaccess`, neither the checkout nor the worktree), no repo block, no
+  worktree, no `start_work`, no repo memory, no repo for `delegate`. The thread says the Bot no
+  longer has access. Existing worktrees stay where they are.
 - A thread gets a worktree on its first edit, at `~/Reef/worktrees/<repo>/<branch-folder>` (root is
   a setting). Read-only threads use a clean checkout.
 - The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs) at first edit; the app makes it
@@ -239,7 +251,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   included`. A thread that already has a worktree gets its path and branch back, with no base.
 - The slug is lowercased, every run of characters outside `[a-z0-9]` becomes `-`, and it is cut to
   40 characters. The worktree folder is the branch with `/` replaced by `-`.
-- Repo names are unique, because the worktree folder uses them.
+- Repo names are unique, because the worktree folder uses them. A name is one folder name: letters,
+  digits, `.`, `-` and `_`, never `.` or `..`.
 - Unfinished work is saved as a commit at `refs/atoll/unfinished/<thread id>` before removal. A
   failed save removes nothing and leaves the thread open.
 - A thread's cwd moves from the checkout to its worktree. Claude resumes only the sessions of its own
@@ -254,7 +267,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   runs `gh pr create` in its worktree with the connection's env. `start_work` on a GitHub repo for a Bot without one is a tool error, "give this
   Bot the GitHub connection", with no worktree made, so the Bot says what to do and the user never
   meets a git auth error. A question in the repo needs no connection.
-- `track_mr` takes the PR URL (`<github>/<owner>/<repo>/pull/<n>`) like an MR URL; the thread shows
+- `track_mr` takes the full http(s) URL of the MR; a URL with another scheme or no host is a tool
+  error. For GitHub it takes the PR URL (`<github>/<owner>/<repo>/pull/<n>`); the thread shows
   it as `#<n>` where an MR shows `!<iid>`. PR state is not polled: the watcher never runs `glab`
   for a GitHub repo's thread, the state stays `opened`, and the worktree goes when the thread closes.
 - Atoll checks each GitLab MR with `glab mr view` every minute (`ATOLL_REPO_POLL_INTERVAL`, a Go duration).
@@ -267,6 +281,18 @@ Undo of a repo registration is refused while a thread uses the repo.
   common install folders), version, signed in, enable switch, path override, and a read-only list of
   the provider's own MCP servers and skills marked "not used by Bots". Checked on start, before each
   run and on Refresh. *A Finder-launched app lacks the shell PATH.*
+- The enable switch and the path override are stored per provider in the settings table, kept in
+  memory from start-up (so a Bot list poll reads no setting), and set with
+  `PUT /api/providers/{name}` (`enabled`, `path_override`; an empty path clears it, a relative one is
+  refused). The stored path replaces the PATH lookup; changing it checks that provider again. A
+  provider that is off is not offered for new Bots (the model picker, Chief's `list_models`, and the
+  `create_bot` and `edit_bot` check), and a run on a Bot whose provider is off fails before the
+  provider starts, with "<provider> is turned off in Settings > Providers".
+- The provider's own MCP servers and skills are names only, read on each check, never per GET:
+  Claude Code's top-level `mcpServers` keys in `~/.claude.json` and the folders in
+  `~/.claude/skills`; Codex's `[mcp_servers.<name>]` tables in `~/.codex/config.toml` and the folders
+  in `~/.codex/skills`. A missing or unreadable file is an empty list. `GET /api/providers` lists
+  them as `own_mcp_servers` and `own_skills`.
 - Each provider runs from a Reef-owned settings folder (`~/Library/Application Support/Atoll/providers/claude`,
   `…/codex`), signed in once from the Providers page: `CLAUDE_CONFIG_DIR=<dir> claude auth login`,
   `CODEX_HOME=<dir> codex login`. Never copy or link login files; never change `HOME`. *Same pattern
@@ -280,7 +306,7 @@ Undo of a repo registration is refused while a thread uses the repo.
     its folder (Codex finds that folder through `HOME`).
 - Env knobs, for tests and dev: `ATOLL_DATA_DIR` replaces `~/Library/Application Support/Atoll`;
   `ATOLL_PROVIDER_PATH` (PATH syntax) is the only place discovery looks; `ATOLL_CLAUDE_PATH` and
-  `ATOLL_CODEX_PATH` are the path override until settings are stored.
+  `ATOLL_CODEX_PATH` are the path override when no path override is stored.
 - Providers get the parent env minus `ANTHROPIC_*`, `CLAUDE*`, `OPENAI_*`, `CODEX_*` and the user's
   GitLab and GitHub tokens (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`,
   `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`) and the settings that carry a login (`OAUTH_TOKEN`,
@@ -351,14 +377,17 @@ Undo of a repo registration is refused while a thread uses the repo.
   watcher and the MR title lookup use GitLab's environment alone, so a GitHub failure never stops
   GitLab polling.
 - GitLab OAuth records include the refresh token and expiry in the secret store. Before a run uses
-  one, it refreshes a token that expires within ten minutes. A rejected refresh marks that connection
-  `needs_sign_in`; the run stops before the provider starts, and signing in again keeps the connection.
+  one, it refreshes a token that expires within ten minutes. Reads, refreshes and sign-in writes for
+  one connection run one at a time because refresh tokens are single-use. A rejected refresh marks
+  that connection `needs_sign_in`; the run stops before the provider starts, and signing in again
+  keeps the connection.
 - Tokens live in the OS secret store through one cross-platform library. Targets: macOS and desktop
   Linux; headless Linux is out.
 - Skills: one library in standard `SKILL.md` folders, created in the app or imported; each Bot picks
   its skills. A skill is `SKILL.md` (`skills.content`) plus its other text files (`skill_files`:
   relative path, content, executable), and keeps the folder it was imported from. Paths are
-  relative, clean and inside the folder; content is UTF-8 text. Binaries are not stored. `PUT
+  relative, clean and inside the folder; content is UTF-8 text. Imports skip symlinks and require
+  SKILL.md to be a regular file. Binaries are not stored. `PUT
   /api/skills/{id}` with `files` replaces the whole set in one transaction; without `files` it keeps
   them. Each run gets read-only copies of its Bot's skills (scripts 0555, the rest 0444) in its own folder under the provider's Atoll folder
   (`runs/<run id>`), removed when the run ends: Claude through `--add-dir` (copies in
@@ -398,7 +427,8 @@ Undo of a repo registration is refused while a thread uses the repo.
   library. An unknown id fails with the known ones named. Remove drops the server from every Bot.
 - A run gets Atoll's own server, `github` when the Bot has a GitHub connection, and exactly its
   Bot's servers, read from the library when the run starts: Claude through `--mcp-config` (still
-  `--strict-mcp-config`), Codex through `mcp_servers` in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
+  `--strict-mcp-config`; URLs, header values and env values are `${NAME}` placeholders, filled from the
+  process environment so none shows in the process list), Codex through `mcp_servers` in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
   Remove apply from the next run; a live run keeps its config. *A Bot that picks nothing gets none.*
 - A tool call to a user-added server is an approval in the thread, like any other tool. Claude's
   allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex gets
@@ -418,8 +448,10 @@ Undo of a repo registration is refused while a thread uses the repo.
   `WWW-Authenticate` has `resource_metadata` means the server needs sign-in: `not_connected`, or
   `needs_app` when its authorization server has no `registration_endpoint`. Any other answer adds
   the server with no status. Headers are the user's own sign-in: no request. A `PUT` that changes
-  the URL or the kind deletes the server's tokens and status, so a grant never follows a server to
-  another host; a remote server left with no headers is sent the same request as Add.
+  the URL or the kind deletes the server's tokens and status before publishing the change, so a
+  grant never follows a server to another host. A saved grant is usable only for its recorded URL;
+  a grant saved before URLs were recorded is used as is. A remote server left with no headers is sent
+  the same request as Add.
 - `POST /api/mcp-servers/{id}/connect` follows the MCP authorization flow: protected-resource
   metadata from the `401`, the first authorization server's
   `/.well-known/oauth-authorization-server`, dynamic client registration (public client,
@@ -436,7 +468,7 @@ Undo of a repo registration is refused while a thread uses the repo.
   answers `400` and nothing is stored. A pending sign-in older than ten minutes is dropped when a
   new one starts. *The Allow page must come back to a URL registered at registration; a second
   listener would add a port to allow.*
-- The client ID, access token, refresh token and expiry are one OS secret store entry,
+- The server URL, client ID, access token, refresh token and expiry are one OS secret store entry,
   `mcp:<id>:oauth`: never the database, a file, a log or an API reply (the authorize URL names the
   client and is the one exception). Remove deletes the entry. *Reef owns the tokens; providers never
   run their own MCP OAuth.* A run gets the server as a remote entry with
@@ -450,8 +482,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   refreshed (`grant_type=refresh_token`, same client). A rejected refresh (`invalid_grant`) sets
   `needs_sign_in`; the run fails before the provider starts with `<name> needs sign-in`. Sign in again
   is Connect again: the server keeps its id and every Bot's pick. Nothing refreshes without a run.
-  Reads and refreshes of one server's tokens run one at a time (refresh tokens are single-use), and
-  each re-reads the record first, so a run that waited uses the tokens the other saved.
+  Reads, refreshes, sign-in completion and endpoint changes for one server run one at a time
+  (refresh tokens are single-use). Each re-reads the record first, so a run that waited uses the
+  tokens the other saved.
   A token reply may omit `expires_in` (no known expiry: never refreshed before a run) and
   `refresh_token` (near expiry the server goes `needs_sign_in` with no refresh attempt; a refresh
   reply without a new one keeps the old).
@@ -672,7 +705,9 @@ Voice
 - Thread titles: the first six words of the first message (a helper's brief), set when that message
   is sent and stored, with trailing `.,;:!?` removed from the last word. After the thread's first
   reply, Reef asks the Bot's provider for a better one: a session of its own on the provider's
-  cheapest model (Claude Code `haiku`, Codex `gpt-6-luna`), with no MCP server, in
+  cheapest model (Claude Code `haiku`, Codex `gpt-6-luna`), with no MCP server and the environment
+  of a Bot with no connections. Claude disables tools (`--tools ""`); Codex uses a read-only,
+  no-network sandbox with web search disabled. The session runs in
   `<data>/titles`, given the first message and the reply, each cut to 2,000 characters. The answer's
   first line, at most six words, first letter upper case, no trailing punctuation, replaces the
   title only if it is still the first-words one. It is not a run, shows no status line and never
@@ -775,7 +810,8 @@ Voice
   sends the whole skill; leaving with unsaved changes asks first. A skill with a source folder has
   Re-import (`POST /api/skills/{id}/reimport`, the same rules as `import_skill`): it lists added /
   changed / removed and, when Reef edits would be overwritten, asks Cancel or Confirm. Provider cards show version, models, Bots using them and the CLI path as labelled facts,
-  along with sign-in state.
+  along with sign-in state, an enable switch, a path override field (saved on blur or Enter) and the
+  provider's own MCP servers and skills, marked as not used by Bots.
   Sign in runs the provider's own login (`claude auth login`, `codex login`) in Reef's folder for
   it, opens the URL it prints in the browser and updates when it finishes; no Terminal.
 - First run is three steps over drifting creatures: the user's name; the providers found, with Sign
@@ -785,8 +821,16 @@ Voice
 - The desktop shell uses an overlay title bar; the Bot header’s empty space is a window drag region.
 - The Tauri shell (`desktop/`, `make app`) starts `atoll serve --addr 127.0.0.1:4317
   --exit-on-stdin-close`, keeps its stdin pipe open as the sidecar's lifeline, loads the URL it
-  prints, restarts it when it exits (every 2 s while it keeps failing) and stops it on quit or
-  SIGTERM; an occupied port stops retries and shows an error. The page shows Reconnecting meanwhile.
+  prints and restarts it when it exits (every 2 s while it keeps failing). On quit or SIGTERM it
+  closes the lifeline so Go shuts down runs and providers, waits up to 5 s, then kills the child
+  if it has not exited; an occupied port stops retries and shows an error. The page shows
+  Reconnecting meanwhile.
+  The shell generates a random token per launch, passes it as `ATOLL_TOKEN` to the sidecar (also
+  on restarts) and first loads `/?token=<token>`. That sets an HttpOnly, SameSite=Strict session
+  cookie and redirects to `/`. When `ATOLL_TOKEN` is set, every `/api/` and MCP request requires
+  the cookie (401 otherwise); MCP URLs with a valid per-run token also work without the cookie.
+  Local host and same-origin checks still apply. With `ATOLL_TOKEN` unset, `make run` and e2e
+  keep their existing access without a cookie.
   A page's `window.open` (provider sign-in) opens in the default browser (`on_new_window`), and so
   does any navigation of the window to a URL that is not Reef's own server (`on_navigation`), which
   is cancelled in the app. Only `http`, `https` and `mailto` URLs are handed to the browser; any
@@ -846,5 +890,9 @@ workspace, no per-workspace app), browser pane, background processes pane, the p
 switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up
 to about 5 items always in the prompt), routines (scheduled, repeating runs), more provider
 adapters.
+
+Queued with the background processes pane: processes a Bot starts (dev server, watcher, browser)
+belong to the thread and outlive the run. When the thread closes or the app quits, the app asks
+whether to stop them.
 
 An item moves into the build when its absence hurts in daily use.

@@ -81,6 +81,10 @@ func (m *Manager) writeTitle(ctx context.Context, name, message, reply string) (
 	}
 	defer func() { _ = sess.Interrupt() }()
 	cfg.Model, cfg.SystemPrompt = model, _titlePrompt
+	cfg.NoTools = true
+	if cfg.Env, _, err = m.runEnv(ctx, store.Bot{}, false); err != nil {
+		return "", err
+	}
 	cfg.Cwd = filepath.Join(m.cfg.DataDir, "titles")
 	if err := os.MkdirAll(cfg.Cwd, 0o700); err != nil {
 		return "", fmt.Errorf("create title folder: %w", err)

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
-  BrowserRouter,
+  createBrowserRouter,
   Navigate,
   Route,
+  RouterProvider,
   Routes,
   useNavigate,
   useParams,
@@ -23,6 +24,7 @@ import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { useSetBotGroup } from '@/modules/bots/api/groups';
 import { NewBotForm } from '@/modules/bots/components/new-bot-form';
 import { useConnections, type Connection } from '@/modules/connections/api/connections';
+import { ReconnectButton } from '@/modules/connections/components/reconnect-button';
 import { FirstRun } from '@/modules/onboarding/components/first-run';
 import {
   FirstRunProviders,
@@ -75,6 +77,7 @@ function NewBotPage() {
       repos={repos}
       skills={skills}
       connections={connections}
+      reconnect={(connection) => <ReconnectButton connection={connection} />}
       onCreated={(bot) => {
         const groupId = params.get('group');
         if (groupId) setGroup.mutate({ botId: bot.id, groupId });
@@ -90,6 +93,7 @@ function ThreadPage() {
   const { data: repos = [] } = useRepos();
   const { data: bots = [] } = useBots();
   const { data: connections = [] } = useConnections();
+  const { data: skills = [] } = useSkills();
   const repoName = repos.find((r) => r.id === thread?.repo_id)?.name;
   const botNames = Object.fromEntries(bots.map((b) => [b.id, b.name]));
   const botLooks = Object.fromEntries(bots.map((b) => [b.id, b.look]));
@@ -119,6 +123,7 @@ function ThreadPage() {
             botId={botId}
             botNames={botNames}
             looks={botLooks}
+            names={{ bots, skills, repos, connections }}
           />
           <SavedMemory runId={runId} botNames={botNames} />
         </>
@@ -209,12 +214,12 @@ function AppRoutes() {
   );
 }
 
+const router = createBrowserRouter([{ path: '*', element: <AppRoutes /> }]);
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter useTransitions={false}>
-        <AppRoutes />
-      </BrowserRouter>
+      <RouterProvider router={router} useTransitions={false} />
     </QueryClientProvider>
   );
 }

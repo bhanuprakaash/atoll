@@ -50,6 +50,7 @@ var (
 
 // Tokens is the sign-in record of one server.
 type Tokens struct {
+	URL          string    `json:"url"`
 	ClientID     string    `json:"client_id"`
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
@@ -142,6 +143,11 @@ func Finish(ctx context.Context, c *http.Client, st *store.Store, p Pending, cod
 		return fmt.Errorf("sign in to %s: %w", p.Server.Name, err)
 	}
 	tokens.ClientID = p.ClientID
+	tokens.URL = p.Server.URL
+	lock, _ := _tokenLocks.LoadOrStore(p.Server.ID, &sync.Mutex{})
+	mu, _ := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
 	cur, err := Get(ctx, st, p.Server.ID)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
@@ -162,12 +168,20 @@ func Finish(ctx context.Context, c *http.Client, st *store.Store, p Pending, cod
 
 // Token refreshes an access token that expires within ten minutes.
 func Token(ctx context.Context, c *http.Client, st *store.Store, s store.MCPServer) (string, error) {
-	if s.Status == store.MCPNeedsSignIn {
+	lock, _ := _tokenLocks.LoadOrStore(s.ID, &sync.Mutex{})
+	mu, _ := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+	cur, err := Get(ctx, st, s.ID)
+	if err != nil {
+		return "", err
+	}
+	if cur.URL != s.URL || cur.Kind != s.Kind {
+		return "", invalid(s.Name + " changed before token use")
+	}
+	if cur.Status == store.MCPNeedsSignIn {
 		return "", fmt.Errorf("%s %w", s.Name, ErrNeedsSignIn)
 	}
-	lock, _ := _tokenLocks.LoadOrStore(s.ID, &sync.Mutex{})
-	lock.(*sync.Mutex).Lock()
-	defer lock.(*sync.Mutex).Unlock()
 	value, err := keyring.Get("atoll", tokensUser(s.ID))
 	if err != nil {
 		return "", fmt.Errorf("read sign-in of MCP server %s: %w", s.Name, err)
@@ -175,6 +189,9 @@ func Token(ctx context.Context, c *http.Client, st *store.Store, s store.MCPServ
 	var tokens Tokens
 	if err := json.Unmarshal([]byte(value), &tokens); err != nil {
 		return "", fmt.Errorf("decode sign-in of MCP server %s: %w", s.Name, err)
+	}
+	if tokens.URL != "" && tokens.URL != cur.URL {
+		return "", needsSignIn(ctx, st, cur)
 	}
 	if tokens.ExpiresAt.IsZero() || time.Until(tokens.ExpiresAt) > _refreshBefore {
 		return tokens.AccessToken, nil
@@ -197,6 +214,7 @@ func Token(ctx context.Context, c *http.Client, st *store.Store, s store.MCPServ
 		return "", fmt.Errorf("refresh sign-in of %s: %w", s.Name, err)
 	}
 	refreshed.ClientID = tokens.ClientID
+	refreshed.URL = tokens.URL
 	if refreshed.RefreshToken == "" {
 		refreshed.RefreshToken = tokens.RefreshToken
 	}

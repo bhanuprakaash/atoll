@@ -3,14 +3,15 @@ use signal_hook::{
     iterator::Signals,
 };
 use std::{
-    io::{BufRead, BufReader},
+    fs::File,
+    io::{BufRead, BufReader, Read},
     process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
     thread::{self, JoinHandle},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tauri::{
     webview::{Color, NewWindowResponse},
@@ -78,6 +79,9 @@ fn main() {
             })
             .build()?;
             let binary = std::env::current_exe()?.with_file_name("atoll");
+            let mut token = [0u8; 32];
+            File::open("/dev/urandom")?.read_exact(&mut token)?;
+            let token: String = token.iter().map(|byte| format!("{byte:02x}")).collect();
             let handle = thread::spawn(move || {
                 let mut navigated = false;
                 while !quitting.load(Ordering::SeqCst) {
@@ -88,13 +92,14 @@ fn main() {
                             "127.0.0.1:4317",
                             "--exit-on-stdin-close",
                         ])
+                        .env("ATOLL_TOKEN", &token)
                         .stdin(Stdio::piped())
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .spawn()
                     {
                         Ok(mut child) => {
-                            let _stdin = child.stdin.take().expect("piped stdin");
+                            let stdin = child.stdin.take().expect("piped stdin");
                             let stdout = child.stdout.take().expect("piped stdout");
                             let stderr = child.stderr.take().expect("piped stderr");
                             let (url_tx, url_rx) = std::sync::mpsc::channel();
@@ -117,15 +122,28 @@ fn main() {
                             });
                             loop {
                                 if quitting.load(Ordering::SeqCst) {
-                                    let _ = child.kill();
-                                    let _ = child.wait();
+                                    drop(stdin);
+                                    let deadline = Instant::now() + Duration::from_secs(5);
+                                    loop {
+                                        match child.try_wait() {
+                                            Ok(Some(_)) => break,
+                                            Ok(None) if Instant::now() < deadline => {
+                                                thread::sleep(Duration::from_millis(100));
+                                            }
+                                            _ => {
+                                                let _ = child.kill();
+                                                let _ = child.wait();
+                                                break;
+                                            }
+                                        }
+                                    }
                                     let _ = stdout_thread.join();
                                     let _ = stderr_thread.join();
                                     return;
                                 }
                                 if !navigated {
                                     if let Ok(url) = url_rx.try_recv() {
-                                        match url.parse() {
+                                        match format!("{url}/?token={token}").parse() {
                                             Ok(url) => match window.navigate(url) {
                                                 Ok(()) => navigated = true,
                                                 Err(err) => eprintln!("navigate: {err}"),

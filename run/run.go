@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -37,6 +38,8 @@ var (
 	ErrNoGitHubConnection = errors.New("this repo is on GitHub and this Bot has no GitHub connection: " +
 		"give this Bot the GitHub connection in its settings, then ask again")
 )
+
+var errRequestEnded = errors.New("the provider ended the request")
 
 // Event types on a thread's stream.
 const (
@@ -133,6 +136,8 @@ type (
 
 	// active is a run in progress. The Manager's mu guards log and open.
 	active struct {
+		workMu   sync.Mutex
+		statusMu sync.Mutex // orders the open count with the run status it implies
 		threadID string
 		ctx      context.Context
 		cancel   context.CancelFunc
@@ -331,9 +336,20 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 		m.mu.Unlock()
 		return ch, func() {}
 	}
+	var snapshot *io.SectionReader
+	var file *os.File
 	if a := m.runs[threadID]; a != nil && a.log != nil {
-		for _, ev := range m.replay(a.run.ID) {
-			ch <- ev
+		var err error
+		file, err = os.Open(a.log.Name())
+		if err == nil {
+			var info os.FileInfo
+			info, err = file.Stat()
+			if err == nil {
+				snapshot = io.NewSectionReader(file, 0, info.Size())
+			}
+		}
+		if err != nil {
+			m.cfg.Log.Warn("open replay snapshot", "run_id", a.run.ID, "error", err)
 		}
 	}
 	if m.subs[threadID] == nil {
@@ -341,6 +357,12 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 	}
 	m.subs[threadID][ch] = struct{}{}
 	m.mu.Unlock()
+	if file != nil {
+		defer func() { _ = file.Close() }()
+	}
+	if snapshot != nil {
+		m.replay(threadID, ch, snapshot)
+	}
 	return ch, func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
@@ -395,7 +417,9 @@ func (m *Manager) Active(threadID string) (runID string, approvals []Approval, o
 	}
 	for _, o := range m.approvals {
 		if o.approval.RunID == a.run.ID {
-			approvals = append(approvals, o.approval)
+			ap := o.approval
+			ap.Input = slices.Clone(ap.Input)
+			approvals = append(approvals, ap)
 		}
 	}
 	return a.run.ID, approvals, true
@@ -406,7 +430,9 @@ func (m *Manager) ActiveTool(threadID string) ToolCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if a := m.runs[threadID]; a != nil {
-		return a.tool
+		tool := a.tool
+		tool.Input = slices.Clone(tool.Input)
+		return tool
 	}
 	return ToolCall{}
 }
@@ -523,7 +549,7 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	m.mu.Lock()
 	a.ending = true
 	if a.stopped {
-		res = store.RunResult{Status: "stopped"}
+		res = store.RunResult{Status: store.StatusStopped}
 	}
 	quiet := a.quiet
 	m.mu.Unlock()
@@ -558,7 +584,7 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	if !quiet {
 		m.flushBoss(a.threadID)
 		// A user's Stop must not start the next held message at once.
-		if res.Status != "stopped" {
+		if res.Status != store.StatusStopped {
 			m.flushLog(a.threadID)
 		}
 	}
@@ -573,6 +599,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	bot, err := m.cfg.Store.Bot(a.ctx, thread.BotID)
 	if err != nil {
 		return "", fmt.Errorf("load bot: %w", err)
+	}
+	var notice string
+	if thread.Session != "" && thread.SessionProvider != bot.Provider {
+		thread.Session = ""
+		notice = "Provider changed to " + bot.Provider + "; starting a fresh session.\n\n"
 	}
 	m.mu.Lock()
 	a.bot = bot
@@ -679,6 +710,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		return "", fmt.Errorf("start %s: %w", bot.Provider, err)
 	}
 	m.publish(a, EventPrompt, Prompt{RunID: a.run.ID, System: cfg.SystemPrompt, Message: prompt})
+	if notice != "" {
+		m.publish(a, EventText, Text{RunID: a.run.ID, Text: notice})
+	}
 	if err := sess.Send(a.ctx, prompt, images); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
@@ -686,6 +720,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if err != nil {
 		return "", err
 	}
+	reply = notice + reply
 	m.mu.Lock()
 	ids := slices.Clone(a.shown)
 	m.mu.Unlock()
@@ -733,10 +768,21 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 // turn's text is dropped.
 func (m *Manager) stream(a *active, sess provider.Session, showText bool) (string, error) {
 	var reply strings.Builder
+	var wg sync.WaitGroup
+	asks := map[string]context.CancelCauseFunc{}
+	failed := make(chan error, 1)
+	defer func() {
+		for _, cancel := range asks {
+			cancel(nil)
+		}
+		wg.Wait()
+	}()
 	for {
 		select {
 		case <-a.ctx.Done():
 			return "", a.ctx.Err()
+		case err := <-failed:
+			return "", err
 		case ev, ok := <-sess.Events():
 			if !ok {
 				return "", errors.New("provider exited before the turn ended")
@@ -748,12 +794,16 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 					m.publish(a, EventText, Text{RunID: a.run.ID, Text: ev.Text})
 				}
 			case provider.KindSession:
-				if err := m.cfg.Store.SetSession(a.ctx, a.threadID, ev.SessionID); err != nil {
+				if err := m.cfg.Store.SetSession(a.ctx, a.threadID, ev.SessionID, a.bot.Provider); err != nil {
 					return "", fmt.Errorf("save session: %w", err)
 				}
 			case provider.KindToolCall:
-				kind, target := ToolKind(ev.Name, ev.Input)
-				if strings.Contains(ev.Name, "read_memory") && m.cfg.Memory != nil {
+				name := ev.Name
+				if ev.Server != "" {
+					name = "mcp__" + ev.Server + "__" + name
+				}
+				kind, target := ToolKind(name, ev.Input)
+				if name == _atollTools+provider.ToolReadMemory && m.cfg.Memory != nil {
 					var input struct {
 						ID        string `json:"id"`
 						Arguments struct {
@@ -771,23 +821,38 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 						}
 					}
 				}
-				if !strings.HasSuffix(ev.Name, "finish_run") {
+				if name != _atollTools+provider.ToolFinishRun {
 					if err := m.cfg.Store.CountTool(a.ctx, a.run.ID, kind); err != nil {
 						m.cfg.Log.Warn("count tool", "error", err)
 					}
 				}
 				m.publish(a, EventToolCall,
-					ToolCall{RunID: a.run.ID, ID: ev.ID, Name: ev.Name, Input: ev.Input, Kind: kind, Target: target, Verb: ToolVerb(ev.Name, kind)})
+					ToolCall{RunID: a.run.ID, ID: ev.ID, Name: ev.Name, Input: ev.Input, Kind: kind, Target: target, Verb: ToolVerb(name, kind)})
 				if ch := m.called(a, ev.ID); !isClosed(ch) {
 					close(ch)
 				}
 			case provider.KindApproval:
-				allow, err := m.approve(a.ctx, a, ev.Name, ev.Input)
-				if err != nil {
-					return "", err
-				}
-				if err := sess.Answer(ev.ID, allow); err != nil {
-					return "", fmt.Errorf("answer approval: %w", err)
+				ctx, cancel := context.WithCancelCause(a.ctx)
+				asks[ev.ID] = cancel
+				wg.Go(func() {
+					allow, err := m.approve(ctx, a, ev.Name, ev.Input)
+					if err == nil {
+						if err = sess.Answer(ev.ID, allow); err != nil {
+							err = fmt.Errorf("answer approval: %w", err)
+						}
+					}
+					if err != nil && !errors.Is(err, provider.ErrApprovalEnded) &&
+						!errors.Is(context.Cause(ctx), errRequestEnded) {
+						select {
+						case failed <- err:
+						default:
+						}
+					}
+				})
+			case provider.KindApprovalEnd:
+				if cancel, ok := asks[ev.ID]; ok {
+					cancel(errRequestEnded)
+					delete(asks, ev.ID)
 				}
 			case provider.KindTurnEnd:
 				return reply.String(), nil
@@ -808,12 +873,15 @@ func (m *Manager) approve(
 	id := randHex(8)
 	answer := make(chan bool, 1) // Answer must not wait for the run to read
 	ap := Approval{RunID: a.run.ID, ID: id, Tool: tool, Input: input}
+	a.statusMu.Lock()
 	m.mu.Lock()
 	m.approvals[id] = open{approval: ap, answer: answer}
 	a.open++
 	m.mu.Unlock()
+	err := m.cfg.Store.SetStatus(ctx, a.run.ID, store.StatusWaiting)
+	a.statusMu.Unlock()
 	defer m.resume(ctx, a, id)
-	if err := m.cfg.Store.SetStatus(ctx, a.run.ID, store.StatusWaiting); err != nil {
+	if err != nil {
 		return false, fmt.Errorf("approval %s: %w", id, err)
 	}
 	m.publish(a, EventApproval, ap)
@@ -829,16 +897,18 @@ func (m *Manager) approve(
 
 // resume closes approval id and sets the run back to running once none is open.
 func (m *Manager) resume(ctx context.Context, a *active, id string) {
+	a.statusMu.Lock()
 	m.mu.Lock()
 	delete(m.approvals, id)
 	a.open--
 	idle := a.open == 0
 	m.mu.Unlock()
-	m.publish(a, EventApprovalEnd, ApprovalClosed{RunID: a.run.ID, ID: id})
-	if !idle {
-		return
+	var err error
+	if idle {
+		err = m.cfg.Store.SetStatus(context.WithoutCancel(ctx), a.run.ID, store.StatusRunning)
 	}
-	err := m.cfg.Store.SetStatus(context.WithoutCancel(ctx), a.run.ID, store.StatusRunning)
+	a.statusMu.Unlock()
+	m.publish(a, EventApprovalEnd, ApprovalClosed{RunID: a.run.ID, ID: id})
 	if err != nil {
 		m.cfg.Log.Warn("set status running", "run_id", a.run.ID, "error", err)
 	}
@@ -909,14 +979,12 @@ func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data
 	}
 }
 
-// replay is the running run's events so far, so a subscriber that joins late (a page opened
-// after the first message, or one reconnecting) sees the current tool and approvals. Text deltas
-// are left out and only the latest events are kept, to fit the subscriber's buffer.
-func (m *Manager) replay(runID string) []Event {
-	b, err := os.ReadFile(filepath.Join(m.cfg.DataDir, "runs", runID+".jsonl"))
+// The snapshot ends at registration; events after it are already buffered in ch.
+func (m *Manager) replay(threadID string, ch chan Event, snapshot io.Reader) {
+	b, err := io.ReadAll(snapshot)
 	if err != nil {
-		m.cfg.Log.Warn("read event file", "run_id", runID, "error", err)
-		return nil
+		m.cfg.Log.Warn("read event file", "thread_id", threadID, "error", err)
+		return
 	}
 	var evs []Event
 	for line := range bytes.Lines(b) {
@@ -927,9 +995,24 @@ func (m *Manager) replay(runID string) []Event {
 		if json.Unmarshal(line, &ev) != nil || ev.Type == EventText {
 			continue
 		}
-		evs = append(evs, Event{Type: ev.Type, Data: ev.Data})
+		evs = append(evs, Event{Type: ev.Type, ThreadID: threadID, Data: ev.Data})
 	}
-	return evs[max(0, len(evs)-_subscriberBuffer/2):]
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.subs[threadID][ch]; !ok {
+		return
+	}
+	live := make([]Event, len(ch))
+	for i := range live {
+		live[i] = <-ch
+	}
+	keep := min(_subscriberBuffer/2, cap(ch)-len(live))
+	for _, ev := range evs[max(0, len(evs)-keep):] {
+		ch <- ev
+	}
+	for _, ev := range live {
+		ch <- ev
+	}
 }
 
 func (m *Manager) openLog(runID string) (*os.File, error) {
@@ -984,15 +1067,17 @@ func isClosed(ch chan struct{}) bool {
 
 // ToolVerb describes the current work without exposing provider tool names.
 func ToolVerb(name, kind string) string {
-	switch {
-	case strings.Contains(name, "start_work"):
-		return "Starting a branch"
-	case strings.Contains(name, "track_mr"):
-		return "Opening the MR"
-	case strings.Contains(name, "retire_memory"), strings.Contains(name, "remember"):
-		return "Taking a note"
-	case strings.Contains(name, "recall"), strings.Contains(name, "read_memory"):
-		return "Remembering"
+	if strings.HasPrefix(name, _atollTools) {
+		switch strings.TrimPrefix(name, _atollTools) {
+		case provider.ToolStartWork:
+			return "Starting a branch"
+		case provider.ToolTrackMR:
+			return "Opening the MR"
+		case provider.ToolRetireMemory, provider.ToolRemember:
+			return "Taking a note"
+		case provider.ToolRecall, provider.ToolReadMemory:
+			return "Remembering"
+		}
 	}
 	switch kind {
 	case "search":
@@ -1064,22 +1149,18 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		}
 		return "command", program(v.Command)
 	}
-	if strings.Contains(name, "memory") || strings.Contains(name, "remember") || strings.Contains(name, "recall") {
-		if v.Query != "" {
-			return "memory", v.Query
+	if strings.HasPrefix(name, _atollTools) {
+		switch strings.TrimPrefix(name, _atollTools) {
+		case provider.ToolRemember, provider.ToolRecall, provider.ToolReadMemory, provider.ToolRetireMemory:
+			if v.Query != "" {
+				return "memory", v.Query
+			}
+			return "memory", v.Topic
+		case provider.ToolStartWork, provider.ToolTrackMR:
+			return "work", ""
+		default:
+			return "platform", v.Name
 		}
-		return "memory", v.Topic
-	}
-	if strings.Contains(name, "start_work") || strings.Contains(name, "track_mr") {
-		return "work", ""
-	}
-	if strings.HasPrefix(name, "mcp__atoll__") || slices.Contains([]string{
-		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
-		provider.ToolEditSkill, provider.ToolImportSkill, provider.ToolRegisterRepo,
-		provider.ToolAttachConnection, provider.ToolListBots, provider.ToolListSkills, provider.ToolListConnections,
-		provider.ToolListRepos, provider.ToolListModels, provider.ToolListMCPServers,
-	}, name) {
-		return "platform", v.Name
 	}
 	return "other", ""
 }

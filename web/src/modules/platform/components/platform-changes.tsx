@@ -2,12 +2,7 @@ import { Link } from 'react-router';
 import { quiet } from '@/components/button';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { Fold } from '@/components/fold';
-import {
-  type PlatformChange,
-  useChanges,
-  useUndoChange,
-  useChangeNames,
-} from '@/modules/platform/api/changes';
+import { type PlatformChange, useChanges, useUndoChange } from '@/modules/platform/api/changes';
 
 const providerLabel = (provider?: string) =>
   (({ claude: 'Claude Code', codex: 'Codex' }) as Record<string, string>)[provider ?? ''] ??
@@ -43,16 +38,12 @@ const fields = [
   'content',
 ] as const;
 
-function useConnectionNames() {
-  const names = useChangeNames();
-  return {
-    ...names,
-    connections: names.connections.map((c) => ({
-      id: c.id,
-      name: c.kind === 'gitlab' ? 'GitLab' : c.kind === 'github' ? 'GitHub' : c.kind,
-    })),
-  };
-}
+type Names = {
+  bots: { id: string; name: string }[];
+  skills: { id: string; name: string }[];
+  repos: { id: string; name: string }[];
+  connections: { id: string; name: string }[];
+};
 
 function Pencil() {
   return (
@@ -91,9 +82,16 @@ function By({
   );
 }
 
-function NewBotRow({ change, look }: { change: PlatformChange; look?: CreatureLook }) {
+function NewBotRow({
+  change,
+  look,
+  names,
+}: {
+  change: PlatformChange;
+  look?: CreatureLook;
+  names: Names;
+}) {
   const undo = useUndoChange([change.id]);
-  const names = useConnectionNames();
   const after = change.after ?? {};
   return (
     <div className="flex items-center gap-3 border-t border-sidebar-line px-4 py-2.5 first:border-t-0">
@@ -139,16 +137,18 @@ function NewBots({
   botId,
   botName,
   looks,
+  names,
 }: {
   changes: PlatformChange[];
   botId: string;
   botName?: string;
   looks: Record<string, CreatureLook>;
+  names: Names;
 }) {
   const pending = changes.filter((change) => !change.undone);
   const undo = useUndoChange(pending.map((change) => change.id));
   const several = changes.length > 1;
-  const names = changes.map((change) => change.after?.name).join(', ');
+  const created = changes.map((change) => change.after?.name).join(', ');
   return (
     <li role="region" aria-label="Platform change">
       <Fold
@@ -161,7 +161,7 @@ function NewBots({
             ))}
           </span>
         }
-        summary={several ? `Created ${changes.length} Bots: ${names}` : `Created ${names}`}
+        summary={several ? `Created ${changes.length} Bots: ${created}` : `Created ${created}`}
         action={(open) => (
           <>
             <By change={changes[0]} botId={botId} botName={botName} />
@@ -182,7 +182,12 @@ function NewBots({
       >
         <div className="w-full overflow-hidden rounded-[22px] border border-sidebar-line bg-box">
           {changes.map((change) => (
-            <NewBotRow key={change.id} change={change} look={looks[change.entity_id]} />
+            <NewBotRow
+              key={change.id}
+              change={change}
+              look={looks[change.entity_id]}
+              names={names}
+            />
           ))}
         </div>
       </Fold>
@@ -195,13 +200,14 @@ function Change({
   change,
   botId,
   botName,
+  names,
 }: {
   change: PlatformChange;
   botId: string;
   botName?: string;
+  names: Names;
 }) {
   const undo = useUndoChange([change.id]);
-  const names = useConnectionNames();
   const display = (value: unknown, key: string) => {
     if (!Array.isArray(value)) return String(value ?? '');
     const list =
@@ -347,16 +353,25 @@ export function PlatformChanges({
   botId,
   botNames,
   looks,
+  names,
 }: {
   threadId: string;
   runId: string;
   botId: string;
   botNames: Record<string, string>;
   looks: Record<string, CreatureLook>;
+  names: Omit<Names, 'connections'> & { connections: { id: string; kind: string }[] };
 }) {
   const { data: all = [] } = useChanges(threadId);
   const changes = all.filter((change) => change.source_run_id === runId);
   if (changes.length === 0) return null;
+  const labelled: Names = {
+    ...names,
+    connections: names.connections.map((c) => ({
+      id: c.id,
+      name: c.kind === 'gitlab' ? 'GitLab' : c.kind === 'github' ? 'GitHub' : c.kind,
+    })),
+  };
   const groups = new Map<string, PlatformChange[]>();
   for (const change of changes) {
     const key = `${change.entity}/${change.action}`;
@@ -369,10 +384,17 @@ export function PlatformChanges({
         const botName = botNames[group[0].source_bot_id];
         if (key === 'bot/create')
           return (
-            <NewBots key={key} changes={group} botId={botId} botName={botName} looks={looks} />
+            <NewBots
+              key={key}
+              changes={group}
+              botId={botId}
+              botName={botName}
+              looks={looks}
+              names={labelled}
+            />
           );
         return group.length === 1 ? (
-          <Change key={key} change={group[0]} botId={botId} botName={botName} />
+          <Change key={key} change={group[0]} botId={botId} botName={botName} names={labelled} />
         ) : (
           <ChangeGroup key={key} changes={group} botId={botId} botName={botName} />
         );
