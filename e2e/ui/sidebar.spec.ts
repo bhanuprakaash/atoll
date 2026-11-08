@@ -139,18 +139,33 @@ test('a running older thread supplies the Bot activity when a newer thread has f
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   const bot = await newBotAPI(m, 'Older worker');
   const busy = await openThreadAPI(m, bot.id, prompts.hang);
-  await waitStatus(busy.id, 'running');
+  try {
+    await waitStatus(busy.id, 'running');
+    const newer = await openThreadAPI(m, bot.id, prompts.keep);
+    await waitStatus(newer.id, 'done');
+
+    await page.goto(m.url);
+    const row = sidebarRow(page, 'Older worker');
+    const summary = (await api(m, 'GET', '/api/bots')).find((b: { id: string }) => b.id === bot.id);
+    expect(summary.state).toBe('working');
+    expect(summary.activity).toBe('Running Run the build');
+    await expect(row).toContainText('Running Run the build');
+    await expect.poll(() => waves(row)).toBe(3);
+  } finally {
+    await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
+    await waitStatus(busy.id, 'stopped');
+  }
+});
+
+test('an older thread awaiting approval takes priority over a newer finished thread', async ({ page }) => {
+  const bot = await newBotAPI(m, 'Older approval');
+  const asking = await openThreadAPI(m, bot.id, prompts.write);
+  await waitStatus(asking.id, 'waiting');
   const newer = await openThreadAPI(m, bot.id, prompts.keep);
   await waitStatus(newer.id, 'done');
 
   await page.goto(m.url);
-  const row = sidebarRow(page, 'Older worker');
-  const summary = (await api(m, 'GET', '/api/bots')).find((b: { id: string }) => b.id === bot.id);
-  expect(summary.state).toBe('working');
-  expect(summary.activity).toBe('Running Run the build');
-  await expect(row).toContainText('Running Run the build');
-  await expect.poll(() => waves(row)).toBe(3);
-
-  await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
-  await waitStatus(busy.id, 'stopped');
+  const row = sidebarRow(page, 'Older approval');
+  await expect(row).toContainText('Needs you: Write hello.txt');
+  await expect(row).not.toContainText('ok');
 });
