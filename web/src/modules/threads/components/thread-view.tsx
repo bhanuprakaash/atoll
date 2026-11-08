@@ -7,6 +7,7 @@ import { Markdown } from '@/components/markdown';
 import { ZoomImage } from '@/components/zoom-image';
 import { Select } from '@/components/select';
 import {
+  fetchAttachment,
   useMessages,
   useSendMessage,
   type ImageInput,
@@ -35,7 +36,7 @@ function RunResult({
 }: {
   id: string;
   time?: string;
-  retry: () => void;
+  retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
   const { data: run } = useRun(id);
@@ -112,7 +113,7 @@ function RunResult({
           )}
           <button
             type="button"
-            onClick={retry}
+            onClick={() => retry(id)}
             className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
           >
             Retry
@@ -508,12 +509,12 @@ export function ThreadView({
     if (messages.length > 50 && hasNextPage && !isFetching) void fetchNextPage();
   }, [fetchNextPage, hasNextPage, isFetching, messages.length]);
   const answered = new Set(messages.filter((m) => m.role === 'bot').map((m) => m.run_id));
-  const lastUser = [...messages].reverse().find((m) => m.role === 'user');
-  const retry = async () => {
-    if (!lastUser) return;
+  const retry = async (runId: string) => {
+    const message = messages.find((m) => m.role === 'user' && m.run_id === runId);
+    if (!message) return;
     const images = await Promise.all(
-      lastUser.attachments.map(async (a) => {
-        const blob = await (await fetch(`/api/attachments/${a.id}`)).blob();
+      message.attachments.map(async (a) => {
+        const blob = await fetchAttachment(a.id);
         const url = await new Promise<string>((resolve) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result as string);
@@ -522,7 +523,7 @@ export function ThreadView({
         return { mime: a.mime, data: url.slice(url.indexOf(',') + 1) };
       }),
     );
-    send.mutate({ text: lastUser.text, images }, { onSuccess: ({ run }) => begin(run.id) });
+    send.mutate({ text: message.text, images }, { onSuccess: ({ run }) => begin(run.id) });
   };
   const sendFirst = (text: string, images?: ImageInput[]) => {
     if (repoId && !thread?.repo_id)

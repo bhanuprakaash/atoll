@@ -16,3 +16,9 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   if (!res.ok) throw new ApiError(res.status, (await res.text()) || res.statusText);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
+
+export async function apiBlob(path: string) {
+  const res = await fetch(`/api${path}`);
+  if (!res.ok) throw new ApiError(res.status, (await res.text()) || res.statusText);
+  return res.blob();
+}

@@ -4,7 +4,7 @@ import {
   useQueryClient,
   type InfiniteData,
 } from '@tanstack/react-query';
-import { api } from '@/lib/api-client';
+import { api, apiBlob } from '@/lib/api-client';
 
 export type Message = {
   id: string;
@@ -15,6 +15,8 @@ export type Message = {
   created_at: string;
   attachments: { id: string; mime: string }[];
 };
+
+export const fetchAttachment = (id: string) => apiBlob(`/attachments/${id}`);
 
 export type ImageInput = { mime: string; data: string };
 
