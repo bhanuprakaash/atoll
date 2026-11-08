@@ -11,10 +11,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -228,20 +231,29 @@ func configEnv(dir string) []string {
 }
 
 // adoptSession copies the file of session id into the project folder claude uses for cfg.Cwd,
-// named after the path with every character outside [A-Za-z0-9] as "-". It does nothing when the
-// file is there already or exists nowhere.
+// named after the path with every character outside [A-Za-z0-9] as "-". It copies the newest
+// file of that name, and does nothing when that is the one there already or none exists.
 func adoptSession(cfg provider.Config, id string) error {
 	projects := filepath.Join(cfg.Dir, "projects")
 	name := id + ".jsonl"
 	dst := filepath.Join(projects, _unsafe.ReplaceAllString(cfg.Cwd, "-"), name)
-	if _, err := os.Stat(dst); err == nil {
-		return nil
+	newest, newestAt := "", time.Time{}
+	if info, err := os.Stat(dst); err == nil {
+		newest, newestAt = dst, info.ModTime()
 	}
 	found, err := filepath.Glob(filepath.Join(projects, "*", name))
-	if err != nil || len(found) == 0 {
+	if err != nil {
 		return err
 	}
-	body, err := os.ReadFile(found[0])
+	for _, f := range found {
+		if info, err := os.Stat(f); err == nil && (newest == "" || info.ModTime().After(newestAt)) {
+			newest, newestAt = f, info.ModTime()
+		}
+	}
+	if newest == "" || newest == dst {
+		return nil
+	}
+	body, err := os.ReadFile(newest)
 	if err != nil {
 		return err
 	}
@@ -278,13 +290,14 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	}
 	s.started = true
 
-	args, err := argv(cfg, extra...)
+	args, secrets, err := argv(cfg, extra...)
 	if err != nil {
 		return err
 	}
 	cmd := exec.Command(cfg.Bin, args...)
 	cmd.Dir = cfg.Cwd
 	cmd.Env = append(configEnv(cfg.Dir), "ENABLE_CLAUDEAI_MCP_SERVERS=false", "MCP_TOOL_TIMEOUT=1800000")
+	cmd.Env = append(cmd.Env, secrets...)
 	cmd.Env = append(cmd.Env, cfg.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.WaitDelay = _waitDelay
@@ -306,7 +319,16 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	return nil
 }
 
-func argv(cfg provider.Config, extra ...string) ([]string, error) {
+// argv returns the arguments for claude and the KEY=value variables they name. The MCP config holds
+// ${KEY} in place of every URL, header value and env value, which claude expands from its own
+// environment, so none of them shows in the process list.
+func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
+	var secrets []string
+	hide := func(value string) string {
+		name := "ATOLL_MCP_" + strconv.Itoa(len(secrets))
+		secrets = append(secrets, name+"="+value)
+		return "${" + name + "}"
+	}
 	args := []string{
 		"-p",
 		"--input-format", "stream-json",
@@ -324,20 +346,20 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 	}
 	if cfg.MCPURL != "" {
 		mcpServers := map[string]any{
-			provider.MCPServer: map[string]any{"type": "http", "url": cfg.MCPURL},
+			provider.MCPServer: map[string]any{"type": "http", "url": hide(cfg.MCPURL)},
 		}
 		if cfg.GitHubMCPURL != "" {
 			mcpServers[provider.GitHubMCPServer] = map[string]any{
 				"type": "http", "url": cfg.GitHubMCPURL,
-				"headers": map[string]string{"Authorization": "Bearer " + cfg.GitHubToken},
+				"headers": map[string]string{"Authorization": "Bearer " + hide(cfg.GitHubToken)},
 			}
 		}
 		for _, m := range cfg.MCPServers {
-			mcpServers[m.Name] = userServer(m)
+			mcpServers[m.Name] = userServer(m, hide)
 		}
 		servers, err := json.Marshal(map[string]any{"mcpServers": mcpServers})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		mcp := "mcp__" + provider.MCPServer
 		args = append(args,
@@ -355,24 +377,32 @@ func argv(cfg provider.Config, extra ...string) ([]string, error) {
 	if cfg.SkillDir != "" {
 		args = append(args, "--add-dir", cfg.SkillDir)
 	}
-	return append(args, extra...), nil
+	return append(args, extra...), secrets, nil
 }
 
-func userServer(m provider.UserMCPServer) map[string]any {
-	e := map[string]any{"type": "http", "url": m.URL}
-	if m.Command != "" {
-		e = map[string]any{"type": "stdio", "command": m.Command}
+func userServer(m provider.UserMCPServer, hide func(string) string) map[string]any {
+	e := map[string]any{"type": "stdio", "command": m.Command}
+	if m.Command == "" {
+		e = map[string]any{"type": "http", "url": hide(m.URL)}
 	}
 	if len(m.Args) > 0 {
 		e["args"] = m.Args
 	}
 	if len(m.Env) > 0 {
-		e["env"] = m.Env
+		e["env"] = hidden(m.Env, hide)
 	}
 	if len(m.Headers) > 0 {
-		e["headers"] = m.Headers
+		e["headers"] = hidden(m.Headers, hide)
 	}
 	return e
+}
+
+func hidden(m map[string]string, hide func(string) string) map[string]string {
+	out := make(map[string]string, len(m))
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		out[k] = hide(m[k])
+	}
+	return out
 }
 
 func (s *Session) read(stdout io.Reader) {
