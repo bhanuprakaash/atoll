@@ -615,6 +615,12 @@ Voice
   starts, an approval opens or closes, and a run ends, not on every event. *The sidebar polls
   every 2 s; a write per text delta would cost more than the time is worth.* Clicking a Bot opens
   its latest thread.
+- Sidebar width: 340px by default, dragged on its right edge between 260px and 480px; a
+  double-click on the edge resets it to 340px; Left and Right arrows on the focused edge move it
+  16px. The width is kept in the web view's `localStorage` (`atoll.sidebarWidth`) and clamped when
+  read. The Bot list's scrollbar is thin and has its own lane in the sidebar's right padding, so it
+  never draws over a row. *The user wanted room for longer names and thread titles, and the
+  scrollbar cut through the rows.*
 - Thread tree: under each Bot, at most 3 thread rows hang from a thin line under the creature's
   centre (one tick per row, a rounded corner on the last). A Bot with nothing to show is its plain
   row. A row is the title and one marker: a red dot and "Needs you"; a blue dot, bold title and
