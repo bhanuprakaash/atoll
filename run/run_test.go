@@ -612,3 +612,41 @@ func TestShortMemory(t *testing.T) {
 		})
 	}
 }
+
+func TestRun_SubscribeAll(t *testing.T) {
+	e := newEnv(t, &fakeSession{
+		script: []provider.Event{
+			{Kind: provider.KindApproval, ID: "p1", Name: "Write", Input: json.RawMessage(`{"a":1}`)},
+		},
+		answered: make(chan struct{}),
+		release:  make(chan struct{}),
+	})
+	if _, _, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil); err != nil {
+		t.Fatal(err)
+	}
+	ap := nextAs[Approval](t, e, EventApproval)
+	all, cancel := e.m.SubscribeAll()
+	defer cancel()
+	if err := e.m.Answer(t.Context(), ap.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	<-e.sess.answered
+	close(e.sess.release)
+	var got []string
+	for len(got) < 3 {
+		select {
+		case ev := <-all:
+			got = append(got, ev.Type+" "+ev.ThreadID)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("events so far: %v", got)
+		}
+	}
+	want := []string{
+		EventApproval + " " + e.thread.ID,
+		EventApprovalEnd + " " + e.thread.ID,
+		EventRunFinished + " " + e.thread.ID,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("events %v, want %v", got, want)
+	}
+}

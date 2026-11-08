@@ -99,6 +99,12 @@ func New(
 	mux.HandleFunc("GET /api/bots/{id}", a.getBot)
 	mux.HandleFunc("PUT /api/bots/{id}", a.putBot)
 	mux.HandleFunc("DELETE /api/bots/{id}", a.deleteBot)
+	mux.HandleFunc("PUT /api/bots/{id}/group", a.setBotGroup)
+	mux.HandleFunc("GET /api/groups", a.listGroups)
+	mux.HandleFunc("POST /api/groups", a.createGroup)
+	mux.HandleFunc("PATCH /api/groups/{id}", a.patchGroup)
+	mux.HandleFunc("POST /api/groups/{id}/move", a.moveGroup)
+	mux.HandleFunc("DELETE /api/groups/{id}", a.deleteGroup)
 	mux.HandleFunc("POST /api/bots/{id}/pin", a.pinBot)
 	mux.HandleFunc("DELETE /api/bots/{id}/pin", a.unpinBot)
 	mux.HandleFunc("POST /api/skills", a.createSkill)
@@ -121,9 +127,13 @@ func New(
 	mux.HandleFunc("GET /api/threads/{id}", a.getThread)
 	mux.HandleFunc("PATCH /api/threads/{id}", a.patchThread)
 	mux.HandleFunc("POST /api/threads/{id}/close", a.closeThread)
+	mux.HandleFunc("POST /api/threads/{id}/opened", a.markOpened)
+	mux.HandleFunc("POST /api/threads/{id}/pin", a.pinThread)
+	mux.HandleFunc("DELETE /api/threads/{id}/pin", a.unpinThread)
 	mux.HandleFunc("POST /api/threads/{id}/messages", a.sendMessage)
 	mux.HandleFunc("GET /api/threads/{id}/messages", a.listMessages)
 	mux.HandleFunc("GET /api/threads/{id}/events", a.events)
+	mux.HandleFunc("GET /api/events", a.notices)
 	mux.HandleFunc("GET /api/threads/{id}/file", a.threadFile)
 	mux.HandleFunc("GET /api/attachments/{id}", a.getAttachment)
 	mux.HandleFunc("GET /api/runs/{id}", a.getRun)
@@ -217,7 +227,9 @@ func (a *api) botList(ctx context.Context) ([]botResponse, error) {
 	}
 	responses := make([]botResponse, 0, len(bots))
 	for _, b := range bots {
-		responses = append(responses, responseBot(a.botSummary(ctx, b, threads[b.ID], helpers[b.ID])))
+		resp := responseBot(a.botSummary(ctx, b, threads[b.ID], helpers[b.ID]))
+		resp.Threads = a.sidebarThreads(threads[b.ID], helpers[b.ID])
+		responses = append(responses, resp)
 	}
 	return responses, nil
 }
@@ -564,6 +576,15 @@ func (a *api) events(w http.ResponseWriter, r *http.Request) {
 	}
 	events, cancel := a.runs.Subscribe(id)
 	defer cancel()
+	a.stream(w, r, events, func(ev run.Event) (any, bool) { return ev.Data, true })
+}
+
+// stream writes events as server-sent events until the client goes or events closes. data gives
+// an event's payload, or false to skip it.
+func (a *api) stream(
+	w http.ResponseWriter, r *http.Request, events <-chan run.Event,
+	data func(run.Event) (any, bool),
+) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
@@ -584,12 +605,16 @@ func (a *api) events(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			var data []byte
-			if data, err = json.Marshal(ev.Data); err != nil {
+			payload, ok := data(ev)
+			if !ok {
+				continue
+			}
+			var line []byte
+			if line, err = json.Marshal(payload); err != nil {
 				a.log.Error("encode event", "type", ev.Type, "err", err)
 				continue
 			}
-			_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, data)
+			_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, line)
 		}
 		if err != nil || rc.Flush() != nil {
 			return
@@ -607,7 +632,7 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed),
 		errors.Is(err, store.ErrExists), errors.Is(err, store.ErrUndone),
-		errors.Is(err, store.ErrInUse):
+		errors.Is(err, store.ErrInUse), errors.Is(err, store.ErrPinLimit):
 		fail(w, http.StatusConflict, err.Error())
 	default:
 		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)

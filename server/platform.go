@@ -60,6 +60,29 @@ type botResponse struct {
 	Pinned       bool       `json:"pinned"`
 	Activity     string     `json:"activity"`
 	LastActivity *time.Time `json:"last_activity"`
+	// Threads are the Bot's open threads, newest first. Only the Bot list fills them.
+	Threads []sidebarThread `json:"threads"`
+}
+
+// MarshalJSON is the Bot's encoding, which botResponse's embedded Bot promotes, plus group_id,
+// always, and threads when there are any to show, even none.
+func (r botResponse) MarshalJSON() ([]byte, error) {
+	b := r.Bot
+	groupID := b.GroupID
+	b.GroupID = ""
+	raw, err := json.Marshal(b)
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, err
+	}
+	fields["group_id"] = groupID
+	if r.Threads != nil {
+		fields["threads"] = r.Threads
+	}
+	return json.Marshal(fields)
 }
 
 func responseBot(b store.Bot) botResponse {
@@ -71,6 +94,9 @@ func (a *api) botSummary(
 ) store.Bot {
 	latest := ""
 	for _, t := range threads {
+		if t.Status == "" {
+			continue
+		}
 		if latest == "" {
 			latest = t.Status
 			at := t.LastActivity
@@ -390,7 +416,12 @@ func (a *api) readCall(ctx context.Context, name string) (any, *rpcError) {
 	var err error
 	switch name {
 	case provider.ToolListBots:
-		v, err = a.botList(ctx)
+		var bots []botResponse
+		bots, err = a.botList(ctx)
+		for i := range bots {
+			bots[i].Threads = nil
+		}
+		v = bots
 	case provider.ToolListSkills:
 		var skills []store.Skill
 		skills, err = a.st.Skills(ctx)
