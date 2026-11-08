@@ -31,7 +31,7 @@ export type Bot = {
   delegates: string[];
   can_manage_platform: boolean;
   group_id: string;
-  threads: SidebarThread[];
+  threads?: SidebarThread[];
 };
 
 export type NewBot = Pick<
