@@ -577,6 +577,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if err != nil {
 		return "", fmt.Errorf("load bot: %w", err)
 	}
+	var notice string
+	if thread.Session != "" && thread.SessionProvider != bot.Provider {
+		thread.Session = ""
+		notice = "Provider changed to " + bot.Provider + "; starting a fresh session.\n\n"
+	}
 	m.mu.Lock()
 	a.bot = bot
 	m.mu.Unlock()
@@ -682,6 +687,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		return "", fmt.Errorf("start %s: %w", bot.Provider, err)
 	}
 	m.publish(a, EventPrompt, Prompt{RunID: a.run.ID, System: cfg.SystemPrompt, Message: prompt})
+	if notice != "" {
+		m.publish(a, EventText, Text{RunID: a.run.ID, Text: notice})
+	}
 	if err := sess.Send(a.ctx, prompt, images); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
@@ -689,6 +697,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if err != nil {
 		return "", err
 	}
+	reply = notice + reply
 	m.mu.Lock()
 	ids := slices.Clone(a.shown)
 	m.mu.Unlock()
@@ -762,7 +771,7 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 					m.publish(a, EventText, Text{RunID: a.run.ID, Text: ev.Text})
 				}
 			case provider.KindSession:
-				if err := m.cfg.Store.SetSession(a.ctx, a.threadID, ev.SessionID); err != nil {
+				if err := m.cfg.Store.SetSession(a.ctx, a.threadID, ev.SessionID, a.bot.Provider); err != nil {
 					return "", fmt.Errorf("save session: %w", err)
 				}
 			case provider.KindToolCall:

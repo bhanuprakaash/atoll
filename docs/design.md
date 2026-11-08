@@ -94,7 +94,9 @@ Undo of a repo registration is refused while a thread uses the repo.
   sends the approvals open now. It is live only: nothing is stored, so the island's Earlier list
   lasts until the app reloads. *A notifications table would need read state and cleanup for
   little gain; open approvals, the only thing that must survive, are replayed.*
-- Resume by default. A fresh session only comes from starting a new thread or delegation.
+- Resume by default. Each thread records the provider that owns its session. If the Bot's provider
+  changes, its next run starts a fresh session and says so in the thread. New threads and delegation
+  also start fresh sessions.
 - Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply stays
   2–3 plain lines. *The report feeds memory, parents and fresh starts.* `blocked` is only what
   the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply

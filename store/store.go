@@ -151,6 +151,7 @@ type (
 		ParentThreadID  string     `json:"parent_thread_id"`
 		Title           string     `json:"title"`
 		Session         string     `json:"-"`
+		SessionProvider string     `json:"-"`
 		RepoID          string     `json:"repo_id"`
 		Branch          string     `json:"branch"`
 		Worktree        string     `json:"worktree"`
@@ -221,7 +222,7 @@ type (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider"
 	_messagePageSize = 50
 )
 
@@ -828,9 +829,9 @@ func (s *Store) SetGroup(ctx context.Context, botID, groupID string) error {
 }
 
 // SetSession records the provider session the thread's next runs resume.
-func (s *Store) SetSession(ctx context.Context, threadID, session string) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE threads SET session = ? WHERE id = ?",
-		session, threadID)
+func (s *Store) SetSession(ctx context.Context, threadID, session, provider string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET session = ?, session_provider = ? WHERE id = ?",
+		session, provider, threadID)
 	if err != nil {
 		return fmt.Errorf("set session: %w", err)
 	}
@@ -1293,7 +1294,7 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	var closedAt sql.NullInt64
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
 		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
-		&t.Title, &t.ParentThreadID)
+		&t.Title, &t.ParentThreadID, &t.SessionProvider)
 	if err != nil {
 		return Thread{}, err
 	}

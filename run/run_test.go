@@ -42,6 +42,7 @@ type fakeSession struct {
 	cfgs        []provider.Config
 	answers     []bool
 	interrupted int
+	resumed     string
 }
 
 func (f *fakeSession) Start(_ context.Context, cfg provider.Config) error {
@@ -49,7 +50,8 @@ func (f *fakeSession) Start(_ context.Context, cfg provider.Config) error {
 	return nil
 }
 
-func (f *fakeSession) Resume(ctx context.Context, cfg provider.Config, _ string) error {
+func (f *fakeSession) Resume(ctx context.Context, cfg provider.Config, id string) error {
+	f.resumed = id
 	return f.Start(ctx, cfg)
 }
 
@@ -194,7 +196,54 @@ func TestRun_Finish(t *testing.T) {
 		wantReport string
 		wantSends  int
 		wantEvents []string
+		provider   string
+		session    string
+		owner      string
+		wantResume string
 	}{
+		{
+			name: "provider switch starts fresh",
+			give: &fakeSession{script: []provider.Event{
+				{Kind: provider.KindSession, SessionID: "new-session"},
+				{Kind: provider.KindText, Text: "hi"}, turnEnd,
+			}},
+			provider: "codex", session: "old-session", owner: "claude",
+			wantStatus: store.StatusDone,
+			wantReply:  "Provider changed to codex; starting a fresh session.\n\nhi",
+			wantSends:  2,
+			wantEvents: []string{EventPrompt, EventText, EventText, EventRunFinished},
+		},
+		{
+			name: "same provider resumes",
+			give: &fakeSession{script: []provider.Event{
+				{Kind: provider.KindText, Text: "hi"}, turnEnd,
+			}},
+			session: "old-session", owner: "claude", wantResume: "old-session",
+			wantStatus: store.StatusDone, wantReply: "hi", wantSends: 2,
+			wantEvents: []string{EventPrompt, EventText, EventRunFinished},
+		},
+		{
+			name: "switch from codex starts fresh",
+			give: &fakeSession{script: []provider.Event{
+				{Kind: provider.KindText, Text: "hi"}, turnEnd,
+			}},
+			session: "old-session", owner: "codex",
+			wantStatus: store.StatusDone,
+			wantReply:  "Provider changed to claude; starting a fresh session.\n\nhi",
+			wantSends:  2,
+			wantEvents: []string{EventPrompt, EventText, EventText, EventRunFinished},
+		},
+		{
+			name: "session without a provider starts fresh",
+			give: &fakeSession{script: []provider.Event{
+				{Kind: provider.KindText, Text: "hi"}, turnEnd,
+			}},
+			session:    "old-session",
+			wantStatus: store.StatusDone,
+			wantReply:  "Provider changed to claude; starting a fresh session.\n\nhi",
+			wantSends:  2,
+			wantEvents: []string{EventPrompt, EventText, EventText, EventRunFinished},
+		},
 		{
 			name: "reply",
 			give: &fakeSession{script: []provider.Event{
@@ -283,6 +332,21 @@ func TestRun_Finish(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newEnv(t, tt.give)
+			if tt.session != "" {
+				if err := e.st.SetSession(t.Context(), e.thread.ID, tt.session, tt.owner); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.provider != "" {
+				bot, err := e.st.Bot(t.Context(), e.thread.BotID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				bot.Provider = tt.provider
+				if _, err := e.st.UpdateBot(t.Context(), bot); err != nil {
+					t.Fatal(err)
+				}
+			}
 			tt.give.onSend = func(n int) {
 				if tt.stopped {
 					e.m.mu.Lock()
@@ -326,6 +390,9 @@ func TestRun_Finish(t *testing.T) {
 			}
 			if tt.give.interrupted != 1 {
 				t.Errorf("Interrupt called %d times, want 1", tt.give.interrupted)
+			}
+			if tt.give.resumed != tt.wantResume {
+				t.Errorf("resumed %q, want %q", tt.give.resumed, tt.wantResume)
 			}
 			if got := eventTypes(t, e, run.ID); !slices.Equal(got, tt.wantEvents) {
 				t.Errorf("event file holds %v, want %v", got, tt.wantEvents)
