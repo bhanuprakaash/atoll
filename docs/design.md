@@ -645,7 +645,9 @@ Voice
   up, Move down, Delete group); deleting moves its Bots to Ungrouped. Name, order and fold state
   are stored (`/api/groups`). A folded group shows a red dot only when a Bot in it needs the user;
   no counts.
-- Bot header: a centred island with no border; messages fade out as they scroll up to it. At rest
+- Bot header: a solid band in the main background, 72 px tall, with a 24 px fade below it; the
+  centred island sits on it. Messages scroll under the band and fade out; no text shows above its
+  bottom edge. At rest
   the pill holds the creature, the Bot name, the thread title (cut with "…") and the open thread's
   run state: three wave dots (text "Thinking") while its run works, "Needs you" while an approval
   waits, "Run failed" after a failed run, nothing otherwise. It has no thread list, search, New
@@ -682,8 +684,11 @@ Voice
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `·
   Stopped by you after 4s`). Inside the run, above the footer: Chief's changes, then saved memory,
   then a Blocked line (from `finish_run`'s `blocked`) whose dot hangs in the margin so its text
-  starts at the reply's edge. Spacing: 18 px between messages, 8 px between a message's parts, 2 px
-  between footer lines.
+  starts at the reply's edge. Spacing: 18 px between messages, 24 px between the blocks of one reply
+  (prose, changes, memories, Blocked line, footer), 14 px between paragraphs and list items.
+- Chat type: Bot replies, the user's bubble and briefs are 16 px, line height 1.65, letter spacing
+  0; the rest of the app keeps 14 px. *Replies read as a wall next to Claude's app; the user wanted
+  more air.*
 - Chief's changes: new Bots, one or several, show as one compact card the full reply width:
   creature, name, provider · model · skills · repos, Open and Undo per row, Undo all for two or
   more. An edit names the fields (`Edited Poteto · persona`); short values show inline (`model
