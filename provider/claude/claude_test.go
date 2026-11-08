@@ -72,7 +72,7 @@ func TestSession(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = s.Interrupt() })
-			if err := s.Send(ctx, tt.prompt); err != nil {
+			if err := s.Send(ctx, tt.prompt, nil); err != nil {
 				t.Fatal(err)
 			}
 

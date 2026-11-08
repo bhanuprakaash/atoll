@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,7 +58,19 @@ type (
 
 	inputContent struct {
 		Role    string `json:"role"`
-		Content string `json:"content"`
+		Content any    `json:"content"`
+	}
+
+	inputBlock struct {
+		Type   string       `json:"type"`
+		Text   string       `json:"text,omitempty"`
+		Source *inputSource `json:"source,omitempty"`
+	}
+
+	inputSource struct {
+		Type      string `json:"type"`
+		MediaType string `json:"media_type"`
+		Data      string `json:"data"`
 	}
 
 	outputLine struct {
@@ -118,14 +131,27 @@ func (s *Session) Resume(_ context.Context, cfg provider.Config, id string) erro
 	return s.start(cfg, "--resume", id)
 }
 
-// Send writes the prompt to claude as one user message.
-func (s *Session) Send(ctx context.Context, prompt string) error {
+// Send writes the prompt and its images to claude as one user message.
+func (s *Session) Send(ctx context.Context, prompt string, images []provider.Image) error {
 	if s.stdin == nil {
 		return errors.New("claude not started")
 	}
+	var content any = prompt
+	if len(images) > 0 {
+		blocks := make([]inputBlock, 0, len(images)+1)
+		if prompt != "" {
+			blocks = append(blocks, inputBlock{Type: "text", Text: prompt})
+		}
+		for _, img := range images {
+			blocks = append(blocks, inputBlock{Type: "image", Source: &inputSource{
+				Type: "base64", MediaType: img.Mime, Data: base64.StdEncoding.EncodeToString(img.Data),
+			}})
+		}
+		content = blocks
+	}
 	msg, err := json.Marshal(inputMessage{
 		Type:    "user",
-		Message: inputContent{Role: "user", Content: prompt},
+		Message: inputContent{Role: "user", Content: content},
 	})
 	if err != nil {
 		return err

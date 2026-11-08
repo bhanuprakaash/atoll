@@ -63,14 +63,21 @@ type Session interface {
 	Start(ctx context.Context, cfg Config) error
 	// Resume launches the provider on the session with id, from a KindSession event.
 	Resume(ctx context.Context, cfg Config, id string) error
-	// Send starts one turn. The turn ends with a KindTurnEnd or KindError event.
-	Send(ctx context.Context, prompt string) error
+	// Send starts one turn with the prompt and the images that came with it. The turn ends with a
+	// KindTurnEnd or KindError event.
+	Send(ctx context.Context, prompt string, images []Image) error
 	// Events streams events until the process exits, then closes.
 	Events() <-chan Event
 	// Answer replies to the KindApproval event with id.
 	Answer(id string, allow bool) error
 	// Interrupt stops the process. When it returns, the process is gone and Events is closed.
 	Interrupt() error
+}
+
+// Image is a picture sent with a prompt.
+type Image struct {
+	Mime string
+	Data []byte
 }
 
 // Config is how a session starts.
