@@ -1,10 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useMatch, useNavigate, useSearchParams } from 'react-router';
-import { api } from '@/lib/api-client';
 import { BotList } from '@/modules/bots/components/bot-list';
 import { Menu } from '@/components/menu';
 import { ThreadsPopup } from '@/app/threads-popup';
+import { useSettings } from '@/modules/settings/api/settings';
 import { useNotifications } from '@/modules/threads/hooks/use-notifications';
 import { TextField } from '@/components/text-field';
 import { useCloseThread, useRenameThread } from '@/modules/threads/api/threads';
@@ -48,10 +47,7 @@ export function Shell() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [botId, navigate]);
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: () => api<{ user_name: string }>('/settings'),
-  });
+  const { data: settings } = useSettings();
   const userName = settings?.user_name || 'User';
   return (
     <div className="flex h-screen">
