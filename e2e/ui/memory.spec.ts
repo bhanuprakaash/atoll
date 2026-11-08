@@ -6,7 +6,8 @@ test("a memory save shows its source, and Retire takes it out of the thread", as
 }) => {
   const name = `Memory Ada ${Date.now()}`;
   await page.goto("/");
-  await page.getByRole("button", { name: "New Bot" }).click();
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await page.getByRole("menuitem", { name: "New Bot" }).click();
   await page.getByRole("textbox", { name: "Name" }).fill(name);
   await page
     .getByRole("textbox", { name: "Persona" })

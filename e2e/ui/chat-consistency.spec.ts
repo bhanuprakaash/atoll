@@ -1,16 +1,16 @@
-// One rule per message kind: the run footer, the handoff line, clamps, Close thread in the island
-// and a window that never scrolls. Contract: e2e/titles-contract.md and issue #93.
+// One rule per message kind: the run footer, the handoff line, clamps, Close thread on the thread
+// row and a window that never scrolls. Contract: e2e/titles-contract.md and issue #93.
 import { expect, test } from '@playwright/test';
 import {
   api,
   type Machine,
   newBotAPI,
   openThreadAPI,
-  openThreads,
   prompts,
   sendMessageAPI,
   startAtoll,
   threadTitle,
+  threadTree,
 } from './atoll';
 
 let m: Machine;
@@ -75,7 +75,7 @@ test('a long user message clamps at 8 lines with Show more and Show less', async
   expect((await bubble.boundingBox())!.height).toBeLessThan(lineHeight * 10);
 });
 
-test('Close thread lives in the island: This thread on top, Close on hover for others', async ({
+test('Close thread lives on the thread row: hover × for this thread and others', async ({
   page,
 }) => {
   const bot = await newBotAPI(m, 'Closer');
@@ -89,17 +89,17 @@ test('Close thread lives in the island: This thread on top, Close on hover for o
       .not.toBe('running');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${currentID}`);
   await expect(page.getByRole('log', { name: 'Messages' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Close thread' })).toHaveCount(0);
+  await expect(page.locator('header').getByRole('button', { name: 'Close thread' })).toHaveCount(0);
 
-  const panel = await openThreads(page);
-  const here = panel.getByRole('region', { name: 'This thread' });
-  await expect(here).toContainText('Remember this fact');
-  const row = panel.getByRole('listitem').filter({ hasText: threadTitle(prompts.pong) });
+  const tree = threadTree(page, 'Closer');
+  const here = tree.getByRole('listitem').filter({ hasText: threadTitle(prompts.keep) });
+  const row = tree.getByRole('listitem').filter({ hasText: threadTitle(prompts.pong) });
   await expect(row).toHaveCount(1);
   await row.hover();
-  await row.getByRole('button', { name: 'Close', exact: true }).click();
+  await row.getByRole('button', { name: 'Close thread' }).click();
   await expect.poll(async () => (await api(m, 'GET', `/api/threads/${otherID}`)).closed).toBe(true);
 
+  await here.hover();
   await here.getByRole('button', { name: 'Close thread' }).click();
   await expect
     .poll(async () => (await api(m, 'GET', `/api/threads/${currentID}`)).closed)

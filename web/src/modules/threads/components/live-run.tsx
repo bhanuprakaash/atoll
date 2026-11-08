@@ -33,9 +33,6 @@ export function LiveRun({ id, run, look }: { id: string; run: Live; look?: Creat
       {!run.finished && (
         <div className="flex items-center gap-3 text-sm">
           <span className="relative size-8 flex-none">
-            <span aria-hidden="true" className="bubble" />
-            <span aria-hidden="true" className="bubble bubble-1" />
-            <span aria-hidden="true" className="bubble bubble-2" />
             <Creature look={look} state="working" kind={kind} size={32} />
           </span>
           <span role="status" className="min-w-0 truncate">

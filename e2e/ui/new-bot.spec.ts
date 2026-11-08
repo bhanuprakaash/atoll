@@ -23,7 +23,8 @@ const bot = async (name: string) =>
 
 test('New Bot creates the Bot and opens its empty thread; a starter sends', async ({ page }) => {
   await page.goto(m.url);
-  await page.getByRole('button', { name: 'New Bot' }).click();
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'New Bot' }).click();
   await expect(page.getByRole('heading', { name: 'New Bot' })).toBeVisible();
   await page.getByRole('textbox', { name: 'Name' }).fill('Coral');
   await page.getByRole('textbox', { name: 'Persona' }).fill('Reviews Go carefully.');

@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from 'react-router';
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router';
 import { BotPage, LatestThread } from '@/app/bot-page';
 import {
   ConnectionsPage,
@@ -12,6 +20,7 @@ import {
 } from '@/app/settings-page';
 import { Shell } from '@/app/shell';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
+import { useSetBotGroup } from '@/modules/bots/api/groups';
 import { NewBotForm } from '@/modules/bots/components/new-bot-form';
 import { useConnections, type Connection } from '@/modules/connections/api/connections';
 import { FirstRun } from '@/modules/onboarding/components/first-run';
@@ -55,6 +64,8 @@ function NewBotPage() {
   const { data: skills = [] } = useSkills();
   const { data: providers = [] } = useProviders();
   const { data: bots = [] } = useBots();
+  const [params] = useSearchParams();
+  const setGroup = useSetBotGroup();
   return (
     <NewBotForm
       chiefId={bots.find((b) => b.can_manage_platform)?.id}
@@ -64,7 +75,11 @@ function NewBotPage() {
       repos={repos}
       skills={skills}
       connections={connections}
-      onCreated={(bot) => navigate(`/bots/${bot.id}`)}
+      onCreated={(bot) => {
+        const groupId = params.get('group');
+        if (groupId) setGroup.mutate({ botId: bot.id, groupId });
+        navigate(`/bots/${bot.id}`);
+      }}
     />
   );
 }

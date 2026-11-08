@@ -161,3 +161,5 @@ Waking the boss (a helper's reply and report start a boss run) extends these con
 Helper code work (helpers branch off their boss; the boss merges) extends these contracts in [helper-work-contract.md](helper-work-contract.md).
 
 Helpers in the UI (above the composer, in the island, a read-only helper thread) extend these contracts in [helpers-ui-contract.md](helpers-ui-contract.md).
+
+The sidebar thread tree, threads popup, Bot groups and island notifications extend these contracts in [sidebar-tree-contract.md](sidebar-tree-contract.md).

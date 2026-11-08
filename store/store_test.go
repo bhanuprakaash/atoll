@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -507,5 +508,199 @@ func TestStore_Attachments(t *testing.T) {
 	}
 	if _, err := st.Attachment(ctx, got.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("after bot delete: err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestStore_PinThread(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	other, _ := st.CreateBot(ctx, store.Bot{Name: "b", Persona: "p", Provider: "claude"})
+	var ids []string
+	for range 5 {
+		th, err := st.CreateThread(ctx, bot.ID, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, th.ID)
+	}
+	foreign, _ := st.CreateThread(ctx, other.ID, "")
+	helper, _ := st.CreateHelperThread(ctx, ids[0], other.ID, "")
+	pinned := func() []string {
+		var got []string
+		runs, err := st.ThreadRuns(ctx, bot.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range runs {
+			if r.Pinned {
+				got = append(got, r.ThreadID)
+			}
+		}
+		slices.Sort(got)
+		return got
+	}
+	sorted := func(s ...string) []string { slices.Sort(s); return s }
+
+	steps := []struct {
+		name    string
+		do      func() error
+		wantErr error
+		want    []string
+	}{
+		{"pin 1", func() error { return st.PinThread(ctx, ids[0], "") }, nil, sorted(ids[0])},
+		{"pin 1 again keeps it", func() error { return st.PinThread(ctx, ids[0], "") }, nil, sorted(ids[0])},
+		{"pin 2", func() error { return st.PinThread(ctx, ids[1], "") }, nil, sorted(ids[0], ids[1])},
+		{"pin 3", func() error { return st.PinThread(ctx, ids[2], "") }, nil, sorted(ids[0], ids[1], ids[2])},
+		{"pin 4 is refused", func() error { return st.PinThread(ctx, ids[3], "") }, store.ErrPinLimit,
+			sorted(ids[0], ids[1], ids[2])},
+		{"pin 4 replacing 2", func() error { return st.PinThread(ctx, ids[3], ids[1]) }, nil,
+			sorted(ids[0], ids[2], ids[3])},
+		{"replace in another Bot frees nothing", func() error { return st.PinThread(ctx, ids[4], foreign.ID) },
+			store.ErrPinLimit, sorted(ids[0], ids[2], ids[3])},
+		{"close frees a slot", func() error { return st.SetClosed(ctx, ids[0]) }, nil, sorted(ids[2], ids[3])},
+		{"pin 5 after close", func() error { return st.PinThread(ctx, ids[4], "") }, nil,
+			sorted(ids[2], ids[3], ids[4])},
+		{"unpin", func() error { return st.UnpinThread(ctx, ids[2]) }, nil, sorted(ids[3], ids[4])},
+		{"closed thread cannot be pinned", func() error { return st.PinThread(ctx, ids[0], "") },
+			store.ErrNotFound, sorted(ids[3], ids[4])},
+		{"helper thread cannot be pinned", func() error { return st.PinThread(ctx, helper.ID, "") },
+			store.ErrNotFound, sorted(ids[3], ids[4])},
+	}
+	for _, tt := range steps {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.do(); !errors.Is(err, tt.wantErr) {
+				t.Fatalf("error %v, want %v", err, tt.wantErr)
+			}
+			if got := pinned(); !slices.Equal(got, tt.want) {
+				t.Errorf("pinned %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStore_ThreadRuns_New(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	th, _ := st.CreateThread(ctx, bot.ID, "")
+	state := func() (status string, finished bool) {
+		runs, err := st.ThreadRuns(ctx, bot.ID)
+		if err != nil || len(runs) != 1 {
+			t.Fatalf("ThreadRuns = %v, %v", runs, err)
+		}
+		r := runs[0]
+		return r.Status, r.Unseen
+	}
+	if status, finished := state(); status != "" || finished {
+		t.Errorf("thread without a run: status %q, finished after opened %v; want \"\", false", status, finished)
+	}
+	_, ru, err := st.StartRun(ctx, th.ID, "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, finished := state(); status != "running" || finished {
+		t.Errorf("running: status %q, finished after opened %v; want running, false", status, finished)
+	}
+	if err := st.FinishRun(ctx, ru.ID, store.RunResult{Status: store.StatusDone, Reply: "ok"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if status, finished := state(); status != "done" || !finished {
+		t.Errorf("finished: status %q, finished after opened %v; want done, true", status, finished)
+	}
+	if err := st.MarkOpened(ctx, th.ID); err != nil {
+		t.Fatal(err)
+	}
+	if status, finished := state(); status != "done" || finished {
+		t.Errorf("opened: status %q, finished after opened %v; want done, false", status, finished)
+	}
+}
+
+func TestStore_Groups(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	names := func() string {
+		groups, err := st.Groups(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, g := range groups {
+			out = append(out, g.Name)
+		}
+		return strings.Join(out, ",")
+	}
+	var ids []string
+	for _, n := range []string{"A", "B", "C"} {
+		g, err := st.CreateGroup(ctx, n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, g.ID)
+	}
+	if got := names(); got != "A,B,C" {
+		t.Fatalf("new groups go last: %q, want A,B,C", got)
+	}
+	moves := []struct {
+		name string
+		id   string
+		up   bool
+		want string
+	}{
+		{"B up", ids[1], true, "B,A,C"},
+		{"B up at the top does nothing", ids[1], true, "B,A,C"},
+		{"B down", ids[1], false, "A,B,C"},
+		{"C down at the end does nothing", ids[2], false, "A,B,C"},
+		{"A down", ids[0], false, "B,A,C"},
+	}
+	for _, tt := range moves {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := st.MoveGroup(ctx, tt.id, tt.up); err != nil {
+				t.Fatal(err)
+			}
+			if got := names(); got != tt.want {
+				t.Errorf("order %q, want %q", got, tt.want)
+			}
+		})
+	}
+	if err := st.MoveGroup(ctx, "nope", true); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("move unknown group: %v, want ErrNotFound", err)
+	}
+
+	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	if err := st.SetGroup(ctx, bot.ID, ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetGroup(ctx, bot.ID, "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("set unknown group: %v, want ErrNotFound", err)
+	}
+	if err := st.SetGroupFolded(ctx, ids[0], true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Bot(ctx, bot.ID)
+	if err != nil || got.GroupID != ids[0] {
+		t.Fatalf("bot group %q, %v; want %q", got.GroupID, err, ids[0])
+	}
+	if err := st.DeleteGroup(ctx, ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.Bot(ctx, bot.ID)
+	if err != nil || got.GroupID != "" {
+		t.Errorf("bot group %q after the group was deleted, %v; want none", got.GroupID, err)
+	}
+	if got := names(); got != "B,C" {
+		t.Errorf("groups %q after delete, want B,C", got)
 	}
 }

@@ -122,6 +122,7 @@ type (
 		tokens    map[string]*active                 // by run token
 		approvals map[string]open                    // open approvals, by approval id
 		subs      map[string]map[chan Event]struct{} // by thread id
+		all       map[chan Event]struct{}            // SubscribeAll's subscribers
 	}
 
 	// open is an approval waiting for the user; answer takes its one answer.
@@ -149,10 +150,12 @@ type (
 		shown    []string // memory ids the run's memory tools returned
 	}
 
-	// Event is one event on a thread's stream. Data is one of the types below.
+	// Event is one event on a thread's stream. Data is one of the types below. ThreadID is the
+	// thread it belongs to.
 	Event struct {
-		Type string
-		Data any
+		Type     string
+		ThreadID string
+		Data     any
 	}
 
 	// Text is a piece of the reply.
@@ -218,6 +221,7 @@ func New(cfg Config) *Manager {
 		tokens:    map[string]*active{},
 		approvals: map[string]open{},
 		subs:      map[string]map[chan Event]struct{}{},
+		all:       map[chan Event]struct{}{},
 	}
 }
 
@@ -347,6 +351,39 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 	}
 }
 
+// SubscribeAll streams the notice events of every thread from now on, until cancel is called. It
+// starts with an approval event for each approval open now.
+func (m *Manager) SubscribeAll() (events <-chan Event, cancel func()) {
+	ch := make(chan Event, _subscriberBuffer)
+	m.mu.Lock()
+	if m.ctx.Err() != nil {
+		close(ch)
+		m.mu.Unlock()
+		return ch, func() {}
+	}
+	for threadID, a := range m.runs {
+		for _, o := range m.approvals {
+			if o.approval.RunID != a.run.ID {
+				continue
+			}
+			select {
+			case ch <- Event{Type: EventApproval, ThreadID: threadID, Data: o.approval}:
+			default:
+			}
+		}
+	}
+	m.all[ch] = struct{}{}
+	m.mu.Unlock()
+	return ch, func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if _, ok := m.all[ch]; ok {
+			delete(m.all, ch)
+			close(ch)
+		}
+	}
+}
+
 // Active returns the id of the run going in the thread and its open approvals. ok is false when
 // the thread has no run going.
 func (m *Manager) Active(threadID string) (runID string, approvals []Approval, ok bool) {
@@ -449,6 +486,10 @@ func (m *Manager) Close() error {
 			delete(chs, ch)
 			close(ch)
 		}
+	}
+	for ch := range m.all {
+		delete(m.all, ch)
+		close(ch)
 	}
 	return nil
 }
@@ -829,7 +870,8 @@ func (m *Manager) announce(threadID, runID, typ string, data any) {
 	m.deliver(threadID, runID, f, typ, data)
 }
 
-// deliver writes the event to log, when there is one, and sends it to the thread's subscribers.
+// deliver writes the event to log, when there is one, and sends it to the thread's subscribers
+// and, for a notice, to every SubscribeAll subscriber.
 // The caller holds mu.
 func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data any) {
 	if log != nil {
@@ -841,11 +883,26 @@ func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data
 			m.cfg.Log.Warn("write event", "run_id", runID, "error", err)
 		}
 	}
+	ev := Event{Type: typ, ThreadID: threadID, Data: data}
 	for ch := range m.subs[threadID] {
 		select {
-		case ch <- Event{Type: typ, Data: data}:
+		case ch <- ev:
 		default:
 			delete(m.subs[threadID], ch)
+			close(ch)
+			m.cfg.Log.Warn("subscriber full, stream closed", "run_id", runID, "type", typ)
+		}
+	}
+	switch typ {
+	case EventApproval, EventApprovalEnd, EventRunFinished, EventMRUpdated, EventPlatformChanged:
+	default:
+		return
+	}
+	for ch := range m.all {
+		select {
+		case ch <- ev:
+		default:
+			delete(m.all, ch)
 			close(ch)
 			m.cfg.Log.Warn("subscriber full, stream closed", "run_id", runID, "type", typ)
 		}

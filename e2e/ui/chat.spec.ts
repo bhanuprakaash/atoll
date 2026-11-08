@@ -5,7 +5,6 @@ import {
   api,
   type Machine,
   newBotAPI,
-  openThreads,
   prompts,
   recordText,
   seenText,
@@ -125,6 +124,10 @@ test('a failed run shows a line with Retry', async ({ page }) => {
   await expect(log.getByRole('button', { name: 'Retry' })).toBeVisible();
   await expect(log.getByRole('button', { name: 'Sign in again' })).toHaveCount(0);
   await expect(sidebarRow(page, 'Moss').getByRole('img', { name: /, failed$/ })).toBeVisible();
-  const panel = await openThreads(page);
-  await expect(panel.getByRole('button', { name: 'New thread' })).toBeVisible();
+  await sidebarRow(page, 'Moss').hover();
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Bots' })
+      .getByRole('button', { name: 'New thread with Moss' }),
+  ).toBeVisible();
 });

@@ -1,9 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router';
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet, useMatch, useNavigate, useSearchParams } from 'react-router';
 import { api } from '@/lib/api-client';
 import { BotList } from '@/modules/bots/components/bot-list';
+import { Menu } from '@/components/menu';
+import { ThreadsPopup } from '@/app/threads-popup';
+import { useNotifications } from '@/modules/threads/hooks/use-notifications';
 import { TextField } from '@/components/text-field';
+import { useCloseThread, useRenameThread } from '@/modules/threads/api/threads';
 
 const inDesktopApp = '__TAURI_INTERNALS__' in window;
 
@@ -18,6 +22,32 @@ function initials(name: string) {
 export function Shell() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const notifications = useNotifications();
+  const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
+  const [creatingGroup, setCreatingGroup] = useState<{ botId?: string } | null>(null);
+  const close = useCloseThread();
+  const rename = useRenameThread();
+  const [params, setParams] = useSearchParams();
+  const threadsBot = params.get('threads');
+  const setThreadsBot = (id: string | null) =>
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (id) next.set('threads', id);
+      else next.delete('threads');
+      return next;
+    });
+  const botMatch = useMatch('/bots/:botId/*')?.params.botId;
+  const botId = botMatch === 'new' ? undefined : botMatch;
+  const threadId = useMatch('/bots/:botId/threads/:threadId')?.params.threadId;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!botId || !event.metaKey || event.key !== 'n') return;
+      event.preventDefault();
+      navigate(`/bots/${botId}/new`);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [botId, navigate]);
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api<{ user_name: string }>('/settings'),
@@ -61,8 +91,13 @@ export function Shell() {
           </div>
           <button
             type="button"
-            aria-label="New Bot"
-            onClick={() => navigate('/bots/new')}
+            aria-label="New"
+            aria-haspopup="menu"
+            aria-expanded={newMenu !== null}
+            onClick={(event) => {
+              const box = event.currentTarget.getBoundingClientRect();
+              setNewMenu({ x: box.left, y: box.bottom + 4 });
+            }}
             className="flex size-8 flex-none items-center justify-center rounded-control text-muted"
           >
             <svg
@@ -79,8 +114,16 @@ export function Shell() {
             </svg>
           </button>
         </div>
-        <div className="mt-3.5 min-h-0 overflow-y-auto">
-          <BotList search={search} />
+        <div className="mt-3.5 mb-2 min-h-0 overflow-y-auto">
+          <BotList
+            search={search}
+            open={{ botId, threadId }}
+            creatingGroup={creatingGroup}
+            onCreatingGroup={setCreatingGroup}
+            onMore={(id) => setThreadsBot(id)}
+            onCloseThread={(id) => close.mutate(id)}
+            onRenameThread={(id, title) => rename.mutate({ id, title })}
+          />
         </div>
         <NavLink
           to="/settings"
@@ -112,8 +155,25 @@ export function Shell() {
           </svg>
         </NavLink>
       </nav>
+      {newMenu && (
+        <Menu
+          at={newMenu}
+          onClose={() => setNewMenu(null)}
+          items={[
+            { label: 'New Bot', onSelect: () => navigate('/bots/new') },
+            { label: 'New group', onSelect: () => setCreatingGroup({}) },
+          ]}
+        />
+      )}
+      {threadsBot && (
+        <ThreadsPopup
+          botId={threadsBot}
+          openThreadId={botId === threadsBot ? threadId : undefined}
+          onClose={() => setThreadsBot(null)}
+        />
+      )}
       <main className="flex min-w-0 flex-1 flex-col">
-        <Outlet />
+        <Outlet context={notifications} />
       </main>
     </div>
   );
