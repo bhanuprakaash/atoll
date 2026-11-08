@@ -603,8 +603,8 @@ Voice
   (https://claude.ai/artifact/McPffSMXRCir3g17QQJTGQ).
   One row per Bot (creature, name, latest activity, time): Chief first, then pinned Bots in the order
   pinned, then the user's groups in their order, then Ungrouped. Hovering a row shows a pin button
-  and `+` (New thread); Bot settings has Pin to sidebar; Chief cannot be pinned. The activity line is the live verb while a run works ("Running make build"),
-  "Needs you: ..." while an approval waits, otherwise the first line of the latest reply, at most
+  and `+` (New thread); Bot settings has Pin to sidebar; Chief cannot be pinned. The activity
+  line is the live verb while a run works ("Running make build"), "Needs you: ..." while an approval waits, otherwise the first line of the latest reply, at most
   60 characters cut at a word boundary with "…" when cut. `+` at the top opens New Bot and New
   group; the bottom user row opens Settings. No group chats. A thread's activity time moves when a run
   starts, an approval opens or closes, and a run ends, not on every event. *The sidebar polls
@@ -613,7 +613,8 @@ Voice
 - Thread tree: under each Bot, at most 3 thread rows hang from a thin line under the creature's
   centre (one tick per row, a rounded corner on the last). A Bot with nothing to show is its plain
   row. A row is the title and one marker: a red dot and "Needs you"; a blue dot, bold title and
-  "New"; three wave dots at the end while running; a pin when pinned. Slots go to needs you (never
+  "New"; three wave dots at the end while running; a pin when pinned and nothing else applies (a
+  pinned thread that needs you, is New or runs shows that instead). Slots go to needs you (never
   hidden, so there may be more than 3), then pinned, new and running; the thread on screen always
   shows and is never New. When those already fill 3 or more, nothing else is added. One last line
   stands for the rest: `N more running` (wave dots) when a hidden thread is running, which unfolds
