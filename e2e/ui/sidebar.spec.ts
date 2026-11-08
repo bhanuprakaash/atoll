@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   // codex is installed but not signed in: its Bots are asleep.
   m = await startAtoll({ fakes: ['claude', 'codex'] });
   await newBotAPI(m, 'Idle', 'claude', { look: 'penguin' });
-  await newBotAPI(m, 'Sleeper', 'codex', { look: 'kelp' });
+  await newBotAPI(m, 'Sleeper', 'codex', { look: 'narwhal' });
   for (const [name, prompt, status] of [
     ['Worker', prompts.hang, 'running'],
     ['Asker', prompts.write, 'waiting'],
@@ -42,7 +42,7 @@ test('sidebar rows show each state on the creature, Chief first', async ({ page 
   for (const [name, img] of [
     ['Chief', 'Jellyfish, idle'],
     ['Idle', 'Penguin, idle'],
-    ['Sleeper', 'Kelp, asleep'],
+    ['Sleeper', 'Narwhal, asleep'],
     ['Worker', 'Shark, working'],
     ['Asker', 'Shark, needs you'],
     ['Breaker', 'Shark, failed'],

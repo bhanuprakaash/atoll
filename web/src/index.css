@@ -25,27 +25,21 @@
   --color-blocked: #f5a524;
   --color-eye: #1c1c1e;
   --color-jellyfish: #f26b2e;
-  --color-whale: #8b5cf6;
+  --color-whale: #3b82f6;
+  --color-shark: #6366f1;
   --color-penguin: #3fbfa0;
-  --color-penguin-light: #eef6f3;
-  --color-penguin-accent: #f2a03a;
-  --color-shark: #3b82f6;
-  --color-shark-light: #dcebff;
-  --color-white: #ffffff;
-  --color-starfish: #fdba74;
-  --color-anglerfish: #a3d65c;
-  --color-sand-dollar: #e9dcc0;
-  --color-sand-dollar-accent: #9c7a4c;
-  --color-sponge: #a5b4fc;
-  --color-sponge-accent: #4f46b5;
-  --color-kelp: #22a55b;
-  --color-shell: #f9a8d4;
-  --color-shell-accent: #d06a9f;
-  --color-wave: #22d3ee;
-  --color-island: #efc07f;
-  --color-wood: #b07a4f;
-  --color-sun: #f5c542;
-  --color-sailboat: #f4f1ea;
+  --color-penguin-belly: #f4f1ea;
+  --color-anglerfish: #8b5cf6;
+  --color-anglerfish-lure: #f5c542;
+  --color-pufferfish: #f5c542;
+  --color-octopus: #f472b6;
+  --color-crab: #ff7a6b;
+  --color-seal: #d9b48f;
+  --color-manta: #5ec8e5;
+  --color-scallop: #f2a03a;
+  --color-scallop-ridge: rgb(0 0 0 / 0.22);
+  --color-narwhal: #a3d65c;
+  --color-narwhal-tusk: #ece6d6;
   --color-sleep-body: #4a4a4e;
   --color-sleep-light: #6a6a70;
   --color-sleep-accent: #5c5c61;
@@ -248,6 +242,201 @@ body {
   .creature-breathe {
     transform-origin: center;
     animation: breathe 1.5s ease-in-out infinite;
+  }
+  @keyframes bob {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-2.5px);
+    }
+  }
+  @keyframes swim {
+    0%,
+    100% {
+      transform: translateX(-1.5px);
+    }
+    50% {
+      transform: translateX(1.5px);
+    }
+  }
+  @keyframes waddle {
+    0%,
+    100% {
+      transform: rotate(-6deg);
+    }
+    50% {
+      transform: rotate(6deg);
+    }
+  }
+  @keyframes side {
+    0%,
+    100% {
+      transform: translateX(-2px);
+    }
+    50% {
+      transform: translateX(2px);
+    }
+  }
+  @keyframes sway {
+    0%,
+    100% {
+      transform: skewX(-8deg);
+    }
+    50% {
+      transform: skewX(8deg);
+    }
+  }
+  @keyframes puff {
+    0%,
+    55%,
+    100% {
+      transform: scale(0.55);
+      opacity: 0.3;
+    }
+    72% {
+      transform: scale(1.1);
+      opacity: 1;
+    }
+  }
+  @keyframes fin {
+    0%,
+    100% {
+      transform: rotate(-5deg);
+    }
+    50% {
+      transform: rotate(5deg);
+    }
+  }
+  @keyframes glow {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: scale(0.85);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.15);
+    }
+  }
+  @keyframes spike {
+    0%,
+    100% {
+      transform: scale(0.86);
+    }
+    50% {
+      transform: scale(1.06);
+    }
+  }
+  @keyframes snipl {
+    0%,
+    70%,
+    100% {
+      transform: rotate(0);
+    }
+    80% {
+      transform: rotate(-16deg);
+    }
+    90% {
+      transform: rotate(5deg);
+    }
+  }
+  @keyframes snipr {
+    0%,
+    70%,
+    100% {
+      transform: rotate(0);
+    }
+    80% {
+      transform: rotate(16deg);
+    }
+    90% {
+      transform: rotate(-5deg);
+    }
+  }
+  @keyframes flap {
+    0%,
+    100% {
+      transform: scaleY(1);
+    }
+    50% {
+      transform: scaleY(0.55);
+    }
+  }
+  @keyframes twitch {
+    0%,
+    80%,
+    100% {
+      transform: scaleX(1);
+    }
+    88% {
+      transform: scaleX(1.12);
+    }
+  }
+  .creature-bob,
+  .creature-swim,
+  .creature-waddle,
+  .creature-side,
+  .creature-sway,
+  .creature-puff,
+  .creature-fin,
+  .creature-glow,
+  .creature-spike,
+  .creature-snipl,
+  .creature-snipr,
+  .creature-flap,
+  .creature-twitch {
+    transform-box: fill-box;
+  }
+  .creature-bob {
+    animation: bob 3.2s ease-in-out infinite;
+  }
+  .creature-swim {
+    animation: swim 2.6s ease-in-out infinite;
+  }
+  .creature-waddle {
+    transform-origin: 50% 100%;
+    animation: waddle 1.3s ease-in-out infinite;
+  }
+  .creature-side {
+    animation: side 2.2s ease-in-out infinite;
+  }
+  .creature-sway {
+    transform-origin: 50% 0%;
+    animation: sway 2.6s ease-in-out infinite;
+  }
+  .creature-puff {
+    transform-origin: 50% 100%;
+    animation: puff 3s ease-out infinite;
+  }
+  .creature-fin {
+    transform-origin: 30% 100%;
+    animation: fin 2.4s ease-in-out infinite;
+  }
+  .creature-glow {
+    transform-origin: 50% 50%;
+    animation: glow 2.2s ease-in-out infinite;
+  }
+  .creature-spike {
+    transform-origin: 50% 50%;
+    animation: spike 1.6s ease-in-out infinite;
+  }
+  .creature-snipl {
+    transform-origin: 70% 70%;
+    animation: snipl 2.2s ease-in-out infinite;
+  }
+  .creature-snipr {
+    transform-origin: 30% 70%;
+    animation: snipr 2.2s ease-in-out 0.15s infinite;
+  }
+  .creature-flap {
+    transform-origin: 50% 0%;
+    animation: flap 1.7s ease-in-out infinite;
+  }
+  .creature-twitch {
+    transform-origin: 50% 50%;
+    animation: twitch 3s ease-in-out infinite;
   }
   .creature-pulse {
     animation: pulse 1.2s ease-in-out infinite;

@@ -30,17 +30,17 @@ test('New Bot creates the Bot and opens its empty thread; a starter sends', asyn
   await page.getByRole('textbox', { name: 'Persona' }).fill('Reviews Go carefully.');
   await page
     .getByRole('radiogroup', { name: 'Creature' })
-    .getByRole('radio', { name: 'Sand dollar' })
+    .getByRole('radio', { name: 'Seal' })
     .check();
   await pickModel(page, page, 'Claude Code', 'Reef Probe');
   await expect(page.getByRole('region', { name: 'Preview' })).toContainText('Coral');
   await page.getByRole('button', { name: 'Create Bot' }).click();
 
   await expect(page.getByRole('heading', { name: 'What should Coral work on?' })).toBeVisible();
-  await expect(sidebarRow(page, 'Coral').getByRole('img', { name: 'Sand dollar, idle' })).toBeVisible();
+  await expect(sidebarRow(page, 'Coral').getByRole('img', { name: 'Seal, idle' })).toBeVisible();
   const coral = await bot('Coral');
   expect(coral).toMatchObject({
-    look: 'sand_dollar',
+    look: 'seal',
     model: 'reef-probe',
     provider: 'claude',
   });
@@ -67,7 +67,7 @@ test('Bot settings save as you change them and apply from the next run', async (
   await name.blur();
   await panel
     .getByRole('radiogroup', { name: 'Creature' })
-    .getByRole('radio', { name: 'Sailboat' })
+    .getByRole('radio', { name: 'Narwhal' })
     .check();
   await panel.getByRole('textbox', { name: 'Persona' }).fill('Writes release notes.');
   await panel.getByRole('textbox', { name: 'Persona' }).blur();
@@ -79,12 +79,12 @@ test('Bot settings save as you change them and apply from the next run', async (
     .poll(async () => api(m, 'GET', `/api/bots/${kelp.id}`))
     .toMatchObject({
       name: 'Kelp Two',
-      look: 'sailboat',
+      look: 'narwhal',
       persona: 'Writes release notes.',
       model: 'sonnet',
     });
   await expect(
-    sidebarRow(page, 'Kelp Two').getByRole('img', { name: 'Sailboat, idle' }),
+    sidebarRow(page, 'Kelp Two').getByRole('img', { name: 'Narwhal, idle' }),
   ).toBeVisible();
 
   await panel.getByRole('button', { name: 'Close' }).click();

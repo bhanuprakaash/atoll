@@ -218,9 +218,13 @@ const (
 
 // _retireLooks moves Bots off the creatures the design dropped onto the nearest new one by colour.
 const _retireLooks = `UPDATE bots SET look = CASE look
-	WHEN 'octopus' THEN 'shell' WHEN 'turtle' THEN 'kelp' WHEN 'seahorse' THEN 'sun'
-	WHEN 'otter' THEN 'sand_dollar' WHEN 'clownfish' THEN 'starfish' WHEN 'manta' THEN 'wave' END
-	WHERE look IN ('octopus', 'turtle', 'seahorse', 'otter', 'clownfish', 'manta')`
+	WHEN 'starfish' THEN 'scallop' WHEN 'sand_dollar' THEN 'seal' WHEN 'sponge' THEN 'shark'
+	WHEN 'kelp' THEN 'narwhal' WHEN 'shell' THEN 'octopus' WHEN 'wave' THEN 'manta'
+	WHEN 'island' THEN 'seal' WHEN 'sun' THEN 'pufferfish' WHEN 'sailboat' THEN 'seal'
+	WHEN 'turtle' THEN 'narwhal' WHEN 'seahorse' THEN 'pufferfish' WHEN 'otter' THEN 'seal'
+	WHEN 'clownfish' THEN 'scallop' END
+	WHERE look IN ('starfish', 'sand_dollar', 'sponge', 'kelp', 'shell', 'wave', 'island', 'sun',
+		'sailboat', 'turtle', 'seahorse', 'otter', 'clownfish')`
 
 // Open opens dir/atoll.db, creating dir and the file if needed, applies any migration the file
 // lacks, and moves Bots off retired looks.

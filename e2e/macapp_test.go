@@ -75,7 +75,7 @@ type (
 	}
 )
 
-var _creatures = []string{"jellyfish", "whale", "penguin", "shark", "starfish", "anglerfish", "sand_dollar", "sponge", "kelp", "shell", "wave", "island", "sun", "sailboat"}
+var _creatures = []string{"jellyfish", "whale", "shark", "penguin", "anglerfish", "pufferfish", "octopus", "crab", "seal", "manta", "scallop", "narwhal"}
 
 const _noRecordingPrompt = "This message has no recording, so the provider fails."
 

@@ -586,14 +586,19 @@ Voice
 - Look: Geist, regular weight. Main `#171717`, sidebar `#1A1A1A`, composer `#222222`, hairlines
   `#262626`, text `#ECECEC`, muted `#9B9B9B`. The light pill (`#ECECEC` on `#161616`) is the primary
   action and the user's own message. Red `#E5484D` means needs you; amber means blocked.
-- Bot looks: the 14 on the canvas's Bot looks board, each with its own colour and two eye ticks.
-  Creatures: jellyfish (Chief, as the logo), whale, penguin, shark, starfish, anglerfish. Reef: sand
-  dollar, sponge, kelp, shell. Island: wave, island, sun, sailboat. A Bot stores the look's name
-  (`sand_dollar`). Bots saved with a dropped creature move to the nearest by colour on launch:
-  octopus to shell, turtle to kelp, seahorse to sun, otter to sand dollar, clownfish to starfish,
-  manta to wave. *Replaced octopus, turtle, seahorse, otter, clownfish and manta: the user redrew
-  the set on the canvas.* Idle blinks; needs you is a pulsing red dot; asleep is grey; failed
-  has slanted eyes. *Replaces the eight blob shapes: the user preferred the creatures side by side.*
+- Bot looks: 12, each the same soft pebble with one small sea trait at its edge, its own flat
+  colour, two thin tick eyes and a slight tilt: jellyfish (Chief, as the logo; tentacles), whale
+  (spout), shark (fin), penguin (belly), anglerfish (lure), pufferfish (spikes), octopus (arms),
+  crab (claws), seal (whiskers), manta (wings), scallop (ridges), narwhal (tusk). A Bot stores the
+  look's name (`pufferfish`). The traits move while idle or working and are still while asleep or
+  failed: tentacles and arms sway, the spout puffs, the shark swims and its fin moves, the lure
+  glows, spikes puff, the crab steps sideways and snips, whiskers twitch, wings flap, the penguin
+  waddles, the rest bob. Bots saved with a dropped look move to the nearest by colour on launch:
+  starfish, clownfish to scallop; sand dollar, island, sailboat, otter to seal; sponge to shark;
+  kelp, turtle to narwhal; shell to octopus; wave to manta; sun, seahorse to pufferfish. Octopus
+  and manta are looks again and keep their Bots. *Replaces the 14 looks in three groups: the user
+  picked pebble + one trait on the canvas.* Idle blinks; needs you is a pulsing red dot; asleep is
+  grey; failed has slanted eyes; reduced motion stops every animation.
 - Working shows by tool kind in the creature's eyes and body: no tool yet, the eyes circle up;
   reading, searching or recalling, the eyes scan; editing, writing, remembering or changing the
   platform, it bounces; running a command, it breathes. No spinner rings or bubbles anywhere, on a
