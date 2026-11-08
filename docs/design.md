@@ -1,6 +1,6 @@
 # Reef (working name: atoll) — design
 
-Status: draft for review. Design only; nothing is built. Organised by topic; each rule is stated once.
+Status: v1 is built; this design is the source of truth. Organised by topic; each rule is stated once.
 
 ## What it is
 
@@ -129,8 +129,6 @@ creation uses Delete Bot's cleanup, including stopping runs and saving unfinishe
   permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes). *The
   variable covers every MCP server of the run, not only Reef's: Claude Code has no per-server
   timeout, so a hung user tool also waits up to 30 minutes.*
-- Processes a Bot starts (dev server, watcher, browser) belong to the thread and outlive the run.
-  When the thread closes or the app quits, the app asks whether to stop them.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
   into a pane the user can take over (v2).
 
@@ -852,5 +850,9 @@ workspace, no per-workspace app), browser pane, background processes pane, the p
 switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up
 to about 5 items always in the prompt), routines (scheduled, repeating runs), more provider
 adapters.
+
+Queued with the background processes pane: processes a Bot starts (dev server, watcher, browser)
+belong to the thread and outlive the run. When the thread closes or the app quits, the app asks
+whether to stop them.
 
 An item moves into the build when its absence hurts in daily use.

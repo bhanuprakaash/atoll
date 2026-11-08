@@ -43,6 +43,7 @@ func TestSession(t *testing.T) {
 		wantErr     string
 		mcpURL      string
 		allow       bool
+		wantServers string
 		wantCalls   string // names of the KindToolCall events, joined by ","
 		wantAsk     string // name and ID of the KindApproval event, if any
 	}{
@@ -65,6 +66,7 @@ func TestSession(t *testing.T) {
 			wantReply:   "- Skills: none.\n- MCP servers: none connected or exposed.",
 			wantSession: _threadID,
 			wantCalls:   "list_mcp_resource_templates,list_mcp_resources",
+			wantServers: "codex,codex",
 		},
 		{
 			name:        "approval accepted",
@@ -74,6 +76,7 @@ func TestSession(t *testing.T) {
 			wantReply:   "Created hello.txt containing hi.",
 			wantSession: _threadID,
 			wantCalls:   "commandExecution,finish_run",
+			wantServers: "atoll",
 			wantAsk:     "commandExecution 0",
 		},
 		{
@@ -83,6 +86,7 @@ func TestSession(t *testing.T) {
 			wantReply:   "I didn't create hello.txt because you declined the command.",
 			wantSession: _threadID,
 			wantCalls:   "commandExecution,finish_run",
+			wantServers: "atoll",
 			wantAsk:     "commandExecution 0",
 		},
 		{
@@ -117,11 +121,15 @@ func TestSession(t *testing.T) {
 				t.Fatal(err)
 			}
 			var reply strings.Builder
+			var servers []string
 			session, calls, ask := "", []string{}, ""
 			for ev := range s.Events() {
 				switch ev.Kind {
 				case provider.KindToolCall:
 					calls = append(calls, ev.Name)
+					if ev.Server != "" {
+						servers = append(servers, ev.Server)
+					}
 				case provider.KindApproval:
 					ask = ev.Name + " " + ev.ID
 					if err := s.Answer(ev.ID, tt.allow); err != nil {
@@ -140,6 +148,9 @@ func TestSession(t *testing.T) {
 				if ev.Kind == provider.KindTurnEnd {
 					break
 				}
+			}
+			if got := strings.Join(servers, ","); got != tt.wantServers {
+				t.Errorf("MCP servers = %q, want %q", got, tt.wantServers)
 			}
 			if reply.String() != tt.wantReply || session != tt.wantSession ||
 				strings.Join(calls, ",") != tt.wantCalls || ask != tt.wantAsk {

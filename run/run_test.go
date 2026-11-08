@@ -200,7 +200,25 @@ func TestRun_Finish(t *testing.T) {
 		session    string
 		owner      string
 		wantResume string
+		wantTools  map[string]int
 	}{
+		{
+			name: "MCP tools are classified by server",
+			give: &fakeSession{script: []provider.Event{
+				{Kind: provider.KindToolCall, ID: "c1", Name: "mcp__memory__remember"},
+				{Kind: provider.KindToolCall, ID: "c2", Server: "memory", Name: "remember"},
+				{Kind: provider.KindToolCall, ID: "c3", Server: "atoll", Name: "remember"},
+				{Kind: provider.KindToolCall, ID: "c4", Name: "mcp__atoll__remember"},
+				{Kind: provider.KindToolCall, ID: "c5", Server: "atoll", Name: "finish_run"},
+				{Kind: provider.KindToolCall, ID: "c6", Server: "memory", Name: "finish_run"},
+				turnEnd,
+			}},
+			wantStatus: store.StatusDone,
+			wantSends:  2,
+			wantTools:  map[string]int{"memory": 2, "other": 3},
+			wantEvents: []string{EventPrompt, EventToolCall, EventToolCall, EventToolCall,
+				EventToolCall, EventToolCall, EventToolCall, EventRunFinished},
+		},
 		{
 			name: "provider switch starts fresh",
 			give: &fakeSession{script: []provider.Event{
@@ -316,7 +334,7 @@ func TestRun_Finish(t *testing.T) {
 				{Kind: provider.KindError, Text: "token revoked", SignedOut: true},
 			}},
 			stopped:    true,
-			wantStatus: "stopped",
+			wantStatus: store.StatusStopped,
 			wantSends:  1,
 			wantEvents: []string{EventPrompt, EventRunFinished},
 		},
@@ -393,6 +411,9 @@ func TestRun_Finish(t *testing.T) {
 			}
 			if tt.give.resumed != tt.wantResume {
 				t.Errorf("resumed %q, want %q", tt.give.resumed, tt.wantResume)
+			}
+			if tt.wantTools != nil && !maps.Equal(got.Tools, tt.wantTools) {
+				t.Errorf("tool counts = %v, want %v", got.Tools, tt.wantTools)
 			}
 			if got := eventTypes(t, e, run.ID); !slices.Equal(got, tt.wantEvents) {
 				t.Errorf("event file holds %v, want %v", got, tt.wantEvents)
@@ -484,6 +505,10 @@ func TestRun_Approval(t *testing.T) {
 			gotRun, gotOpen, ok := e.m.Active(e.thread.ID)
 			if !ok || gotRun != run.ID || !reflect.DeepEqual(gotOpen, []Approval{ap}) {
 				t.Errorf("Active = %q, %v, %v; want %q, [%v], true", gotRun, gotOpen, ok, run.ID, ap)
+			}
+			gotOpen[0].Input[0] = 'x'
+			if _, again, _ := e.m.Active(e.thread.ID); string(again[0].Input) != `{"a":1}` {
+				t.Errorf("Active input mutated through its caller: %s", again[0].Input)
 			}
 			if got, _ := e.st.Run(t.Context(), run.ID); got.Status != store.StatusWaiting {
 				t.Errorf("status %q when the approval was published, want waiting", got.Status)
@@ -592,23 +617,111 @@ func TestRun_ApprovalOutlivesRun(t *testing.T) {
 	}
 }
 
+type readFunc func([]byte) (int, error)
+
+func (f readFunc) Read(p []byte) (int, error) { return f(p) }
+
 func TestManager_Subscribers(t *testing.T) {
 	tests := []struct {
 		name       string
-		do         func(*env)
+		do         func(*testing.T, *env)
 		wantEvents int
 	}{
-		{"a full buffer closes the stream", func(e *env) {
+		{"a full buffer closes the stream", func(t *testing.T, e *env) {
 			for range _subscriberBuffer + 1 {
 				e.m.publish(&active{threadID: e.thread.ID}, EventText, Text{})
 			}
 		}, _subscriberBuffer},
-		{"Close closes the stream", func(e *env) { _ = e.m.Close() }, 0},
+		{"Close closes the stream", func(t *testing.T, e *env) { _ = e.m.Close() }, 0},
+		{"publish during replay is delivered once", func(t *testing.T, e *env) {
+			file, err := e.m.openLog("replay")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = file.Close() }()
+			a := &active{threadID: e.thread.ID, log: file}
+			e.m.publish(a, EventToolCall, ToolCall{ID: "before"})
+			e.next(t, EventToolCall)
+			source, err := os.Open(file.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = source.Close() }()
+			info, err := source.Stat()
+			if err != nil {
+				t.Fatal(err)
+			}
+			snapshot := io.NewSectionReader(source, 0, info.Size())
+			published := false
+			for ch := range e.m.subs[e.thread.ID] {
+				e.m.replay(e.thread.ID, ch, readFunc(func(p []byte) (int, error) {
+					if !published {
+						e.m.publish(a, EventToolCall, ToolCall{ID: "during"})
+						published = true
+					}
+					return snapshot.Read(p)
+				}))
+			}
+			for _, want := range []string{"before", "during"} {
+				ev := e.next(t, EventToolCall)
+				body, err := json.Marshal(ev.Data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var call ToolCall
+				if err := json.Unmarshal(body, &call); err != nil || call.ID != want {
+					t.Fatalf("replayed event = %s, %v; want %s", body, err, want)
+				}
+			}
+			_ = e.m.Close()
+		}, 0},
+		{"late subscriber replays the log without text", func(t *testing.T, e *env) {
+			file, err := e.m.openLog("replay")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = file.Close() }()
+			a := &active{threadID: e.thread.ID, run: store.Run{ID: "replay"}, log: file}
+			e.m.runs[e.thread.ID] = a
+			e.m.publish(a, EventToolCall, ToolCall{ID: "before"})
+			e.m.publish(a, EventText, Text{Text: "omitted"})
+			late, cancel := e.m.Subscribe(e.thread.ID)
+			defer cancel()
+			e.m.publish(a, EventToolCall, ToolCall{ID: "after"})
+			delete(e.m.runs, e.thread.ID)
+			_ = e.m.Close()
+			var ids []string
+			for ev := range late {
+				body, err := json.Marshal(ev.Data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var call ToolCall
+				if err := json.Unmarshal(body, &call); err != nil || ev.Type != EventToolCall {
+					t.Fatalf("replay = %s %s, %v; want tool call", ev.Type, body, err)
+				}
+				ids = append(ids, call.ID)
+			}
+			if !slices.Equal(ids, []string{"before", "after"}) {
+				t.Errorf("late subscriber IDs = %v, want [before after]", ids)
+			}
+		}, 3},
+		{"ActiveTool input is a copy", func(t *testing.T, e *env) {
+			a := &active{threadID: e.thread.ID, tool: ToolCall{Input: json.RawMessage(`{"a":1}`)}}
+			e.m.runs[e.thread.ID] = a
+			got := e.m.ActiveTool(e.thread.ID)
+			got.Input[0] = 'x'
+			if again := e.m.ActiveTool(e.thread.ID); string(again.Input) != `{"a":1}` {
+				t.Errorf("ActiveTool input mutated through its caller: %s", again.Input)
+			}
+			delete(e.m.runs, e.thread.ID)
+			_ = e.m.Close()
+		}, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newEnv(t, &fakeSession{})
-			tt.do(e)
+			tt.do(t, e)
 			got := 0
 			for range e.events {
 				got++
@@ -641,6 +754,71 @@ func TestRun_PrivateFiles(t *testing.T) {
 			t.Errorf("%s mode %v, want %v", path, got, want)
 		}
 	}
+	for _, tt := range []struct {
+		name, provider string
+		files          []string
+	}{
+		{"delete Claude copies", "claude", []string{
+			"projects/old/session.jsonl", "projects/new/session.jsonl",
+		}},
+		{"delete Codex nested rollout", "codex", []string{
+			"sessions/2026/11/08/rollout-2026-11-08T12-00-00-session.jsonl",
+		}},
+		{"delete missing transcripts", "claude", nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newEnv(t, &fakeSession{script: []provider.Event{
+				{Kind: provider.KindSession, SessionID: "session"},
+				{Kind: provider.KindTurnEnd},
+			}})
+			bot, err := e.st.Bot(t.Context(), e.thread.BotID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bot.Provider = tt.provider
+			if _, err := e.st.UpdateBot(t.Context(), bot); err != nil {
+				t.Fatal(err)
+			}
+			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.next(t, EventRunFinished)
+			providerDir := filepath.Join(e.m.cfg.DataDir, "providers", tt.provider)
+			keep := filepath.Join(providerDir, "projects", "old", "unrelated.jsonl")
+			if tt.provider == "codex" {
+				keep = filepath.Join(providerDir, "sessions", "2026", "11", "08", "rollout-time-unrelated.jsonl")
+			}
+			personal := filepath.Join(t.TempDir(), "session.jsonl")
+			paths := []string{keep, personal}
+			for _, file := range tt.files {
+				paths = append(paths, filepath.Join(providerDir, file))
+			}
+			for _, path := range paths {
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("transcript"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := e.m.DeleteBot(t.Context(), bot.ID); err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range append(paths[2:],
+				filepath.Join(e.m.cfg.DataDir, "runs", run.ID+".jsonl"),
+				e.m.threadDir(e.thread.ID)) {
+				if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("deleted Bot file %s still exists: %v", path, err)
+				}
+			}
+			for _, path := range []string{keep, personal} {
+				if _, err := os.Stat(path); err != nil {
+					t.Errorf("unrelated transcript %s removed: %v", path, err)
+				}
+			}
+		})
+	}
 }
 
 // eventTypes returns the types of the events in the run's event file, in order.
@@ -665,15 +843,18 @@ func TestToolVerb(t *testing.T) {
 	tests := []struct{ name, tool, kind, want string }{
 		{"search", "Grep", "search", "Searching"},
 		{"recall", "mcp__atoll__recall", "memory", "Remembering"},
-		{"read memory", "read_memory", "memory", "Remembering"},
-		{"retire", "retire_memory", "memory", "Taking a note"},
-		{"remember", "remember", "memory", "Taking a note"},
-		{"branch", "start_work", "work", "Starting a branch"},
-		{"mr", "track_mr", "work", "Opening the MR"},
+		{"read memory", "mcp__atoll__read_memory", "memory", "Remembering"},
+		{"retire", "mcp__atoll__retire_memory", "memory", "Taking a note"},
+		{"remember", "mcp__atoll__remember", "memory", "Taking a note"},
+		{"branch", "mcp__atoll__start_work", "work", "Starting a branch"},
+		{"mr", "mcp__atoll__track_mr", "work", "Opening the MR"},
 		{"platform", "create_bot", "platform", "Setting up"},
 		{"edit", "Edit", "edit", "Editing"},
 		{"command", "Bash", "command", "Running"},
 		{"unknown", "unknown", "other", "Thinking"},
+		{"user memory server", "mcp__memory__remember", "other", "Thinking"},
+		{"user start work", "mcp__user__start_work", "other", "Thinking"},
+		{"similar Reef tool", "mcp__atoll__recall_extra", "platform", "Setting up"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -688,6 +869,15 @@ func TestToolKind(t *testing.T) {
 	tests := []struct{ name, tool, input, kind, target string }{
 		{"bash description", "Bash", `{"command":"ls ~/.claude/agents/ 2>/dev/null","description":"List agent files"}`, "command", "List agent files"},
 		{"bash program", "Bash", `{"command":"/usr/bin/grep -rn agent ~/.claude"}`, "command", "grep"},
+		{"Reef memory", "mcp__atoll__recall", `{"query":"style"}`, "memory", "style"},
+		{"Reef note", "mcp__atoll__remember", `{"topic":"design"}`, "memory", "design"},
+		{"Reef work", "mcp__atoll__start_work", `{}`, "work", ""},
+		{"Reef platform", "mcp__atoll__create_bot", `{"name":"Ada"}`, "platform", "Ada"},
+		{"user memory server", "mcp__memory__recall", `{}`, "other", ""},
+		{"user tool", "mcp__user__remember", `{}`, "other", ""},
+		{"bare memory tool", "remember", `{}`, "other", ""},
+		{"user start work", "mcp__user__start_work", `{}`, "other", ""},
+		{"similar Reef tool", "mcp__atoll__recall_extra", `{}`, "platform", ""},
 		{"glob", "Glob", `{"pattern":"web/src/**/*.tsx"}`, "search", "*.tsx"},
 		{"codex command", "commandExecution", `{"commandActions":[{"type":"unknown","command":"pnpm test"}]}`, "command", "pnpm"},
 		{"codex search", "commandExecution", `{"commandActions":[{"type":"search","query":"web/src/app"}]}`, "search", "app"},

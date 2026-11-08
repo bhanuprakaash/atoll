@@ -133,7 +133,7 @@ func WakeText(w store.Wake) string {
 			fmt.Fprintf(&b, "\nMerge %s into your branch.", merge)
 		}
 		return strings.TrimSpace(b.String())
-	case "stopped":
+	case store.StatusStopped:
 		return fmt.Sprintf("The user stopped %s\n(thread %s)", helper, threadID)
 	}
 	return fmt.Sprintf("%s's run failed: %s\n(thread %s)", helper, run.Error, threadID)

@@ -32,7 +32,7 @@ func TestSidebar_Routes(t *testing.T) {
 		}
 		ids = append(ids, th.ID)
 	}
-	_, ru, err := st.StartRun(ctx, ids[0], "hello there")
+	_, ru, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: ids[0], Text: "hello there"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -537,9 +537,10 @@ func (m message) event() (ev provider.Event, ok bool) {
 // toolCall is the KindToolCall event for a started item, unless the item is a message.
 func toolCall(item json.RawMessage) (ev provider.Event, ok bool) {
 	var it struct {
-		Type string `json:"type"`
-		ID   string `json:"id"`
-		Tool string `json:"tool"`
+		Type   string `json:"type"`
+		ID     string `json:"id"`
+		Tool   string `json:"tool"`
+		Server string `json:"server"`
 	}
 	if json.Unmarshal(item, &it) != nil {
 		return provider.Event{}, false
@@ -550,7 +551,7 @@ func toolCall(item json.RawMessage) (ev provider.Event, ok bool) {
 	case "mcpToolCall":
 		it.Type = it.Tool
 	}
-	return provider.Event{Kind: provider.KindToolCall, ID: it.ID, Name: it.Type, Input: item}, true
+	return provider.Event{Kind: provider.KindToolCall, ID: it.ID, Name: it.Type, Server: it.Server, Input: item}, true
 }
 
 func (t *tail) Write(p []byte) (int, error) {

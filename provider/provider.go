@@ -123,7 +123,7 @@ const (
 	KindSession                 // SessionID is the id Resume takes
 	KindTurnEnd
 	KindError       // Text is the error; SignedOut when the provider refused its sign-in
-	KindToolCall    // ID, Name and Input: a tool call started
+	KindToolCall    // ID, Server, Name and Input: a tool call started
 	KindApproval    // ID, Name and Input: the provider waits for Answer(ID, ...)
 	KindApprovalEnd // ID: the provider ended the request without an Answer
 )
@@ -135,6 +135,7 @@ type Event struct {
 	SessionID string
 	ID        string
 	Name      string
+	Server    string
 	Input     json.RawMessage
 	SignedOut bool
 }

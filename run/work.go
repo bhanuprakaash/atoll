@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -242,6 +243,13 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 		if err := m.CloseThread(ctx, t.ID); err != nil {
 			return err
 		}
+		thread, err := m.cfg.Store.Thread(ctx, t.ID)
+		if err != nil {
+			return err
+		}
+		if err := m.deleteSession(thread); err != nil {
+			return err
+		}
 	}
 	runIDs, err := m.cfg.Store.DeleteBot(ctx, botID, wakes)
 	if err != nil {
@@ -262,6 +270,46 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 				return fmt.Errorf("remove thread folder: %w", err)
 			}
 		}
+	}
+	return nil
+}
+
+func (m *Manager) deleteSession(t store.Thread) error {
+	if t.Session == "" {
+		return nil
+	}
+	var folder string
+	switch t.SessionProvider {
+	case "claude":
+		folder = "projects"
+	case "codex":
+		folder = "sessions"
+	default:
+		return nil
+	}
+	dir := filepath.Join(m.cfg.DataDir, "providers", t.SessionProvider, folder)
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		match := entry.Name() == t.Session+".jsonl"
+		if t.SessionProvider == "codex" {
+			match = strings.HasPrefix(entry.Name(), "rollout-") &&
+				strings.HasSuffix(entry.Name(), "-"+t.Session+".jsonl")
+		}
+		if match {
+			return os.Remove(path)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("remove %s session files: %w", t.SessionProvider, err)
 	}
 	return nil
 }

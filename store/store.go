@@ -50,6 +50,7 @@ const (
 	StatusWaiting = "waiting" // an approval is open
 	StatusDone    = "done"
 	StatusFailed  = "failed"
+	StatusStopped = "stopped"
 )
 
 // ErrorSignedOut is the error kind of a run that failed because its provider is signed out.
@@ -838,12 +839,8 @@ func (s *Store) SetSession(ctx context.Context, threadID, session, provider stri
 	return found(res, "thread", threadID)
 }
 
-// StartRun stores the user's message and a running run for it, in one transaction.
-func (s *Store) StartRun(ctx context.Context, threadID, text string) (Message, Run, error) {
-	return s.startRun(ctx, threadID, "", text, "", nil)
-}
-
-// StartRunFrom is StartRun for an inbox item, removing it in the same transaction.
+// StartRunFrom stores the message and a running run, removing the inbox item when it has an ID,
+// in one transaction.
 func (s *Store) StartRunFrom(ctx context.Context, it InboxItem) (Message, Run, error) {
 	return s.startRun(ctx, it.ThreadID, it.FromBotID, it.Text, it.ID, it.Images)
 }
@@ -1054,9 +1051,9 @@ func (s *Store) FailUnfinished(
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		var err error
 		ids, err = query(ctx, tx,
-			"UPDATE runs SET status = ?, error = ? WHERE status IN (?, ?) RETURNING id",
+			"UPDATE runs SET status = ?, error = ?, finished_at = ? WHERE status IN (?, ?) RETURNING id",
 			func(r *sql.Rows) (id string, err error) { return id, r.Scan(&id) },
-			StatusFailed, reason, StatusRunning, StatusWaiting)
+			StatusFailed, reason, time.Now().UTC().UnixMicro(), StatusRunning, StatusWaiting)
 		if err != nil {
 			return err
 		}

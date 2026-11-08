@@ -110,7 +110,7 @@ func (a *api) botSummary(
 				b.Activity = preview(t.Reply)
 			case "failed":
 				b.Activity = "Run failed"
-			case "stopped":
+			case store.StatusStopped:
 				b.Activity = "Stopped"
 			}
 		}

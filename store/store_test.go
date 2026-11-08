@@ -93,7 +93,7 @@ func TestStore_FailUnfinished(t *testing.T) {
 			}
 			byStatus := map[string]string{}
 			for _, status := range tt.give {
-				_, r, err := st.StartRun(ctx, th.ID, "hi")
+				_, r, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -109,6 +109,7 @@ func TestStore_FailUnfinished(t *testing.T) {
 				byStatus[status] = r.ID
 			}
 
+			before := time.Now().UTC().Truncate(time.Microsecond)
 			got, err := st.FailUnfinished(ctx, "restart", nil)
 			if err != nil {
 				t.Fatal(err)
@@ -122,10 +123,19 @@ func TestStore_FailUnfinished(t *testing.T) {
 			if !slices.Equal(got, want) {
 				t.Fatalf("ids = %v, want %v", got, want)
 			}
+			if len(want) > 0 {
+				threads, err := st.ThreadRuns(ctx, bot.ID)
+				if err != nil || len(threads) != 1 || !threads[0].Unseen {
+					t.Fatalf("recovered thread = %+v, %v; want New", threads, err)
+				}
+			}
 			for _, id := range want {
 				r, err := st.Run(ctx, id)
 				if err != nil || r.Status != store.StatusFailed || r.Error != "restart" {
 					t.Fatalf("run %s = %+v, %v", id, r, err)
+				}
+				if r.FinishedAt.Before(before) || r.FinishedAt.After(time.Now()) {
+					t.Errorf("finished_at = %v, want recovery time after %v", r.FinishedAt, before)
 				}
 			}
 		})
@@ -248,7 +258,7 @@ func TestStore_MessageTimestamps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, run, err := st.StartRun(ctx, thread.ID, "hello")
+	_, run, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: thread.ID, Text: "hello"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +307,7 @@ func TestStore_MessagePage(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 26 {
-		_, run, err := st.StartRun(ctx, thread.ID, "message")
+		_, run, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: thread.ID, Text: "message"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -436,7 +446,7 @@ func TestStore_HelperRunWake_Finished(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, r, err := st.StartRun(ctx, th.ID, "hi")
+	_, r, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +464,7 @@ func TestStore_HelperRunWake_FailedAtRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := st.StartRun(ctx, th.ID, "hi"); err != nil {
+	if _, _, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.FailUnfinished(ctx, "restart", wakeText); err != nil {
@@ -470,7 +480,7 @@ func TestStore_HelperRunWake_NoBoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, r, err := st.StartRun(ctx, th.ID, "hi")
+	_, r, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,7 +624,7 @@ func TestStore_ThreadRuns_New(t *testing.T) {
 	if status, finished := state(); status != "" || finished {
 		t.Errorf("thread without a run: status %q, finished after opened %v; want \"\", false", status, finished)
 	}
-	_, ru, err := st.StartRun(ctx, th.ID, "hi")
+	_, ru, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -99,7 +99,7 @@ func seedPoll(ctx context.Context, t *testing.T, st *store.Store) {
 			mustExec(t, stmts["thread"], thread, bot.ID, now, now+int64(n))
 			for r := range 2 {
 				id := fmt.Sprintf("r%d-%d", n, r)
-				status := []string{"done", "failed", "stopped"}[n%3]
+				status := []string{store.StatusDone, store.StatusFailed, store.StatusStopped}[n%3]
 				if r == 1 && i == 0 && b%5 == 0 {
 					status = "running"
 				}
