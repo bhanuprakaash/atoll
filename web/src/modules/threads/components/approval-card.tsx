@@ -12,13 +12,17 @@ export function approvalTarget(input: unknown): string {
   return typeof target === 'string' ? target : '';
 }
 
+export function approvalVerb(tool: string) {
+  if (/edit|write|filechange/i.test(tool)) return 'Wants to edit';
+  return /bash|command/i.test(tool) ? 'Wants to run' : `Wants to use ${tool}`;
+}
+
 export function ApprovalCard({ id, tool, input }: { id: string; tool: string; input: unknown }) {
   const [answered, setAnswered] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const answer = useAnswerApproval(id);
   const target = approvalTarget(input);
   const edit = /edit|write|filechange/i.test(tool);
-  const command = /bash|command/i.test(tool);
   const details = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   const changes = Array.isArray(details.changes)
     ? (details.changes as Record<string, unknown>[])
@@ -52,7 +56,7 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
     <div className="flex flex-col gap-2 text-sm">
       <div className="flex flex-wrap items-center gap-3">
         <span className="min-w-60 flex-1 text-ink/80">
-          {edit ? 'Wants to edit' : command ? 'Wants to run' : `Wants to use ${tool}`}{' '}
+          {approvalVerb(tool)}{' '}
           <span className="font-mono text-[0.88em] text-ink [overflow-wrap:anywhere]">
             {target}
           </span>

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { api } from '@/lib/api-client';
 import { BotList } from '@/modules/bots/components/bot-list';
+import { useNotifications } from '@/modules/threads/hooks/use-notifications';
 import { TextField } from '@/components/text-field';
 
 const inDesktopApp = '__TAURI_INTERNALS__' in window;
@@ -18,6 +19,7 @@ function initials(name: string) {
 export function Shell() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const notifications = useNotifications();
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api<{ user_name: string }>('/settings'),
@@ -113,7 +115,7 @@ export function Shell() {
         </NavLink>
       </nav>
       <main className="flex min-w-0 flex-1 flex-col">
-        <Outlet />
+        <Outlet context={notifications} />
       </main>
     </div>
   );
