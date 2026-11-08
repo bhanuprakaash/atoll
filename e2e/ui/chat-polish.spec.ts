@@ -4,12 +4,12 @@ import {
   type Machine,
   newBotAPI,
   openThreadAPI,
-  openThreads,
   prompts,
   sendMessageAPI,
   sidebarRow,
   startAtoll,
   threadTitle,
+  threadTree,
 } from './atoll';
 
 let m: Machine;
@@ -31,7 +31,7 @@ async function send(page: import('@playwright/test').Page, text: string) {
   await page.getByRole('button', { name: 'Send' }).click();
 }
 
-test('the six-word title is in the thread header and Threads panel', async ({ page }) => {
+test('the six-word title is in the thread header and the sidebar tree', async ({ page }) => {
   const bot = await newBotAPI(m, 'Titles');
   const thread = await openThreadAPI(m, bot.id, prompts.keep);
   await waitStatus(thread.id, 'done');
@@ -40,8 +40,7 @@ test('the six-word title is in the thread header and Threads panel', async ({ pa
   await page.goto(m.url);
   await sidebarRow(page, 'Titles').click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
-  const panel = await openThreads(page);
-  await expect(panel.getByRole('listitem')).toContainText(title);
+  await expect(threadTree(page, 'Titles').getByRole('listitem')).toContainText(title);
 });
 
 test('sidebar activity is the reply, the current verb, or the approval prompt', async ({

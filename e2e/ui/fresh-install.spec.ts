@@ -138,7 +138,8 @@ test('fresh install to an MR link without a terminal', async ({ page, context })
   await expect(page.getByText(repo)).toBeVisible();
 
   // A Bot with GitLab.
-  await nav.getByRole('button', { name: 'New Bot' }).click();
+  await nav.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'New Bot' }).click();
   await page.getByRole('textbox', { name: 'Name' }).fill('Fixer');
   await page.getByRole('textbox', { name: 'Persona' }).fill('Fixes bugs and opens MRs.');
   await pickModel(page, page, 'Claude Code');

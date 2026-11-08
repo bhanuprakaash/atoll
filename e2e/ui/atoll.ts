@@ -322,10 +322,9 @@ export async function seenText(page: Page) {
   return page.evaluate(() => (window as unknown as { __seen: string[] }).__seen.join('\n'));
 }
 
-// openThreads opens the Threads panel of the Bot shown.
-export async function openThreads(page: Page) {
-  await page.getByRole('button', { name: /^Threads/ }).click();
-  const panel = page.getByRole('dialog', { name: /^Threads with / });
-  await expect(panel).toBeVisible();
-  return panel;
+// threadTree is the list of a Bot's threads under its row in the sidebar.
+export function threadTree(page: Page, bot: string) {
+  return page
+    .getByRole('navigation', { name: 'Bots' })
+    .getByRole('list', { name: `${bot} threads`, exact: true });
 }
