@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -20,6 +21,14 @@ const Pace = 300 * time.Millisecond
 // Hang blocks until the process is killed, as a stuck provider does.
 func Hang() {
 	select {}
+}
+
+var _placeholder = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// ExpandEnv replaces each ${NAME} in s with getenv(NAME), as claude does in --mcp-config url,
+// headers and env.
+func ExpandEnv(s string, getenv func(string) string) string {
+	return _placeholder.ReplaceAllStringFunc(s, func(m string) string { return getenv(m[2 : len(m)-1]) })
 }
 
 // MCP is a client of one MCP server, as the real CLIs speak it: streamable HTTP, or a local
