@@ -66,8 +66,9 @@ connections, served as Reef's own MCP tools; read tools list Bots, skills, conne
 servers and signed-in models and record no change.
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
-registered repo has (REST answers 400 with the same text, for the model too; a REST edit that keeps
-the model and provider the Bot has skips the model check). Sign-ins stay with the user. Every change shows in the thread with undo.
+registered repo has (REST answers 400 with the same text for repo, delegate and MCP server ids, and
+for a provider that is turned off; REST takes any model, so a Bot on a retired model stays
+editable). Sign-ins stay with the user. Every change shows in the thread with undo.
 A change and its record are written in one transaction, so a failed record leaves nothing changed.
 Other Bots can get the switch later.
 Undo: each change stores the entity before and after; Undo writes `before` back, or removes an entity

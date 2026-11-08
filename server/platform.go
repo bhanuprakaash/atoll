@@ -250,7 +250,7 @@ func (a *api) putBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.ID = r.PathValue("id")
-	msg, err := a.botChoiceProblem(r.Context(), b, prev)
+	msg, err := a.restPicksProblem(r.Context(), b, prev)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -717,6 +717,21 @@ func (a *api) botChoiceProblem(ctx context.Context, b, current store.Bot) (strin
 	}
 	if !slices.Contains(models, b.Model) {
 		return fmt.Sprintf("unknown model %q; models: %s", b.Model, strings.Join(models, ", ")), nil
+	}
+	return "", nil
+}
+
+// restPicksProblem is botChoiceProblem without the model check: REST keeps any model, so a Bot on a
+// retired model stays editable.
+func (a *api) restPicksProblem(ctx context.Context, b, current store.Bot) (string, error) {
+	msg, err := a.unknownPicks(ctx, b)
+	if err != nil || msg != "" || b.Provider == current.Provider {
+		return msg, err
+	}
+	for _, p := range a.cachedProviders(ctx) {
+		if p.Name == b.Provider && !p.Enabled {
+			return p.Name + " is turned off in Settings > Providers", nil
+		}
 	}
 	return "", nil
 }

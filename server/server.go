@@ -222,7 +222,7 @@ func (a *api) createBot(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, msg)
 		return
 	}
-	msg, err := a.botChoiceProblem(r.Context(), b, store.Bot{})
+	msg, err := a.restPicksProblem(r.Context(), b, store.Bot{})
 	if err != nil {
 		a.fail(w, r, err)
 		return
