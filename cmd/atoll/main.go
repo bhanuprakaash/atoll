@@ -165,7 +165,7 @@ func (a adapter) chat(ctx context.Context, args []string, w io.Writer) error {
 		return fmt.Errorf("start %s: %w", a.name, err)
 	}
 	defer func() { _ = s.Interrupt() }()
-	if err := s.Send(ctx, fs.Arg(0)); err != nil {
+	if err := s.Send(ctx, fs.Arg(0), nil); err != nil {
 		return fmt.Errorf("send: %w", err)
 	}
 

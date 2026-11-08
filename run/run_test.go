@@ -46,7 +46,7 @@ func (f *fakeSession) Start(context.Context, provider.Config) error          { r
 func (f *fakeSession) Resume(context.Context, provider.Config, string) error { return nil }
 func (f *fakeSession) Events() <-chan provider.Event                         { return f.events }
 
-func (f *fakeSession) Send(_ context.Context, prompt string) error {
+func (f *fakeSession) Send(_ context.Context, prompt string, _ []provider.Image) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.prompts = append(f.prompts, prompt)
@@ -280,7 +280,7 @@ func TestRun_Finish(t *testing.T) {
 					t.Error(err)
 				}
 			}
-			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello")
+			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -328,7 +328,7 @@ func TestRun_ActivityWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, ru, err := e.m.Send(t.Context(), e.thread.ID, "hello")
+	_, ru, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +362,7 @@ func TestRun_FinishNotSaved(t *testing.T) {
 		_ = e.st.Close()
 		return e.sess, provider.Config{}, nil
 	}
-	_, _, err := e.m.Send(t.Context(), e.thread.ID, "hello")
+	_, _, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestRun_FinishNotSaved(t *testing.T) {
 	if fin.Status != store.StatusFailed || fin.Error != "could not save the run: begin: sql: database is closed" {
 		t.Errorf("run_finished %+v, want failed with the save error", fin)
 	}
-	if _, _, err := e.m.Send(t.Context(), e.thread.ID, "again"); errors.Is(err, ErrBusy) {
+	if _, _, err := e.m.Send(t.Context(), e.thread.ID, "again", nil); errors.Is(err, ErrBusy) {
 		t.Error("thread is still busy after the run finished")
 	}
 }
@@ -389,7 +389,7 @@ func TestRun_Approval(t *testing.T) {
 				answered: make(chan struct{}),
 				release:  make(chan struct{}),
 			})
-			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello")
+			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -401,7 +401,7 @@ func TestRun_Approval(t *testing.T) {
 			if got, _ := e.st.Run(t.Context(), run.ID); got.Status != store.StatusWaiting {
 				t.Errorf("status %q when the approval was published, want waiting", got.Status)
 			}
-			if _, _, err := e.m.Send(t.Context(), e.thread.ID, "again"); !errors.Is(err, ErrBusy) {
+			if _, _, err := e.m.Send(t.Context(), e.thread.ID, "again", nil); !errors.Is(err, ErrBusy) {
 				t.Errorf("Send during a run: %v, want ErrBusy", err)
 			}
 			if err := e.m.Answer(t.Context(), ap.ID, tt.allow); err != nil {
@@ -446,7 +446,7 @@ func TestRun_ApprovalOutlivesRun(t *testing.T) {
 			e := newEnv(t, &fakeSession{script: []provider.Event{
 				{Kind: provider.KindToolCall, ID: "tu1", Name: "Write"},
 			}})
-			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello")
+			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -507,7 +507,7 @@ func TestManager_Subscribers(t *testing.T) {
 
 func TestRun_PrivateFiles(t *testing.T) {
 	e := newEnv(t, &fakeSession{script: []provider.Event{{Kind: provider.KindTurnEnd}}})
-	_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello")
+	_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
