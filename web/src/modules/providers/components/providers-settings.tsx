@@ -99,12 +99,20 @@ const status = (p: Provider) =>
 
 function PathOverride({ provider }: { provider: Provider }) {
   const [path, setPath] = useState(provider.path_override);
+  const [editing, setEditing] = useState(false);
   const update = useUpdateProvider();
   function persist() {
     const next = path.trim();
     if (next !== provider.path_override)
       update.mutate({ name: provider.name, path_override: next });
+    if (next === '') setEditing(false);
   }
+  if (!editing && provider.path_override === '')
+    return (
+      <button type="button" className={outlineButton} onClick={() => setEditing(true)}>
+        Use another executable
+      </button>
+    );
   return (
     <>
       <TextField
@@ -112,7 +120,8 @@ function PathOverride({ provider }: { provider: Provider }) {
         width="min-w-0 flex-1"
         aria-label={`${provider.label} path override`}
         className="font-mono text-[13px]"
-        placeholder="Use another executable"
+        placeholder="/absolute/path/to/executable"
+        autoFocus={editing}
         value={path}
         onChange={(e) => setPath(e.target.value)}
         onBlur={persist}
