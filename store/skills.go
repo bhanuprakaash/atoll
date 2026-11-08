@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -339,8 +340,9 @@ func (s *Store) Change(ctx context.Context, id string) (Change, error) {
 	return rows[0], nil
 }
 
-// UndoChange restores the state before a change and marks it undone.
-func (s *Store) UndoChange(ctx context.Context, id string) (Change, error) {
+// UndoChange restores the state before a change and marks it undone. mcpServers are the MCP
+// server ids a Bot may pick, catalog ones included; a restored Bot keeps only those.
+func (s *Store) UndoChange(ctx context.Context, id string, mcpServers []string) (Change, error) {
 	var c Change
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		rows, err := query(ctx, tx,
@@ -407,6 +409,9 @@ func (s *Store) UndoChange(ctx context.Context, id string) (Change, error) {
 				return fmt.Errorf("decode bot before: %w", err)
 			}
 			b.ID = c.EntityID
+			b.MCPServers = slices.DeleteFunc(b.MCPServers, func(id string) bool {
+				return !slices.Contains(mcpServers, id)
+			})
 			if err := filterBotIDs(ctx, tx, &b); err != nil {
 				return err
 			}
@@ -445,7 +450,6 @@ func filterBotIDs(ctx context.Context, tx *sql.Tx, b *Bot) error {
 	}{
 		{(*[]string)(&b.RepoAccess), "repos"},
 		{&b.Delegates, "bots WHERE removed = 0"},
-		{&b.MCPServers, "mcp_servers"},
 		{&b.Skills, "skills"},
 		{&b.Connections, "connections"},
 	} {

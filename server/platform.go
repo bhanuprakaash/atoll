@@ -19,6 +19,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"atoll/mcpserver"
 	"atoll/provider"
 	"atoll/repo"
 	"atoll/run"
@@ -378,7 +379,16 @@ func (a *api) undoChange(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	_, err = a.st.UndoChange(r.Context(), c.ID)
+	servers, err := mcpserver.List(r.Context(), a.st)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	ids := make([]string, len(servers))
+	for i, s := range servers {
+		ids[i] = s.ID
+	}
+	_, err = a.st.UndoChange(r.Context(), c.ID, ids)
 	if err != nil {
 		a.fail(w, r, err)
 		return

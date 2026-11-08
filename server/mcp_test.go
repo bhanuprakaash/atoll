@@ -185,7 +185,7 @@ func TestPlatform_EditBotUndo(t *testing.T) {
 	if err != nil || len(changes) != 1 {
 		t.Fatalf("changes = %v, %v", changes, err)
 	}
-	if _, err := st.UndoChange(ctx, changes[0].ID); err != nil {
+	if _, err := st.UndoChange(ctx, changes[0].ID, []string{"context7"}); err != nil {
 		t.Fatal(err)
 	}
 	got, err = st.Bot(ctx, target.ID)

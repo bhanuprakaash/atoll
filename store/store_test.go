@@ -147,7 +147,7 @@ func TestStore_UndoChange(t *testing.T) {
 		name, entity, action, setup, before, want string
 	}{
 		{"bot create", store.EntityBot, store.ActionCreate, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'p', 'claude')`, `null`, `missing`},
-		{"bot edit", store.EntityBot, store.ActionEdit, `INSERT INTO repos VALUES ('repo', 'r', '/repo'); INSERT INTO connections VALUES ('conn', 'gitlab', 'https://gitlab.com', 'connected'); INSERT INTO skills (id, name, content) VALUES ('skill', 's', 'text'); INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"can_manage_platform":true}`, `{"id":"item","name":"old","persona":"person","provider":"claude","mode":"auto","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"mcp_servers":[],"delegates":[],"can_manage_platform":true}`},
+		{"bot edit", store.EntityBot, store.ActionEdit, `INSERT INTO repos VALUES ('repo', 'r', '/repo'); INSERT INTO connections VALUES ('conn', 'gitlab', 'https://gitlab.com', 'connected'); INSERT INTO skills (id, name, content) VALUES ('skill', 's', 'text'); INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"mcp_servers":["context7"],"can_manage_platform":true}`, `{"id":"item","name":"old","persona":"person","provider":"claude","mode":"auto","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"mcp_servers":["context7"],"delegates":[],"can_manage_platform":true}`},
 		{"bot edit drops deleted ids", store.EntityBot, store.ActionEdit, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex'); INSERT INTO bots (id, name, persona, provider, removed) VALUES ('gone', 'gone', '', 'claude', 1)`, `{"name":"old","provider":"claude","repo_access":["gone"],"connections":["gone"],"skills":["gone"],"mcp_servers":["gone"],"delegates":["gone"]}`, `{"id":"item","name":"old","persona":"","provider":"claude","mode":"auto","repo_access":[],"connections":[],"skills":[],"mcp_servers":[],"delegates":[],"can_manage_platform":false}`},
 		{"bot edit keeps all repo access", store.EntityBot, store.ActionEdit, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"name":"old","provider":"claude","repo_access":"all"}`, `{"id":"item","name":"old","persona":"","provider":"claude","mode":"auto","repo_access":"all","connections":[],"skills":[],"mcp_servers":[],"delegates":[],"can_manage_platform":false}`},
 		{"skill create", store.EntitySkill, store.ActionCreate, `INSERT INTO skills (id, name, content) VALUES ('item', 'new', 'text'); INSERT INTO skill_files VALUES ('item', 'a.sh', 'x', 1)`, `null`, `missing`},
@@ -170,7 +170,7 @@ func TestStore_UndoChange(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			undone, err := st.UndoChange(ctx, c.ID)
+			undone, err := st.UndoChange(ctx, c.ID, []string{"context7"})
 			if tt.want == "in use" {
 				if !errors.Is(err, store.ErrInUse) {
 					t.Fatalf("undo = %v, want ErrInUse", err)
@@ -178,7 +178,7 @@ func TestStore_UndoChange(t *testing.T) {
 				if _, err := st.Repo(ctx, "item"); err != nil {
 					t.Fatalf("repo after refused undo: %v", err)
 				}
-				if _, err := st.UndoChange(ctx, c.ID); !errors.Is(err, store.ErrInUse) {
+				if _, err := st.UndoChange(ctx, c.ID, []string{"context7"}); !errors.Is(err, store.ErrInUse) {
 					t.Fatalf("second undo = %v, want ErrInUse", err)
 				}
 				return
@@ -208,7 +208,7 @@ func TestStore_UndoChange(t *testing.T) {
 					t.Fatalf("read = %s, %v; want %s", data, err, tt.want)
 				}
 			}
-			if _, err := st.UndoChange(ctx, c.ID); !errors.Is(err, store.ErrUndone) {
+			if _, err := st.UndoChange(ctx, c.ID, []string{"context7"}); !errors.Is(err, store.ErrUndone) {
 				t.Fatalf("second undo = %v", err)
 			}
 		})
@@ -234,7 +234,7 @@ func TestStore_UndoCreateBotDropsDelegate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.UndoChange(ctx, c.ID); err != nil {
+	if _, err := st.UndoChange(ctx, c.ID, []string{"context7"}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := st.Bot(ctx, boss.ID)
