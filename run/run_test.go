@@ -627,12 +627,12 @@ func TestManager_Subscribers(t *testing.T) {
 		do         func(*testing.T, *env)
 		wantEvents int
 	}{
-		{"a full buffer closes the stream", func(t *testing.T, e *env) {
+		{"a full buffer closes the stream", func(_ *testing.T, e *env) {
 			for range _subscriberBuffer + 1 {
 				e.m.publish(&active{threadID: e.thread.ID}, EventText, Text{})
 			}
 		}, _subscriberBuffer},
-		{"Close closes the stream", func(t *testing.T, e *env) { _ = e.m.Close() }, 0},
+		{"Close closes the stream", func(_ *testing.T, e *env) { _ = e.m.Close() }, 0},
 		{"publish during replay is delivered once", func(t *testing.T, e *env) {
 			file, err := e.m.openLog("replay")
 			if err != nil {
