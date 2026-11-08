@@ -4,8 +4,8 @@ import { useMemory, useRetireMemory, type MemoryItem } from '@/modules/memory/ap
 function MemoryRow({ item }: { item: MemoryItem }) {
   const retire = useRetireMemory(item.id);
   return (
-    <li className="flex items-center gap-2 text-sm">
-      <span className="flex-1">{item.body}</span>
+    <li className="flex items-start gap-2 text-sm">
+      <span className="line-clamp-2 min-w-0 flex-1">{item.body}</span>
       {item.status === 'retired' ? (
         <span className="text-muted">Retired</span>
       ) : (
