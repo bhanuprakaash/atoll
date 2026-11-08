@@ -104,8 +104,8 @@ func (m *Manager) StartWork(
 	if err != nil {
 		return "", "", repo.Base{}, err
 	}
-	m.workMu.Lock()
-	defer m.workMu.Unlock()
+	a.workMu.Lock()
+	defer a.workMu.Unlock()
 	t, err := m.cfg.Store.Thread(ctx, a.threadID)
 	if err != nil {
 		return "", "", repo.Base{}, fmt.Errorf("load thread: %w", err)

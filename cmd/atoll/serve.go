@@ -38,6 +38,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithCancel(ctx)
 		defer cancel()
+		// The stdin read cannot be unblocked portably, so this goroutine cannot be joined.
 		go func() {
 			_, _ = io.Copy(io.Discard, os.Stdin)
 			cancel()

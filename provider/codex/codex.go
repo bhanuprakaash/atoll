@@ -189,7 +189,7 @@ func (s *Session) Answer(id string, allow bool) error {
 	delete(s.asks, id)
 	s.askMu.Unlock()
 	if !ok {
-		return fmt.Errorf("no open approval request %s", id)
+		return fmt.Errorf("no open approval request %s: %w", id, provider.ErrApprovalEnded)
 	}
 	reply, answer := "decision", "decline"
 	if a.elicitation {

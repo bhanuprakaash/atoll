@@ -56,6 +56,9 @@ const (
 // ErrSignedOut is the error of a run that failed because the provider refused its sign-in.
 var ErrSignedOut = errors.New("provider is signed out")
 
+// ErrApprovalEnded means the provider resolved an approval before Answer reached it.
+var ErrApprovalEnded = errors.New("approval request has ended")
+
 // Session drives one provider process holding one session. Call Start or Resume once; Send one
 // prompt per turn; read Events until it closes. Interrupt is the only way to stop it.
 type Session interface {
@@ -144,7 +147,8 @@ type Event struct {
 // session state (ANTHROPIC_*, CLAUDE*, OPENAI_*, CODEX_*) or the user's own GitLab and GitHub
 // tokens (GITLAB_TOKEN, GITLAB_ACCESS_TOKEN, GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN,
 // GITHUB_ENTERPRISE_TOKEN: the CLIs would prefer them to a Bot's own login), the settings that
-// carry a login (OAUTH_TOKEN, GITLAB_HOST, GIT_CONFIG_PARAMETERS, SSH_AUTH_SOCK), followed by kv.
+// carry a login (OAUTH_TOKEN, GITLAB_HOST, GIT_CONFIG_PARAMETERS, SSH_AUTH_SOCK), and the local
+// API credential (ATOLL_TOKEN), followed by kv.
 func Env(kv ...string) []string {
 	var env []string
 	for _, e := range os.Environ() {
@@ -159,5 +163,5 @@ func Env(kv ...string) []string {
 
 var _loginTokens = []string{
 	"GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
-	"OAUTH_TOKEN", "GITLAB_HOST", "GIT_CONFIG_PARAMETERS", "SSH_AUTH_SOCK",
+	"OAUTH_TOKEN", "GITLAB_HOST", "GIT_CONFIG_PARAMETERS", "SSH_AUTH_SOCK", "ATOLL_TOKEN",
 }

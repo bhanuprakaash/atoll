@@ -119,7 +119,6 @@ type (
 		// mu; delegateMu is taken under inboxMu, never the reverse.
 		inboxMu    sync.Mutex
 		delegateMu sync.Mutex
-		workMu     sync.Mutex // one start_work at a time, so a thread gets one worktree
 
 		mu        sync.Mutex
 		runs      map[string]*active                 // by thread id
@@ -137,6 +136,8 @@ type (
 
 	// active is a run in progress. The Manager's mu guards log and open.
 	active struct {
+		workMu   sync.Mutex
+		statusMu sync.Mutex // orders the open count with the run status it implies
 		threadID string
 		ctx      context.Context
 		cancel   context.CancelFunc
@@ -840,7 +841,8 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 							err = fmt.Errorf("answer approval: %w", err)
 						}
 					}
-					if err != nil && !errors.Is(context.Cause(ctx), errRequestEnded) {
+					if err != nil && !errors.Is(err, provider.ErrApprovalEnded) &&
+						!errors.Is(context.Cause(ctx), errRequestEnded) {
 						select {
 						case failed <- err:
 						default:
@@ -871,12 +873,15 @@ func (m *Manager) approve(
 	id := randHex(8)
 	answer := make(chan bool, 1) // Answer must not wait for the run to read
 	ap := Approval{RunID: a.run.ID, ID: id, Tool: tool, Input: input}
+	a.statusMu.Lock()
 	m.mu.Lock()
 	m.approvals[id] = open{approval: ap, answer: answer}
 	a.open++
 	m.mu.Unlock()
+	err := m.cfg.Store.SetStatus(ctx, a.run.ID, store.StatusWaiting)
+	a.statusMu.Unlock()
 	defer m.resume(ctx, a, id)
-	if err := m.cfg.Store.SetStatus(ctx, a.run.ID, store.StatusWaiting); err != nil {
+	if err != nil {
 		return false, fmt.Errorf("approval %s: %w", id, err)
 	}
 	m.publish(a, EventApproval, ap)
@@ -892,16 +897,18 @@ func (m *Manager) approve(
 
 // resume closes approval id and sets the run back to running once none is open.
 func (m *Manager) resume(ctx context.Context, a *active, id string) {
+	a.statusMu.Lock()
 	m.mu.Lock()
 	delete(m.approvals, id)
 	a.open--
 	idle := a.open == 0
 	m.mu.Unlock()
-	m.publish(a, EventApprovalEnd, ApprovalClosed{RunID: a.run.ID, ID: id})
-	if !idle {
-		return
+	var err error
+	if idle {
+		err = m.cfg.Store.SetStatus(context.WithoutCancel(ctx), a.run.ID, store.StatusRunning)
 	}
-	err := m.cfg.Store.SetStatus(context.WithoutCancel(ctx), a.run.ID, store.StatusRunning)
+	a.statusMu.Unlock()
+	m.publish(a, EventApprovalEnd, ApprovalClosed{RunID: a.run.ID, ID: id})
 	if err != nil {
 		m.cfg.Log.Warn("set status running", "run_id", a.run.ID, "error", err)
 	}

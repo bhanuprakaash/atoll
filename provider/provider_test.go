@@ -19,6 +19,7 @@ func TestEnv(t *testing.T) {
 		{"CLAUDE_CONFIG_DIR", "d", false},
 		{"OPENAI_API_KEY", "e", false},
 		{"CODEX_SANDBOX", "g", false},
+		{"ATOLL_TOKEN", "local-api-secret", false},
 		{"GITLAB_TOKEN", "t", false},
 		{"GH_TOKEN", "t", false},
 		{"GITHUB_TOKEN", "t", false},

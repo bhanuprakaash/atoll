@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -354,8 +355,10 @@ func TestSession_requestResolved(t *testing.T) {
 			if ev.ID != tt.want || (tt.want != "" && ev.Kind != provider.KindApprovalEnd) {
 				t.Errorf("event %+v, want KindApprovalEnd with ID %q", ev, tt.want)
 			}
-			if tt.want != "" && s.Answer(tt.want, true) == nil {
-				t.Error("an answer to a resolved request was accepted")
+			if tt.want != "" {
+				if err := s.Answer(tt.want, true); !errors.Is(err, provider.ErrApprovalEnded) {
+					t.Errorf("Answer = %v, want ErrApprovalEnded", err)
+				}
 			}
 		})
 	}

@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"maps"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"atoll/memory"
 	"atoll/provider"
 	"atoll/store"
 )
@@ -117,6 +119,11 @@ func (e *repoEnv) run(t *testing.T, fn func(token string)) *fakeSession {
 
 func TestRun_RepoAccessRevoked(t *testing.T) {
 	e := newRepoEnv(t)
+	mem, err := memory.Open(e.st.DB(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.m.cfg.Memory = mem
 	var worktree string
 	e.run(t, func(token string) {
 		var err error
@@ -144,6 +151,39 @@ func TestRun_RepoAccessRevoked(t *testing.T) {
 			t.Error(err)
 		}
 		shelf = sh.RepoID
+		tests := []struct {
+			name    string
+			scope   string
+			wantErr string
+		}{
+			{name: "repo save refused", scope: "repo", wantErr: "invalid: thread has no accessible repo"},
+			{name: "bot save allowed", scope: "bot"},
+			{name: "user save allowed", scope: "user"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				item, _, err := e.m.Remember(t.Context(), token, "fact", "Use Go.", "", tt.scope, nil)
+				if tt.wantErr != "" {
+					if !errors.Is(err, memory.ErrInvalid) || err.Error() != tt.wantErr {
+						t.Errorf("Remember = %v, want %q", err, tt.wantErr)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if item.Body != "Use Go." || item.Scope != tt.scope {
+					t.Errorf("Remember = %+v, want Use Go. in scope %q", item, tt.scope)
+				}
+			})
+		}
+		counts, err := mem.Count(t.Context(), memory.Shelf{RepoID: e.repo.ID})
+		if err != nil {
+			t.Error(err)
+		}
+		if counts.Repo != 0 {
+			t.Errorf("repo memory count = %d, want 0", counts.Repo)
+		}
 	})
 	wantCwd := filepath.Join(e.data, "threads", e.thread.ID+"-noaccess")
 	if got := second.cfgs[0].Cwd; got != wantCwd {

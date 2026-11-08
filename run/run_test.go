@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -16,6 +17,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"atoll/provider"
@@ -28,12 +30,13 @@ import (
 // answer it gets is recorded and ends the turn; when answered is set, the turn ends only after
 // release is closed.
 type fakeSession struct {
-	script   []provider.Event
-	nudge    []provider.Event
-	onSend   func(n int)
-	end      bool
-	answered chan struct{}
-	release  chan struct{}
+	script    []provider.Event
+	nudge     []provider.Event
+	onSend    func(n int)
+	end       bool
+	answered  chan struct{}
+	release   chan struct{}
+	answerErr error
 
 	mu          sync.Mutex
 	events      chan provider.Event
@@ -87,6 +90,9 @@ func (f *fakeSession) Answer(_ string, allow bool) error {
 	if f.answered != nil {
 		f.answered <- struct{}{}
 		<-f.release
+	}
+	if f.answerErr != nil {
+		return f.answerErr
 	}
 	f.events <- provider.Event{Kind: provider.KindTurnEnd}
 	return nil
@@ -538,6 +544,79 @@ func TestRun_Approval(t *testing.T) {
 			}
 		})
 	}
+	t.Run("first closes as second opens", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			e := newEnv(t, &fakeSession{script: []provider.Event{
+				{Kind: provider.KindToolCall, ID: "tu1", Name: "Write"},
+				{Kind: provider.KindToolCall, ID: "tu2", Name: "Bash"},
+			}})
+			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.next(t, EventToolCall)
+			e.next(t, EventToolCall)
+			e.m.mu.Lock()
+			token := slices.Collect(maps.Keys(e.m.tokens))[0]
+			e.m.mu.Unlock()
+			ctx, cancel := context.WithCancel(t.Context())
+			var asks sync.WaitGroup
+			defer func() {
+				cancel()
+				asks.Wait()
+			}()
+			for range 100 {
+				first := make(chan error, 1)
+				asks.Go(func() {
+					_, err := e.m.Ask(ctx, token, "tu1", "Write", nil)
+					first <- err
+				})
+				ap := nextAs[Approval](t, e, EventApproval)
+				second := make(chan error, 1)
+				asks.Go(func() {
+					_, err := e.m.Ask(ctx, token, "tu2", "Bash", nil)
+					second <- err
+				})
+				if err := e.m.Answer(ctx, ap.ID, true); err != nil {
+					t.Fatal(err)
+				}
+				var next Approval
+				for range 2 {
+					ev := <-e.events
+					if ev.Type == EventApproval {
+						var ok bool
+						next, ok = ev.Data.(Approval)
+						if !ok {
+							t.Fatalf("approval data = %T, want Approval", ev.Data)
+						}
+					} else if ev.Type != EventApprovalEnd {
+						t.Fatalf("event = %q, want approval or approval_closed", ev.Type)
+					}
+				}
+				if err := <-first; err != nil {
+					t.Fatal(err)
+				}
+				synctest.Wait()
+				if got, err := e.st.Run(ctx, run.ID); err != nil || got.Status != "waiting" {
+					t.Fatalf("run = %+v, %v; want waiting while second approval is open", got, err)
+				}
+				if err := e.m.Answer(ctx, next.ID, true); err != nil {
+					t.Fatal(err)
+				}
+				if err := <-second; err != nil {
+					t.Fatal(err)
+				}
+				e.next(t, EventApprovalEnd)
+				if got, err := e.st.Run(ctx, run.ID); err != nil || got.Status != "running" {
+					t.Fatalf("run = %+v, %v; want running after both approvals close", got, err)
+				}
+			}
+			e.sess.events <- provider.Event{Kind: provider.KindTurnEnd}
+			if fin := nextAs[Finished](t, e, EventRunFinished); fin.Status != "done" {
+				t.Errorf("run_finished = %+v, want done", fin)
+			}
+		})
+	})
 }
 
 func TestRun_ApprovalEndedByProvider(t *testing.T) {
@@ -566,6 +645,31 @@ func TestRun_ApprovalEndedByProvider(t *testing.T) {
 	if len(e.sess.answers) != 0 {
 		t.Errorf("provider answers %v, want none", e.sess.answers)
 	}
+	t.Run("provider resolves before answer", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			e := newEnv(t, &fakeSession{
+				script:    []provider.Event{{Kind: provider.KindApproval, ID: "p1", Name: "Write"}},
+				answerErr: fmt.Errorf("request p1: %w", provider.ErrApprovalEnded),
+			})
+			_, run, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ap := nextAs[Approval](t, e, EventApproval)
+			if err := e.m.Answer(t.Context(), ap.ID, true); err != nil {
+				t.Fatal(err)
+			}
+			synctest.Wait()
+			if got, err := e.st.Run(t.Context(), run.ID); err != nil || got.Status != "running" {
+				t.Fatalf("run = %+v, %v; want running", got, err)
+			}
+			e.sess.events <- provider.Event{Kind: provider.KindApprovalEnd, ID: "p1"}
+			e.sess.events <- provider.Event{Kind: provider.KindTurnEnd}
+			if fin := nextAs[Finished](t, e, EventRunFinished); fin.Status != "done" || fin.Error != "" {
+				t.Errorf("run_finished = %+v, want done without an error", fin)
+			}
+		})
+	})
 }
 
 func TestRun_ApprovalOutlivesRun(t *testing.T) {
