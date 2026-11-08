@@ -199,13 +199,13 @@ test("a thread shows the pull request a Bot opened with gh: link and number", as
   await page.getByRole("button", { name: "Send" }).click();
 
   const log = page.getByRole("log", { name: "Messages" });
-  const pr = log.getByRole("link", { name: /#1\b/ });
+  const context = page.getByRole("group", { name: "Thread context" });
+  const pr = context.getByRole("link", { name: "#1", exact: true });
   await expect(pr).toHaveAttribute("href", `${githubURL}/octo/hello/pull/1`, {
     timeout: 30_000,
   });
-  await expect(pr).toContainText(prTitle);
-  await expect(pr).toContainText("Open");
-  const context = page.getByRole("group", { name: "Thread context" });
+  await expect(pr).toHaveAttribute("title", prTitle);
+  await expect(log.getByRole("link", { name: /#1\b/ })).toHaveCount(0);
   await expect(context).toContainText("scratch-pr");
   await expect(context).toContainText("fix/seeded-bug");
   await expect(context).toContainText("#1");

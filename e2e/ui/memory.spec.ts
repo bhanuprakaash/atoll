@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { pickModel } from "./atoll";
 
-test("a memory save shows its source and Retire keeps it in history", async ({
+test("a memory save shows its source, and Retire takes it out of the thread", async ({
   page,
 }) => {
   const name = `Memory Ada ${Date.now()}`;
@@ -42,10 +42,6 @@ test("a memory save shows its source and Retire keeps it in history", async ({
   );
   expect(item?.status).toBe("accepted");
   await saved.getByRole("button", { name: "Retire", exact: true }).click();
-  await expect(saved.getByText("Retired", { exact: true })).toBeVisible();
-  await expect(
-    saved.getByRole("button", { name: "Retire", exact: true }),
-  ).toHaveCount(0);
   await expect
     .poll(async () => {
       const response = await page.request.get("/api/memory");
@@ -55,5 +51,7 @@ test("a memory save shows its source and Retire keeps it in history", async ({
       )?.status;
     })
     .toBe("retired");
-  await expect(saved.getByText(item.body, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("log", { name: "Messages" }).getByText(item.body, { exact: true }),
+  ).toHaveCount(0);
 });

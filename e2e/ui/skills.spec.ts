@@ -22,7 +22,7 @@ test("Chief creates a skill and Bot in chat, and Undo removes the Bot", async ({
   const change = page.getByRole("region", { name: "Platform change" }).filter({
     has: page.getByText("Lagoon", { exact: true }),
   });
-  await expect(change.getByText("Chief", { exact: true })).toBeVisible();
+  await expect(change.getByText("Chief", { exact: true })).toHaveCount(0);
   await expect(
     change.getByRole("button", { name: "Undo", exact: true }),
   ).toBeVisible();

@@ -147,6 +147,12 @@ test('a helper approval shows under its line, Allow works there, and the report 
   await expect(
     log.getByRole('article', { name: 'You' }).filter({ hasText: reportReply }),
   ).toHaveCount(0);
+  await expect(fromTester).not.toContainText('reported back from thread');
+  await expect(fromTester).not.toContainText('Done:');
+  await expect(log.getByRole('link', { name: 'Open thread' })).toHaveAttribute(
+    'href',
+    `/bots/${helpers.Tester.id}/threads/${threads.Tester}`,
+  );
   await expect(header.getByLabel('Tester: needs you', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Threads/ })).toHaveAccessibleName('Threads');
 });
@@ -168,6 +174,13 @@ test('the helper thread is tagged from Poteto and read-only; Allow there leaves 
   await expect(item).toHaveCount(1);
   await item.click();
   await expect(helperPage).toHaveURL(new RegExp(`/threads/${threads.Tester}$`));
+  const helperLog = helperPage.getByRole('log', { name: 'Messages' });
+  await expect(helperLog.getByRole('article', { name: 'Poteto' })).toContainText(reportPrompt);
+  await expect(helperLog.getByRole('article', { name: 'You' })).toHaveCount(0);
+  await helperPage.getByRole('button', { name: /^Threads/ }).click();
+  await expect(panel.getByRole('region', { name: 'This thread' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: /^Close( thread)?$/ })).toHaveCount(0);
+  await helperPage.getByRole('button', { name: /^Threads/ }).click();
 
   await expect(helperPage.getByRole('textbox', { name: /^Message/ })).toHaveCount(0);
   await expect(

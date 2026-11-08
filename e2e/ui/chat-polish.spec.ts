@@ -64,7 +64,7 @@ test('sidebar activity is the reply, the current verb, or the approval prompt', 
   await expect(sidebarRow(page, 'Approval activity')).toContainText('Needs you: Write hello.txt');
 });
 
-test('message times show today as H:MM in muted 12px text', async ({ page }) => {
+test('message times use the locale clock in muted 12px text', async ({ page }) => {
   const bot = await newBotAPI(m, 'Times');
   await page.goto(m.url);
   await sidebarRow(page, 'Times').click();
@@ -76,8 +76,7 @@ test('message times show today as H:MM in muted 12px text', async ({ page }) => 
   const want = await page.evaluate(
     (stamps: string[]) =>
       stamps.map((s) => {
-        const d = new Date(s);
-        return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+        return new Date(s).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
       }),
     messages.map((msg: { created_at: string }) => msg.created_at),
   );
@@ -85,7 +84,7 @@ test('message times show today as H:MM in muted 12px text', async ({ page }) => 
   await expect(times.first()).toHaveCSS('font-size', '12px');
   await expect(times.first()).toHaveCSS(
     'color',
-    await page.getByText(/^Worked /).evaluate((el) => getComputedStyle(el).color),
+    await page.getByText(/ · Worked /).evaluate((el) => getComputedStyle(el).color),
   );
 });
 
