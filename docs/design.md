@@ -365,7 +365,8 @@ Undo of a repo registration is refused while a thread uses the repo.
 - Skills: one library in standard `SKILL.md` folders, created in the app or imported; each Bot picks
   its skills. A skill is `SKILL.md` (`skills.content`) plus its other text files (`skill_files`:
   relative path, content, executable), and keeps the folder it was imported from. Paths are
-  relative, clean and inside the folder; content is UTF-8 text. Binaries are not stored. `PUT
+  relative, clean and inside the folder; content is UTF-8 text. Imports skip symlinks and require
+  SKILL.md to be a regular file. Binaries are not stored. `PUT
   /api/skills/{id}` with `files` replaces the whole set in one transaction; without `files` it keeps
   them. Each run gets read-only copies of its Bot's skills (scripts 0555, the rest 0444) in its own folder under the provider's Atoll folder
   (`runs/<run id>`), removed when the run ends: Claude through `--add-dir` (copies in

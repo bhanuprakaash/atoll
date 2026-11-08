@@ -125,7 +125,15 @@ func Check(files []store.SkillFile) error {
 // other text file, skips binaries and .git, and makes ~/.claude/skills/<folder>/ in SKILL.md
 // relative to the skill. Name is SKILL.md's frontmatter name, else the folder name.
 func Read(dir string) (Import, error) {
-	data, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	skillPath := filepath.Join(dir, "SKILL.md")
+	info, err := os.Lstat(skillPath)
+	if err != nil {
+		return Import{}, fmt.Errorf("stat SKILL.md: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return Import{}, errors.New("SKILL.md is not a regular file")
+	}
+	data, err := os.ReadFile(skillPath)
 	if err != nil {
 		return Import{}, fmt.Errorf("read SKILL.md: %w", err)
 	}
@@ -164,7 +172,7 @@ func Read(dir string) (Import, error) {
 		case d.IsDir() || rel == "SKILL.md":
 			return nil
 		}
-		info, err := os.Stat(file)
+		info, err := os.Lstat(file)
 		if err != nil {
 			return err
 		}
