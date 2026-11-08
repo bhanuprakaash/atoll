@@ -13,12 +13,14 @@ JSON is snake_case, IDs are strings, and replies may include fields not listed h
 | `GET /api/attachments/{id}`           | none                             | `200` the exact bytes, `Content-Type` the sent mime; `404` when unknown |
 | `GET /api/threads/{id}/file?path=<p>` | none                             | `200` the image file, `Content-Type` by extension; `404` otherwise      |
 
-`data` is base64. Images with empty text are accepted; empty text and no images is `400`.
+`data` is base64. Images with empty text are accepted; on `POST /api/threads/{id}/messages`,
+empty text and no images is `400`. `POST /api/bots/{id}/threads` with neither still starts an
+empty thread, as before.
 
 ## Limits
 
 Allowed mimes: `image/png`, `image/jpeg`, `image/gif`, `image/webp`. Each image is at most 5 MB
-decoded; a message has at most 10. Any breach is `400` and stores nothing: no message, no run.
+(5 MiB, 5,242,880 bytes) decoded; a message has at most 10. Any breach is `400` and stores nothing: no message, no run.
 
 ## Storage
 
@@ -35,9 +37,10 @@ restart. Deleting the Bot deletes its attachments: `GET /api/attachments/{id}` b
 ## Thread files
 
 `GET /api/threads/{id}/file?path=<p>` serves an image file (extension `png`, `jpg`, `jpeg`, `gif`
-or `webp`) inside the thread's worktree, with its image `Content-Type`. A relative `p` resolves
-against the worktree. A path outside the worktree (`../`, an absolute path, a symlink out), a
-non-image file or a missing file is `404`.
+or `webp`) inside the thread's work folder, with its image `Content-Type`. The work folder is the
+folder the thread's runs work in: its worktree when it has one, otherwise its own checkout. A
+relative `p` resolves against the work folder. A path outside it (`../`, an absolute path, a
+symlink out), a non-image file or a missing file is `404`.
 
 ## UI contract
 
@@ -49,7 +52,7 @@ non-image file or a missing file is `404`.
   after reload.
 - Clicking one opens a `role="dialog"` named `Image` with the full-size img. Escape closes it; a
   click on the backdrop closes it.
-- A reply containing `![](<relative path in the worktree>)` renders an img whose src loads
+- A reply containing `![](<relative path in the work folder>)` renders an img whose src loads
   (`naturalWidth > 0`) and that opens the same dialog.
 
 ## Fixtures

@@ -185,7 +185,7 @@ test("a sent image shows in the message, survives reload and opens full size", a
   await expect(dialog).toHaveCount(0);
 });
 
-test("an image in a reply loads from the worktree and opens full size", async ({
+test("an image in a reply loads from the work folder and opens full size", async ({
   page,
 }) => {
   const bot = await newBotAPI(m, "Shots", "claude", { repo_access: [repo.id] });
