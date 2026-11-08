@@ -638,18 +638,26 @@ Voice
 - Sidebar: a search field on top filters Bots by name, `+` beside it; no logo (the user found it
   redundant). Mockups: the "Reef thread tracking" canvas
   (https://claude.ai/artifact/McPffSMXRCir3g17QQJTGQ).
-  One row per Bot (creature, name, latest activity, time): Chief first, then pinned Bots in the order
-  pinned, then the user's groups in their order, then Ungrouped. Hovering a row shows a pin button
-  and `+` (New thread); Bot settings has Pin to sidebar; Chief cannot be pinned. The activity
-  line is the live verb while a run works ("Running make build"), "Needs you: ..." while an approval waits, otherwise the first line of the latest reply, at most
-  60 characters cut at a word boundary with "…" when cut. `+` at the top opens New Bot and New
+  One row per Bot (36 px creature, name, time; 9 px 10 px padding, 4 px between rows): Chief
+  first, then pinned Bots in the order pinned, then the user's groups in their order, then Ungrouped. Hovering a row shows a pin button
+  and `+` (New thread); Bot settings has Pin to sidebar; Chief cannot be pinned. A second
+  line shows only while a run works (the live verb, "Running make build", with three wave dots) or
+  while an approval waits ("Needs you: ..." in the same colour as a thread's "Needs you"); an
+  idle, asleep or failed Bot is one line. *Two lines for every Bot made the list twice as tall as
+  Claude's; the user wanted a calm list.* `+` at the top opens New Bot and New
   group; the bottom user row opens Settings. No group chats. A thread's activity time moves when a run
   starts, an approval opens or closes, and a run ends, not on every event. *The sidebar polls
   every 2 s; a write per text delta would cost more than the time is worth.* Clicking a Bot opens
   its latest thread.
+- Sidebar width: 340px by default, dragged on its right edge between 260px and 480px; a
+  double-click on the edge resets it to 340px; Left and Right arrows on the focused edge move it
+  16px. The width is kept in the web view's `localStorage` (`atoll.sidebarWidth`) and clamped when
+  read. The Bot list's scrollbar is thin and has its own lane in the sidebar's right padding, so it
+  never draws over a row. *The user wanted room for longer names and thread titles, and the
+  scrollbar cut through the rows.*
 - Thread tree: under each Bot, at most 3 thread rows (32 px, no gap) hang from one thin rail under
-  the creature's centre. The rail starts at the bottom of the Bot row and ends in a rounded hook at
-  the middle of the last row, the overflow line included; it never touches a row. A Bot with
+  the creature's centre (28 px from the row's left edge; rows start 14 px right of it, at 42 px).
+  The rail starts at the bottom of the Bot row and ends in a rounded hook at the middle of the last row, the overflow line included; it never touches a row. A Bot with
   nothing to show is its plain row. A row is the title and one marker at its right end: "Needs
   you" and a red dot; a blue dot and a bold title for New; three wave dots while running; a pin
   when pinned and nothing else applies (a pinned thread that needs you, is New or runs shows that
@@ -677,7 +685,9 @@ Voice
   up, Move down, Delete group); deleting moves its Bots to Ungrouped. Name, order and fold state
   are stored (`/api/groups`). A folded group shows a red dot only when a Bot in it needs the user;
   no counts.
-- Bot header: a centred island with no border; messages fade out as they scroll up to it. At rest
+- Bot header: a solid band in the main background, 72 px tall, with a 24 px fade below it; the
+  centred island sits on it. Messages scroll under the band and fade out; no text shows above its
+  bottom edge. At rest
   the pill holds the creature, the Bot name, the thread title (cut with "…") and the open thread's
   run state: three wave dots (text "Thinking") while its run works, "Needs you" while an approval
   waits, "Run failed" after a failed run, nothing otherwise. It has no thread list, search, New
@@ -716,16 +726,26 @@ Voice
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `·
   Stopped by you after 4s`). Inside the run, above the footer: Chief's changes, then saved memory,
   then a Blocked line (from `finish_run`'s `blocked`) whose dot hangs in the margin so its text
-  starts at the reply's edge. Spacing: 18 px between messages, 8 px between a message's parts, 2 px
-  between footer lines.
-- Chief's changes: new Bots, one or several, show as one compact card the full reply width:
-  creature, name, provider · model · skills · repos, Open and Undo per row, Undo all for two or
-  more. An edit names the fields (`Edited Poteto · persona`); short values show inline (`model
-  sonnet → opus`), a long one opens below as Before / After behind Show change. Two or more other
-  changes of one kind show as one line ("Created 5 skills teach, tdd, …") with Undo all. The Bot
-  that made a change is named only when it is not the thread's own Bot.
-- A saved memory shows two lines of its text, then its kind, why and source as plain muted text,
-  with Details (scope, what it replaced) and Retire. A retired item leaves the thread.
+  starts at the reply's edge. Spacing: 18 px between messages, 24 px between the blocks of one reply
+  (prose, changes, memories, Blocked line, footer), 14 px between paragraphs and list items.
+- Chat type: Bot replies, the user's bubble and briefs are 16 px, line height 1.65, letter spacing
+  0; the rest of the app keeps 14 px. *Replies read as a wall next to Claude's app; the user wanted
+  more air.*
+- Chief's changes and saved memory are quiet lines, one per kind (new Bots, edits, saved memory),
+  folded by default and not remembered. A line is one grey 13.5 px row: up to 3 small creatures for
+  new Bots, a pencil for other changes, a bookmark for memory, a summary, the main action in muted
+  text, then `›`. `Created 2 Bots: Poteto Agent, Comment Sicko · Undo all ›`, `Edited Poteto:
+  persona, delegates · Undo ›`, `Saved 2 memories: a finding, a decision ›` (one memory: `Saved a
+  memory: <first words> ›`). The action (Undo, Undo all) sits outside the toggle and works while
+  folded, then shows Undone. Clicking the line opens today's card in place and clicking again
+  folds it. A new Bot's card shows creature, name, provider · model · skills · repos, Open and
+  Undo per row (the line's own Undo hides while it is open for one Bot). An edit opens as Before /
+  After per field. A saved memory opens as two lines of its text, then its kind, why and source as
+  plain muted text, with Details (scope, what it replaced) and Retire. A retired item leaves the
+  thread. Two or more other changes of one kind show as one line ("Created 5 skills: teach, tdd,
+  …") with Undo all and nothing to open. The Bot that made a change is named only when it is not
+  the thread's own Bot. A Blocked line is never folded. *Cards and rows competed with the reply;
+  the user wanted the prose to lead.*
 - Long text clamps where it can grow without limit, never a Bot's reply: the user's message and a
   boss's brief at 8 lines with a fade and Show more / Show less; a memory item, an edit line and a
   Blocked line at 2 lines. The window itself never scrolls.

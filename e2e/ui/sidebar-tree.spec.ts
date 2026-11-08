@@ -146,6 +146,31 @@ test('a running thread shows wave dots; no spinner ring on any creature or threa
   await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
 });
 
+test('the tree rail runs under the 36px creature centre and rows start 14px right of it', async ({
+  page,
+}) => {
+  const bot = await newBotAPI(m, 'Railed');
+  await away(page);
+  await waitStatus((await openThreadAPI(m, bot.id, prompts.pong)).id, 'done');
+
+  const creature = sidebarRow(page, 'Railed').getByRole('img', { name: /, idle$/ });
+  const tree = threadTree(page, 'Railed');
+  await expect(tree.getByRole('listitem')).toHaveCount(1);
+  const c = (await creature.boundingBox())!;
+  expect(Math.abs(c.width - 36)).toBeLessThanOrEqual(1);
+  const rail = await tree.evaluate((ul) => {
+    const before = getComputedStyle(ul, '::before');
+    return (
+      ul.getBoundingClientRect().left +
+      parseFloat(before.left) +
+      parseFloat(before.borderLeftWidth) / 2
+    );
+  });
+  expect(Math.abs(rail - (c.x + c.width / 2))).toBeLessThanOrEqual(1);
+  const first = (await tree.getByRole('listitem').first().boundingBox())!;
+  expect(Math.abs(first.x - rail - 14)).toBeLessThanOrEqual(1);
+});
+
 test('nine idle threads show at most 3 rows and N more, which opens the threads popup', async ({
   page,
 }) => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useMatch, useNavigate, useSearchParams } from 'react-router';
 import { BotList } from '@/modules/bots/components/bot-list';
 import { Menu } from '@/components/menu';
@@ -9,6 +9,35 @@ import { TextField } from '@/components/text-field';
 import { useCloseThread, useRenameThread } from '@/modules/threads/api/threads';
 
 const inDesktopApp = '__TAURI_INTERNALS__' in window;
+
+const SIDEBAR_DEFAULT = 340;
+const SIDEBAR_MIN = 260;
+const SIDEBAR_MAX = 480;
+const SIDEBAR_STEP = 16;
+const SIDEBAR_KEY = 'atoll.sidebarWidth';
+
+function clampSidebar(width: number) {
+  return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(width)));
+}
+
+function useSidebarWidth() {
+  const [width, setWidth] = useState(() => {
+    try {
+      const stored = Number(localStorage.getItem(SIDEBAR_KEY));
+      return stored ? clampSidebar(stored) : SIDEBAR_DEFAULT;
+    } catch {
+      return SIDEBAR_DEFAULT;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_KEY, String(width));
+    } catch {
+      // storage unavailable: the width lasts for this session only
+    }
+  }, [width]);
+  return [width, (next: number) => setWidth(clampSidebar(next))] as const;
+}
 
 function initials(name: string) {
   const words = name.split(/\s+/).filter(Boolean);
@@ -21,6 +50,8 @@ function initials(name: string) {
 export function Shell() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
+  const resizeStart = useRef({ x: 0, width: 0 });
   const notifications = useNotifications();
   const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
   const [creatingGroup, setCreatingGroup] = useState<{ botId?: string } | null>(null);
@@ -54,7 +85,8 @@ export function Shell() {
       {inDesktopApp && <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-10 h-3" />}
       <nav
         aria-label="Bots"
-        className="flex w-[300px] flex-none flex-col border-r border-sidebar-line bg-card px-2.5 pt-4 pb-3"
+        style={{ width: sidebarWidth }}
+        className="relative flex flex-none flex-col border-r border-sidebar-line bg-card px-2.5 pt-4 pb-3"
       >
         {inDesktopApp && <div data-tauri-drag-region="deep" className="h-8" />}
         <div className={`flex items-center gap-2 ${inDesktopApp ? 'mt-3.5' : ''}`}>
@@ -110,7 +142,7 @@ export function Shell() {
             </svg>
           </button>
         </div>
-        <div className="mt-3.5 mb-2 min-h-0 overflow-y-auto">
+        <div className="-mr-2.5 mt-3.5 mb-2 min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-segment">
           <BotList
             search={search}
             open={{ botId, threadId }}
@@ -150,6 +182,33 @@ export function Shell() {
             <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" />
           </svg>
         </NavLink>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          aria-valuenow={sidebarWidth}
+          aria-valuemin={SIDEBAR_MIN}
+          aria-valuemax={SIDEBAR_MAX}
+          tabIndex={0}
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId);
+            resizeStart.current = { x: event.clientX, width: sidebarWidth };
+          }}
+          onPointerMove={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId))
+              setSidebarWidth(resizeStart.current.width + event.clientX - resizeStart.current.x);
+          }}
+          onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+          onKeyDown={(event) => {
+            const step = { ArrowRight: SIDEBAR_STEP, ArrowLeft: -SIDEBAR_STEP }[event.key];
+            if (!step) return;
+            event.preventDefault();
+            setSidebarWidth(sidebarWidth + step);
+          }}
+          className="group absolute top-3 -right-1 bottom-0 z-20 w-1.5 cursor-col-resize outline-none"
+        >
+          <span className="absolute inset-y-0 right-[3px] w-px group-hover:bg-muted group-focus-visible:bg-muted group-active:bg-muted" />
+        </div>
       </nav>
       {newMenu && (
         <Menu

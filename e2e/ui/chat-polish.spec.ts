@@ -43,7 +43,7 @@ test('the six-word title is in the thread header and the sidebar tree', async ({
   await expect(threadTree(page, 'Titles').getByRole('listitem')).toContainText(title);
 });
 
-test('sidebar activity is the reply, the current verb, or the approval prompt', async ({
+test('sidebar activity is the current verb or the approval prompt; an idle Bot shows none', async ({
   page,
 }) => {
   const reply = await newBotAPI(m, 'Reply activity');
@@ -57,7 +57,11 @@ test('sidebar activity is the reply, the current verb, or the approval prompt', 
   await waitStatus(waiting.id, 'waiting');
 
   await page.goto(m.url);
-  await expect(sidebarRow(page, 'Reply activity')).toContainText('ok');
+  await expect(
+    sidebarRow(page, 'Reply activity').getByRole('img', { name: /, idle$/ }),
+  ).toBeVisible();
+  expect((await api(m, 'GET', `/api/bots/${reply.id}`)).activity).toBe('ok');
+  await expect(sidebarRow(page, 'Reply activity')).not.toContainText('ok');
   await expect(sidebarRow(page, 'Reply activity')).not.toContainText('Done');
   await expect(sidebarRow(page, 'Working activity')).toContainText('Running Run the build');
   await expect(sidebarRow(page, 'Approval activity')).toContainText('Needs you: Write hello.txt');

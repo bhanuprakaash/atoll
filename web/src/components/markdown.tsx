@@ -5,7 +5,7 @@ import { ZoomImage } from '@/components/zoom-image';
 
 export function Markdown({ children, threadId }: { children: string; threadId?: string }) {
   return (
-    <div className="flex flex-col gap-2 break-words [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_pre]:overflow-auto">
+    <div className="flex flex-col gap-3.5 break-words [&_li+li]:mt-3.5 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_pre]:overflow-auto">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks]}
         urlTransform={(url, key) => (key === 'src' ? url : defaultUrlTransform(url))}

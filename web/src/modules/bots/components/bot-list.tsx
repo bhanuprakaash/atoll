@@ -6,7 +6,7 @@ import { useBots, usePinBot, type Bot } from '@/modules/bots/api/bots';
 import { useCreateGroup, useGroups, useSetBotGroup, type Group } from '@/modules/bots/api/groups';
 import { BotGroup, botDragType } from '@/modules/bots/components/bot-group';
 import { GroupNameField } from '@/modules/bots/components/group-name-field';
-import { ThreadTree } from '@/modules/bots/components/thread-tree';
+import { ThreadTree, Wave } from '@/modules/bots/components/thread-tree';
 import { threadTree } from '@/modules/bots/utils/thread-tree';
 import { relativeTime } from '@/utils/time';
 
@@ -79,8 +79,11 @@ function BotRow({
         }}
         className={`group flex items-center rounded-card ${open.botId === bot.id ? 'bg-selected' : ''}`}
       >
-        <NavLink to={`/bots/${bot.id}`} className="flex min-w-0 flex-1 items-center gap-3 p-2.5">
-          <Creature look={bot.look} state={bot.state} size={44} />
+        <NavLink
+          to={`/bots/${bot.id}`}
+          className="flex min-w-0 flex-1 items-center gap-3 px-2.5 py-[9px]"
+        >
+          <Creature look={bot.look} state={bot.state} size={36} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex justify-between gap-2 text-[15px]">
               <span className="truncate">{bot.name}</span>
@@ -89,7 +92,15 @@ function BotRow({
                 {bot.id !== 'chief' && <PinButton bot={bot} />}
               </span>
             </span>
-            <span className="truncate text-[13px] text-muted">{bot.activity}</span>
+            {bot.state === 'working' && (
+              <span className="flex items-center gap-1.5 text-[13px] text-muted">
+                <span className="truncate">{bot.activity}</span>
+                <Wave />
+              </span>
+            )}
+            {bot.state === 'needs_you' && (
+              <span className="truncate text-[13px] text-needs-ink">{bot.activity}</span>
+            )}
           </span>
         </NavLink>
         <button
@@ -220,7 +231,7 @@ export function BotList({
   const moveTo = (groupId: string | null) => (botId: string) => setGroup.mutate({ botId, groupId });
   return (
     <div className="flex flex-col gap-0.5">
-      <ul className="flex flex-col gap-0.5">
+      <ul className="flex flex-col gap-1">
         {search && matching.length === 0 && (
           <li className="px-2.5 py-2 text-sm text-muted">No Bots match</li>
         )}
