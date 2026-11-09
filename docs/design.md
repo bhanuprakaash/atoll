@@ -353,50 +353,42 @@ after a failed undo counts a Bot that is already gone as removed.
         `/CLAUDE.md` (writing one needs root).
     - `--settings` carries `autoMemoryEnabled: false`: no `memory/` folder under `projects/` and no
       auto-memory section in the system prompt.
-    - `--disallowedTools` removes every built-in tool that starts, messages, lists, schedules or
-      reaches other sessions, agents, projects, remote runs or the owner's machine outside the Bot's
-      own run. The value, exactly, is the lines below joined by single spaces (one argument):
-      ```text
-      Task Workflow ListAgents SendMessage SendToProject SendToProjectContext RemoteTrigger
-      DesignSync PublishPlugin ShareOnboardingGuide PushNotification CronCreate CronDelete
-      CronList ScheduleWakeup Monitor EnterWorktree ExitWorktree
-      ```
-      - Other sessions and agents: `Task` (the built-in Agent tool), `Workflow` (also starts
-        subagents, so removing only `Task` leaves them), `ListAgents` (lists Remote Control and
-        cloud sessions on other machines), `SendMessage` (messages them).
-      - Remote claude.ai: `SendToProject` (posts to a Claude Project as the user),
-        `SendToProjectContext` (its companion), `RemoteTrigger` (routines and their remote runs),
-        `DesignSync` (claude.ai design projects), `PublishPlugin` and `ShareOnboardingGuide`
-        (uploads to claude.ai).
-      - Scheduling and background: `CronCreate`, `CronDelete`, `CronList`, `ScheduleWakeup`
-        (re-enter a session after the run's turn), `Monitor` (background streams, including from a
-        WebSocket).
-      - The owner's machine: `PushNotification` (terminal notification, and the phone when Remote
-        Control is connected).
-      - Worktrees: `EnterWorktree`, `ExitWorktree`. `EnterWorktree` creates a worktree and a
-        `worktree-<name>` branch inside the repo (`<repo>/.claude/worktrees/<name>`); Reef owns
-        worktrees and nothing is written into the repo.
+    - `--tools Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write` is the whole
+      set of built-in tools a Bot has. Reef's MCP tools stay available through `--mcp-config` and
+      `--allowedTools`, as before. A run that gets no built-in tools (Chief, the title run) uses
+      `--tools ""`: its `init` tool list holds only Reef's MCP tools.
+      - Why an allowlist: a tool added by a later Claude Code stays closed until it is named here.
+        A deny list would leave it open.
+      - Left out, by class: other sessions and agents (`Task`, `Workflow`, `ListAgents`,
+        `SendMessage`); remote claude.ai (`SendToProject`, `SendToProjectContext`, `RemoteTrigger`,
+        `DesignSync`, `PublishPlugin`, `ShareOnboardingGuide`); scheduling and background
+        (`CronCreate`, `CronDelete`, `CronList`, `ScheduleWakeup`, `Monitor`, `TaskStop`); the
+        owner's machine (`PushNotification`); worktrees (`EnterWorktree`, `ExitWorktree`:
+        `EnterWorktree` creates a worktree and a `worktree-<name>` branch inside the repo, and Reef
+        owns worktrees).
+      - Left out because a headless run has no use for them and Reef never handles them:
+        `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode` (nobody answers in `-p`; a Bot asks in
+        its reply), `ReportFindings` (renders in a host UI Reef does not have) and `ToolSearch`
+        (Reef's MCP tools were callable without it in a 414-tool test).
+      - Kept for a reason: `Skill` loads Reef's skills (`--add-dir`). `WebFetch` and `WebSearch`
+        reach the internet, not other sessions or the machine's sessions. `NotebookEdit` writes a
+        file in the worktree, like `Edit`. `Glob` and `Grep` are named because Reef maps them
+        (`run/run.go`); Claude Code 2.1.319 does not list them, and naming them is accepted
+        without error.
       - Delegation goes only through Reef's own tool (see Delegation). A dedicated helpers tool is
         a later ticket (#205).
-    - Tools that stay, from the `system/init` event of `claude` 2.1.319 with Reef's flags, the same
-      in Ask, Auto and Full: `AskUserQuestion`, `Bash`, `Edit`, `EnterPlanMode`, `ExitPlanMode`,
-      `NotebookEdit`, `Read`, `ReportFindings`, `Skill`, `TaskStop`, `ToolSearch`, `WebFetch`,
-      `WebSearch`, `Write` and Reef's `mcp__atoll__*` tools. That is 14 built-in tools plus Reef's
-      tools; without the flag the list has 35 entries. Run: with the list, none of the blocked tools
-      is in `init`, and a Bot called a Reef MCP tool, `Bash`, `Write` and `Read`.
-      - `TaskStop` stops background tasks of this session; with `Task`, `Workflow` and `Monitor`
-        blocked only Bash background tasks remain. Unverified: that another session's task ID is
-        refused.
-      - `WebFetch` and `WebSearch` reach the internet, not other sessions or the machine's
-        sessions, and stay. `WebFetch` is in the list only once `Task` is removed.
-      - `ReportFindings`, `AskUserQuestion` and the plan tools talk only to the host (Reef) and
-        stay.
-      - The init `mcp_servers` held only Reef's server. Unverified: an account with claude.ai
-        connectors (`ENABLE_CLAUDEAI_MCP_SERVERS=false` is set; the test account had none).
-      - Known gap: a deny list covers the tools of this version; a tool added by a later Claude Code
-        is open until listed. `--tools` with the 14 allowed names gave the same init list on
-        2.1.319 and would close that gap. The e2e check compares the init tool list with the set
-        above, so an upgrade that adds a tool fails it.
+    - Run, `claude` 2.1.319 with Reef's other flags and a local MCP server standing in for Reef's:
+      the `system/init` tool list in Ask, Auto and Full holds exactly the 10 built-in names above
+      plus Reef's tools (14 entries with the four Bot tools of the stand-in). A Bot called a Reef
+      MCP tool, `Bash`, `Write` and `Read` in each mode (Ask with an approval tool that allows).
+      A skill from `--add-dir` loaded through `Skill`.
+      - The e2e spec compares the init tool list with this set (a real-`claude` spec behind the
+        `realclaude` tag, plus argv assertions with the scripted fake), so an upgrade that adds a
+        tool fails it.
+      - Unverified: an account with claude.ai connectors (`ENABLE_CLAUDEAI_MCP_SERVERS=false` is
+        set; the test account had none); another session's `TaskStop` ID (the tool is left out, so
+        it only matters if it is added); that `ToolSearch` is unneeded for MCP tool sets larger
+        than the 414 tools tried or on other Claude Code versions.
     - The Bash tool runs through `CLAUDE_CODE_SHELL_PREFIX`, a script that unsets every variable
       starting with `CLAUDE` or `ATOLL_MCP_` and then runs the command. A Bot's shell has no
       `CLAUDE_CONFIG_DIR`, and `env | grep -c CLAUDE` prints 0.
