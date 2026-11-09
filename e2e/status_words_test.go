@@ -7,37 +7,56 @@ import (
 
 func TestRun_StatusWords(t *testing.T) {
 	_, s := start(t, "claude")
-	th := s.newThread(t, chief(t, s).bot)
+	b := chief(t, s).bot
+	th := s.newThread(t, b)
 	ev := s.events(t, th)
 	r := s.send(t, th, "Show status words for commands and platform tools.")
-	es := until(t, ev, r.ID, "run_finished")
-	var got, names []string
-	for _, e := range es {
-		if e.Type != "tool_call" {
-			continue
-		}
-		name, _ := e.Data["name"].(string)
-		names = append(names, name)
-		verb, _ := e.Data["verb"].(string)
-		target, _ := e.Data["target"].(string)
-		got = append(got, strings.TrimSpace(verb+" "+target))
-	}
-	want := []string{"Running make check", "Waiting on a background task", "Waiting on a background task", "Looking around", "Looking around", "Setting up Example"}
-	if len(got) != len(want)+1 {
-		t.Fatalf("tool activity %q, want %d events", got, len(want)+1)
-	}
-	wantNames := []string{"Bash", "Bash", "Bash", "mcp__atoll__list_bots", "mcp__atoll__list_skills", "mcp__atoll__create_bot", "mcp__atoll__finish_run"}
-	for i, name := range wantNames {
-		if names[i] != name {
-			t.Errorf("tool name %d = %q, want %q", i, names[i], name)
-		}
+	want := []struct {
+		name, activity string
+		background     bool
+	}{
+		{"Bash", "Running make check", false},
+		{"Bash", "Waiting on a background task", true},
+		{"Bash", "Waiting on a background task", true},
+		{"Bash", "Waiting on a background task", true},
+		{"Bash", "Waiting on a background task", true},
+		{"Bash", "Running cat", false},
+		{"mcp__atoll__list_bots", "Looking around", false},
+		{"mcp__atoll__list_skills", "Looking around", false},
+		{"mcp__atoll__create_bot", "Setting up Example", false},
 	}
 	for i, w := range want {
-		if got[i] != w {
-			t.Errorf("tool activity %d = %q, want %q", i, got[i], w)
+		e := until(t, ev, r.ID, "tool_call")
+		data := e[len(e)-1].Data
+		name, _ := data["name"].(string)
+		verb, _ := data["verb"].(string)
+		target, _ := data["target"].(string)
+		activity := strings.TrimSpace(verb + " " + target)
+		if name != w.name || activity != w.activity {
+			t.Errorf("tool %d: %q activity %q, want %q activity %q", i, name, activity, w.name, w.activity)
+		}
+		if w.background && strings.Contains(activity, ".output") {
+			t.Errorf("status line exposes output file: %q", activity)
+		}
+		if i == 3 || i == 4 {
+			activity = s.bot(t, b.ID).Activity
+			if strings.Contains(activity, ".output") {
+				t.Errorf("sidebar exposes output file: %q", activity)
+			}
+			if activity != w.activity {
+				t.Errorf("sidebar activity %q, want %q", activity, w.activity)
+			}
 		}
 	}
-	if got[len(want)] == "Setting up" {
-		t.Errorf("finish_run activity = %q", got[len(want)])
+	for _, e := range until(t, ev, r.ID, "run_finished") {
+		if e.Type != "tool_call" || e.Data["name"] != "mcp__atoll__finish_run" {
+			continue
+		}
+		verb, _ := e.Data["verb"].(string)
+		target, _ := e.Data["target"].(string)
+		activity := strings.TrimSpace(verb + " " + target)
+		if strings.HasPrefix(activity, "Setting up") {
+			t.Errorf("finish_run activity = %q", activity)
+		}
 	}
 }
