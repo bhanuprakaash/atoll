@@ -17,7 +17,7 @@ Every Claude Bot run (any Mode, a new session and a resumed one, a Bot in a chec
   entries `<dir>/*.md` and `<dir>/.claude/**`. Each of `\ * ? [ ] { } ( )` in `<dir>` is `?`. The cwd
   itself is never listed. The fake logs its cwd as `getcwd` reports it (symlinks resolved), so the
   tests put the folder as Reef knows it back (data dir, worktree root).
-- `--tools Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write` (one argument, in that order) is the whole set of built-in tools, and `--disallowedTools` does not name `Task` or `Workflow`: an allowlist keeps a tool a later Claude Code adds closed. Chief (and the title run) get `--tools ""`; a platform Bot that is not Chief gets the allowlist. Reef's MCP tools stay available through `--mcp-config` and `--allowedTools`.
+- `--tools Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write` (one argument, in that order) is the whole set of built-in tools, and `--disallowedTools` does not name `Task` or `Workflow`: an allowlist keeps a tool a later Claude Code adds closed. Chief and every title run (one per thread; no count is pinned) get `--tools ""`; a platform Bot that is not Chief gets the allowlist. Reef's MCP tools stay available through `--mcp-config` and `--allowedTools`.
 - Env `CLAUDE_CODE_SHELL_PREFIX` is the plain absolute path `<data dir>/bin/claude-shell-prefix` (no
   quotes; the data dir of the tests has a space).
 
@@ -45,7 +45,7 @@ nested quotes and `$()`.
 | A stale `.claude-shell-prefix.tmp` (mode 0500) does not stop the start; it is replaced and gone; the temp lives in `bin/` | `TestClaudeIsolation_ShellPrefixSurvivesStaleTemp` |
 | A reader of the script during a restart sees only the whole old or whole new text (a read loop; a write in place is caught when a read lands inside it, so this is a probe, not a proof) | `TestClaudeIsolation_ShellPrefixReplacedWholeOnRestart` |
 | A relative `ATOLL_DATA_DIR` gives an absolute `CLAUDE_CODE_SHELL_PREFIX` in the Bot's env | `TestClaudeIsolation_ShellPrefixIsAbsoluteForRelativeDataDir` |
-| Chief and the title run have `--tools ""` (Chief keeps its atoll MCP config and `--allowedTools mcp__atoll`); a platform Bot that is not Chief and a plain Bot have the allowlist | `TestClaudeIsolation_ToolsByKindOfRun` (Chief's part passes once the Chief no-shell fix is on main) |
+| Chief and every title run have `--tools ""` (Chief keeps its atoll MCP config and `--allowedTools mcp__atoll`); a platform Bot that is not Chief and a plain Bot have the allowlist | `TestClaudeIsolation_ToolsByKindOfRun` (Chief's part passes only once the Chief no-shell change, PR #202, is on main) |
 | Real claude still reaches its MCP servers with `ATOLL_MCP_*` unset in Bash | `TestClaudeIsolation_RealClaudeReachesMCPServers` (build tag `realclaude`: `go test -tags realclaude -run TestClaudeIsolation_Real ./e2e`; needs a signed-in claude; not in `make e2e` or CI) |
 | With the argv and env atoll builds for a Bot in Ask, Auto and Full (captured from the fake) and a stand-in MCP server, real claude's `system/init` tool list is exactly the ten allowlisted built-ins plus the stand-in's tools (not the `--permission-prompt-tool` one, which claude keeps out of the list); a tool a later Claude Code adds fails it only if the allowlist stops closing it | `TestClaudeIsolation_RealClaudeToolList/{ask,auto,full}` (same tag) |
 
