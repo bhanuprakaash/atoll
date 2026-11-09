@@ -345,6 +345,10 @@ after a failed undo counts a Bot that is already gone as removed.
   `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`) and the settings that carry a login (`OAUTH_TOKEN`,
   `GITLAB_HOST`, `GIT_CONFIG_PARAMETERS`, `SSH_AUTH_SOCK`), with PATH set to the discovery folders
   first.
+  - It also drops `DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR` and `DISPLAY`, so a Bot's shell
+    cannot reach the Linux secret store (Secret Service) where Reef keeps its tokens.
+  - The strip is the same on every OS and for both providers, because it lives in `provider.Env`.
+    Other `XDG_*` variables stay. Only provider children get the stripped env; Reef keeps its own.
 - Transport: Codex through `codex app-server` (JSON-RPC over stdio). Claude Code as
   `claude -p --input-format stream-json --output-format stream-json`, driven from Go. Copy both
   adapters from old Reef (`agent/codex`, `agent/claude`). *The Claude Agent SDK runs the same CLI
