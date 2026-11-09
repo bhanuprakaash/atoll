@@ -25,23 +25,37 @@ const (
 	_pollBots     = 50
 	_pollThreads  = 100
 	_pollRequests = 100
+	// The poll reads, per Bot, its row, at most 3 pinned threads, 3 fill rows and the newest thread
+	// with a run, plus the running threads. The bound does not move with the number of open
+	// threads: the sidebar draws at most 3 rows of a Bot and counts the rest.
+	_pollRowsPerBot = 1 + 3 + 3 + 1
 )
 
 func TestBotsPoll_Cost(t *testing.T) {
+	for _, seed := range []struct {
+		name    string
+		allOpen bool
+	}{{"closed90", false}, {"allopen", true}} {
+		t.Run(seed.name, func(t *testing.T) { testBotsPollCost(t, seed.allOpen) })
+	}
+}
+
+func testBotsPollCost(t *testing.T, allOpen bool) {
 	ctx := t.Context()
-	var queries atomic.Int64
+	var queries, rows atomic.Int64
 	st, err := store.OpenWrapped(t.TempDir(), func(c driver.Connector) driver.Connector {
-		return countingConnector{c, &queries}
+		return countingConnector{c, &queries, &rows}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	seedPoll(ctx, t, st)
+	seedPoll(ctx, t, st, allOpen)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	h := New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil)
 
 	queries.Store(0)
+	rows.Store(0)
 	took := make([]time.Duration, _pollRequests)
 	for i := range took {
 		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/bots", nil)
@@ -56,14 +70,19 @@ func TestBotsPoll_Cost(t *testing.T) {
 	}
 	slices.Sort(took)
 	perRequest := queries.Load() / _pollRequests
+	rowsPerRequest := rows.Load() / _pollRequests
 	p50, p95 := took[_pollRequests/2], took[_pollRequests*95/100]
-	t.Logf("GET /api/bots, %d Bots x %d threads: p50 %v, p95 %v, %d queries per request",
-		_pollBots, _pollThreads, p50, p95, perRequest)
+	t.Logf("GET /api/bots, %d Bots x %d threads: p50 %v, p95 %v, %d queries and %d rows per request",
+		_pollBots, _pollThreads, p50, p95, perRequest, rowsPerRequest)
 	if p95 >= 50*time.Millisecond {
 		t.Errorf("p95 %v, want under 50ms", p95)
 	}
 	if perRequest != 2 {
 		t.Errorf("%d queries per request, want 2", perRequest)
+	}
+	// Every fifth Bot has one running thread.
+	if bound := int64(_pollBots*_pollRowsPerBot + _pollBots/5); rowsPerRequest > bound {
+		t.Errorf("%d rows read per request, want at most %d", rowsPerRequest, bound)
 	}
 }
 
@@ -214,9 +233,9 @@ func (s *approvalSession) Send(_ context.Context, prompt string, _ []provider.Im
 	return nil
 }
 
-// seedPoll gives every Bot _pollThreads threads of two runs each; nine in ten are closed, as most
-// threads are in real use. The first thread of every fifth Bot is running.
-func seedPoll(ctx context.Context, t *testing.T, st *store.Store) {
+// seedPoll gives every Bot _pollThreads threads of two runs each; nine in ten are closed unless
+// allOpen. The first thread of every fifth Bot is running.
+func seedPoll(ctx context.Context, t *testing.T, st *store.Store, allOpen bool) {
 	t.Helper()
 	var bots []store.Bot
 	for b := range _pollBots {
@@ -246,7 +265,7 @@ func seedPoll(ctx context.Context, t *testing.T, st *store.Store) {
 		for i := range _pollThreads {
 			n := b*_pollThreads + i
 			thread := fmt.Sprintf("t%d", n)
-			mustExec(t, stmts["thread"], thread, bot.ID, now, now+int64(n), i%10 != 0)
+			mustExec(t, stmts["thread"], thread, bot.ID, now, now+int64(n), !allOpen && i%10 != 0)
 			for r := range 2 {
 				id := fmt.Sprintf("r%d-%d", n, r)
 				status := []string{store.StatusDone, store.StatusFailed, store.StatusStopped}[n%3]
@@ -273,7 +292,8 @@ func mustExec(t *testing.T, stmt *sql.Stmt, args ...any) {
 
 type countingConnector struct {
 	driver.Connector
-	n *atomic.Int64
+	n    *atomic.Int64
+	rows *atomic.Int64
 }
 
 func (c countingConnector) Connect(ctx context.Context) (driver.Conn, error) {
@@ -281,7 +301,7 @@ func (c countingConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return countingConn{conn.(sqliteConn), c.n}, nil
+	return countingConn{conn.(sqliteConn), c.n, c.rows}, nil
 }
 
 type sqliteConn interface {
@@ -297,7 +317,8 @@ type sqliteConn interface {
 
 type countingConn struct {
 	sqliteConn
-	n *atomic.Int64
+	n    *atomic.Int64
+	rows *atomic.Int64
 }
 
 func (c countingConn) ExecContext(
@@ -311,5 +332,22 @@ func (c countingConn) QueryContext(
 	ctx context.Context, query string, args []driver.NamedValue,
 ) (driver.Rows, error) {
 	c.n.Add(1)
-	return c.sqliteConn.QueryContext(ctx, query, args)
+	rows, err := c.sqliteConn.QueryContext(ctx, query, args)
+	if err != nil {
+		return nil, err
+	}
+	return countingRows{rows, c.rows}, nil
+}
+
+type countingRows struct {
+	driver.Rows
+	n *atomic.Int64
+}
+
+func (r countingRows) Next(dest []driver.Value) error {
+	err := r.Rows.Next(dest)
+	if err == nil {
+		r.n.Add(1)
+	}
+	return err
 }
