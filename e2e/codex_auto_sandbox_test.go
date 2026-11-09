@@ -110,8 +110,10 @@ func codexWorkspaceWrite(t *testing.T, c *call) (method, cwd string, present boo
 // TestRepo_ReefGitRunsNoRepoCode plants, the way a Bot that can write in the repo would, each route
 // by which git runs a program the repo names, then makes Atoll run its own git (the thread's clean
 // checkout, start_work, a close that saves unsaved work) and expects none of the programs to run.
-// Only Atoll's own git sets GIT_TERMINAL_PROMPT=0; the fake provider's git runs the same programs
-// and must not count. Atoll's git is one function, so the provider does not matter to it.
+// The planted programs record every git but the fake provider's, which sets GIT_AUTHOR_NAME to
+// "Fixture Bot" and runs the same programs. Atoll's git is one function, so the provider does not
+// matter to it. Each route has a control that runs the same operations with plain git and expects
+// the program to run, so that a route or a marker that stopped working cannot make a leg pass.
 func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 	routes := []struct {
 		name string
@@ -140,14 +142,49 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 			writeFile(t, filepath.Join(worktree, ".git"), "gitdir: "+evil+"\n")
 		}},
 	}
+	for _, route := range routes {
+		t.Run("control/"+route.name, func(t *testing.T) {
+			repo := t.TempDir()
+			gitIn(t, repo, "init", "-b", "main")
+			writeFile(t, filepath.Join(repo, "answer.txt"), "41\n")
+			gitIn(t, repo, "add", "answer.txt")
+			gitIn(t, repo, "commit", "-m", "seed")
+			p, marker := newPlanter(t, repo)
+			if route.early != nil {
+				route.early(t, p)
+			}
+			plain := func(dir string, env []string, args ...string) {
+				t.Helper()
+				cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...)
+				cmd.Env = append(os.Environ(), env...)
+				_ = cmd.Run() // a planted route may break the command; only the marker matters
+			}
+			root := t.TempDir()
+			plain(repo, nil, "worktree", "add", "--detach", filepath.Join(root, "clean"), "HEAD")
+			worktree := filepath.Join(root, "work")
+			plain(repo, nil, "worktree", "add", "--no-track", "-b", "fix/x", worktree, "HEAD")
+			writeFile(t, filepath.Join(worktree, "answer.txt"), "42\n")
+			writeFile(t, filepath.Join(worktree, "unfinished.txt"), "keep\n")
+			if route.late != nil {
+				route.late(t, p, worktree)
+			}
+			index := []string{"GIT_INDEX_FILE=" + filepath.Join(t.TempDir(), "index"), "GIT_AUTHOR_NAME=Atoll", "GIT_AUTHOR_EMAIL=a@x", "GIT_COMMITTER_NAME=Atoll", "GIT_COMMITTER_EMAIL=a@x"}
+			plain(worktree, nil, "status", "--porcelain")
+			plain(worktree, index, "add", "-A")
+			plain(worktree, index, "write-tree")
+			plain(worktree, nil, "update-ref", "refs/atoll/control", "HEAD")
+			plain(repo, nil, "worktree", "remove", "--force", worktree)
+			if _, err := os.ReadFile(marker); err != nil {
+				t.Errorf("plain git did not run the %s route: the legs of this route would pass without testing anything", route.name)
+			}
+		})
+	}
 	for _, c := range []struct{ provider, end string }{{"codex", "close"}, {"codex", "delete"}, {"claude", "close"}} {
 		provider := c.provider
 		for _, route := range routes {
 			t.Run(c.provider+"/"+c.end+"/"+route.name, func(t *testing.T) {
 				f := newRepoFixture(t, provider)
-				marker := filepath.Join(t.TempDir(), "ran")
-				p := planter{repo: f.repo.Path, common: filepath.Join(f.repo.Path, ".git"), dir: t.TempDir()}
-				p.record = "#!/bin/sh\n[ \"$GIT_TERMINAL_PROMPT\" = 0 ] && echo \"$0 $PWD\" >> " + marker + "\n"
+				p, marker := newPlanter(t, f.repo.Path)
 				noRun := func(what string) {
 					t.Helper()
 					if ran, err := os.ReadFile(marker); err == nil {
@@ -211,8 +248,17 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 	}
 }
 
+// newPlanter is the planter for repo and the marker file its programs write to.
+func newPlanter(t *testing.T, repo string) (planter, string) {
+	t.Helper()
+	marker := filepath.Join(t.TempDir(), "ran")
+	p := planter{repo: repo, common: filepath.Join(repo, ".git"), dir: t.TempDir()}
+	p.record = "#!/bin/sh\n[ \"$GIT_AUTHOR_NAME\" != \"Fixture Bot\" ] && echo \"$0 $PWD\" >> " + marker + "\n"
+	return p, marker
+}
+
 // planter holds what a route needs to plant: the repo, its git common dir, a scratch folder, and
-// the start of a script that records a call of Atoll's own git in the marker file.
+// the start of a script that records a call, but not the fake provider's, in the marker file.
 type planter struct{ repo, common, dir, record string }
 
 // script writes an executable named name that runs body, and returns its path.
