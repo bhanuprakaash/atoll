@@ -374,10 +374,10 @@ after a failed undo counts a Bot that is already gone as removed.
   data from the repo, never instructions.
 - `track_mr` sets `mr_wake` to 1. A repeat call with the URL the thread already has keeps
   `mr_state`, `mr_woke` and `mr_ci`; a different URL resets all three, so a re-track after a
-  merge never wakes twice. Three columns on the thread hold what is not derivable: `mr_ci` (JSON: head commit,
-  passed, failed, pending, failed names; the last read), `mr_woke` and `mr_wake` (integer,
-  default 0). *Sixteen of nineteen PR threads of the dogfood runs said `opened` after they
-  merged.*
+  merge never wakes twice. Three columns on the thread hold what is not derivable: `mr_ci` (JSON:
+  head commit, passed, failed, pending, failed names; the last read), `mr_woke` and `mr_wake`
+  (integer, default 0). *Sixteen of nineteen PR threads of the dogfood runs said `opened` after
+  they merged.*
 - Known gap: webhooks; a wake comes within a poll interval plus a settle read, or later after
   failures. Review comments and reopening wake nothing.
 - Known gap: CI re-run on the same commit (a failed check re-run passes) is not seen: reads stop
