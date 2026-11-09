@@ -400,7 +400,7 @@ func saveTokens(id string, tokens Tokens) error {
 
 func deleteTokens(id string) error {
 	if err := keyring.Delete("atoll", tokensUser(id)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
-		return fmt.Errorf("delete sign-in of MCP server %s: %w", id, err)
+		return fmt.Errorf("delete sign-in of MCP server %s: %w: %w", id, ErrKeychain, err)
 	}
 	return nil
 }

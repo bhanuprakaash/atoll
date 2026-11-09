@@ -7,15 +7,13 @@ export class ApiError extends Error {
   }
 }
 
-async function apiError(res: Response) {
-  const text = await res.text();
+function errorText(text: string) {
   try {
     const { error } = JSON.parse(text) as { error?: unknown };
-    if (typeof error === 'string' && error) return new ApiError(res.status, error);
+    return typeof error === 'string' && error ? error : text;
   } catch {
-    // not JSON: show the text as sent
+    return text;
   }
-  return new ApiError(res.status, text || res.statusText);
 }
 
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}) {
@@ -24,12 +22,12 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     headers: init.body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
-  if (!res.ok) throw await apiError(res);
+  if (!res.ok) throw new ApiError(res.status, errorText(await res.text()) || res.statusText);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
 export async function apiBlob(path: string) {
   const res = await fetch(`/api${path}`);
-  if (!res.ok) throw await apiError(res);
+  if (!res.ok) throw new ApiError(res.status, errorText(await res.text()) || res.statusText);
   return res.blob();
 }

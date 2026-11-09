@@ -135,6 +135,9 @@ func Replace(ctx context.Context, st *store.Store, c *http.Client, id string, in
 	if err != nil {
 		return store.MCPServer{}, err
 	}
+	if err := saveSecrets(s, write); err != nil {
+		return store.MCPServer{}, err
+	}
 	changed := prev.URL != s.URL || prev.Kind != s.Kind
 	if changed {
 		if err := errors.Join(deleteTokens(id), st.DeleteMCPSignIn(ctx, id)); err != nil {
@@ -142,9 +145,6 @@ func Replace(ctx context.Context, st *store.Store, c *http.Client, id string, in
 		}
 	}
 	if s, err = st.UpdateMCPServer(ctx, s); err != nil {
-		return store.MCPServer{}, err
-	}
-	if err := saveSecrets(s, write); err != nil {
 		return store.MCPServer{}, err
 	}
 	if changed {
@@ -285,7 +285,7 @@ func deleteSecrets(s store.MCPServer, keep []string) error {
 			continue
 		}
 		if err := keyring.Delete("atoll", secretUser(s, name)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
-			errs = append(errs, fmt.Errorf("delete %s of MCP server %s: %w", name, s.Name, err))
+			errs = append(errs, fmt.Errorf("delete %s of MCP server %s: %w: %w", name, s.Name, ErrKeychain, err))
 		}
 	}
 	return errors.Join(errs...)

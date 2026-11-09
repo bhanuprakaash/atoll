@@ -24,6 +24,7 @@ export function ReconnectButton({ connection }: { connection: Connection }) {
         (err: Error) => {
           setError(err.message);
           setFlow(null);
+          void client.invalidateQueries({ queryKey: ['connections'] });
         },
       );
     }, flow.interval_ms);
