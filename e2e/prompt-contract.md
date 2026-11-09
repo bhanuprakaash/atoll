@@ -107,11 +107,13 @@ Bot (plain, repo, platform, Chief), on both providers. Lines are matched by mean
 - `2-3` appears once in the whole system prompt, so Chief's ask-first block has no special
   exemption (no `exempt` anywhere), and Chief's platform block stays at most 2000 bytes.
 
-`testdata/golden/system.txt` pins the exact `Finish` text.
+Matching tolerates rewording: each rule is a sentence or line holding one word from each of several
+keyword groups. `testdata/golden/system.txt` holds `<finish rules>` in place of the `Finish` lines
+(`TestMemory_PromptGoldenAndBudget` swaps them before comparing), so no exact wording is pinned.
 
 | Acceptance | Test |
 | --- | --- |
-| Every Bot's core says the reply holds the answer; 2-3 lines is for status; one rule, no Chief exemption | `TestPrompt_ReplyCarriesAnswerRule/{claude,codex}`, `TestMemory_PromptGoldenAndBudget` |
+| Every Bot's core says the reply holds the answer; 2-3 lines is for status; one rule, no Chief exemption | `TestPrompt_ReplyCarriesAnswerRule/{claude,codex}` |
 
 Real-provider only: "What are this repo's product principles?" gets the principles in the visible
 reply.
