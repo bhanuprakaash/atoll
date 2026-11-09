@@ -42,6 +42,7 @@ type call struct {
 	pid   int
 	argv  []string
 	env   map[string]string
+	dirs  map[string]fake.Dir
 	stdin []string
 }
 
@@ -158,17 +159,18 @@ func (m *machine) runs(t *testing.T, provider string) []*call {
 	s.Buffer(nil, 64*1024*1024)
 	for s.Scan() {
 		var r struct {
-			PID   int      `json:"pid"`
-			Argv  []string `json:"argv"`
-			Env   []string `json:"env"`
-			Stdin string   `json:"stdin"`
+			PID   int                 `json:"pid"`
+			Argv  []string            `json:"argv"`
+			Env   []string            `json:"env"`
+			Dirs  map[string]fake.Dir `json:"dirs"`
+			Stdin string              `json:"stdin"`
 		}
 		if err := json.Unmarshal(s.Bytes(), &r); err != nil {
 			t.Fatal(err)
 		}
 		c, ok := byPID[r.PID]
 		if !ok {
-			c = &call{pid: r.PID, argv: r.Argv, env: map[string]string{}}
+			c = &call{pid: r.PID, argv: r.Argv, env: map[string]string{}, dirs: r.Dirs}
 			for _, kv := range r.Env {
 				k, v, _ := strings.Cut(kv, "=")
 				c.env[k] = v

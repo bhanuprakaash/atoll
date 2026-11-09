@@ -17,10 +17,44 @@ var _testdata string
 // Record is one line of the call log: the first of a process has its argv and env, each later
 // one a line it read on stdin.
 type Record struct {
-	PID   int      `json:"pid"`
-	Argv  []string `json:"argv,omitempty"`
-	Env   []string `json:"env,omitempty"`
-	Stdin string   `json:"stdin,omitempty"`
+	PID   int            `json:"pid"`
+	Argv  []string       `json:"argv,omitempty"`
+	Env   []string       `json:"env,omitempty"`
+	Dirs  map[string]Dir `json:"dirs,omitempty"`
+	Stdin string         `json:"stdin,omitempty"`
+}
+
+// Dir is what a folder named by an env var looked like when the process started: the nearest
+// folder that existed (the folder itself when it did) and whether a file could be made in it.
+type Dir struct {
+	Existing string `json:"existing"`
+	Writable bool   `json:"writable"`
+}
+
+var _probed = []string{"XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "GOCACHE", "GOLANGCI_LINT_CACHE", "npm_config_store_dir", "PNPM_HOME"}
+
+func probe() map[string]Dir {
+	dirs := map[string]Dir{}
+	for _, name := range _probed {
+		p := os.Getenv(name)
+		if !filepath.IsAbs(p) {
+			continue
+		}
+		for {
+			if fi, err := os.Stat(p); err == nil && fi.IsDir() {
+				break
+			}
+			p = filepath.Dir(p)
+		}
+		d := Dir{Existing: p}
+		if f, err := os.CreateTemp(p, ".probe-*"); err == nil {
+			d.Writable = true
+			_ = f.Close()
+			_ = os.Remove(f.Name())
+		}
+		dirs[name] = d
+	}
+	return dirs
 }
 
 // Log appends Records to <executable>.log.
@@ -39,7 +73,7 @@ func Start() (*Log, error) {
 		return nil, err
 	}
 	l := &Log{f: f}
-	return l, l.write(Record{Argv: os.Args[1:], Env: os.Environ()})
+	return l, l.write(Record{Argv: os.Args[1:], Env: os.Environ(), Dirs: probe()})
 }
 
 // Stdin records one line read on stdin.
