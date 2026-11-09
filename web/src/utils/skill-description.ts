@@ -27,11 +27,14 @@ export function setSkillDescription(head: string, value: string) {
       ? head.replace(line, () => `description: ${text}`)
       : `description: ${text}${head ? `\n${head}` : ''}`;
   }
-  const node = isMap(doc.contents) ? doc.get('description', true) : undefined;
+  const pair = isMap(doc.contents)
+    ? doc.contents.items.find((item) => isScalar(item.key) && item.key.value === 'description')
+    : undefined;
+  const node = pair?.value;
   if (isScalar(node) && node.range) {
     const [start, end] = node.range;
-    if (node.value === null) {
-      const key = head.lastIndexOf('description:', start);
+    if (node.value === null && isScalar(pair?.key) && pair.key.range) {
+      const key = pair.key.range[0];
       const space = head[end] === '#' ? ' ' : '';
       return head.slice(0, key) + `description: ${text}${space}` + head.slice(end);
     }
