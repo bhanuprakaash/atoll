@@ -33,8 +33,7 @@ var (
 	_unsafe = regexp.MustCompile(`[^a-z0-9_-]+`)
 )
 
-// Import is a skill read from a local folder: what was taken, what was left out and why, and the
-// home-relative paths still in its SKILL.md.
+// Import is a skill read from a local folder, with skipped files, refused references and rewrites.
 type Import struct {
 	Skill     store.Skill
 	Skipped   []Skipped
@@ -129,9 +128,7 @@ func Check(files []store.SkillFile) error {
 	return nil
 }
 
-// Read imports the skill in the local folder dir without writing to it. It takes SKILL.md and every
-// other text file, skips binaries and .git, and makes ~/.claude/skills/<folder>/ in SKILL.md
-// relative to the skill. Name is SKILL.md's frontmatter name, else the folder name.
+// Read imports a skill without changing its source, replacing own-folder paths with {{ATOLL_SKILL_DIR}}.
 func Read(dir string, source ...string) (Import, error) {
 	entry := dir
 	if len(source) > 0 {
