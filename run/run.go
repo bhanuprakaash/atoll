@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -641,6 +642,17 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	}
 	cfg.Model = bot.Model
 	cfg.Mode = bot.Mode
+	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
+		root, err := m.WorktreeRoot(a.ctx)
+		if err != nil {
+			return "", fmt.Errorf("load worktree root: %w", err)
+		}
+		gitDir, err := exec.CommandContext(a.ctx, "git", "-C", rp.Path, "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
+		if err != nil {
+			return "", fmt.Errorf("find git common dir: %w", err)
+		}
+		cfg.WritableRoots = []string{root, strings.TrimSpace(string(gitDir))}
+	}
 	onBossBranch := false
 	if thread.ParentThreadID != "" && thread.Branch != "" {
 		boss, err := m.cfg.Store.Thread(a.ctx, thread.ParentThreadID)

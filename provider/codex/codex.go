@@ -619,6 +619,11 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 		params["approvalPolicy"] = "on-request"
 		params["sandbox"] = "workspace-write"
 		switch cfg.Mode {
+		case provider.ModeAuto:
+			config["sandbox_workspace_write"] = map[string]any{
+				"writable_roots": append([]string{}, cfg.WritableRoots...),
+				"network_access": true,
+			}
 		case provider.ModeAsk:
 			params["approvalPolicy"] = "untrusted"
 		case provider.ModeFull:
