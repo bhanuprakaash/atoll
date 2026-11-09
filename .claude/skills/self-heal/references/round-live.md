@@ -61,8 +61,15 @@ thought would happen; a difference is a finding even when nothing crashed.
 - bots: judge every run against its brief, persona and AGENTS.md (test-first, e2e untouched by fixers, smallest diff,
   conventional commits, real Proof, honest replies and finish_run, memory use, clear delegate briefs, no wasted
   turns); compare Claude and Codex; name what in Reef (prompt, tools, missing context) made a Bot fail.
-- llm (cost, context, caching): per Bot and model, tokens in / cache-write / cache-read / out and estimated cost
-  (Claude transcripts carry `usage`; Codex rollouts carry `token_count`); context growth across resumed runs and
-  compaction; prompt-prefix stability and cache survival between runs (5-minute TTL); repeated big reads and pasted
-  logs; waste (no-op runs, boss wake runs, nudges, title sessions, model choice); what Reef records and shows about
-  spend. Each finding: numbers, estimated saving, smallest change in Reef.
+- llm (agent efficiency, honesty and cost, measured): numbers per Bot, provider and model, compared round over round.
+  Cost and context: tokens in / cache-write / cache-read / out and cost (Claude `usage`, Codex `token_count`), context
+  growth across resumes, prompt-prefix stability and cache survival, repeated reads, pasted logs. Memory: recalls and
+  saves per run, whether recalled items were used, duplicates and stale items, lessons the owner gave that were never
+  saved, and whether a later run repeated a mistake memory should have prevented. Honesty: every claim in replies,
+  `finish_run` and PR Proof ("passed", "ticked", "sent", "real run") checked against the tool output that should back
+  it (exit codes, events, GitHub state); rate of unbacked claims per Bot. Delegation: brief quality and length,
+  handoffs per ticket, helpers re-briefed, idle slots while work was queued, boss wake runs per useful outcome,
+  refused delegate calls, review rounds per PR. Handling: decisions asked once vs repeated, time a decision waited,
+  stopping when blocked vs guessing, runs that end with nothing done, loops. Efficiency: turns, tokens and minutes per
+  accepted PR and per ticket, rework rate. Each finding: numbers, the pattern, what in Reef (prompt, tool, memory,
+  UI) causes it, the smallest change, and the expected effect.

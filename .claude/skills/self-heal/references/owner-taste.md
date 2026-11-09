@@ -34,6 +34,8 @@ in their briefs. Each line: the principle, then (where it came from).
 - Fix what was found, all of it; group small related findings into one PR.
 - Prefer one clear design over options; when a decision is needed, ask once, with a recommendation.
 - Cost and context are product features: cheaper models where quality holds, caching, no waste.
+- Bots are judged by numbers too: honest claims, memory that actually prevents repeat mistakes, delegation that keeps
+  helpers busy without noise, and cost per accepted PR, tracked round over round.
 
 ## How to apply (observers and Bots)
 - Generalise: when the owner reacts to one instance, find every instance of the same problem and fix the class.
