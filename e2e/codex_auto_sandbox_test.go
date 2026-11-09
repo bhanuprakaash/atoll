@@ -26,10 +26,10 @@ func TestCodexAuto_SandboxCoversWorktreeAndNetwork(t *testing.T) {
 			if len(sessions) != 2 {
 				t.Fatalf("codex ran %d sessions, want 2", len(sessions))
 			}
-			wantRoots := []string{f.root, filepath.Join(f.repo.Path, ".git")}
+			wantRoots := resolved(t, f.root, gitIn(t, f.repo.Path, "rev-parse", "--path-format=absolute", "--git-common-dir"))
 			for i, c := range sessions {
 				checkMode(t, "codex", mode, c)
-				method, roots, network := codexWorkspaceWrite(t, c)
+				method, present, roots, network := codexWorkspaceWrite(t, c)
 				if want := []string{"thread/start", "thread/resume"}[i]; method != want {
 					t.Fatalf("session %d began with %q, want %s", i+1, method, want)
 				}
@@ -37,28 +37,43 @@ func TestCodexAuto_SandboxCoversWorktreeAndNetwork(t *testing.T) {
 					if !network {
 						t.Errorf("codex on auto, %s: config.sandbox_workspace_write.network_access is not true", method)
 					}
-					if !slices.Equal(roots, wantRoots) {
-						t.Errorf("codex on auto, %s: config.sandbox_workspace_write.writable_roots %q, want %q", method, roots, wantRoots)
+					if got := resolved(t, roots...); !slices.Equal(got, wantRoots) {
+						t.Errorf("codex on auto, %s: config.sandbox_workspace_write.writable_roots %q, want %q in any order", method, got, wantRoots)
 					}
-				} else if network || roots != nil {
-					t.Errorf("codex on %s, %s: sandbox_workspace_write roots %q, network %v; want none", mode, method, roots, network)
+				} else if present {
+					t.Errorf("codex on %s, %s: config.sandbox_workspace_write is set; want it absent", mode, method)
 				}
 			}
 		})
 	}
 }
 
-// codexWorkspaceWrite is the method of a codex session's thread/start or thread/resume, and the
-// writable_roots and network_access under its config.sandbox_workspace_write, the only place
-// Codex reads them from at that point.
-func codexWorkspaceWrite(t *testing.T, c *call) (method string, roots []string, network bool) {
+// resolved is paths cleaned, with symlinks resolved, and sorted: macOS temp folders sit behind a
+// symlink that git resolves.
+func resolved(t *testing.T, paths ...string) []string {
+	t.Helper()
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		var err error
+		if out[i], err = filepath.EvalSymlinks(filepath.Clean(p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// codexWorkspaceWrite is the method of a codex session's thread/start or thread/resume, whether
+// its config has sandbox_workspace_write, and the writable_roots and network_access under it, the
+// only place Codex reads them from at that point.
+func codexWorkspaceWrite(t *testing.T, c *call) (method string, present bool, roots []string, network bool) {
 	t.Helper()
 	for _, line := range c.stdin {
 		var r struct {
 			Method string `json:"method"`
 			Params struct {
 				Config struct {
-					SandboxWorkspaceWrite struct {
+					SandboxWorkspaceWrite *struct {
 						WritableRoots []string `json:"writable_roots"`
 						NetworkAccess bool     `json:"network_access"`
 					} `json:"sandbox_workspace_write"`
@@ -67,9 +82,12 @@ func codexWorkspaceWrite(t *testing.T, c *call) (method string, roots []string, 
 		}
 		if json.Unmarshal([]byte(line), &r) == nil && (r.Method == "thread/start" || r.Method == "thread/resume") {
 			w := r.Params.Config.SandboxWorkspaceWrite
-			return r.Method, w.WritableRoots, w.NetworkAccess
+			if w == nil {
+				return r.Method, false, nil, false
+			}
+			return r.Method, true, w.WritableRoots, w.NetworkAccess
 		}
 	}
 	t.Fatal("codex session has no thread/start or thread/resume")
-	return "", nil, false
+	return "", false, nil, false
 }

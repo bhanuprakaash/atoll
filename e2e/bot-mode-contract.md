@@ -31,9 +31,12 @@ Codex may carry them as params or in `config` (`sandbox_mode`, `approval_policy`
 while a run goes applies from the next run; the going run keeps the mode it started with.
 
 Codex on Auto in a repo thread also starts every run, `thread/start` and `thread/resume` alike, with
-`config.sandbox_workspace_write.writable_roots` equal to exactly `[<worktree_root>, <repo>/.git]` and
+`config.sandbox_workspace_write.writable_roots` holding exactly two folders, in any order: the
+`worktree_root` folder and the repo's git common dir (`<repo>/.git` for a plain clone), and
 `config.sandbox_workspace_write.network_access` true. Codex reads those two keys there and nothing
-else, so the same values anywhere else do not count. Ask and Full access carry neither key.
+else, so the same values anywhere else do not count. Paths compare after symlinks resolve and a
+trailing slash is dropped. Ask and Full access have no `sandbox_workspace_write` key. The spec runs
+a plain clone.
 
 ## Chief
 
@@ -60,7 +63,7 @@ saves as you change it and shows again after a reload.
 | Bot settings Mode control; Full access text | UI `Bot settings pick a Mode; Full access warns and the choice persists` |
 | Chief `create_bot`/`edit_bot` take `mode`; `list_bots` shows it; change with Undo | `TestBotMode_Chief/{claude,codex}` |
 | A change of mode mid-run applies from the next run | `TestBotMode_ChangeMidRunAppliesFromNextRun/{claude,codex}` |
-| Codex Auto starts and resumes with the `worktree_root` folder and the repo's `.git` as writable roots and network access; Ask and Full access carry neither | `TestCodexAuto_SandboxCoversWorktreeAndNetwork/{auto,ask,full}` |
+| Codex Auto starts and resumes with the `worktree_root` folder and the repo's git common dir as writable roots and network access; Ask and Full access carry neither | `TestCodexAuto_SandboxCoversWorktreeAndNetwork/{auto,ask,full}` |
 
 Not covered here: the spike and the real-Claude line are implementer and user proof. Not pinned:
 Codex's sandbox on Ask beyond not being `danger-full-access`; whether Claude on Full access still
