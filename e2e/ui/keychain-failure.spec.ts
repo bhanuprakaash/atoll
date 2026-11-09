@@ -33,9 +33,10 @@ test("a failed GitHub keychain save shows a message and offers sign in again", a
   let m: Machine | undefined;
   try {
     m = await startAtoll({
+      secretStore: true,
       env: {
         ATOLL_GITHUB_URL: `http://127.0.0.1:${address.port}`,
-        DBUS_SESSION_BUS_ADDRESS: "unix:path=/nonexistent/atoll-e2e",
+        ATOLL_SECRET_STORE_UNAVAILABLE: "1",
       },
     });
     await context.route("https://github.com/**", (route) =>
@@ -104,7 +105,8 @@ test("a failed GitLab keychain save shows a message and offers sign in again", a
   let m: Machine | undefined;
   try {
     m = await startAtoll({
-      env: { DBUS_SESSION_BUS_ADDRESS: "unix:path=/nonexistent/atoll-e2e" },
+      secretStore: true,
+      env: { ATOLL_SECRET_STORE_UNAVAILABLE: "1" },
     });
     await page.goto(`${m.url}/settings`);
     await page.getByRole("link", { name: "Connections" }).click();
@@ -140,7 +142,8 @@ test("a failed MCP secret save shows a keychain message without raw JSON", async
   page,
 }) => {
   const m = await startAtoll({
-    env: { DBUS_SESSION_BUS_ADDRESS: "unix:path=/nonexistent/atoll-e2e" },
+    secretStore: true,
+    env: { ATOLL_SECRET_STORE_UNAVAILABLE: "1" },
   });
   try {
     await page.goto(`${m.url}/settings`);
