@@ -74,6 +74,9 @@ func TestTitles_Generated(t *testing.T) {
 			c := titles[0]
 			switch p {
 			case "claude":
+				if got := flagValue(c.argv, "--setting-sources"); got != "project" {
+					t.Errorf("claude title --setting-sources %q, want project; argv %q", got, c.argv)
+				}
 				if i := slices.Index(c.argv, "--model"); i < 0 || c.argv[i+1] != _titleModel[p] ||
 					slices.Contains(c.argv, "--resume") || slices.Contains(c.argv, "--mcp-config") {
 					t.Errorf("title session argv %q, want --model %s, no --resume, no --mcp-config", c.argv, _titleModel[p])
