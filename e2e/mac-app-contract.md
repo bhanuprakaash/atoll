@@ -249,6 +249,6 @@ no interrupted run remains running.
   `TestRepo_FixPushMRAndMerge`, `TestSkills_ChiefConfiguresAndUndoes`) cannot pass locally. The
   harness sets `HOME` to a temporary folder with no keychain, so the store fails, and outside a
   sandbox macOS shows a "Keychain Not Found" dialog (choose Cancel). Linux CI is the referee.
-- Not pinned: verb wording for `memory`, `platform` and `work` kinds, `Thinking`, the exact
+- Not pinned: verb wording for `memory` and `work` kinds, other `platform` tools, `Thinking`, the exact
   `activity` text, timestamps' format beyond RFC 3339, the creature picked when none is given, the
   skill editor, and the creature motion per tool kind (only reduced motion is tested).

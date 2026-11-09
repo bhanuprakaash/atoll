@@ -107,8 +107,8 @@ after a failed undo counts a Bot that is already gone as removed.
   changes, its next run starts a fresh session and says so in the thread. New threads and delegation
   also start fresh sessions.
 - Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply stays
-  2–3 plain lines. *The report feeds memory, parents and fresh starts.* `blocked` is only what
-  the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
+  2–3 plain lines (except Chief's ask-first proposal). *The report feeds memory, parents and fresh
+  starts.* `blocked` is only what the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
   is not blocked, so the chat shows no Blocked line for it. A turn that ends without
   the report gets one more prompt in the same session asking for it; its text is not shown. If
   there is still none, the run ends `done` with `report: null` and a logged warning.
@@ -299,6 +299,7 @@ after a failed undo counts a Bot that is already gone as removed.
   as T3 Code; Bot sessions stay out of the user's own history.*
 - Every run also sets:
   - Claude Code: `--strict-mcp-config` with only Reef's servers, `ENABLE_CLAUDEAI_MCP_SERVERS=false`,
+    `--setting-sources project` (user and local settings off; hides the skills synced from the user's claude.ai account),
     `disableAllHooks`, `disableBundledSkills` and `skillOverrides` turning off `design`, `doctor`,
     `plugin-authoring` (the bundled skills that survive `disableBundledSkills`).
   - Codex: `skills.bundled.enabled=false`; plugins, remote plugins and apps off; each skill in
@@ -320,7 +321,7 @@ after a failed undo counts a Bot that is already gone as removed.
   (single-use refresh tokens); a fresh `CLAUDE_CONFIG_DIR` is signed out until logged in there; with
   the flags above neither provider shows personal MCP servers, skills or subagents; Bot skills load
   from `<config dir>/skills`; resume works inside the folder. Hiding claude.ai connectors is untested
-  (the test account had none).
+  (the test account had none). On 2.1.319, `--setting-sources project` hides the claude.ai account skills.
 
 ## Connections and skills
 
@@ -532,8 +533,9 @@ after a failed undo counts a Bot that is already gone as removed.
   a non-empty list. The platform block (Managing Reef) goes to a Bot with "Can manage the platform".
   The code part sits between How you talk and Memory; the platform block sits after Finish.
 - The platform block holds the Reef guide (so Chief answers without reading a file), the ask-first
-  rule for creates (it overrides the core's "ask only when two real readings") and Chief's voice.
-  The voice lives here, not in the persona; only a Bot with the switch has it.
+  rule for creates and Chief's voice. The ask-first rule overrides the core's "ask only when two
+  real readings" and exempts the ask-first message from the 2–3 line reply. The voice lives here,
+  not in the persona; only a Bot with the switch has it.
 - Chief imports a local skill folder with `import_skill(path)`: it reads the agent file with the
   provider's own file tool, imports each skill it names, attaches them through `create_bot`, and keeps
   `~/.claude` paths out of the persona. *Reopened "importing a local skill needs no new tool": passing
@@ -585,20 +587,20 @@ Finish
 - End every run with finish_run: done, tried and failed, blocked on, next. Then reply in 2-3 lines.
 
 Managing Reef
-- You manage Reef's Bots, skills, repos and connections with your platform tools. Check the list tools before you change.
-- You do no code work and have no repo access. For a code change, offer to create or suggest a Bot with repo access.
+- Manage Reef's Bots, skills, repos and connections with platform tools. Check list tools before changes.
+- You have no repo access and do no code work. For code changes, offer to create or suggest a Bot with repo access.
 
 Reef guide
-- A Bot has a persona, model, skills, connections, repo access, look, platform switch. A thread is a chat; each message is a run.
-- Repos are registered once. A thread works in one repo, in its own worktree.
+- A Bot has a persona, model, skills, connections, repo access, look, platform switch. A thread is a chat; a message is a run.
+- Register repos once. A thread works in one repo, in its own worktree.
 - Providers are Claude Code and Codex, signed in from Settings > Providers.
-- A connection is a signed-in service (GitLab, GitHub) whose token Reef holds and gives a Bot's CLI or MCP. MCP is how tools reach a Bot: Reef serves its own tools (memory, finish_run, platform) over MCP. Bots get only the MCP servers picked for them. Importing MCP servers is not supported.
+- A connection is a signed-in service (GitLab, GitHub); Reef gives its token to a Bot's CLI or MCP. MCP gives Bots tools: Reef serves memory, finish_run and platform tools. Bots get only selected MCP servers. No MCP server import.
 - A skill is a folder (SKILL.md plus text files) in one library, picked per Bot.
 - Memory: decisions and findings Bots save, per user, repo or Bot.
 - Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
 
 Ask first
-- To create a Bot or skill, ask in ONE message for every missing item (Bot: model, repo access, skills, connections), each with a proposed default. Create nothing in that run. "ok" means use the defaults. This overrides "ask only when two real readings".
+- To create a Bot or skill, ask in ONE message for every missing item, each with a proposed default. Include the full proposal for each Bot: model, skills, repo access, connections. This message is exempt from the 2-3 line rule. Create nothing in that run. "ok" means use the defaults. This overrides "ask only when two real readings".
 - Small edits (rename, persona tweak, look) need no question.
 
 Import a local skill

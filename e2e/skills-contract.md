@@ -211,6 +211,9 @@ selected file again on use. Putting skill text in the prompt never supplies a
 skill. The fake models these verified fixture layouts, not every CLI plugin or
 frontmatter feature.
 
+Claude runs pass `--setting-sources project` as separate arguments to hide
+account-synced skills while keeping Bot skills discoverable through `--add-dir`.
+
 The hold scenario writes `<executable>.ready.<pid>` after discovery and waits for
 `<that file>.release`. While held, the test edits the library and runs an
 unskilled Bot. Re-reading the original file detects mutable shared placement;
@@ -221,6 +224,7 @@ temporary and the harness removes them.
 | --- | --- |
 | Fresh folder lists Chief | `TestSkills_ChiefFirstLaunch` (Claude, Codex, both, neither; restart) |
 | Chief creates skill/Bot; next run lists and uses it on both providers | `TestSkills_ChiefCreatesAndUndo/{claude,codex}`; also checks provider-only field stripping |
+| Claude runs use project settings sources and discover placed Bot skills | `TestSkills_ChiefCreatesAndUndo/claude` (Chief, Bot and `--add-dir`); `TestThread_ResumesAndReports/claude`; `TestTitles_Generated/claude`; `TestProviderRun_Claude*` |
 | Undo restores previous state | `TestSkills_ChiefCreatesAndUndo` (remove creations, restart), `TestSkills_EditUndoAndNoPlatformTools` (restore edit after restart), `TestSkills_ChiefConfiguresAndUndoes` (skill edit, repo registration, connection attachment) |
 | Bot without switch has no platform tools | `TestSkills_EditUndoAndNoPlatformTools/{claude,codex}` inspects actual tools/list through fake |
 | Placed copy drops `disable-model-invocation`; library unchanged | `TestSkills_PlacedCopyDropsDisableModelInvocation/{claude,codex}` |
