@@ -352,7 +352,7 @@ after a failed undo counts a Bot that is already gone as removed.
       *Not used: `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` forces permission mode `default`, which breaks Auto
       and Full access; a `PreToolUse` hook would need `disableAllHooks` off; a settings `env` entry
       changes `claude` itself and signs it out; `BASH_ENV` does not reach a login shell.*
-    - Known risk, no fix this round: Bots run as the same OS user as Reef, so on Linux a Bot can read
+    - Known risk, no fix this round (issue #173 owns the fix: a Bot can read other runs' secrets and Reef's own env through `/proc`): Bots run as the same OS user as Reef, so on Linux a Bot can read
       `/proc/<pid>/environ` of `claude` (and of any other process of that user). `claude`'s environment
       holds `CLAUDE_CONFIG_DIR` (Reef's provider folder with the login); `ATOLL_MCP_<n>`, one per
       secret `argv` hides: Reef's own MCP URL for the run (it carries the run's token), the GitHub MCP
@@ -395,7 +395,9 @@ after a failed undo counts a Bot that is already gone as removed.
   get the stripped env: the server keeps its own, reads tokens in-process, and hands a Bot only what
   the run needs (`GH_TOKEN`/`OAUTH_TOKEN` env for `gh` and `glab`, MCP headers), so `gh auth status` in a
   GitHub-connected Bot still works. Limit: same-user processes can still open the bus socket by its
-  path (`/run/user/<uid>/bus`); the strip hides the address, it is not a boundary. Verified with `secret-tool` on Linux
+  path (`/run/user/<uid>/bus`); the strip hides the address, it is not a boundary. Evidence: a Bot-run probe's `pkill -f
+  'gnome-keyring-daemon --unlock'` killed Reef's own keyring daemon and a run failed with "failed to unlock
+  collection"; a same-user process can kill the host keyring by signal and reach it over the session bus. Verified with `secret-tool` on Linux
   against a private `dbus-daemon` and `gnome-keyring-daemon`; Codex's side is the same shared code and was not run.
 - Transport: Codex through `codex app-server` (JSON-RPC over stdio). Claude Code as
   `claude -p --input-format stream-json --output-format stream-json`, driven from Go. Copy both
