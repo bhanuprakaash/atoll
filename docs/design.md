@@ -48,8 +48,11 @@ never a dependency.
   because it contains writable per-worktree config. Codex Auto cannot write the repo's `.git/config` or `.git/hooks`: either could escape the sandbox
   when Reef next runs git. Reef disables hooks on its own git calls as a second guard. `start_work`
   sets the branch upstream when origin exists, since the Bot cannot write config. `git push -u` pushes
-  but cannot save upstream. Git may print `packed-refs.lock: Read-only file system` on commit, pull
-  or stash; these commands can still succeed with exit 0.
+  but cannot save upstream. Git 2.53's commit and stash cleanup deletes `AUTO_MERGE`; the files
+  backend locks `packed-refs` for ref deletion even when the file does not exist. This can print
+  `packed-refs.lock: Read-only file system` while the command succeeds. Deleting a packed branch
+  fails. The common directory is excluded to protect config and hooks, and single-file roots crash
+  Codex's sandbox. Codex Auto's repo prompt tells the Bot to check the exit code before retrying.
   If the worktree root contains the repo or its git common directory, it is not granted as a writable root.
 
   Repo-local config can define commands such as filters, diff drivers and `core.sshCommand`. Claude

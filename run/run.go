@@ -749,7 +749,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			return "", fmt.Errorf("select memory: %w", err)
 		}
 	}
-	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
+	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd, bot)
 	var githubToken string
 	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {

@@ -24,7 +24,7 @@ func TestMessagePrompt(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := messagePrompt("hello", tt.items, memory.Counts{}, tt.thread, tt.repo, "/cwd"); got != tt.want {
+			if got := messagePrompt("hello", tt.items, memory.Counts{}, tt.thread, tt.repo, "/cwd", store.Bot{}); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
