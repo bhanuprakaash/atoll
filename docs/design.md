@@ -328,6 +328,32 @@ after a failed undo counts a Bot that is already gone as removed.
     `--setting-sources project` (user and local settings off; hides the skills synced from the user's claude.ai account),
     `disableAllHooks`, `disableBundledSkills` and `skillOverrides` turning off `design`, `doctor`,
     `plugin-authoring` (the bundled skills that survive `disableBundledSkills`).
+  - Claude Code also keeps the owner's own setup out of a Bot's session (verified on 2.1.319):
+    - `--settings` carries `claudeMdExcludes`. `--setting-sources project` still loads the `CLAUDE.md`,
+      `CLAUDE.local.md`, `.claude/CLAUDE.md` and `.claude/rules` of every directory above the cwd, so the
+      owner's `~/.claude/CLAUDE.md` reaches a Bot whenever the worktree sits under their home. For
+      each directory strictly above the run's cwd, up to `/`, the list holds `<dir>/*.md` and
+      `<dir>/.claude/**`; the cwd itself is never listed, so the repo's own `CLAUDE.md` (and the
+      `AGENTS.md` it imports) and its `.claude/skills` still load, and so do the skills from
+      `--add-dir`. *Not used: `--setting-sources ""` and `CLAUDE_CODE_DISABLE_CLAUDE_MDS` also drop the
+      repo's files; a `!` negation in the list does not work.*
+    - `--settings` carries `autoMemoryEnabled: false`: no `memory/` folder under `projects/` and no
+      auto-memory section in the system prompt.
+    - `--disallowedTools "Task Workflow"`. `Task` is Claude Code's built-in Agent tool;
+      `Workflow` also starts subagents, so removing only `Task` leaves the hole. Subagents come only
+      from Reef's delegation (see Delegation).
+    - The Bash tool runs through `CLAUDE_CODE_SHELL_PREFIX`, a Reef-written script that unsets every
+      variable starting with `CLAUDE` and then runs the command (`exec bash -c "$*"`), so a Bot's shell
+      has no `CLAUDE_CONFIG_DIR` and `env | grep -c CLAUDE` prints 0. Claude Code keeps its own copy
+      and still reads the folder. The server writes the script on every start to `<data dir>/bin/claude-shell-prefix`
+      (mode 0500, owned by the user running Reef, replaced by a rename from a temp file), and every
+      run's env points at that path. The prefix must be one path (a value with spaces fails).
+      *Not used: `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` forces permission mode `default`, which breaks Auto
+      and Full access; a `PreToolUse` hook would need `disableAllHooks` off; a settings `env` entry
+      changes `claude` itself and signs it out; `BASH_ENV` does not reach a login shell.*
+    - What remains: Bots run as the same OS user as Reef, so a Bot can still read `claude`'s environment
+      through `/proc/<pid>/environ`, and can run `claude` itself (which then uses the owner's `~/.claude`,
+      since `HOME` is never changed). The prefix hides the variable from `env`; it is not a boundary.
   - Codex: `skills.bundled.enabled=false`; plugins, remote plugins and apps off; each skill in
     `~/.agents/skills` disabled by the path of its `SKILL.md`, since a skill's name can differ from
     its folder (Codex finds that folder through `HOME`).
@@ -344,7 +370,20 @@ after a failed undo counts a Bot that is already gone as removed.
   GitLab and GitHub tokens (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`,
   `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`) and the settings that carry a login (`OAUTH_TOKEN`,
   `GITLAB_HOST`, `GIT_CONFIG_PARAMETERS`, `SSH_AUTH_SOCK`), with PATH set to the discovery folders
-  first.
+  first. It also drops the variables that point at the session D-Bus, so a Bot's shell cannot reach
+  the Linux secret store (Secret Service) where Reef keeps its tokens: `DBUS_SESSION_BUS_ADDRESS`,
+  `XDG_RUNTIME_DIR` and `DISPLAY`. The strip is the same on every OS (macOS sets none of them; its
+  keychain has a per-app ACL) and for both providers, since it lives in `provider.Env`. Other `XDG_*`
+  variables (`XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`) stay: they lead to no secret store.
+  Both of the first two must go: on Linux, `secret-tool` still reached the store with only one removed (the
+  address is the default `$XDG_RUNTIME_DIR/bus` when unset), and failed with "Cannot autolaunch
+  D-Bus without X11 $DISPLAY" with both removed. *`DISPLAY` is dropped because that autolaunch
+  would find a bus on an X session; not run, since this machine has no X server.* Only provider children
+  get the stripped env: the server keeps its own, reads tokens in-process, and hands a Bot only what
+  the run needs (`GH_TOKEN`/`OAUTH_TOKEN` env for `gh` and `glab`, MCP headers), so `gh auth status` in a
+  GitHub-connected Bot still works. Limit: same-user processes can still open the bus socket by its
+  path (`/run/user/<uid>/bus`); the strip hides the address, it is not a boundary. Verified with `secret-tool` on Linux
+  against a private `dbus-daemon` and `gnome-keyring-daemon`; Codex's side is the same shared code and was not run.
 - Transport: Codex through `codex app-server` (JSON-RPC over stdio). Claude Code as
   `claude -p --input-format stream-json --output-format stream-json`, driven from Go. Copy both
   adapters from old Reef (`agent/codex`, `agent/claude`). *The Claude Agent SDK runs the same CLI
@@ -430,6 +469,34 @@ after a failed undo counts a Bot that is already gone as removed.
   an overlapping run and change files a live run reads.* A provider without skills gets a list in the
   prompt and reads the file on demand. Never written into the repo. Skills the repo commits itself (`.claude/skills`,
   `.agents/skills`) still load, like its CLAUDE.md.
+- Home paths in imported skills. An imported skill's files may point at the owner's own home (poteto-mode's
+  scripts call `~/.claude/skills/poteto-mode/scripts/...`); left alone, a Bot would run the owner's real
+  files. Import and Re-import (`import_skill`, `POST /api/skills/{id}/reimport`, same code) go over
+  `SKILL.md` and every other stored text file (scripts included; binaries are not stored) and never write the source folder:
+  - Rewritten: a reference to the skill's own folder, which is `~/`, `$HOME/` or `${HOME}/` followed by the
+    folder's path under the owner's home (`.claude/skills/<folder>`, `.codex/skills/<folder>`,
+    `.agents/skills/<folder>`: whichever it was imported from), or that folder's absolute path.
+    It becomes `{{ATOLL_SKILL_DIR}}`, so `~/.claude/skills/x/scripts/run.sh` is stored as
+    `{{ATOLL_SKILL_DIR}}/scripts/run.sh`. After the rewrite a stored skill holds no own-folder `~/` path.
+    *A relative path (the old rewrite) is wrong for scripts: a Bot's cwd is the repo worktree.*
+  - Placement, per run and for both providers, replaces every `{{ATOLL_SKILL_DIR}}` in the copies of `SKILL.md`
+    and the text files with the absolute path of that copy: `<run folder>/.claude/skills/<name>` for Claude
+    Code, `<run folder>/<name>` for Codex (`<name>` is the folder name `Place` already chooses). The path
+    is unknown at import, which is why the stored text keeps a token. The scripts then run from the
+    placed copy and the owner's files stay out of it. The token also works in skills written in Reef.
+  - Warning: after the rewrite, any remaining `~/`, `$HOME` or `${HOME}` in a stored text file, or the
+    server's own home directory as an absolute path (`/Users/<name>/`, `/home/<name>/`). That covers
+    other skills (`~/.claude/skills/<other>/`), `~/.ssh`, dotfiles and shared tools. A warning is
+    `{file, line, ref}`, `ref` being the matched path up to the next space or quote. The skill is still
+    imported, never refused, and the reference stays as written: Reef cannot make it work in a Bot
+    and does not block it at run time.
+  - Shown: `import_skill` and the reimport answer carry `rewritten` (file and count) next to
+    `warnings`; `GET /api/skills` and `GET /api/skills/{id}` carry `warnings` (empty for none), worked
+    out from the stored files on each read for a skill with a source folder, so editing the file
+    clears it. Settings > Skills marks a row with warnings ("N home paths"); the open skill shows a notice
+    above its files listing each `file:line ref`, and clicking one selects that file. Chief names every
+    warning (file, line, ref) in its import reply beside the skipped and flagged files, and says which paths
+    it rewrote. Skills imported before this stay as stored until Re-import.
 
 ## MCP servers
 
