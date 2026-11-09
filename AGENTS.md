@@ -98,7 +98,7 @@ issues and PRs start from the templates in `.github/`.
   by the user or a separate session. The implementing agent never edits `e2e/`.
 - If a test looks wrong, stop and report it. Never edit, skip or weaken a test to make code pass.
 - A test-only PR says so in its title (`test:`) and fills the template's `Issue:` line with
-  `Refs #N`. A test cleans up even when it fails (`t.Cleanup`, `defer`; `finally` in web tests).
+  `Refs #N`. A test cleans up even when it fails (`t.Cleanup`, `finally`).
 - Unit tests are for fiddly logic. Add a case to an existing table-driven test, not a test per bug.
 - `test-guard` (`scripts/check-tests`) fails a PR that mixes `e2e/` with other code, deletes a
   test, adds a skip or `.only(`, or edits `.github/workflows/`. Only the user decides to merge a PR
