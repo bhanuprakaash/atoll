@@ -22,7 +22,10 @@ Every Claude Bot run (any Mode, a new session and a resumed one, a Bot in a chec
   quotes; the data dir of the tests has a space).
 
 The server writes that script at every start, through `.claude-shell-prefix.tmp` in the same folder
-renamed over the old file, mode 0500, owned by the user, with the text the design gives. Run by
+renamed over the old file, mode 0500, owned by the user, with the text the design gives. A temp file a
+crashed server left there (mode 0500, half written) does not stop the next start: it is replaced and
+no temp is left. While the old script is in place, a restart never lets a reader see it empty or cut
+short. A relative `ATOLL_DATA_DIR` still gives an absolute `CLAUDE_CODE_SHELL_PREFIX`. Run by
 itself it removes `CLAUDE*` and `ATOLL_MCP_*` from the command's env, keeps other variables and runs
 nested quotes and `$()`.
 
@@ -39,6 +42,9 @@ nested quotes and `$()`.
 | Ancestors of a cwd with a space and glob characters, reached through a symlinked ancestor, listed as given and resolved with `?`; the cwd never listed | `TestClaudeIsolation_RepoWorktreeWithGlobAndSpace` |
 | No `memory/` folder under `projects/` after a run | `TestClaudeIsolation_EveryModeFreshAndResumed`, `TestClaudeIsolation_RepoWorktreeWithGlobAndSpace` |
 | The script is written at start, rewritten atomically on restart, mode 0500, owned by the user, the design's text; it clears `CLAUDE*` and `ATOLL_MCP_*` and keeps other variables | `TestClaudeIsolation_ShellPrefixScript` |
+| A stale `.claude-shell-prefix.tmp` (mode 0500) does not stop the start; it is replaced and gone; the temp lives in `bin/` | `TestClaudeIsolation_ShellPrefixSurvivesStaleTemp` |
+| A reader of the script during a restart sees only the whole old or whole new text (a read loop; a write in place is caught when a read lands inside it, so this is a probe, not a proof) | `TestClaudeIsolation_ShellPrefixReplacedWholeOnRestart` |
+| A relative `ATOLL_DATA_DIR` gives an absolute `CLAUDE_CODE_SHELL_PREFIX` in the Bot's env | `TestClaudeIsolation_ShellPrefixIsAbsoluteForRelativeDataDir` |
 | Real claude still reaches its MCP servers with `ATOLL_MCP_*` unset in Bash | `TestClaudeIsolation_RealClaudeReachesMCPServers` (build tag `realclaude`: `go test -tags realclaude -run TestClaudeIsolation_RealClaudeReachesMCPServers ./e2e`; needs a signed-in claude; not in `make e2e` or CI) |
 
 ## Not covered
