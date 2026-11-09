@@ -189,3 +189,59 @@ func TestWorktrees(t *testing.T) {
 		t.Errorf("Checkout branch = %q, want detached", got)
 	}
 }
+
+func TestSave_RepoFilters(t *testing.T) {
+	for _, mode := range []string{"required", "include"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+			t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+			t.Setenv("GIT_AUTHOR_NAME", "t")
+			t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+			t.Setenv("GIT_COMMITTER_NAME", "t")
+			t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
+			src, root, marker := t.TempDir(), t.TempDir(), filepath.Join(t.TempDir(), "ran")
+			git := func(args ...string) {
+				t.Helper()
+				if out, err := exec.CommandContext(t.Context(), "git", append([]string{"-C", src}, args...)...).CombinedOutput(); err != nil {
+					t.Fatalf("git %v: %v: %s", args, err, out)
+				}
+			}
+			git("init", "-q")
+			if err := os.WriteFile(filepath.Join(src, "a.txt"), []byte("before\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			git("add", "a.txt")
+			git("commit", "-qm", "init")
+			work, _, _, err := Create(t.Context(), src, root, "demo", "fix/filter")
+			if err != nil {
+				t.Fatal(err)
+			}
+			common := filepath.Join(src, ".git")
+			id, err := WorktreeID(common, work)
+			if err != nil {
+				t.Fatal(err)
+			}
+			config := filepath.Join(common, "config")
+			if mode == "include" {
+				config = filepath.Join(common, "included")
+				git("config", "include.path", config)
+			}
+			git("config", "--file", config, "filter.lreq.clean", "touch "+marker+"; cat")
+			if mode == "required" {
+				git("config", "--file", config, "filter.lreq.required", "true")
+			}
+			if err := os.WriteFile(filepath.Join(work, ".gitattributes"), []byte("a.txt filter=lreq\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(work, "a.txt"), []byte("after\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if saved, err := Save(WithWorktree(t.Context(), common, id), work, "refs/atoll/unfinished/test"); err != nil || !saved {
+				t.Fatalf("Save = %v, %v", saved, err)
+			}
+			if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("filter ran: %v", err)
+			}
+		})
+	}
+}

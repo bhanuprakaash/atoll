@@ -341,15 +341,7 @@ func git(ctx context.Context, dir string, env []string, args ...string) (string,
 	}
 	allEnv = append(allEnv, env...)
 	if enabled, _ := ctx.Value(snapshotKey{}).(bool); enabled {
-		common := trusted.common
-		if !hasTrusted {
-			var err error
-			common, err = GitCommonDir(context.WithValue(ctx, snapshotKey{}, false), dir)
-			if err != nil {
-				return "", err
-			}
-		}
-		config := exec.CommandContext(ctx, "git", "config", "--null", "--file", filepath.Join(common, "config"), "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process)$`)
+		config := exec.CommandContext(ctx, "git", append(base, "config", "--local", "--includes", "--null", "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process|required)$`)...)
 		config.Env = allEnv
 		keys, err := config.Output()
 		var exit *exec.ExitError
@@ -357,10 +349,18 @@ func git(ctx context.Context, dir string, env []string, args ...string) (string,
 			return "", fmt.Errorf("list repo filters: %w", err)
 		}
 		count := 0
+		seen := map[string]bool{}
 		for _, key := range strings.Split(string(keys), "\x00") {
 			if key != "" {
-				allEnv = append(allEnv, "GIT_CONFIG_KEY_"+strconv.Itoa(count)+"="+key, "GIT_CONFIG_VALUE_"+strconv.Itoa(count)+"=")
-				count++
+				name := key[:strings.LastIndexByte(key, '.')]
+				if seen[name] {
+					continue
+				}
+				seen[name] = true
+				for _, setting := range [][2]string{{"clean", ""}, {"smudge", ""}, {"process", ""}, {"required", "false"}} {
+					allEnv = append(allEnv, "GIT_CONFIG_KEY_"+strconv.Itoa(count)+"="+name+"."+setting[0], "GIT_CONFIG_VALUE_"+strconv.Itoa(count)+"="+setting[1])
+					count++
+				}
 			}
 		}
 		allEnv = append(allEnv, "GIT_CONFIG_COUNT="+strconv.Itoa(count))

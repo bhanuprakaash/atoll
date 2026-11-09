@@ -403,11 +403,7 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	return nil
 }
 
-func (m *Manager) checkWorktree(ctx context.Context, path string) error {
-	root, err := m.WorktreeRoot(ctx)
-	if err != nil {
-		return err
-	}
+func (m *Manager) checkWorktree(_ context.Context, path string) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("inspect worktree: %w", err)
@@ -415,17 +411,14 @@ func (m *Manager) checkWorktree(ctx context.Context, path string) error {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("refuse symlink worktree")
 	}
-	root, err = filepath.Abs(root)
-	if err != nil {
-		return err
-	}
 	path, err = filepath.Abs(path)
 	if err != nil {
 		return err
 	}
+	root := filepath.Dir(filepath.Dir(path))
 	rel, err := filepath.Rel(root, path)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return errors.New("worktree is outside its root")
+	if err != nil {
+		return err
 	}
 	resolvedRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {

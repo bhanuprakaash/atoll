@@ -117,6 +117,27 @@ func (e *repoEnv) run(t *testing.T, fn func(token string)) *fakeSession {
 	return nil
 }
 
+func TestCloseThread_WorktreeRootChange(t *testing.T) {
+	e := newRepoEnv(t)
+	var path string
+	e.run(t, func(token string) {
+		var err error
+		path, _, _, err = e.m.StartWork(t.Context(), token, "fix", "root")
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	if err := e.m.SetWorktreeRoot(t.Context(), t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.m.CloseThread(t.Context(), e.thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("worktree remains: %v", err)
+	}
+}
+
 func TestRun_RepoAccessRevoked(t *testing.T) {
 	e := newRepoEnv(t)
 	mem, err := memory.Open(e.st.DB(), nil)
