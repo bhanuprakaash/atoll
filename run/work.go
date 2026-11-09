@@ -287,6 +287,9 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 			}
 		}
 	}
+	if err := os.RemoveAll(filepath.Join(m.cfg.DataDir, "cache", botID)); err != nil {
+		return fmt.Errorf("remove bot cache: %w", err)
+	}
 	return nil
 }
 

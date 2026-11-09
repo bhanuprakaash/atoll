@@ -39,7 +39,7 @@ never a dependency.
 
   | Mode | Claude Code | Codex |
   | --- | --- | --- |
-  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; the worktree root (including every worktree under it), the repo's git objects, refs, logs and worktrees directories, and the session's own git directory are writable; `approvalPolicy: on-request` |
+  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; the worktree root (including every worktree under it), the repo's git objects, refs, logs and worktrees directories, the session's own git directory and the Bot's cache root are writable; `approvalPolicy: on-request` |
   | Ask | default mode + Reef's permission prompt tool | `approvalPolicy: untrusted` |
   | Full access | `--permission-mode bypassPermissions` | `danger-full-access` sandbox, `approvalPolicy: never` |
 
@@ -48,6 +48,10 @@ never a dependency.
     `extensions.worktreeConfig` is enabled, neither git worktrees root is granted because they hold
     writable per-worktree config. The worktree root is not granted if it contains the repo or its
     git common directory.
+    For repo threads, Reef creates `<data>/cache/<bot id>/` and shares it across that Bot's runs.
+    It sets `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `GOCACHE`,
+    `GOLANGCI_LINT_CACHE`, `npm_config_store_dir` and `PNPM_HOME` to folders under that root.
+    Deleting the Bot removes its cache.
   - Read-only: the repo's `.git/config` and `.git/hooks`; either could escape the sandbox when
     Reef next runs git. The common directory is excluded to protect them; single-file roots crash
     Codex's sandbox. Reef's git disables hooks and fsmonitor and uses `GIT_DIR` and `GIT_COMMON_DIR`
