@@ -1198,6 +1198,9 @@ func commandWords(command string) []string {
 			fields = fields[1:]
 		}
 		if len(fields) > 0 && fields[0] != "cd" {
+			if fields[0] == "_" {
+				return nil
+			}
 			return fields
 		}
 	}
