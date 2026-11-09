@@ -390,11 +390,16 @@ after a failed undo counts a Bot that is already gone as removed.
       MCP tool, `Bash`, `Write` and `Read` in each mode (Ask with an approval tool that allows).
       A skill from `--add-dir` loaded through `Skill`. Reef's `finish_run`, the call every run ends
       with, was called without `ToolSearch` (listed in none of the 10 names) and returned.
-      - The e2e spec compares the init tool list with this set (a real-`claude` spec behind the
-        `realclaude` tag, plus argv assertions with the scripted fake). An added built-in stays
-        closed, so the comparison cannot fail on an addition. It catches a named tool that is gone
-        or renamed (missing from the init list) and any built-in outside the set that appears
-        (the allowlist stopped working). `finish_run` is one of the tested MCP calls.
+      - CI runs the argv assertions with the scripted fake: they pin the allowlist string and its
+        order. The init-list comparison is a real-`claude` spec behind the `realclaude` build tag
+        (`go test -tags realclaude -run TestClaudeIsolation_Real ./e2e`), which CI does not run. It
+        runs by hand and in slice verification.
+      - An added built-in stays closed, so the comparison cannot fail on an addition. It catches a
+        named tool that is gone or renamed (missing from the init list) and any built-in outside
+        the set that appears (the allowlist stopped working). `finish_run` is one of the tested MCP
+        calls.
+      - Known gap: a tool that `claude` renames or removes is dropped silently, and only the
+        real-`claude` run above catches it; CI passes the argv assertions either way.
       - Unverified: an account with claude.ai connectors (`ENABLE_CLAUDEAI_MCP_SERVERS=false` is
         set; the test account had none); another session's `TaskStop` ID (the tool is left out, so
         it only matters if it is added); that `ToolSearch` is unneeded for MCP tool sets larger
