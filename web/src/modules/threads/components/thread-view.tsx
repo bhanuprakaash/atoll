@@ -491,6 +491,7 @@ export function ThreadView({
   const shownThread = useRef('');
   const content = useRef<HTMLDivElement>(null);
   const wasAtLatest = useRef(true);
+  const lastTop = useRef(0);
   const [awayFromLatest, setAwayFromLatest] = useState(false);
   useLayoutEffect(() => {
     const element = log.current;
@@ -660,8 +661,10 @@ export function ThreadView({
           const element = log.current;
           if (!element) return;
           const atLatest = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
-          wasAtLatest.current = atLatest;
-          setAwayFromLatest(!atLatest);
+          if (atLatest) wasAtLatest.current = true;
+          else if (element.scrollTop < lastTop.current) wasAtLatest.current = false;
+          lastTop.current = element.scrollTop;
+          setAwayFromLatest(!wasAtLatest.current);
           loadOlder();
         }}
         className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-7 ${empty ? 'justify-center' : ''}`}
