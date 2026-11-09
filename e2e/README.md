@@ -9,7 +9,7 @@ The implementer separately proves a real provider opening an MR on gitlab.com.
 ## First edit and working directory
 
 The Bot calls Atoll MCP `start_work({type, slug})` before its first edit. Allowed types
-are `feat`, `fix`, `chore`, `docs`. The app normalises `Seeded BUG` to `seeded-bug`,
+are `feat`, `fix`, `chore`, `docs`, `test`. The app normalises `Seeded BUG` to `seeded-bug`,
 creates `fix/seeded-bug` (then `fix/seeded-bug-2` when taken), creates the worktree
 under the configured root, and returns text JSON `{path, branch}` with an absolute
 path. The Bot changes directory there for this run's edits. The branch is fixed for
