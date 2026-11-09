@@ -26,6 +26,8 @@ in their briefs. Each line: the principle, then (where it came from).
 - Show data visually when it helps: tables, charts, diffs, code, metrics, timelines, as Reef components; sandboxed
   HTML only for what the set can't do. (rich output idea; T3 Code's HTML embedding)
 - Motion supports state, never decorates; reduced motion is respected.
+- Errors are designed messages: plain words, what to do next, an action, details tucked away; never a raw object,
+  JSON, error chain or "internal error" on screen. ("not supposed to render object as error message")
 
 ## How we build
 - Smallest change that closes the ticket, test first from a separate session, owner merges.
