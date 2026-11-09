@@ -48,10 +48,15 @@ never a dependency.
     `extensions.worktreeConfig` is enabled, neither git worktrees root is granted because they hold
     writable per-worktree config. The worktree root is not granted if it contains the repo or its
     git common directory.
-    For repo threads, Reef creates `<data>/cache/<bot id>/` and shares it across that Bot's runs.
+    With a linked worktree, there are five or six roots plus the cache root; the worktree root may
+    be withheld. With `extensions.worktreeConfig` enabled, three or four roots plus the cache root
+    remain. For repo threads, Reef creates `<data>/cache/<bot id>/` per Bot. A Bot's threads on
+    any repo share its cache; Bots never share caches. Codex Ask and Full access and Claude get none.
     It sets `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `GOCACHE`,
     `GOLANGCI_LINT_CACHE`, `pnpm_config_store_dir` and `PNPM_HOME` to folders under that root.
-    Deleting the Bot removes its cache.
+    Deleting the Bot removes its cache; Reef logs a removal failure after deleting the Bot.
+  - Known gap: `GOMODCACHE` and `GOPATH` are not moved. A first build needing a module absent
+    from `~/go` can fail on the read-only module cache. A real run can determine a follow-up.
   - Read-only: the repo's `.git/config` and `.git/hooks`; either could escape the sandbox when
     Reef next runs git. The common directory is excluded to protect them; single-file roots crash
     Codex's sandbox. Reef's git disables hooks and fsmonitor and uses `GIT_DIR` and `GIT_COMMON_DIR`
