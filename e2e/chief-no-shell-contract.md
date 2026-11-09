@@ -8,7 +8,7 @@ is in `docs/design.md` (Bots, Chief; Prompt).
 
 - A Claude run of Chief has `--tools` with an empty value in its argv in every Mode (Ask, Auto,
   Full access), and keeps `--mcp-config` (with the `atoll` server) and `--allowedTools mcp__atoll`.
-  No other Bot's argv has `--tools`: not a Bot with the platform switch, a Bot without it or a repo Bot.
+  Every other Bot's argv has `--tools` with exactly the allowlist of [claude-isolation-contract.md](claude-isolation-contract.md), not an empty value: a Bot with the platform switch, a Bot without it or a repo Bot.
 - A Codex Chief gets no such setting yet (a documented gap). It still runs, so a user who has only
   Codex can use Chief. The tests assert nothing else about it.
 - A platform tool `import_agent({path})`, offered only to a Bot with the platform switch, records no
@@ -44,7 +44,7 @@ when a non-platform Bot lists `import_agent` or its guessed call works.
 
 | Acceptance | Tests |
 | --- | --- |
-| Claude Chief runs with `--tools ""` plus its MCP config in every Mode; no other Bot gets `--tools` | `TestChiefNoShell_ClaudeRunsWithoutTools` |
+| Claude Chief runs with `--tools ""` plus its MCP config in every Mode; every other Bot gets exactly the `--tools` allowlist | `TestChiefNoShell_ClaudeRunsWithoutTools` |
 | A Codex Chief still runs | `TestChiefNoShell_CodexChiefStillRuns` |
 | `import_agent` reads a `.md` file in `~/.claude/agents`; refuses the rest with invalid params | `TestChiefNoShell_ImportAgent` |
 | Exactly 256 KiB is read; each refusal has its own wording; no change is recorded | `TestChiefNoShell_ImportAgent`, `TestChiefNoShell_ChiefStillDoesItsJob` |
