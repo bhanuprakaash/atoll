@@ -13,7 +13,8 @@ words like a human would, never with tool-call recipes. The owner merges every P
    open tickets and PRs, the decisions made, the Bot ids and what's next.
 2. `$REEF_HOME` (default `~/reef-dogfood`) is machine-local: data, keyring, worktrees, clone, build, logs, findings.
    If it's gone (new machine), do Setup. If it's there, check Reef answers on `http://127.0.0.1:4317/api/settings`
-   and start it if not (scripts/run-reef.sh, in the background).
+   and start it if not, detached: `setsid nohup scripts/run-reef.sh >> $REEF_HOME/logs/server.log 2>&1 < /dev/null &`.
+   Never as a harness background task: those stop after 2 hours and take Reef and every running Bot down.
 3. Never redo setup steps that already hold: sign-ins, connections and Bots live in `$REEF_HOME/data`.
 
 ## Setup (only on a fresh machine)
@@ -61,6 +62,8 @@ words like a human would, never with tool-call recipes. The owner merges every P
 - **Recording**: the preview recorder holds video in browser memory (2.7 min = 3.5 GB RSS, 19 MB file; 50 MB cap).
   Record short clips of key moments only; copy them to `$REEF_HOME/recordings`. A long recording hangs on stop and
   is lost.
+- **Reef must outlive your tools**: start it with `setsid nohup` (see Pick up). Round 1 lost Reef at the
+  2-hour background limit; restart recovery worked (the dead run failed cleanly and woke its boss).
 - **Memory**: 15 GB, no swap possible. At most 3 Bots building at once; full `make e2e` only in CI.
 - **Never `pkill -f <pattern>`** in a command line that contains the pattern: it kills your own shell.
 - **Secrets**: never print env values; tokens sit in `ATOLL_MCP_<n>`. An observer once leaked the GitHub token this way.
