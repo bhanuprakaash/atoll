@@ -12,4 +12,4 @@ printf 'reef-dogfood\n' | gnome-keyring-daemon --unlock --components=secrets >/d
 printf probe | secret-tool store --label=probe service reef-probe account probe
 secret-tool clear service reef-probe account probe
 echo "keyring ok"
-exec env ATOLL_DATA_DIR="$D/data" "$D/bin/atoll" serve
+exec env -u GH_TOKEN -u GITHUB_TOKEN -u CLAUDE_CODE_MESSAGING_TOKEN ATOLL_DATA_DIR="$D/data" "$D/bin/atoll" serve

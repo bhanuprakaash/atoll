@@ -19,6 +19,13 @@ in their briefs. Each line: the principle, then (where it came from).
 
 ## Look and feel
 - Calm and compact. Small, dense where it helps reading, no wasted height. (approval card "bit compact")
+- The conversation owns the screen. Status surfaces (helpers, progress, queues) rest as one line and expand only for
+  what needs the person; full detail opens on demand over the chat, never pushing it away. (helper tray: "doesn't it
+  block a lot of chat?")
+- One "you are here" mark, on the most specific item (sidebar: the open thread, not also its Bot). ("both bot and
+  thread selected, heavy bot")
+- Mockups use Reef's own look (creatures, Geist, tokens), built in the real page, never a generic theme. ("our design
+  doesn't look like that")
 - Colour carries meaning only; red is rare and reserved for real danger or failure, never a resting state.
   ("no need to put that much red")
 - Our own components, built for Reef, richer and more adaptable than off-the-shelf; no generic renderers like

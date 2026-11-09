@@ -706,6 +706,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	}
 	cfg.Model = bot.Model
 	cfg.Mode = bot.Mode
+	cfg.NoShell = bot.ID == "chief" && bot.Provider == "claude"
 	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
 		if cfg.WritableRoots, err = m.codexAutoRoots(a.ctx, thread, rp); err != nil {
 			return "", err
