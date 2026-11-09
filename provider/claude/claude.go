@@ -348,6 +348,7 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 		"--verbose",
 		"--include-partial-messages",
 		"--strict-mcp-config",
+		"--setting-sources", "project",
 		"--settings", `{"disableAllHooks":true,"disableBundledSkills":true,"skillOverrides":{"design":"off","doctor":"off","plugin-authoring":"off"}}`,
 	}
 	if cfg.Model != "" {
