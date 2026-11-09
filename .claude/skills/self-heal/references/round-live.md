@@ -23,9 +23,20 @@ Then finish and reply with your file path and a 3-line summary.
 - backend: run lifecycle, delegation (helper threads, inbox, wake, 3-helper cap, helper worktrees and cleanup),
   approvals pairing, provider argv/env isolation per provider and mode, skill placement/removal, log errors,
   leftovers, memory pressure.
-- ui: own headless browser (non-GET blocked); Helpers region, handoff lines, helper reports, helper threads, island
-  notifications, sidebar tree (N more, popup), New markers, PR chips, status words; compare each screen with the
-  runs/*.jsonl and DB at the same moment.
+- ui: own headless browser (non-GET blocked). Two halves, both required:
+  1. Truth: Helpers region, handoff lines, helper reports, helper threads, island notifications, sidebar tree
+     (N more, popup), New markers, PR chips, status words; compare each screen with the runs/*.jsonl and DB at the
+     same moment.
+  2. Product design, as a user and a designer, not as a spec checker. docs/design.md is the current answer, not the
+     limit: challenge it where the product would be better. Use Reef for real (read long threads, follow parallel
+     helpers, answer approvals, browse memory and skills) and judge how it feels: chat layout and reading width,
+     message density and rhythm, typography and alignment, streaming and perceived speed (does text appear while a
+     Bot works?), cards (approval, change, memory, report, PR), empty, loading and error states, sidebar and island
+     at scale, keyboard flow, motion, dark/light, narrow widths, microcopy. Compare with the best chat and agent UIs
+     you know (Claude.ai, ChatGPT, Cursor, Linear, Slack) and say what they do better or worse. For each idea: the
+     screenshot of today, the problem in one sentence, the proposal, and where it pays off; build a small HTML mockup
+     under $REEF_HOME/findings/mockups/ and screenshot it when words aren't enough. Mark these "experiment" so they're
+     kept apart from bugs; name the design.md decision an idea would reopen, with the reason.
 - product: friction and features worth adding with evidence: how the lead plans, how often the user steps in,
   waiting, approvals that add no safety, what a user needs to trust parallel work; cite docs/design.md (and Queue).
 - bots: judge every run against its brief, persona and AGENTS.md (test-first, e2e untouched by fixers, smallest diff,
