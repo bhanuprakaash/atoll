@@ -373,13 +373,15 @@ after a failed undo counts a Bot that is already gone as removed.
       - Kept for a reason: `Skill` loads Reef's skills (`--add-dir`). `WebFetch` and `WebSearch`
         reach the internet, not other sessions or the machine's sessions. `NotebookEdit` writes a
         file in the worktree, like `Edit`. `Glob` and `Grep` are named because Reef maps them
-        (`run/run.go`); Claude Code 2.1.319 does not list them, and naming them is accepted
-        without error.
+        (`run/run.go`); Claude Code 2.1.319 lists both in its init event when they are named.
       - Delegation goes only through Reef's own tool (see Delegation). A dedicated helpers tool is
         a later ticket (#205).
     - Run, `claude` 2.1.319 with Reef's other flags and a local MCP server standing in for Reef's:
       the `system/init` tool list in Ask, Auto and Full holds exactly the 10 built-in names above
-      plus Reef's tools (14 entries with the four Bot tools of the stand-in). A Bot called a Reef
+      plus Reef's tools, except the permission-prompt tool (`approve`), which `claude` keeps out of
+      the list: a stand-in with three Bot tools and `approve` showed 13 entries, 10 built-in and
+      three Reef; without `--permission-prompt-tool` the same server showed 14. The e2e check
+      excludes the permission-prompt tool from the comparison. A Bot called a Reef
       MCP tool, `Bash`, `Write` and `Read` in each mode (Ask with an approval tool that allows).
       A skill from `--add-dir` loaded through `Skill`.
       - The e2e spec compares the init tool list with this set (a real-`claude` spec behind the
