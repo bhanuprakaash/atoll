@@ -292,7 +292,7 @@ func probeModels(parent context.Context, name, bin, dir string) []server.Model {
 		if err != nil {
 			return []server.Model{}
 		}
-		isolation, err := claude.IsolationArgs(cwd)
+		isolation, err := claude.IsolationArgs(cwd, false)
 		if err != nil {
 			return []server.Model{}
 		}

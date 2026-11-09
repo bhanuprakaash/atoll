@@ -38,6 +38,7 @@ const (
 	// _messageBreak goes before the text of a message that follows text in the same turn.
 	_messageBreak = "\n\n"
 	_stderrKeep   = 4 << 10
+	_builtinTools = "Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write"
 )
 
 // Session drives one claude process. Use one Session per process.
@@ -341,7 +342,7 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 		secrets = append(secrets, name+"="+value)
 		return "${" + name + "}"
 	}
-	isolation, err := IsolationArgs(cfg.Cwd)
+	isolation, err := IsolationArgs(cfg.Cwd, cfg.NoTools)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -393,14 +394,11 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 	if cfg.SkillDir != "" {
 		args = append(args, "--add-dir", cfg.SkillDir)
 	}
-	if cfg.NoTools {
-		args = append(args, "--tools", "")
-	}
 	return append(args, extra...), secrets, nil
 }
 
 // IsolationArgs excludes ancestor instructions, so cwd must be the repo root to keep its CLAUDE.md.
-func IsolationArgs(cwd string) ([]string, error) {
+func IsolationArgs(cwd string, noTools bool) ([]string, error) {
 	excludes := []string{}
 	seen := map[string]bool{}
 	paths := []string{cwd}
@@ -432,7 +430,11 @@ func IsolationArgs(cwd string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []string{"--setting-sources", "project", "--settings", string(settings), "--disallowedTools", "Task Workflow"}, nil
+	tools := _builtinTools
+	if noTools {
+		tools = ""
+	}
+	return []string{"--setting-sources", "project", "--settings", string(settings), "--tools", tools}, nil
 }
 
 func userServer(m provider.UserMCPServer, hide func(string) string) map[string]any {

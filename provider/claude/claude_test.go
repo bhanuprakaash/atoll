@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -109,8 +110,10 @@ func TestSession(t *testing.T) {
 func TestArgv(t *testing.T) {
 	base := []string{
 		"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-		"--include-partial-messages", "--strict-mcp-config", "--setting-sources", "project", "--settings", `{"autoMemoryEnabled":false,"claudeMdExcludes":["*.md",".claude/**"],"disableAllHooks":true,"disableBundledSkills":true,"skillOverrides":{"design":"off","doctor":"off","plugin-authoring":"off"}}`, "--disallowedTools", "Task Workflow",
+		"--include-partial-messages", "--strict-mcp-config", "--setting-sources", "project", "--settings", `{"autoMemoryEnabled":false,"claudeMdExcludes":["*.md",".claude/**"],"disableAllHooks":true,"disableBundledSkills":true,"skillOverrides":{"design":"off","doctor":"off","plugin-authoring":"off"}}`, "--tools", "Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write",
 	}
+	noTools := slices.Clone(base)
+	noTools[len(noTools)-1] = ""
 	mcp := func(servers string) []string {
 		return []string{
 			"--mcp-config", servers,
@@ -155,9 +158,9 @@ func TestArgv(t *testing.T) {
 				"ATOLL_MCP_5=e1",
 			}},
 		{"title without tools", provider.Config{NoTools: true}, nil,
-			append(base[:len(base):len(base)], "--tools", ""), nil},
+			noTools, nil},
 		{"no tools ignores MCP", provider.Config{MCPURL: "http://127.0.0.1:9/mcp/t0k", NoTools: true}, nil,
-			append(base[:len(base):len(base)], "--tools", ""), nil},
+			noTools, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
