@@ -927,7 +927,10 @@ func (a *api) readImport(path string) (skill.Import, error) {
 	if err != nil {
 		return skill.Import{}, err
 	}
-	return skill.Read(resolved)
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		path = filepath.Join(home, rest)
+	}
+	return skill.Read(resolved, filepath.Clean(path))
 }
 
 func importPath(path, home string, folders []string) (string, error) {

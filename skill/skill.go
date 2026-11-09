@@ -132,7 +132,11 @@ func Check(files []store.SkillFile) error {
 // Read imports the skill in the local folder dir without writing to it. It takes SKILL.md and every
 // other text file, skips binaries and .git, and makes ~/.claude/skills/<folder>/ in SKILL.md
 // relative to the skill. Name is SKILL.md's frontmatter name, else the folder name.
-func Read(dir string) (Import, error) {
+func Read(dir string, source ...string) (Import, error) {
+	entry := dir
+	if len(source) > 0 {
+		entry = source[0]
+	}
 	skillPath := filepath.Join(dir, "SKILL.md")
 	data, _, err := readFile(skillPath)
 	if err != nil {
@@ -143,10 +147,10 @@ func Read(dir string) (Import, error) {
 	}
 	content := string(data)
 	imp := Import{Skill: store.Skill{
-		Name: frontmatterName(content), Content: content, Source: dir,
+		Name: frontmatterName(content), Content: content, Source: entry,
 	}}
 	if imp.Skill.Name == "" {
-		imp.Skill.Name = filepath.Base(dir)
+		imp.Skill.Name = filepath.Base(entry)
 	}
 	err = filepath.WalkDir(dir, func(file string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -199,14 +203,12 @@ func Read(dir string) (Import, error) {
 	if err != nil {
 		return Import{}, err
 	}
-	name := filepath.Base(dir)
-	forms := []string{dir}
-	if resolved, err := filepath.EvalSymlinks(dir); err == nil && resolved != dir {
-		forms = append(forms, resolved)
-	}
-	root := filepath.ToSlash(filepath.Join(filepath.Base(filepath.Dir(filepath.Dir(dir))), "skills")) + "/"
-	for _, prefix := range []string{"~/", "$HOME/", "${HOME}/"} {
-		forms = append(forms, prefix+root+name)
+	forms := []string{entry, dir}
+	root := filepath.ToSlash(filepath.Join(filepath.Base(filepath.Dir(filepath.Dir(entry))), "skills")) + "/"
+	for _, name := range []string{filepath.Base(entry), filepath.Base(dir)} {
+		for _, prefix := range []string{"~/", "$HOME/", "${HOME}/"} {
+			forms = append(forms, prefix+root+name)
+		}
 	}
 	imp.Rewritten = make(map[string]int)
 	scan := func(file string, content *string) {

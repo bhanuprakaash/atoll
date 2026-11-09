@@ -575,7 +575,7 @@ after a failed undo counts a Bot that is already gone as removed.
   - Home reference: `~/` (not preceded by a letter, digit, `.`, `_`, `-`, `/` or `~`, so
     `https://x/~/y` and `a~/b` do not count), `$HOME` or `${HOME}` (with or without a following
     `/`), and the server's own home directory as an absolute path (`/Users/<name>`, `/home/<name>`).
-  - Rewritable: a home reference to the skill's own folder, and nothing more.
+  - Rewritable: the skill's import entry path and resolved folder path, and nothing more.
     - `import_skill` takes only a direct child of the resolved `~/.claude/skills` or
       `~/.codex/skills` (see Prompt). `<folder>` is the entry's name there, not its symlink target.
     - The forms are `~/`, `$HOME/` or `${HOME}/` followed by `.claude/skills/<folder>` or
