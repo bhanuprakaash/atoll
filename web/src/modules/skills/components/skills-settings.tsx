@@ -14,7 +14,7 @@ import {
   UsedBy,
 } from '@/components/settings-ui';
 import { TextArea, TextField } from '@/components/text-field';
-import { setSkillDescription, skillDescription } from '@/utils/skill-description';
+import { join, setSkillDescription, skillDescription, split } from '@/utils/skill-description';
 import {
   type Reimport,
   type Skill,
@@ -28,11 +28,6 @@ type Bot = { id: string; name: string; look: CreatureLook; skills: string[] };
 
 const labelClass = 'text-xs tracking-wide text-label';
 
-function split(content: string) {
-  const m = content.match(/^---\n([\s\S]*?)\n?---\n?([\s\S]*)$/);
-  return m ? { head: m[1], body: m[2] } : { head: '', body: content };
-}
-const join = (head: string, body: string) => (head ? `---\n${head}\n---\n${body}` : body);
 const modes = [
   ['Edit', false],
   ['Preview', true],
