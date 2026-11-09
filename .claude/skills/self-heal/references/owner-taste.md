@@ -51,3 +51,7 @@ in their briefs. Each line: the principle, then (where it came from).
 ## Learned while driving (round 1)
 - Fix the class: a security hole found for one provider (Codex sandbox) usually exists for the others (Claude Auto has
   no sandbox); harden the shared path (Reef's own git calls), not just the provider. (#122)
+- Settle the design before the test-first pipeline: an unsettled ticket (#122) took 76 runs and a third of the round's
+  spend. A spike first, then test, then fix. (round 1 agents lens)
+- Review feedback and owner rules must reach later Bots (memory or AGENTS.md); a rule given once and repeated broken
+  is a Reef bug. (#120 rules broken in 7 of 8 later PRs)
