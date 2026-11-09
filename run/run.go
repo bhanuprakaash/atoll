@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -1077,6 +1078,11 @@ func ToolVerb(name, kind string) string {
 			return "Taking a note"
 		case provider.ToolRecall, provider.ToolReadMemory:
 			return "Remembering"
+		case provider.ToolFinishRun:
+			return "Wrapping up"
+		}
+		if kind == "platform" && strings.HasPrefix(strings.TrimPrefix(name, _atollTools), "list_") {
+			return "Looking around"
 		}
 	}
 	switch kind {
@@ -1090,6 +1096,8 @@ func ToolVerb(name, kind string) string {
 		return "Running"
 	case "memory":
 		return "Remembering"
+	case "work":
+		return "Waiting on a background task"
 	case "platform":
 		return "Setting up"
 	default:
@@ -1126,10 +1134,13 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 	case "Edit", "Write":
 		return "edit", filepath.Base(v.FilePath)
 	case "Bash":
+		if _backgroundOutput.MatchString(v.Command) {
+			return "work", ""
+		}
 		if v.Desc != "" {
 			return "command", v.Desc
 		}
-		return "command", program(v.Command)
+		return "command", commandTarget(v.Command)
 	case "fileChange":
 		if len(v.Changes) > 0 {
 			return "edit", filepath.Base(v.Changes[0].Path)
@@ -1170,6 +1181,30 @@ func lastPart(s string) string {
 		return ""
 	}
 	return filepath.Base(s)
+}
+
+var (
+	_backgroundOutput = regexp.MustCompile(`/tasks/[^\s;&|"']*\.output\b`)
+	_plainWord        = regexp.MustCompile(`^[A-Za-z][\w-]*$`)
+	_assignment       = regexp.MustCompile(`^\w+=`)
+)
+
+func commandTarget(command string) string {
+	for _, part := range strings.FieldsFunc(command, func(r rune) bool { return r == ';' || r == '&' || r == '\n' }) {
+		fields := strings.Fields(part)
+		for len(fields) > 0 && _assignment.MatchString(fields[0]) {
+			fields = fields[1:]
+		}
+		if len(fields) == 0 || fields[0] == "cd" {
+			continue
+		}
+		target := filepath.Base(fields[0])
+		if len(fields) > 1 && _plainWord.MatchString(fields[1]) {
+			target += " " + fields[1]
+		}
+		return target
+	}
+	return ""
 }
 
 func program(command string) string {
