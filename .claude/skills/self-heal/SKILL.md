@@ -33,15 +33,22 @@ words like a human would, never with tool-call recipes. The owner merges every P
   codex-coder (Codex, Full access: this machine is a VM), comment-sicko, reviewer (Opus). All on atoll + GitHub,
   PRs to `main`, each Bot its own look.
 
+## Owner's taste
+`references/owner-taste.md` is the living statement of what the owner wants. Whenever the owner reacts to something,
+work out the intent behind it, write it there as a general principle (not the literal remark), and pass it on: tell
+the lead in its next brief, ask Chief to remember it as a user memory so every Bot gets it, and make sure the next
+observers read it. Apply it yourself when triaging and reviewing.
+
 ## A round
 1. **Triage.** Turn open findings from the tracking issue into tickets (`.github/ISSUE_TEMPLATE/default.md`: Goal,
    Acceptance lines anyone can observe, Out of scope). Group small findings that touch the same files into one
    ticket. Check each against the code before filing.
 2. **Kick off.** In a new thread with the lead (repo atoll), say which tickets, the order, and the house rules:
-   test PR by one coder and fix PR by another, reviewer checks both, at most 3 helpers busy, only targeted specs
+   the owner's principles that apply (from owner-taste.md), test PR by one coder and fix PR by another, reviewer checks both, at most 3 helpers busy, only targeted specs
    locally (CI runs `make e2e`), merges can lag so keep moving, send a status when a PR is ready for review.
 3. **Observers, live.** Start five Sonnet subagents in the background (delegate_task, role review), one per lens
-   (backend, ui, product, bots, llm), each told to read `references/observer-brief.md` then `references/round-live.md`
+   (backend, ui, product, bots, llm), each told to read `references/observer-brief.md`, `references/owner-taste.md`
+   and `references/round-live.md`
    and write `$REEF_HOME/findings/round<N>-<lens>.md`. They watch while Bots work and challenge each other at the end.
 4. **Drive.** Run `scripts/wait-any.sh $(date +%s%6N)` in the background after every action you take; it wakes you for
    an approval card, a lead reply that asks for review or a decision, a failed run, or low memory. Answer decisions
