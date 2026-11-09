@@ -354,11 +354,16 @@ after a failed undo counts a Bot that is already gone as removed.
     - `--settings` carries `autoMemoryEnabled: false`: no `memory/` folder under `projects/` and no
       auto-memory section in the system prompt.
     - `--tools Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write` is the whole
-      set of built-in tools a Bot has. Reef's MCP tools stay available through `--mcp-config` and
-      `--allowedTools`, as before. A run that gets no built-in tools (Chief, the title run) uses
+      set of built-in tools a Bot has. The names go in this order, as one comma-separated argument
+      (the argv assertion pins the string). Reef's MCP tools are available through `--mcp-config`
+      and `--allowedTools`. A run that gets no built-in tools (Chief, the title run) uses
       `--tools ""`: its `init` tool list holds only Reef's MCP tools.
       - Why an allowlist: a tool added by a later Claude Code stays closed until it is named here.
         A deny list would leave it open.
+      - A name `claude` no longer has is ignored: no error, no stderr, exit 0, and the name is
+        missing from the init list. Names are case-sensitive (`bash` is ignored, `Bash` is kept).
+        With only unknown names the init list holds Reef's MCP tools alone. A removed or renamed
+        tool therefore does not break a run; the Bot loses that tool silently.
       - Left out, by class: other sessions and agents (`Task`, `Workflow`, `ListAgents`,
         `SendMessage`); remote claude.ai (`SendToProject`, `SendToProjectContext`, `RemoteTrigger`,
         `DesignSync`, `PublishPlugin`, `ShareOnboardingGuide`); scheduling and background
@@ -383,10 +388,13 @@ after a failed undo counts a Bot that is already gone as removed.
       three Reef; without `--permission-prompt-tool` the same server showed 14. The e2e check
       excludes the permission-prompt tool from the comparison. A Bot called a Reef
       MCP tool, `Bash`, `Write` and `Read` in each mode (Ask with an approval tool that allows).
-      A skill from `--add-dir` loaded through `Skill`.
+      A skill from `--add-dir` loaded through `Skill`. Reef's `finish_run`, the call every run ends
+      with, was called without `ToolSearch` (listed in none of the 10 names) and returned.
       - The e2e spec compares the init tool list with this set (a real-`claude` spec behind the
-        `realclaude` tag, plus argv assertions with the scripted fake), so an upgrade that adds a
-        tool fails it.
+        `realclaude` tag, plus argv assertions with the scripted fake). An added built-in stays
+        closed, so the comparison cannot fail on an addition. It catches a named tool that is gone
+        or renamed (missing from the init list) and any built-in outside the set that appears
+        (the allowlist stopped working). `finish_run` is one of the tested MCP calls.
       - Unverified: an account with claude.ai connectors (`ENABLE_CLAUDEAI_MCP_SERVERS=false` is
         set; the test account had none); another session's `TaskStop` ID (the tool is left out, so
         it only matters if it is added); that `ToolSearch` is unneeded for MCP tool sets larger
@@ -609,8 +617,8 @@ after a failed undo counts a Bot that is already gone as removed.
     - `file` is the path inside the skill as it would be stored (`SKILL.md`, `scripts/run.sh`);
       `line` is 1-based in that file; `ref` is the matched text up to the next space or quote
       (`~/.ssh/config`, `$HOME`, `/home/<name>/x`). One entry per occurrence, ordered by file, then
-      line, then column (1-based in the line, not returned). No skill id is returned: nothing was
-      stored.
+      line, then position in the line (byte and character offsets give the same order; not
+      returned). No skill id is returned: nothing was stored.
     - A successful answer always carries `rewritten`: a list of `{"file", "count"}`, one entry per
       file with at least one rewrite, `file` the path inside the skill as stored, `count` the number
       of rewritten references in it, ordered by file. It is an empty list when nothing was
