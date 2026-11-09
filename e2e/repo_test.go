@@ -471,6 +471,10 @@ func assertNoSecret(t *testing.T, token string, roots ...string) {
 	t.Helper()
 	for _, root := range roots {
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if errors.Is(err, fs.ErrNotExist) && path != root {
+				// The server renames or removes its temp files and folders while it runs.
+				return nil
+			}
 			if err != nil {
 				return err
 			}
@@ -479,7 +483,6 @@ func assertNoSecret(t *testing.T, token string, roots ...string) {
 			}
 			b, err := os.ReadFile(path)
 			if errors.Is(err, fs.ErrNotExist) {
-				// The server renames its temp files (hosts.yml.<random>) away while it runs.
 				return nil
 			}
 			if err != nil {
