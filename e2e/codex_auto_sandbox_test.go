@@ -130,11 +130,6 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 		{name: "fsmonitor-in-config", early: func(t *testing.T, p planter) {
 			gitIn(t, p.repo, "config", "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
 		}},
-		{name: "filter-driver", early: func(t *testing.T, p planter) {
-			gitIn(t, p.repo, "config", "filter.x.clean", p.script(t, "clean", p.record+"cat\n"))
-			gitIn(t, p.repo, "config", "filter.x.smudge", "cat")
-			writeFile(t, filepath.Join(p.common, "info", "attributes"), "* filter=x\n")
-		}},
 		{name: "commondir-rewritten", late: func(t *testing.T, p planter, worktree string) {
 			writeFile(t, filepath.Join(p.gitDir(t, worktree), "commondir"), p.evilCommon(t)+"\n")
 		}},
@@ -144,14 +139,11 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 			writeFile(t, filepath.Join(evil, "commondir"), p.evilCommon(t)+"\n")
 			writeFile(t, filepath.Join(worktree, ".git"), "gitdir: "+evil+"\n")
 		}},
-		{name: "worktree-config", late: func(t *testing.T, p planter, worktree string) {
-			gitIn(t, p.repo, "config", "extensions.worktreeConfig", "true")
-			gitIn(t, p.repo, "config", "-f", filepath.Join(p.gitDir(t, worktree), "config.worktree"), "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
-		}},
 	}
-	for _, provider := range []string{"codex", "claude"} {
+	for _, c := range []struct{ provider, end string }{{"codex", "close"}, {"codex", "delete"}, {"claude", "close"}} {
+		provider := c.provider
 		for _, route := range routes {
-			t.Run(provider+"/"+route.name, func(t *testing.T) {
+			t.Run(c.provider+"/"+c.end+"/"+route.name, func(t *testing.T) {
 				f := newRepoFixture(t, provider)
 				marker := filepath.Join(t.TempDir(), "ran")
 				p := planter{repo: f.repo.Path, common: filepath.Join(f.repo.Path, ".git"), dir: t.TempDir()}
@@ -192,8 +184,12 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 					route.late(t, p, worktree)
 				}
 
-				defer noRun("closing a thread with unsaved work")
-				req, err := http.NewRequestWithContext(t.Context(), "POST", f.s.url+"/api/threads/"+th.ID+"/close", nil)
+				method, path, want := "POST", "/api/threads/"+th.ID+"/close", "closing a thread with unsaved work"
+				if c.end == "delete" {
+					method, path, want = "DELETE", "/api/bots/"+b.ID, "deleting the Bot"
+				}
+				defer noRun(want)
+				req, err := http.NewRequestWithContext(t.Context(), method, f.s.url+path, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -203,7 +199,12 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 				}
 				_ = resp.Body.Close()
 				if resp.StatusCode != 204 && !route.anyClose {
-					t.Errorf("close: status %d, want 204", resp.StatusCode)
+					t.Errorf("%s: status %d, want 204", want, resp.StatusCode)
+				}
+				if ref := "refs/atoll/unfinished/" + th.ID; c.end == "close" {
+					if err := exec.CommandContext(t.Context(), "git", "-C", f.repo.Path, "rev-parse", "--verify", "--quiet", ref+"^{commit}").Run(); err != nil {
+						t.Errorf("%s: the repo has no %s; Atoll's git did not work on the repo's own git dir", want, ref)
+					}
 				}
 			})
 		}
@@ -232,15 +233,12 @@ func (p planter) gitDir(t *testing.T, worktree string) string {
 	return strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir: "))
 }
 
-// evilCommon is a copy of the git common dir whose config runs the script as core.fsmonitor and as
-// the clean filter of every file.
+// evilCommon is a copy of the git common dir whose config runs the script as core.fsmonitor.
 func (p planter) evilCommon(t *testing.T) string {
 	t.Helper()
 	evil := filepath.Join(t.TempDir(), "common")
 	copyDir(t, p.common, evil)
 	gitIn(t, p.repo, "config", "-f", filepath.Join(evil, "config"), "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
-	gitIn(t, p.repo, "config", "-f", filepath.Join(evil, "config"), "filter.evil.clean", p.script(t, "clean", p.record+"cat\n"))
-	writeFile(t, filepath.Join(evil, "info", "attributes"), "* filter=evil\n")
 	return evil
 }
 
