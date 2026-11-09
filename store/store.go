@@ -156,6 +156,8 @@ type (
 		RepoID          string     `json:"repo_id"`
 		Branch          string     `json:"branch"`
 		Worktree        string     `json:"worktree"`
+		CheckoutGitDir  string     `json:"-"`
+		WorktreeGitDir  string     `json:"-"`
 		MRURL           string     `json:"mr_url"`
 		MRState         string     `json:"mr_state"`
 		MRTitle         string     `json:"mr_title"`
@@ -223,7 +225,7 @@ type (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir"
 	_messagePageSize = 50
 )
 
@@ -580,10 +582,19 @@ func (s *Store) Watched(ctx context.Context) ([]Thread, error) {
 
 // SetWorktree records the thread's branch and worktree; an empty worktree clears it.
 func (s *Store) SetWorktree(ctx context.Context, threadID, branch, worktree string) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE threads SET branch = ?, worktree = ?, worktree_removed = 0, snapshot_ref = '' WHERE id = ?",
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET branch = ?, worktree = ?, worktree_git_dir = '', worktree_removed = 0, snapshot_ref = '' WHERE id = ?",
 		branch, worktree, threadID)
 	if err != nil {
 		return fmt.Errorf("set worktree: %w", err)
+	}
+	return found(res, "thread", threadID)
+}
+
+// SetGitDirs records the checkout and worktree git directory IDs.
+func (s *Store) SetGitDirs(ctx context.Context, threadID, checkout, worktree string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET checkout_git_dir = ?, worktree_git_dir = ? WHERE id = ?", checkout, worktree, threadID)
+	if err != nil {
+		return fmt.Errorf("set git directories: %w", err)
 	}
 	return found(res, "thread", threadID)
 }
@@ -1291,7 +1302,7 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	var closedAt sql.NullInt64
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
 		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
-		&t.Title, &t.ParentThreadID, &t.SessionProvider)
+		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir)
 	if err != nil {
 		return Thread{}, err
 	}

@@ -71,10 +71,51 @@ func TestWorktrees(t *testing.T) {
 	write(src, "a.txt", "one\n")
 	git(src, "add", ".")
 	git(src, "commit", "-q", "-m", "init")
+	git(src, "remote", "add", "origin", src)
+	write(src, ".git/config.lock", "")
+	if _, _, _, err := Create(ctx, src, root, "demo", "fix/cleanup"); err == nil {
+		t.Fatal("Create with locked config succeeded")
+	}
+	if _, err := os.Stat(filepath.Join(root, "demo", "fix-cleanup")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("worktree after failed Create: %v", err)
+	}
+	if err := exec.Command("git", "-C", src, "show-ref", "--verify", "--quiet", "refs/heads/fix/cleanup").Run(); err == nil {
+		t.Fatal("branch remains after failed Create")
+	}
+	if err := os.Remove(filepath.Join(src, ".git", "config.lock")); err != nil {
+		t.Fatal(err)
+	}
+	git(src, "remote", "remove", "origin")
 
 	if !IsRepo(ctx, src) || IsRepo(ctx, t.TempDir()) {
 		t.Fatal("IsRepo: want true for the repo and false for a plain folder")
 	}
+	t.Run("snapshot ignores redirected common directory", func(t *testing.T) {
+		work, _, _, err := Create(ctx, src, root, "demo", "fix/redirect")
+		if err != nil {
+			t.Fatal(err)
+		}
+		common := filepath.Join(src, ".git")
+		id, err := WorktreeID(common, work)
+		if err != nil {
+			t.Fatal(err)
+		}
+		evil := t.TempDir()
+		git(evil, "init", "-q")
+		git(evil, "fetch", "-q", src, "HEAD:refs/heads/fix/redirect")
+		write(work, "a.txt", "snapshot\n")
+		commondir := filepath.Join(common, "worktrees", id, "commondir")
+		defer func() { _ = os.WriteFile(commondir, []byte("../..\n"), 0o600) }()
+		if err := os.WriteFile(commondir, []byte(filepath.Join(evil, ".git")+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if saved, err := Save(WithWorktree(ctx, common, id), work, "refs/atoll/unfinished/redirect"); err != nil || !saved {
+			t.Fatalf("Save = %v, %v", saved, err)
+		}
+		if got := git(src, "show", "refs/atoll/unfinished/redirect:a.txt"); got != "snapshot" {
+			t.Fatalf("snapshot = %q", got)
+		}
+	})
 
 	first, used, base, err := Create(ctx, src, root, "demo", "fix/bug")
 	if err != nil || used != "fix/bug" || first != filepath.Join(root, "demo", "fix-bug") {
@@ -146,5 +187,61 @@ func TestWorktrees(t *testing.T) {
 	}
 	if got := git(dir, "branch", "--show-current"); got != "" {
 		t.Errorf("Checkout branch = %q, want detached", got)
+	}
+}
+
+func TestSave_RepoFilters(t *testing.T) {
+	for _, mode := range []string{"required", "include"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+			t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+			t.Setenv("GIT_AUTHOR_NAME", "t")
+			t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+			t.Setenv("GIT_COMMITTER_NAME", "t")
+			t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
+			src, root, marker := t.TempDir(), t.TempDir(), filepath.Join(t.TempDir(), "ran")
+			git := func(args ...string) {
+				t.Helper()
+				if out, err := exec.CommandContext(t.Context(), "git", append([]string{"-C", src}, args...)...).CombinedOutput(); err != nil {
+					t.Fatalf("git %v: %v: %s", args, err, out)
+				}
+			}
+			git("init", "-q")
+			if err := os.WriteFile(filepath.Join(src, "a.txt"), []byte("before\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			git("add", "a.txt")
+			git("commit", "-qm", "init")
+			work, _, _, err := Create(t.Context(), src, root, "demo", "fix/filter")
+			if err != nil {
+				t.Fatal(err)
+			}
+			common := filepath.Join(src, ".git")
+			id, err := WorktreeID(common, work)
+			if err != nil {
+				t.Fatal(err)
+			}
+			config := filepath.Join(common, "config")
+			if mode == "include" {
+				config = filepath.Join(common, "included")
+				git("config", "include.path", config)
+			}
+			git("config", "--file", config, "filter.lreq.clean", "touch "+marker+"; cat")
+			if mode == "required" {
+				git("config", "--file", config, "filter.lreq.required", "true")
+			}
+			if err := os.WriteFile(filepath.Join(work, ".gitattributes"), []byte("a.txt filter=lreq\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(work, "a.txt"), []byte("after\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if saved, err := Save(WithWorktree(t.Context(), common, id), work, "refs/atoll/unfinished/test"); err != nil || !saved {
+				t.Fatalf("Save = %v, %v", saved, err)
+			}
+			if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("filter ran: %v", err)
+			}
+		})
 	}
 }

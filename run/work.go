@@ -143,9 +143,25 @@ func (m *Manager) StartWork(
 	if path, branch, base, err = repo.Create(ctx, rp.Path, root, rp.Name, name); err != nil {
 		return "", "", repo.Base{}, err
 	}
-	if err := m.cfg.Store.SetWorktree(ctx, t.ID, branch, path); err != nil {
-		err = errors.Join(err, repo.Remove(ctx, rp.Path, path), repo.DeleteBranch(ctx, rp.Path, branch))
+	createdPath, createdBranch := path, branch
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, repo.Remove(ctx, rp.Path, createdPath), repo.DeleteBranch(ctx, rp.Path, createdBranch))
+		}
+	}()
+	common, err := repo.GitCommonDir(ctx, rp.Path)
+	if err != nil {
 		return "", "", repo.Base{}, err
+	}
+	id, err := repo.WorktreeID(common, path)
+	if err != nil {
+		return "", "", repo.Base{}, err
+	}
+	if err := m.cfg.Store.SetWorktree(ctx, t.ID, branch, path); err != nil {
+		return "", "", repo.Base{}, err
+	}
+	if err := m.cfg.Store.SetGitDirs(ctx, t.ID, t.CheckoutGitDir, id); err != nil {
+		return "", "", repo.Base{}, errors.Join(err, m.cfg.Store.SetWorktree(context.WithoutCancel(ctx), t.ID, "", ""))
 	}
 	m.publish(a, EventWorktreeCreated,
 		WorktreeCreated{RunID: a.run.ID, RepoID: t.RepoID, Path: path, Branch: branch})
@@ -345,17 +361,36 @@ func (m *Manager) stopQuietly(ctx context.Context, threadID string) (bool, error
 // release saves the unfinished work of the thread's worktree, removes the worktree and tells the
 // thread's subscribers. When the save fails nothing is removed.
 func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, reason string) error {
+	if err := m.checkWorktree(t.Worktree); err != nil {
+		return err
+	}
 	runID, err := m.cfg.Store.LatestRun(ctx, t.ID)
 	if err != nil {
 		return err
 	}
 	ref := _snapshotRefPrefix + t.ID
-	saved, err := repo.Save(ctx, t.Worktree, ref)
+	common, err := repo.GitCommonDir(ctx, rp.Path)
+	if err != nil {
+		return err
+	}
+	id := t.WorktreeGitDir
+	if id == "" {
+		if id, err = repo.WorktreeID(common, t.Worktree); err != nil {
+			return err
+		}
+		if err := m.cfg.Store.SetGitDirs(ctx, t.ID, t.CheckoutGitDir, id); err != nil {
+			return err
+		}
+	}
+	saved, err := repo.Save(repo.WithWorktree(ctx, common, id), t.Worktree, ref)
 	if err != nil {
 		return fmt.Errorf("save unfinished work: %w", err)
 	}
 	if !saved {
 		ref = ""
+	}
+	if err := m.checkWorktree(t.Worktree); err != nil {
+		return err
 	}
 	if err := repo.Remove(ctx, rp.Path, t.Worktree); err != nil {
 		return err
@@ -365,6 +400,37 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	}
 	m.announce(t.ID, runID, EventWorktreeRemoved,
 		WorktreeRemoved{RunID: runID, Path: t.Worktree, Reason: reason, SnapshotRef: ref})
+	return nil
+}
+
+func (m *Manager) checkWorktree(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect worktree: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("refuse symlink worktree")
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	root := filepath.Dir(filepath.Dir(path))
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return err
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return err
+	}
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+	if resolvedPath != filepath.Join(resolvedRoot, rel) {
+		return errors.New("refuse worktree with symlink in its path")
+	}
 	return nil
 }
 
@@ -390,10 +456,37 @@ func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, error) {
 	case t.RepoID != "" && rp.ID == "":
 		dir = m.noAccessDir(t.ID)
 	case t.Worktree != "":
+		_, statErr := os.Stat(rp.Path)
+		if rp.ID != "" && t.WorktreeGitDir == "" && !errors.Is(statErr, os.ErrNotExist) {
+			common, err := repo.GitCommonDir(m.ctx, rp.Path)
+			if err != nil {
+				return "", err
+			}
+			id, err := repo.WorktreeID(common, t.Worktree)
+			if err != nil {
+				return "", err
+			}
+			if err := m.cfg.Store.SetGitDirs(m.ctx, t.ID, t.CheckoutGitDir, id); err != nil {
+				return "", err
+			}
+		}
 		return t.Worktree, nil
 	case rp.ID != "":
 		if err := repo.Checkout(m.ctx, rp.Path, dir); err != nil {
 			return "", err
+		}
+		if t.CheckoutGitDir == "" {
+			common, err := repo.GitCommonDir(m.ctx, rp.Path)
+			if err != nil {
+				return "", err
+			}
+			id, err := repo.WorktreeID(common, dir)
+			if err != nil {
+				return "", err
+			}
+			if err := m.cfg.Store.SetGitDirs(m.ctx, t.ID, id, t.WorktreeGitDir); err != nil {
+				return "", err
+			}
 		}
 		return dir, nil
 	}
