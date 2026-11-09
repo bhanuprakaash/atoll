@@ -675,13 +675,32 @@ type ThreadRun struct {
 // ThreadRuns lists every thread with its newest run, newest activity first. botID limits it to
 // one Bot; empty means every Bot.
 func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, error) {
+	return s.threadRuns(ctx, "? = '' OR t.bot_id = ?", botID, botID)
+}
+
+// PollThreadRuns is ThreadRuns for every Bot without the closed threads nobody reads: it keeps
+// the open ones, the closed ones with a live run, the parents of those (a helper finds its
+// boss through its parent), and the newest thread with a run of each Bot.
+func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
+	const live = "SELECT thread_id FROM runs WHERE status IN ('running', 'waiting')"
+	return s.threadRuns(ctx, `t.closed = 0
+		 OR t.id IN (`+live+`)
+		 OR t.id IN (SELECT parent_thread_id FROM threads
+		             WHERE parent_thread_id != '' AND (closed = 0 OR id IN (`+live+`)))
+		 OR t.rowid IN (SELECT (
+		        SELECT t2.rowid FROM threads t2
+		        WHERE t2.bot_id = b.id AND EXISTS (SELECT 1 FROM runs WHERE thread_id = t2.id)
+		        ORDER BY t2.last_activity DESC, t2.rowid DESC LIMIT 1) FROM bots b)`)
+}
+
+func (s *Store) threadRuns(ctx context.Context, where string, args ...any) ([]ThreadRun, error) {
 	return query(ctx, s.db,
 		`SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.closed, t.pinned_at IS NOT NULL,
 		        t.last_activity, coalesce(r.finished_at, 0) > t.last_opened_at,
 		        coalesce(r.status, ''), substr(coalesce(r.reply, ''), 1, 300)
 		 FROM threads t
 		 LEFT JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = t.id)
-		 WHERE ? = '' OR t.bot_id = ?
+		 WHERE `+where+`
 		 ORDER BY t.last_activity DESC, t.rowid DESC`,
 		func(r *sql.Rows) (tr ThreadRun, err error) {
 			var active int64
@@ -689,7 +708,7 @@ func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, erro
 				&tr.Pinned, &active, &tr.Unseen, &tr.Status, &tr.Reply)
 			tr.LastActivity = time.UnixMicro(active).UTC()
 			return tr, err
-		}, botID, botID)
+		}, args...)
 }
 
 // MarkOpened records that the user opened the thread now.
