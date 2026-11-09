@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -118,6 +119,40 @@ func TestRepo_StartWorkBranchesFromBase(t *testing.T) {
 	}
 }
 
+// madeNothing takes what start_work makes (local branches, branch worktrees, entries under the
+// worktree root) and returns a check that none was added since. The thread's own read-only
+// checkout is a detached worktree outside the root, which a first run may make, so it is not
+// counted.
+func (f *repoFixture) madeNothing(t *testing.T) func() {
+	t.Helper()
+	snap := func() string {
+		var out []string
+		out = append(out, strings.Split(gitIn(t, f.repo.Path, "for-each-ref", "--format=branch %(refname)", "refs/heads"), "\n")...)
+		path := ""
+		for _, l := range strings.Split(gitIn(t, f.repo.Path, "worktree", "list", "--porcelain"), "\n") {
+			if p, ok := strings.CutPrefix(l, "worktree "); ok {
+				path = p
+			}
+			if strings.HasPrefix(l, "branch ") {
+				out = append(out, "worktree "+path+" "+l)
+			}
+		}
+		entries, _ := os.ReadDir(f.root)
+		for _, e := range entries {
+			out = append(out, "root "+e.Name())
+		}
+		slices.Sort(out)
+		return strings.Join(out, "\n")
+	}
+	before := snap()
+	return func() {
+		t.Helper()
+		if after := snap(); after != before {
+			t.Errorf("a refused start_work changed the repo's branches, branch worktrees or the worktree root:\nbefore:\n%s\nafter:\n%s", before, after)
+		}
+	}
+}
+
 // tryStartWork has the Bot call start_work once. A refusal reaches the Bot as a tool error line or
 // as a failed call that fails the run; either way bad is the error text, and res is empty.
 func tryStartWork(t *testing.T, f *repoFixture, th thread, ev <-chan event, call fake.MCPCall) (res struct{ Path, Branch, Base string }, bad string) {
@@ -137,6 +172,7 @@ func refuses(t *testing.T, c baseCase, f *repoFixture, base string) {
 	t.Helper()
 	arg, _ := json.Marshal(map[string]string{"type": "fix", "slug": "Seeded BUG", "base": base})
 	th, ev := f.baseThread(t, c)
+	unchanged := f.madeNothing(t)
 	res, bad := tryStartWork(t, f, th, ev, startWorkCall(string(arg), false))
 	if bad == "" {
 		t.Errorf("start_work with base %q made %+v, want a refusal", base, res)
@@ -146,15 +182,7 @@ func refuses(t *testing.T, c baseCase, f *repoFixture, base string) {
 			t.Errorf("refusal of base %q is %q, want it to say a base is a branch on origin, with a <type>/<slug>-style example", base, bad)
 		}
 	}
-	if p := worktreeOf(t, f.repo.Path, "fix/seeded-bug"); p != "" {
-		t.Errorf("a refused start_work left a worktree at %s", p)
-	}
-	if out := gitIn(t, f.repo.Path, "branch", "--list", "fix/*"); out != "" {
-		t.Errorf("a refused start_work left branches: %q", out)
-	}
-	if entries, _ := os.ReadDir(f.root); len(entries) != 0 {
-		t.Errorf("a refused start_work left %d entries under the worktree root", len(entries))
-	}
+	unchanged()
 }
 
 // TestRepo_StartWorkRefusesBadBase: a base that is not a branch on origin, or not a plain branch
@@ -278,6 +306,7 @@ func TestRepo_StartWorkTypes(t *testing.T) {
 		t.Run(c.name()+"/unknown", func(t *testing.T) {
 			f := newRepoFixture(t, c.provider)
 			th, ev := f.baseThread(t, c)
+			unchanged := f.madeNothing(t)
 			res, bad := tryStartWork(t, f, th, ev, startWorkCall(`{"type":"bogus","slug":"x"}`, false))
 			if bad == "" {
 				t.Fatalf("start_work with type bogus made %+v, want a refusal", res)
@@ -287,9 +316,7 @@ func TestRepo_StartWorkTypes(t *testing.T) {
 					t.Errorf("refusal %q does not name the valid type %q", bad, typ)
 				}
 			}
-			if out := gitIn(t, f.repo.Path, "worktree", "list", "--porcelain"); strings.Count(out, "worktree ") != 1 {
-				t.Errorf("a refused start_work left a worktree:\n%s", out)
-			}
+			unchanged()
 		})
 	}
 }
