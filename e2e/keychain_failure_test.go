@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
+	"html"
 	"net/http"
 	"os"
 	"strings"
@@ -95,5 +96,37 @@ func keychainFailure(t *testing.T, s *server, path string, body any, out any) {
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestKeychainFailure_MCPOAuth(t *testing.T) {
+	requireSecretStore(t)
+	m := newMachine(t)
+	m.env = []string{"ATOLL_SECRET_STORE_UNAVAILABLE=1"}
+	for _, key := range []string{"DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "XDG_DATA_HOME"} {
+		m.env = append(m.env, key+"="+os.Getenv(key))
+	}
+	f := &oauthFixture{mcpFixture: &mcpFixture{s: m.serve(t)}, o: newOAuthMCP(t)}
+	server := f.add(t, "docs-oauth", f.o)
+	if server.Status != "not_connected" {
+		t.Fatalf("initial status = %q, want not_connected", server.Status)
+	}
+	cb := f.allow(t, f.connect(t, server.ID))
+	if cb.status < 500 || !strings.HasPrefix(cb.contentType, "text/html") {
+		t.Errorf("callback status %d content type %q, want >= 500 and text/html: %s", cb.status, cb.contentType, cb.body)
+	}
+	text := html.UnescapeString(cb.body)
+	if !strings.Contains(text, "Reef couldn't save the") || !strings.Contains(text, "docs-oauth") || !strings.Contains(text, "sign-in to the system keychain:") {
+		t.Errorf("callback page %q, want a message that Reef couldn't save the sign-in to the system keychain", text)
+	}
+	if strings.Contains(text, "Sign-in to docs-oauth failed") || strings.Contains(text, `{"error":`) {
+		t.Errorf("callback page contains a generic error or raw JSON: %q", text)
+	}
+	if f.o.codeExchanges() != 1 {
+		t.Errorf("token exchanges = %d, want 1", f.o.codeExchanges())
+	}
+	status := f.server(t, server.ID).Status
+	if status != "not_connected" && status != "needs_sign_in" {
+		t.Errorf("server status = %q, want not_connected or needs_sign_in to offer sign-in", status)
 	}
 }
