@@ -32,6 +32,16 @@ last round's findings and fixes (fixed? good? regressed?). Name the principle yo
   (JSON slog). Memory log logs/mem.log. Lead's notes $REEF_HOME/notes.md.
 - Observation checklist (235 items: what should be true and where to look): the first comment on #118.
 
+## Own the improvements (not only report them)
+- Every pass ends with a taste check of the screens you looked at, as a designer: how many things look selected,
+  active or urgent at once; is the heaviest mark the most important thing; what takes space without earning it; what
+  would the best chat apps do here. Seeing a problem in your own screenshot and not saying so is a miss.
+- Each finding you'd fix ends with a ready ticket: title, Goal, observable Acceptance lines, Out of scope. Put it in
+  `$REEF_HOME/findings/proposals.md` (append, one `## <title>` block, your lens and time) as soon as it's confirmed. The
+  driver reads that file every 20 minutes, files the bugs and brings design changes to the owner. A proposal waiting in
+  your own file until round end is too late.
+- UI proposals come with a mockup built in the real page (Reef's creatures, Geist, colour tokens), never a generic theme.
+
 ## Output
 Write $REEF_HOME/findings/<file named in your task>. One block per finding, most severe first:
 

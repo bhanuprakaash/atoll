@@ -36,6 +36,7 @@ const (
 	ToolCreateSkill      = "create_skill"
 	ToolEditSkill        = "edit_skill"
 	ToolImportSkill      = "import_skill"
+	ToolImportAgent      = "import_agent"
 	ToolRegisterRepo     = "register_repo"
 	ToolAttachConnection = "attach_connection"
 	ToolListBots         = "list_bots"
@@ -106,6 +107,8 @@ type Config struct {
 	Mode string
 	// NoTools disables tools, or confines them to a read-only, no-network sandbox.
 	NoTools bool
+	// NoShell disables Claude's built-in tools while retaining MCP tools.
+	NoShell bool
 }
 
 // UserMCPServer is local with Command, Args and Env, or remote with URL and Headers.

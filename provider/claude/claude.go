@@ -342,7 +342,7 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 		secrets = append(secrets, name+"="+value)
 		return "${" + name + "}"
 	}
-	isolation, err := IsolationArgs(cfg.Cwd, cfg.NoTools)
+	isolation, err := IsolationArgs(cfg.Cwd, cfg.NoTools || cfg.NoShell)
 	if err != nil {
 		return nil, nil, err
 	}
