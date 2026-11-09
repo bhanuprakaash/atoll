@@ -1072,8 +1072,32 @@ Voice
   only the hidden running threads in place, then `Show less`; a row leaves when its run ends, and
   switching Bot folds it again. Otherwise `N more` (a blue dot when a hidden thread is New) opens
   the threads popup. A helper thread is listed under its own Bot, without close or pin. *The
-  server sends each Bot's open threads with their marker on `GET /api/bots`; the client picks the
-  rows, since only it knows the thread on screen and what is unfolded.*
+  client picks the rows, since only it knows the thread on screen and what is unfolded; the server
+  sends the few threads any pick can need, not every open thread, so a poll over thousands of
+  threads stays cheap.*
+- Bot list poll (`GET /api/bots`, every 2 s). Each Bot carries `threads`, `open_count` and `has_new`
+  besides its summary. `threads` is a list of `{id, title, state, pinned, helper?}` (`state` is
+  `needs_you`, `running`, `new` or empty), newest activity first, with only: every open thread that
+  needs you; every open thread that runs; the pinned open threads (at most 3); and, past those, the
+  3 open threads the tree would fill its slots with: New first, then the newest. `open_count` is the
+  number of the Bot's open threads, helper threads included. `has_new` is true when an open thread
+  not in `threads` is New. The tree shows `open_count` minus the rows it draws as `N more`, with the
+  blue dot when `has_new` or a hidden row in `threads` is New. The server counts New threads in SQL;
+  it never reads one row per thread for it. `needs_you` is the same rule as the Bot's state: an open
+  approval in memory on the thread or on a live helper thread of it; `running` is a run whose
+  database status is `running` or `waiting`. A closed thread with a live run still counts for the
+  Bot's state and for its boss's marker, never as a row. The thread on screen is not in `threads`
+  unless it falls under the rules above; the client reads it with `GET /api/threads/{id}` and adds
+  its row. The threads popup reads `GET /api/bots/{id}/threads`, which carries every thread's
+  `closed`, `pinned` and `state`, and lists open and closed from there. The poll reads, per Bot, at
+  most 3 pinned, 3 fill, the newest thread with a run, and the running and needs-you threads, plus
+  the boss thread of each live helper thread (to find the boss's Bot); never every thread. A test
+  counts the rows the poll hands to its caller and fails past that bound: the regression guard, run
+  on a seed with every thread open and on one with nine in ten closed, beside the p95 under 50 ms
+  gate. A new migration, forward-only, adds any index the plan needs (live runs by status, open
+  threads by Bot). *Reading every thread row cost the same 36 ms a poll whether or not threads were
+  closed.*
+  - Known gap: a New thread beyond the 3 slots shows only as the dot and in the popup, as before.
 - New thread: `+` on Bot row hover, the Bot's right-click menu (New thread, Pin to sidebar, Move
   to group, Bot settings), or `⌘N` for the open Bot. A thread row shows `×` on hover (Close thread,
   saving unfinished work as before); right-click has Rename and Close.
