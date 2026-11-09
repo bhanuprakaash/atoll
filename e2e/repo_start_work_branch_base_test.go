@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -101,7 +102,7 @@ func TestRepo_StartWorkBranchesFromBase(t *testing.T) {
 				"branch.fix/seeded-bug.remote": "origin",
 				"branch.fix/seeded-bug.merge":  "refs/heads/fix/seeded-bug",
 			} {
-				if v := gitIn(t, got.Path, "config", "--default", "", "--get", key); v != want {
+				if v := gitIn(t, got.Path, "config", "--local", "--default", "", "--get", key); v != want {
 					t.Errorf("git config %s in the worktree = %q, want %q", key, v, want)
 				}
 			}
@@ -117,50 +118,134 @@ func TestRepo_StartWorkBranchesFromBase(t *testing.T) {
 	}
 }
 
+// tryStartWork has the Bot call start_work once. A refusal reaches the Bot as a tool error line or
+// as a failed call that fails the run; either way bad is the error text, and res is empty.
+func tryStartWork(t *testing.T, f *repoFixture, th thread, ev <-chan event, call fake.MCPCall) (res struct{ Path, Branch, Base string }, bad string) {
+	t.Helper()
+	payload, _ := json.Marshal([]fake.MCPCall{call})
+	r := f.s.finished(t, ev, f.s.send(t, th, _mcpPromptHead+string(payload)).ID)
+	if r.Status != "done" {
+		return res, r.Error
+	}
+	return startWorkResult(t, strings.Split(r.Reply, "\n")[0])
+}
+
+// refuses runs start_work with each base in its own subtest and expects a refusal that names the
+// valid form by meaning (a branch on origin, with a <type>/<slug>-style example) and leaves no
+// worktree, branch or folder.
+func refuses(t *testing.T, c baseCase, f *repoFixture, base string) {
+	t.Helper()
+	arg, _ := json.Marshal(map[string]string{"type": "fix", "slug": "Seeded BUG", "base": base})
+	th, ev := f.baseThread(t, c)
+	res, bad := tryStartWork(t, f, th, ev, startWorkCall(string(arg), false))
+	if bad == "" {
+		t.Errorf("start_work with base %q made %+v, want a refusal", base, res)
+	} else {
+		low := strings.ToLower(strings.ReplaceAll(bad, base, ""))
+		if !strings.Contains(low, "origin") || !strings.Contains(low, "branch") || !regexp.MustCompile(`[\w<>-]+/[\w<>-]+`).MatchString(low) {
+			t.Errorf("refusal of base %q is %q, want it to say a base is a branch on origin, with a <type>/<slug>-style example", base, bad)
+		}
+	}
+	if p := worktreeOf(t, f.repo.Path, "fix/seeded-bug"); p != "" {
+		t.Errorf("a refused start_work left a worktree at %s", p)
+	}
+	if out := gitIn(t, f.repo.Path, "branch", "--list", "fix/*"); out != "" {
+		t.Errorf("a refused start_work left branches: %q", out)
+	}
+	if entries, _ := os.ReadDir(f.root); len(entries) != 0 {
+		t.Errorf("a refused start_work left %d entries under the worktree root", len(entries))
+	}
+}
+
 // TestRepo_StartWorkRefusesBadBase: a base that is not a branch on origin, or not a plain branch
-// name, is a tool error that names the valid form, and makes no worktree or branch.
+// name, is a tool error that names the valid form, and makes no worktree and no branch.
 func TestRepo_StartWorkRefusesBadBase(t *testing.T) {
-	for _, c := range _baseCases {
+	bases := []struct {
+		name, base string
+		setup      func(t *testing.T, f *repoFixture)
+	}{
+		{name: "unknown", base: "test/missing"},
+		{name: "local-branch-not-on-origin", base: "local-only", setup: func(t *testing.T, f *repoFixture) {
+			gitIn(t, f.repo.Path, "branch", "local-only", "main")
+		}},
+		{name: "tag-not-a-branch", base: "v1", setup: func(t *testing.T, f *repoFixture) {
+			gitIn(t, f.repo.Path, "tag", "v1", "main")
+		}},
+		{name: "origin-prefixed", base: "origin/test/x"},
+		{name: "full-sha", base: "SHA"},
+		{name: "refs-heads", base: "refs/heads/test/x"},
+		{name: "head", base: "HEAD"},
+		{name: "at", base: "@"},
+		{name: "dotdot", base: "test/x..main"},
+		{name: "leading-dash", base: "-x"},
+		{name: "space", base: "test/x y"},
+		{name: "caret", base: "test/x^"},
+		{name: "tilde", base: "test/x~1"},
+		{name: "colon-path", base: "test/x:base-only.txt"},
+		{name: "reflog", base: "test/x@{1}"},
+		{name: "lock-suffix", base: "test/x.lock"},
+		{name: "the-new-branch", base: "fix/seeded-bug"},
+	}
+	for _, c := range _baseCases[:2] {
+		for _, b := range bases {
+			t.Run(c.name()+"/"+b.name, func(t *testing.T) {
+				f := newRepoFixture(t, c.provider)
+				f.pushBase(t, "test/x")
+				if b.setup != nil {
+					b.setup(t, f)
+				}
+				base := b.base
+				if base == "SHA" {
+					base = gitIn(t, f.repo.Path, "rev-parse", "origin/test/x")
+				}
+				refuses(t, c, f, base)
+			})
+		}
+	}
+}
+
+// TestRepo_StartWorkEmptyBaseIsNoBase: a Bot that fills the optional base with "" gets what it
+// gets with no base: a branch from origin/HEAD, not a refusal.
+func TestRepo_StartWorkEmptyBaseIsNoBase(t *testing.T) {
+	for _, c := range _baseCases[:2] {
 		t.Run(c.name(), func(t *testing.T) {
 			f := newRepoFixture(t, c.provider)
+			gitIn(t, f.repo.Path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 			f.pushBase(t, "test/x")
-			full := gitIn(t, f.repo.Path, "rev-parse", "origin/test/x")
-			bases := []string{"test/missing", "origin/test/x", full, "test/x..main", "-x", "test/x y"}
-			var calls []fake.MCPCall
-			for _, b := range bases {
-				arg, _ := json.Marshal(map[string]string{"type": "fix", "slug": "Seeded BUG", "base": b})
-				calls = append(calls, startWorkCall(string(arg), false))
-			}
+			short := gitIn(t, f.repo.Path, "rev-parse", "--short=7", "origin/HEAD")
 			th, ev := f.baseThread(t, c)
-			lines := useAtoll(t, f.s, th, ev, calls...)
-			for i, b := range bases {
-				res, bad := startWorkResult(t, lines[i])
-				if bad == "" {
-					t.Errorf("start_work with base %q made %+v, want a refusal", b, res)
-					continue
-				}
-				low := strings.ToLower(bad)
-				for _, word := range []string{"base", "branch", "origin", "test/x"} {
-					if !strings.Contains(low, word) {
-						t.Errorf("refusal of base %q is %q, want it to name the valid form (a branch on origin, e.g. test/x): no %q", b, bad, word)
-					}
-				}
+			got, bad := startWorkResult(t, useAtoll(t, f.s, th, ev, startWorkCall(`{"type":"fix","slug":"Seeded BUG","base":""}`, false))[0])
+			if bad != "" {
+				t.Fatalf("start_work with an empty base failed: %s", bad)
 			}
-			if p := worktreeOf(t, f.repo.Path, "fix/seeded-bug"); p != "" {
-				t.Errorf("a refused start_work left a worktree at %s", p)
+			if want := "origin/HEAD " + short; got.Branch != "fix/seeded-bug" || got.Base != want {
+				t.Errorf("got branch %q, base %q; want fix/seeded-bug, %q", got.Branch, got.Base, want)
 			}
-			if out := gitIn(t, f.repo.Path, "branch", "--list", "fix/*"); out != "" {
-				t.Errorf("a refused start_work left branches: %q", out)
-			}
-			if entries, _ := os.ReadDir(f.root); len(entries) != 0 {
-				t.Errorf("a refused start_work left %d entries under the worktree root", len(entries))
+			if head := gitIn(t, got.Path, "rev-parse", "--short=7", "HEAD"); head != short {
+				t.Errorf("worktree starts at %s, want origin/HEAD %s", head, short)
 			}
 		})
 	}
 }
 
+// TestRepo_StartWorkBaseBeatsTag: a tag named like the base branch does not stand in for it.
+func TestRepo_StartWorkBaseBeatsTag(t *testing.T) {
+	f := newRepoFixture(t, "claude")
+	short := f.pushBase(t, "test/x")
+	gitIn(t, f.repo.Path, "tag", "test/x", "main")
+	th, ev := f.baseThread(t, baseCase{provider: "claude"})
+	got, bad := startWorkResult(t, useAtoll(t, f.s, th, ev, startWorkCall(`{"type":"fix","slug":"Seeded BUG","base":"test/x"}`, false))[0])
+	if bad != "" {
+		t.Fatalf("start_work with base test/x failed: %s", bad)
+	}
+	if head := gitIn(t, got.Path, "rev-parse", "--short=7", "HEAD"); head != short {
+		t.Errorf("worktree starts at %s, want origin/test/x %s, not the tag", head, short)
+	}
+}
+
 // TestRepo_StartWorkDeclaresBase: the start_work schema the Bot reads declares base, so a Bot
-// sending only declared arguments gets its worktree on the base.
+// sending only declared arguments gets its worktree on the base. The schema does not depend on
+// the mode, so Codex on Auto is not repeated.
 func TestRepo_StartWorkDeclaresBase(t *testing.T) {
 	for _, c := range _baseCases[:2] {
 		t.Run(c.name(), func(t *testing.T) {
@@ -170,6 +255,40 @@ func TestRepo_StartWorkDeclaresBase(t *testing.T) {
 			line := useAtoll(t, f.s, th, ev, startWorkCall(`{"type":"fix","slug":"Seeded BUG","base":"test/x"}`, true))[0]
 			if _, bad := startWorkResult(t, line); bad != "" {
 				t.Errorf("start_work with base: %s", bad)
+			}
+		})
+	}
+}
+
+// TestRepo_StartWorkTypes: type test makes test/<slug>, the branch of a test PR; any other type is
+// refused naming the valid ones and makes nothing.
+func TestRepo_StartWorkTypes(t *testing.T) {
+	for _, c := range _baseCases[:2] {
+		t.Run(c.name()+"/test", func(t *testing.T) {
+			f := newRepoFixture(t, c.provider)
+			th, ev := f.baseThread(t, c)
+			got, bad := tryStartWork(t, f, th, ev, startWorkCall(`{"type":"test","slug":"x"}`, false))
+			if bad != "" {
+				t.Fatalf("start_work with type test failed: %s", bad)
+			}
+			if got.Branch != "test/x" || worktreeOf(t, f.repo.Path, "test/x") == "" {
+				t.Errorf("got branch %q, worktree %q; want branch test/x with a worktree", got.Branch, worktreeOf(t, f.repo.Path, "test/x"))
+			}
+		})
+		t.Run(c.name()+"/unknown", func(t *testing.T) {
+			f := newRepoFixture(t, c.provider)
+			th, ev := f.baseThread(t, c)
+			res, bad := tryStartWork(t, f, th, ev, startWorkCall(`{"type":"bogus","slug":"x"}`, false))
+			if bad == "" {
+				t.Fatalf("start_work with type bogus made %+v, want a refusal", res)
+			}
+			for _, typ := range []string{"feat", "fix", "chore", "docs", "test"} {
+				if !strings.Contains(bad, typ) {
+					t.Errorf("refusal %q does not name the valid type %q", bad, typ)
+				}
+			}
+			if out := gitIn(t, f.repo.Path, "worktree", "list", "--porcelain"); strings.Count(out, "worktree ") != 1 {
+				t.Errorf("a refused start_work left a worktree:\n%s", out)
 			}
 		})
 	}
