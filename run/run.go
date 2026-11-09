@@ -774,7 +774,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		for name, dir := range map[string]string{
 			"XDG_CACHE_HOME": "xdg-cache", "XDG_DATA_HOME": "xdg-data", "XDG_STATE_HOME": "xdg-state",
 			"GOCACHE": "go-build", "GOLANGCI_LINT_CACHE": "golangci-lint",
-			"npm_config_store_dir": "pnpm-store", "PNPM_HOME": "pnpm-home",
+			"pnpm_config_store_dir": "pnpm-store", "PNPM_HOME": "pnpm-home",
 		} {
 			path := filepath.Join(cache, dir)
 			if err := os.MkdirAll(path, 0o755); err != nil {

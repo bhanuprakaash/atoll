@@ -50,7 +50,7 @@ never a dependency.
     git common directory.
     For repo threads, Reef creates `<data>/cache/<bot id>/` and shares it across that Bot's runs.
     It sets `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `GOCACHE`,
-    `GOLANGCI_LINT_CACHE`, `npm_config_store_dir` and `PNPM_HOME` to folders under that root.
+    `GOLANGCI_LINT_CACHE`, `pnpm_config_store_dir` and `PNPM_HOME` to folders under that root.
     Deleting the Bot removes its cache.
   - Read-only: the repo's `.git/config` and `.git/hooks`; either could escape the sandbox when
     Reef next runs git. The common directory is excluded to protect them; single-file roots crash
