@@ -50,21 +50,63 @@ covered.
 A writable git dir lets a Bot plant routes that make git run a program, and a Claude Bot on Auto has
 no sandbox at all. Atoll's own git runs outside any sandbox and is one function, so none of its calls
 in the repo may run a program the repo names, whichever provider the Bot uses. The spec plants each
-route the way a Bot would, with a program that records a call made with `GIT_TERMINAL_PROMPT=0`, as
-Atoll's git does, then drives the thread's clean checkout, `start_work`, a run that leaves unsaved
-work and the close that saves and removes, and expects no record after any of them:
+route the way a Bot would, with a program that records every git call except the fake provider's
+(which sets `GIT_AUTHOR_NAME` to `Fixture Bot`), then drives the thread's clean checkout, `start_work`, a run that leaves unsaved
+work, and an ending, and expects no record after any step:
 
 | Route | Planted |
 | --- | --- |
 | `hooks` | `post-checkout`, `reference-transaction` and `post-index-change` in `<common>/hooks` |
 | `fsmonitor-in-config` | `core.fsmonitor` in `<common>/config` |
-| `filter-driver` | `filter.x.clean` in `<common>/config` and `* filter=x` in `<common>/info/attributes` |
-| `commondir-rewritten` | `<common>/worktrees/<name>/commondir` pointing at a copy of the common dir whose config sets `core.fsmonitor` and a clean filter |
-| `gitfile-rewritten` | the worktree's `.git` file pointing at a copy of its git dir whose `commondir` points at that copy; the close may be refused, because git will not remove such a worktree |
-| `worktree-config` | `extensions.worktreeConfig` true and `core.fsmonitor` in `<common>/worktrees/<name>/config.worktree` |
+| `filter-driver` | `filter.x.clean` in `<common>/config` and `* filter=x` in `<common>/info/attributes`; asserted on the close only |
+| `filter-name-with-equals` | `filter.x=y.clean` in `<common>/config` and `* filter=x=y` in `<common>/info/attributes`; a filter name may hold `=`, which a `-c` override reads as a different key; asserted on the close only |
+| `commondir-rewritten` | `<common>/worktrees/<name>/commondir` pointing at a copy of the common dir whose config sets `core.fsmonitor` |
+| `gitfile-rewritten` | the worktree's `.git` file pointing at a copy of its git dir, whose `commondir` points at that copy; the ending may be refused, because git will not remove such a worktree |
+| `worktree-config` | `extensions.worktreeConfig` true in `<common>/config` and `core.fsmonitor` in `<common>/worktrees/<name>/config.worktree` |
 
-Every other close returns `204`. Not pinned: a filter driver in `config.worktree`, and any other
-program a repo config can name that none of Atoll's calls runs.
+The endings are the thread's close (which saves the unsaved work) and the Bot's deletion, which closes
+each of its threads, so it runs the same git as a close. Every ending
+returns `204`, except for `gitfile-rewritten`. After a close, `refs/atoll/unfinished/<thread id>` is a
+commit in the repo itself: git writes a ref into the common dir a worktree's `commondir` file names,
+even when `GIT_COMMON_DIR` says otherwise, so a redirected `commondir` would send the snapshot to a
+folder the Bot controls and the close would then remove the work.
+
+Each route also has a control, `control/<route>`, that makes the same repo and plants the same route,
+then runs the operations Atoll runs (worktree add for the clean checkout and for a new branch, status,
+add, write-tree, update-ref and worktree remove) with plain git and expects the program to run. Every
+route fires under plain git with those commands. It
+uses no product code, so it passes with and without the fix: it proves the route is live and the
+program records, so that a route or a recorder that stopped working cannot make a leg pass. The
+recorder does not depend on anything Atoll sets, so dropping an Atoll environment variable cannot
+make a leg pass either.
+
+A Bot that can write the worktree root and `<common>/worktrees` can also swap its own worktree folder
+for a symlink to another linked worktree of the repo, one the user made outside the root (its path
+is in `<common>/worktrees/*/gitdir`), and point its own entry's `gitdir` file at nothing. Git then
+resolves the symlink when asked to remove the folder, matches the user's worktree and removes it
+with its uncommitted files. After such a plant, closing the thread may be refused but must leave the
+user's worktree and its uncommitted file in place (`TestRepo_CloseKeepsOtherWorktrees/{codex,claude}/close`).
+Its `control` runs `git worktree remove --force` with plain git and expects the user's file gone.
+
+Filters are neutralised only where Atoll stages the Bot's tree, the snapshot of a close (`Save`'s
+`status`, `add -A` and `write-tree`, which each can run a clean filter), not in `worktree add`: a user's own filter, such as Git LFS's, runs at checkout. So
+the `filter-driver` and `filter-name-with-equals` legs assert on the close only and nothing about
+filters during a checkout. A user's own config may define a filter as required and the repo's
+`.gitattributes` may apply it; the thread's clean checkout and `start_work` must still make their
+worktrees, and the checkout's smudge may run (`TestRepo_UserFilterThatMustRunStillWorks`). The race
+in which a Bot process that outlives the run swaps the folder between Atoll's symlink check and its
+git call is a documented residual risk (`docs/design.md`), not pinned.
+
+Not pinned: a filter driver in `config.worktree`, which no command-line flag of git suppresses and
+which a list of filters read from the trusted config does not name, and any other program a repo config can name that none of Atoll's calls runs.
+The "delete" of the issue's third line is covered in part. Deleting a Bot closes each of its threads,
+so the Bot-deletion ending runs `CloseThread`: `Save` (status, rev-parse, add, write-tree,
+commit-tree, update-ref) and `Remove` (`git worktree remove`). `DeleteBranch` (`git branch -D`) is
+not reached by any leg: Atoll runs it only when `start_work` fails and when a delegate's helper is
+abandoned (`run/work.go`, `run/delegate.go`). Not driven separately either: `CreateFrom` and the
+reads `IsRepo`, `Origin` and `HasCommit`, which share the one exec site. Git names a worktree's git
+dir after its folder, and Atoll's folders are unique per repo (`-2`, `-3`), so a git-dir id that git
+suffixes cannot be made through the API.
 
 ## Chief
 
@@ -91,8 +133,10 @@ saves as you change it and shows again after a reload.
 | Bot settings Mode control; Full access text | UI `Bot settings pick a Mode; Full access warns and the choice persists` |
 | Chief `create_bot`/`edit_bot` take `mode`; `list_bots` shows it; change with Undo | `TestBotMode_Chief/{claude,codex}` |
 | A change of mode mid-run applies from the next run | `TestBotMode_ChangeMidRunAppliesFromNextRun/{claude,codex}` |
+| Closing a thread whose folder a Bot swapped for a symlink to a user's other worktree leaves that worktree in place | `TestRepo_CloseKeepsOtherWorktrees/{control,codex/close,claude/close}` |
+| A user's required filter (Git LFS style) does not stop the clean checkout or `start_work` | `TestRepo_UserFilterThatMustRunStillWorks` |
 | `start_work` sets the new branch's upstream to `origin` | `TestRepo_StartWorkSetsUpstream` |
-| None of Atoll's own git calls in the repo (clean checkout, `start_work`, close with unsaved work) runs a program a planted hook, config, filter, `commondir`, `.git` file or `config.worktree` names, for a Codex and a Claude Bot | `TestRepo_ReefGitRunsNoRepoCode/{codex,claude}/{hooks,fsmonitor-in-config,filter-driver,commondir-rewritten,gitfile-rewritten,worktree-config}` |
+| None of Atoll's own git calls in the repo (clean checkout, `start_work`, close with unsaved work) runs a program a planted hook, `core.fsmonitor`, filter driver, `commondir`, `.git` file or `config.worktree` names, and a close keeps the snapshot in the repo, for a Codex and a Claude Bot | `TestRepo_ReefGitRunsNoRepoCode/{codex/close,codex/delete,claude/close}/<route>`, each with `TestRepo_ReefGitRunsNoRepoCode/control/<route>` for `<route>` in `hooks`, `fsmonitor-in-config`, `filter-driver`, `filter-name-with-equals`, `commondir-rewritten`, `gitfile-rewritten`, `worktree-config` |
 | Codex Auto starts and resumes with the `worktree_root` folder, the git common dir's `objects`, `refs`, `logs` and `worktrees` (not the common dir, `config` or `hooks`) as writable roots and network access; Ask and Full access carry neither | `TestCodexAuto_SandboxCoversWorktreeAndNetwork/{auto,ask,full}` |
 
 Not covered here: the spike and the real-Claude line are implementer and user proof. Not pinned:
