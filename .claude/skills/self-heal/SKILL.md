@@ -59,7 +59,10 @@ observers read it. Apply it yourself when triaging and reviewing.
    checks. Test PRs merge before fix PRs (test-guard). Tell the lead when the owner merged, since nothing wakes it.
 6. **Integrate without waiting.** Merge reviewed PR branches into `dogfood/integration` (`scripts/rebuild.sh
    origin/<branch> …`); Bots keep branching from `origin/main`, so PRs stay clean.
-7. **Close the round.** `touch $REEF_HOME/round-<N>.done` (observers challenge each other, then finish). Rebuild,
+7. **Feed misses back.** When the owner (or you) finds something no observer reported, write why each lens missed it
+   and what changes, tell the running observers (append to their brief on disk), and add the lesson to
+   `references/round-live.md` "Blind spots".
+8. **Close the round.** `touch $REEF_HOME/round-<N>.done` (observers challenge each other, then finish). Rebuild,
    stop Reef, swap `bin/atoll.new` in, restart on the same data (tests upgrade + restart recovery), reload the
    browser. Start one verify subagent: re-run every acceptance line of the round's tickets against the running app
    and record command + output. Do the real-provider lines yourself (e.g. a real Chief run). Merge confirmed findings

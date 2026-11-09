@@ -19,6 +19,16 @@ Read the other lens files for this round (round<N>-*.md). Add a "Challenges" sec
 findings you think is wrong, overstated or a duplicate, say why with evidence; confirm the ones you re-checked.
 Then finish and reply with your file path and a 3-line summary.
 
+## Blind spots (round 1 missed a person's message being refused and lost; owner found it)
+- Every "refused / blocked / 409 / disabled" rule in the spec or checklist is a candidate finding: ask what a
+  person does now, and judge it by owner-taste.md (conversation first).
+- Walk every user action end to end, including failure: in your own browser, intercept the non-GET request and
+  answer it yourself with each realistic failure (409 busy, 401, 500, offline, slow); judge what the person sees.
+  Real data is still never changed.
+- A refusal or failure a person hit must leave a trace (log line, event); missing observability is a finding.
+- Watch the person's side too: compare the driver's actions (messages typed, clicks) with the `messages` table and
+  run starts; any gap is a finding.
+
 ## Lens focus (one per observer, Sonnet)
 - backend: run lifecycle, delegation (helper threads, inbox, wake, 3-helper cap, helper worktrees and cleanup),
   approvals pairing, provider argv/env isolation per provider and mode, skill placement/removal, log errors,
