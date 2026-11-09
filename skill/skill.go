@@ -28,16 +28,21 @@ const (
 )
 
 var (
-	_unsafe    = regexp.MustCompile(`[^a-z0-9_-]+`)
-	_homePaths = regexp.MustCompile("~/[^\\s`'\")\\]]*")
+	_unsafe = regexp.MustCompile(`[^a-z0-9_-]+`)
 )
 
 // Import is a skill read from a local folder: what was taken, what was left out and why, and the
 // home-relative paths still in its SKILL.md.
 type Import struct {
-	Skill     store.Skill
-	Skipped   []Skipped
-	HomePaths []string
+	Skill   store.Skill
+	Skipped []Skipped
+	Refs    []homeRef
+}
+
+type homeRef struct {
+	File string `json:"file"`
+	Line int    `json:"line"`
+	Ref  string `json:"ref"`
 }
 
 // Skipped is a file or folder of a local skill that was not imported.
@@ -75,7 +80,7 @@ func Place(dir, providerName string, skills []store.Skill) (string, error) {
 		if err := os.MkdirAll(folder, 0o700); err != nil {
 			return "", fmt.Errorf("make skill folder: %w", err)
 		}
-		content := Strip(s.Content, providerName)
+		content := strings.ReplaceAll(Strip(s.Content, providerName), "{{ATOLL_SKILL_DIR}}", folder)
 		if err := os.WriteFile(filepath.Join(folder, "SKILL.md"), []byte(content), 0o444); err != nil {
 			return "", fmt.Errorf("write skill %s: %w", s.ID, err)
 		}
@@ -88,7 +93,7 @@ func Place(dir, providerName string, skills []store.Skill) (string, error) {
 			if f.Executable {
 				mode = 0o555
 			}
-			if err := os.WriteFile(file, []byte(f.Content), mode); err != nil {
+			if err := os.WriteFile(file, []byte(strings.ReplaceAll(f.Content, "{{ATOLL_SKILL_DIR}}", folder)), mode); err != nil {
 				return "", fmt.Errorf("write skill %s file %s: %w", s.ID, f.Path, err)
 			}
 		}
@@ -140,18 +145,12 @@ func Read(dir string) (Import, error) {
 	if !isText(data) {
 		return Import{}, errors.New("SKILL.md is not text")
 	}
-	content := strings.ReplaceAll(string(data),
-		"~/.claude/skills/"+filepath.Base(dir)+"/", "")
+	content := string(data)
 	imp := Import{Skill: store.Skill{
 		Name: frontmatterName(content), Content: content, Source: dir,
 	}}
 	if imp.Skill.Name == "" {
 		imp.Skill.Name = filepath.Base(dir)
-	}
-	for _, p := range _homePaths.FindAllString(content, -1) {
-		if !slices.Contains(imp.HomePaths, p) {
-			imp.HomePaths = append(imp.HomePaths, p)
-		}
 	}
 	err = filepath.WalkDir(dir, func(file string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -199,6 +198,42 @@ func Read(dir string) (Import, error) {
 	slices.SortFunc(imp.Skill.Files, func(a, b store.SkillFile) int {
 		return strings.Compare(a.Path, b.Path)
 	})
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return Import{}, err
+	}
+	name := filepath.Base(dir)
+	forms := []string{dir}
+	for _, root := range []string{".claude/skills/", ".codex/skills/", ".agents/skills/"} {
+		for _, prefix := range []string{"~/", "$HOME/", "${HOME}/"} {
+			forms = append(forms, prefix+root+name)
+		}
+	}
+	scan := func(file string, content *string) {
+		for _, form := range forms {
+			re := regexp.MustCompile(regexp.QuoteMeta(form) + `($|[^a-zA-Z0-9._-])`)
+			*content = re.ReplaceAllString(*content, "{{ATOLL_SKILL_DIR}}$1")
+		}
+		re := regexp.MustCompile("~/[^\\s`'\"\\)\\]]*|\\$HOME(?:/[^\\s`'\"\\)\\]]*)?|\\$\\{HOME\\}(?:/[^\\s`'\"\\)\\]]*)?|" + regexp.QuoteMeta(home) + "(?:/[^\\s`'\"\\)\\]]*)?")
+		for lineNo, line := range strings.Split(*content, "\n") {
+			for _, loc := range re.FindAllStringIndex(line, -1) {
+				ref := line[loc[0]:loc[1]]
+				if strings.HasPrefix(ref, "~/") && loc[0] > 0 && strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/~", rune(line[loc[0]-1])) {
+					continue
+				}
+				if ref == "$HOME" && loc[1] < len(line) && ((line[loc[1]] >= 'A' && line[loc[1]] <= 'Z') || (line[loc[1]] >= 'a' && line[loc[1]] <= 'z') || line[loc[1]] == '_' || (line[loc[1]] >= '0' && line[loc[1]] <= '9')) {
+					continue
+				}
+				imp.Refs = append(imp.Refs, homeRef{File: file, Line: lineNo + 1, Ref: ref})
+			}
+		}
+	}
+	scan("SKILL.md", &imp.Skill.Content)
+	for i := range imp.Skill.Files {
+		scan(imp.Skill.Files[i].Path, &imp.Skill.Files[i].Content)
+	}
+	slices.SortStableFunc(imp.Refs, func(a, b homeRef) int { return strings.Compare(a.File, b.File) })
 	return imp, nil
 }
 

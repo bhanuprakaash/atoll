@@ -645,7 +645,7 @@ func (a *api) platformCall(
 		var res importResult
 		var prev, sk store.Skill
 		res, prev, sk, err = a.importSkill(ctx, st, imp, importArgs.Replace)
-		if err == nil && (res.Status == _importUnchanged || res.Status == _importConfirm) {
+		if err == nil && (res.Status == _importUnchanged || res.Status == _importConfirm || res.Status == "refused") {
 			return a.jsonText(res)
 		}
 		reply, after, entity, id = res, sk, store.EntitySkill, sk.ID
@@ -870,14 +870,16 @@ const (
 // importResult is what import_skill answers: the paths it added, changed and removed against the
 // skill it replaces, and what it left out of the folder.
 type importResult struct {
-	Status    string          `json:"status"`
-	Skill     *importedSkill  `json:"skill,omitempty"`
-	Added     []string        `json:"added"`
-	Changed   []string        `json:"changed"`
-	Removed   []string        `json:"removed"`
-	Skipped   []skill.Skipped `json:"skipped"`
-	HomePaths []string        `json:"home_paths"`
-	Warning   string          `json:"warning,omitempty"`
+	Status  string          `json:"status"`
+	Skill   *importedSkill  `json:"skill,omitempty"`
+	Added   []string        `json:"added"`
+	Changed []string        `json:"changed"`
+	Removed []string        `json:"removed"`
+	Skipped []skill.Skipped `json:"skipped"`
+	Name    string          `json:"name,omitempty"`
+	Reason  string          `json:"reason,omitempty"`
+	Refs    any             `json:"refs,omitempty"`
+	Warning string          `json:"warning,omitempty"`
 }
 
 type importedSkill struct {
@@ -905,6 +907,24 @@ func readImport(path string) (skill.Import, error) {
 	if !filepath.IsAbs(path) {
 		return skill.Import{}, errors.New("path must be absolute or start with ~/")
 	}
+	resolved, err := filepath.EvalSymlinks(filepath.Clean(path))
+	if err != nil {
+		return skill.Import{}, err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return skill.Import{}, err
+	}
+	allowed := false
+	for _, root := range []string{".claude/skills", ".codex/skills"} {
+		base, err := filepath.EvalSymlinks(filepath.Join(home, root))
+		if err == nil && filepath.Dir(resolved) == base {
+			allowed = true
+		}
+	}
+	if !allowed {
+		return skill.Import{}, fmt.Errorf("%s is not in allowed folders: ~/.claude/skills, ~/.codex/skills", path)
+	}
 	return skill.Read(filepath.Clean(path))
 }
 
@@ -914,11 +934,20 @@ func readImport(path string) (skill.Import, error) {
 func (a *api) importSkill(
 	ctx context.Context, st *store.Store, imp skill.Import, replace bool,
 ) (res importResult, prev, next store.Skill, err error) {
+
+	if len(imp.Refs) > 0 {
+		reason := fmt.Sprintf("Import refused for skill %q:", imp.Skill.Name)
+		for _, ref := range imp.Refs {
+			reason += fmt.Sprintf(" %s:%d %s;", ref.File, ref.Line, ref.Ref)
+		}
+		reason += " Edit the skill or copy the referenced files into its folder."
+		return importResult{Status: "refused", Name: imp.Skill.Name, Reason: reason, Refs: imp.Refs}, prev, next, nil
+	}
 	next = imp.Skill
 	next.Imported = skill.Hash(next)
 	res = importResult{
 		Status: _importCreated, Added: []string{}, Changed: []string{}, Removed: []string{},
-		Skipped: orEmpty(imp.Skipped), HomePaths: orEmpty(imp.HomePaths),
+		Skipped: orEmpty(imp.Skipped),
 	}
 	skills, err := st.Skills(ctx)
 	if err != nil {
