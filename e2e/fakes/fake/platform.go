@@ -277,16 +277,17 @@ func deniedImport(c *MCP) (string, error) {
 	return "import_skill denied.", nil
 }
 
-// importSkill imports the folder the prompt names after "the skill folder " with import_skill,
+// importSkill imports the folder the prompt names after "the skill folder " (the rest of that line, spaces included) with import_skill,
 // sending replace when the user says "Yes, replace". The reply is a sentence naming the status
 // and what was skipped, or what the user must confirm, then the result as one line of JSON.
 func importSkill(c *MCP, raw func(string, any) (string, error), prompt string) (string, error) {
 	_, rest, ok := strings.Cut(prompt, "the skill folder ")
-	fields := strings.Fields(rest)
-	if !ok || len(fields) == 0 {
+	path, _, _ := strings.Cut(rest, "\n")
+	path = strings.TrimSpace(path)
+	if !ok || path == "" {
 		return "", fmt.Errorf("import scenario requires the skill folder <path>")
 	}
-	args := map[string]any{"path": fields[0]}
+	args := map[string]any{"path": path}
 	if strings.Contains(prompt, "Yes, replace") {
 		args["replace"] = true
 	}
@@ -315,6 +316,7 @@ func importSkill(c *MCP, raw func(string, any) (string, error), prompt string) (
 			Name string `json:"name"`
 		} `json:"skill"`
 		Warning string `json:"warning"`
+		Reason  string `json:"reason"`
 	}
 	if err := json.Unmarshal([]byte(text), &res); err != nil {
 		return "", fmt.Errorf("import_skill result %q: %w", text, err)
@@ -326,10 +328,13 @@ func importSkill(c *MCP, raw func(string, any) (string, error), prompt string) (
 		return strings.Join(items, ", ")
 	}
 	var summary string
-	if res.Status == "confirm" {
+	switch res.Status {
+	case "refused":
+		summary = "Import refused: " + res.Reason
+	case "confirm":
 		summary = fmt.Sprintf("Import needs confirmation: %s Added: %s. Changed: %s. Removed: %s.",
 			res.Warning, list(res.Added), list(res.Changed), list(res.Removed))
-	} else {
+	default:
 		skipped := make([]string, 0, len(res.Skipped))
 		for _, s := range res.Skipped {
 			skipped = append(skipped, s.Path+" ("+s.Reason+")")

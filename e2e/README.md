@@ -163,3 +163,5 @@ Helper code work (helpers branch off their boss; the boss merges) extends these 
 Helpers in the UI (above the composer, in the island, a read-only helper thread) extend these contracts in [helpers-ui-contract.md](helpers-ui-contract.md).
 
 The sidebar thread tree, threads popup, Bot groups and island notifications extend these contracts in [sidebar-tree-contract.md](sidebar-tree-contract.md).
+
+Home paths in imported skills (the own folder becomes a placement token, any other home reference refuses the import) extend these contracts in [skill-home-paths-contract.md](skill-home-paths-contract.md).

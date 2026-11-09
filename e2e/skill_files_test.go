@@ -28,12 +28,21 @@ type (
 				Executable bool   `json:"executable"`
 			} `json:"files"`
 		} `json:"skill"`
-		Added     []string  `json:"added"`
-		Changed   []string  `json:"changed"`
-		Removed   []string  `json:"removed"`
-		Skipped   []skipped `json:"skipped"`
-		HomePaths []string  `json:"home_paths"`
-		Warning   string    `json:"warning"`
+		Added   []string  `json:"added"`
+		Changed []string  `json:"changed"`
+		Removed []string  `json:"removed"`
+		Skipped []skipped `json:"skipped"`
+		Warning string    `json:"warning"`
+		Name    string    `json:"name"`
+		Reason  string    `json:"reason"`
+		Refs    []refusal `json:"refs"`
+	}
+
+	// refusal is one home reference a refused import found.
+	refusal struct {
+		File string `json:"file"`
+		Line int    `json:"line"`
+		Ref  string `json:"ref"`
 	}
 
 	skipped struct {
@@ -135,9 +144,6 @@ func TestSkillFiles_ChiefImportsPotetoMode(t *testing.T) {
 			if len(imp.res.Added)+len(imp.res.Changed)+len(imp.res.Removed)+len(imp.res.Skipped) != 0 {
 				t.Fatalf("a new skill has nothing added, changed, removed or skipped: %+v", imp.res)
 			}
-			if !slices.Equal(imp.res.HomePaths, _potetoHomePaths) {
-				t.Fatalf("home_paths %q, want %q", imp.res.HomePaths, _potetoHomePaths)
-			}
 
 			skill := onlySkill(t, s)
 			if skill.Name != "poteto-mode" || skill.Source != root {
@@ -154,8 +160,8 @@ func TestSkillFiles_ChiefImportsPotetoMode(t *testing.T) {
 					t.Fatalf("result file %+v, stored %s executable %v", got, f.Path, f.Executable)
 				}
 			}
-			if skill.Content != potetoPlaced() || strings.Contains(skill.Content, "~/.claude") || !strings.Contains(skill.Content, "`S=scripts`") {
-				t.Fatalf("SKILL.md %q, want the scripts path relative and no ~/.claude", skill.Content)
+			if skill.Content != potetoPlaced() || strings.Contains(skill.Content, "~/.claude") || !strings.Contains(skill.Content, "`S={{ATOLL_SKILL_DIR}}/scripts`") {
+				t.Fatalf("SKILL.md %q, want the placement token and no ~/.claude", skill.Content)
 			}
 			if after := treeSum(t, root); after != before {
 				t.Fatal("import changed the source folder")
@@ -237,7 +243,7 @@ func TestSkillFiles_BotRunsPlacedScript(t *testing.T) {
 			if filepath.Dir(placed.Path) != dir || strings.HasPrefix(placed.Path, m.home+string(filepath.Separator)) {
 				t.Fatalf("placed at %s, want %s outside HOME", placed.Path, dir)
 			}
-			checkPlaced(t, placed.Files, files)
+			checkPlaced(t, placed.Files, placed.Path, files)
 			folderGone(t, filepath.Join(m.providerDir(p), "runs", r.ID))
 		})
 	}
@@ -349,7 +355,8 @@ func TestSkillFiles_SmallerSetIsPlaced(t *testing.T) {
 				t.Fatalf("run: %+v", got)
 			}
 			inventory := skillInventories(t, m, p)
-			checkPlaced(t, potetoCopy(t, inventory[len(inventory)-1]).Files, put.Files)
+			last := potetoCopy(t, inventory[len(inventory)-1])
+			checkPlaced(t, last.Files, last.Path, put.Files)
 		})
 	}
 }
@@ -479,7 +486,8 @@ func TestSkillFiles_LiveRunKeepsItsCopy(t *testing.T) {
 				t.Fatalf("live run: %+v, want the old script's output: %q", got, want)
 			}
 			inventory := skillInventories(t, m, p)
-			checkPlaced(t, potetoCopy(t, inventory[len(inventory)-1]).Files, old)
+			first := potetoCopy(t, inventory[len(inventory)-1])
+			checkPlaced(t, first.Files, first.Path, old)
 			folderGone(t, filepath.Join(m.providerDir(p), "runs", live.ID))
 
 			next := s.send(t, th, "Run the poteto-mode script scripts/check.")
@@ -488,7 +496,8 @@ func TestSkillFiles_LiveRunKeepsItsCopy(t *testing.T) {
 				t.Fatalf("next run: %+v, want %q", got, want)
 			}
 			inventory = skillInventories(t, m, p)
-			checkPlaced(t, potetoCopy(t, inventory[len(inventory)-1]).Files, changed)
+			second := potetoCopy(t, inventory[len(inventory)-1])
+			checkPlaced(t, second.Files, second.Path, changed)
 		})
 	}
 }
