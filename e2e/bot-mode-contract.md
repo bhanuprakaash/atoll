@@ -48,8 +48,9 @@ makes the branch: `branch.<branch>.remote` is `origin` and `branch.<branch>.merg
 `refs/heads/<branch>`, with no run pushing anything. A repo without an `origin` remote is not
 covered.
 
-Codex on Auto can write the repo's `.git/hooks`, because the git common dir is a writable root. None
-of Atoll's own git calls in the repo, which run outside any sandbox, may therefore run a repo hook.
+Codex on Auto cannot write the repo's `.git/hooks` or `.git/config`: the git common dir itself is
+not a root, only `objects`, `refs`, `logs` and the session's own git dir are. Atoll's own git runs
+outside the sandbox, so as a second guard none of its calls in the repo may run a repo hook.
 The spec plants `post-checkout`, `reference-transaction` and `post-index-change` hooks that record
 a call made with `GIT_TERMINAL_PROMPT=0`, as Atoll's git does, and expects no record after the
 thread's clean checkout, after `start_work`, after a run that leaves unsaved work, and after the
