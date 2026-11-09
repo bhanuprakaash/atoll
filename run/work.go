@@ -98,7 +98,7 @@ func (m *Manager) SetWorktreeRoot(ctx context.Context, root string) error {
 // returns its path, branch and base. A thread that has a worktree gets that one back with an
 // empty base: no new branch was started.
 func (m *Manager) StartWork(
-	ctx context.Context, token, typ, slug string,
+	ctx context.Context, token, typ, slug, requestedBase string,
 ) (path, branch string, base repo.Base, err error) {
 	a, err := m.byToken(token)
 	if err != nil {
@@ -140,7 +140,7 @@ func (m *Manager) StartWork(
 	if err != nil {
 		return "", "", repo.Base{}, err
 	}
-	if path, branch, base, err = repo.Create(ctx, rp.Path, root, rp.Name, name); err != nil {
+	if path, branch, base, err = repo.Create(ctx, rp.Path, root, rp.Name, name, requestedBase); err != nil {
 		return "", "", repo.Base{}, err
 	}
 	createdPath, createdBranch := path, branch
@@ -286,6 +286,9 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 				return fmt.Errorf("remove thread folder: %w", err)
 			}
 		}
+	}
+	if err := os.RemoveAll(filepath.Join(m.cfg.DataDir, "cache", botID)); err != nil {
+		m.cfg.Log.Warn("remove bot cache", "bot_id", botID, "error", err)
 	}
 	return nil
 }
