@@ -353,50 +353,57 @@ after a failed undo counts a Bot that is already gone as removed.
         `/CLAUDE.md` (writing one needs root).
     - `--settings` carries `autoMemoryEnabled: false`: no `memory/` folder under `projects/` and no
       auto-memory section in the system prompt.
-    - `--disallowedTools` removes every built-in tool that starts, messages, lists, schedules or
-      reaches other sessions, agents, projects, remote runs or the owner's machine outside the Bot's
-      own run. The value, exactly, is the lines below joined by single spaces (one argument):
-      ```text
-      Task Workflow ListAgents SendMessage SendToProject SendToProjectContext RemoteTrigger
-      DesignSync PublishPlugin ShareOnboardingGuide PushNotification CronCreate CronDelete
-      CronList ScheduleWakeup Monitor EnterWorktree ExitWorktree
-      ```
-      - Other sessions and agents: `Task` (the built-in Agent tool), `Workflow` (also starts
-        subagents, so removing only `Task` leaves them), `ListAgents` (lists Remote Control and
-        cloud sessions on other machines), `SendMessage` (messages them).
-      - Remote claude.ai: `SendToProject` (posts to a Claude Project as the user),
-        `SendToProjectContext` (its companion), `RemoteTrigger` (routines and their remote runs),
-        `DesignSync` (claude.ai design projects), `PublishPlugin` and `ShareOnboardingGuide`
-        (uploads to claude.ai).
-      - Scheduling and background: `CronCreate`, `CronDelete`, `CronList`, `ScheduleWakeup`
-        (re-enter a session after the run's turn), `Monitor` (background streams, including from a
-        WebSocket).
-      - The owner's machine: `PushNotification` (terminal notification, and the phone when Remote
-        Control is connected).
-      - Worktrees: `EnterWorktree`, `ExitWorktree`. `EnterWorktree` creates a worktree and a
-        `worktree-<name>` branch inside the repo (`<repo>/.claude/worktrees/<name>`); Reef owns
-        worktrees and nothing is written into the repo.
+    - `--tools Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write` is the whole
+      set of built-in tools a Bot has. The names go in this order, as one comma-separated argument
+      (the argv assertion pins the string). Reef's MCP tools are available through `--mcp-config`
+      and `--allowedTools`. A run that gets no built-in tools (Chief, the title run) uses
+      `--tools ""`: its `init` tool list holds only Reef's MCP tools.
+      - Why an allowlist: a tool added by a later Claude Code stays closed until it is named here.
+        A deny list would leave it open.
+      - A name `claude` no longer has is ignored: no error, no stderr, exit 0, and the name is
+        missing from the init list. Names are case-sensitive (`bash` is ignored, `Bash` is kept).
+        With only unknown names the init list holds Reef's MCP tools alone. A removed or renamed
+        tool therefore does not break a run; the Bot loses that tool silently.
+      - Left out, by class: other sessions and agents (`Task`, `Workflow`, `ListAgents`,
+        `SendMessage`); remote claude.ai (`SendToProject`, `SendToProjectContext`, `RemoteTrigger`,
+        `DesignSync`, `PublishPlugin`, `ShareOnboardingGuide`); scheduling and background
+        (`CronCreate`, `CronDelete`, `CronList`, `ScheduleWakeup`, `Monitor`, `TaskStop`); the
+        owner's machine (`PushNotification`); worktrees (`EnterWorktree`, `ExitWorktree`:
+        `EnterWorktree` creates a worktree and a `worktree-<name>` branch inside the repo, and Reef
+        owns worktrees).
+      - Left out because a headless run has no use for them and Reef never handles them:
+        `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode` (nobody answers in `-p`; a Bot asks in
+        its reply), `ReportFindings` (renders in a host UI Reef does not have) and `ToolSearch`
+        (Reef's MCP tools were callable without it in a 414-tool test).
+      - Kept for a reason: `Skill` loads Reef's skills (`--add-dir`). `WebFetch` and `WebSearch`
+        reach the internet, not other sessions or the machine's sessions. `NotebookEdit` writes a
+        file in the worktree, like `Edit`. `Glob` and `Grep` are named because Reef maps them
+        (`run/run.go`); Claude Code 2.1.319 lists both in its init event when they are named.
       - Delegation goes only through Reef's own tool (see Delegation). A dedicated helpers tool is
         a later ticket (#205).
-    - Tools that stay, from the `system/init` event of `claude` 2.1.319 with Reef's flags, the same
-      in Ask, Auto and Full: `AskUserQuestion`, `Bash`, `Edit`, `EnterPlanMode`, `ExitPlanMode`,
-      `NotebookEdit`, `Read`, `ReportFindings`, `Skill`, `TaskStop`, `ToolSearch`, `WebFetch`,
-      `WebSearch`, `Write` and Reef's `mcp__atoll__*` tools. That is 14 built-in tools plus Reef's
-      tools; without the flag the list has 35 entries. Run: with the list, none of the blocked tools
-      is in `init`, and a Bot called a Reef MCP tool, `Bash`, `Write` and `Read`.
-      - `TaskStop` stops background tasks of this session; with `Task`, `Workflow` and `Monitor`
-        blocked only Bash background tasks remain. Unverified: that another session's task ID is
-        refused.
-      - `WebFetch` and `WebSearch` reach the internet, not other sessions or the machine's
-        sessions, and stay. `WebFetch` is in the list only once `Task` is removed.
-      - `ReportFindings`, `AskUserQuestion` and the plan tools talk only to the host (Reef) and
-        stay.
-      - The init `mcp_servers` held only Reef's server. Unverified: an account with claude.ai
-        connectors (`ENABLE_CLAUDEAI_MCP_SERVERS=false` is set; the test account had none).
-      - Known gap: a deny list covers the tools of this version; a tool added by a later Claude Code
-        is open until listed. `--tools` with the 14 allowed names gave the same init list on
-        2.1.319 and would close that gap. The e2e check compares the init tool list with the set
-        above, so an upgrade that adds a tool fails it.
+    - Run, `claude` 2.1.319 with Reef's other flags and a local MCP server standing in for Reef's:
+      the `system/init` tool list in Ask, Auto and Full holds exactly the 10 built-in names above
+      plus Reef's tools, except the permission-prompt tool (`approve`), which `claude` keeps out of
+      the list: a stand-in with three Bot tools and `approve` showed 13 entries, 10 built-in and
+      three Reef; without `--permission-prompt-tool` the same server showed 14. The e2e check
+      excludes the permission-prompt tool from the comparison. A Bot called a Reef
+      MCP tool, `Bash`, `Write` and `Read` in each mode (Ask with an approval tool that allows).
+      A skill from `--add-dir` loaded through `Skill`. Reef's `finish_run`, the call every run ends
+      with, was called without `ToolSearch` (listed in none of the 10 names) and returned.
+      - CI runs the argv assertions with the scripted fake: they pin the allowlist string and its
+        order. The init-list comparison is a real-`claude` spec behind the `realclaude` build tag
+        (`go test -tags realclaude -run TestClaudeIsolation_Real ./e2e`), which CI does not run. It
+        runs by hand and in slice verification.
+      - An added built-in stays closed, so the comparison cannot fail on an addition. It catches a
+        named tool that is gone or renamed (missing from the init list) and any built-in outside
+        the set that appears (the allowlist stopped working). `finish_run` is one of the tested MCP
+        calls.
+      - Known gap: a tool that `claude` renames or removes is dropped silently, and only the
+        real-`claude` run above catches it; CI passes the argv assertions either way.
+      - Unverified: an account with claude.ai connectors (`ENABLE_CLAUDEAI_MCP_SERVERS=false` is
+        set; the test account had none); another session's `TaskStop` ID (the tool is left out, so
+        it only matters if it is added); that `ToolSearch` is unneeded for MCP tool sets larger
+        than the 414 tools tried or on other Claude Code versions.
     - The Bash tool runs through `CLAUDE_CODE_SHELL_PREFIX`, a script that unsets every variable
       starting with `CLAUDE` or `ATOLL_MCP_` and then runs the command. A Bot's shell has no
       `CLAUDE_CONFIG_DIR`, and `env | grep -c CLAUDE` prints 0.
@@ -575,6 +582,8 @@ after a failed undo counts a Bot that is already gone as removed.
   - Home reference: `~/` (not preceded by a letter, digit, `.`, `_`, `-`, `/` or `~`, so
     `https://x/~/y` and `a~/b` do not count), `$HOME` or `${HOME}` (with or without a following
     `/`), and the server's own home directory as an absolute path (`/Users/<name>`, `/home/<name>`).
+    - `$HOME` and `${HOME}` count only as whole variable names: `$HOMEWORK` and `$HOME_X` are other
+      variables and are not refused (the character after `$HOME` is not a letter, digit or `_`).
   - Rewritable: a home reference to the skill's own folder, and nothing more.
     - `import_skill` takes only a direct child of the resolved `~/.claude/skills` or
       `~/.codex/skills` (see Prompt). `<folder>` is the entry's name there, not its symlink target.
@@ -603,14 +612,22 @@ after a failed undo counts a Bot that is already gone as removed.
       `{{ATOLL_SKILL_DIR}}` gets it replaced like any other; it cannot be written literally.
   - The answer of `import_skill` and of reimport has a status `refused` (beside `created`,
     `replaced`, `unchanged`, `confirm`). It is HTTP 200, like the other statuses.
-    - Shape: `{"status":"refused","name":"<skill name>","reason":"skill \"<name>\" refers to files
-      in your home folder that a Bot cannot use: <file>:<line> <ref>, …","refs":[{"file":
-      "scripts/run.sh","line":12,"ref":"~/.ssh/config"}]}`.
+    - Shape (`reason` is one string; shown wrapped):
+      ```json
+      {"status":"refused","name":"<skill name>",
+       "reason":"skill \"<name>\" refers to files in your home folder that a Bot cannot use:
+                 <file>:<line> <ref>, …",
+       "refs":[{"file":"scripts/run.sh","line":12,"ref":"~/.ssh/config"}]}
+      ```
     - `file` is the path inside the skill as it would be stored (`SKILL.md`, `scripts/run.sh`);
       `line` is 1-based in that file; `ref` is the matched text up to the next space or quote
       (`~/.ssh/config`, `$HOME`, `/home/<name>/x`). One entry per occurrence, ordered by file, then
-      line. No skill id is returned: nothing was stored.
-    - A successful answer carries `rewritten` (file and count).
+      line, then position in the line (byte and character offsets give the same order; not
+      returned). No skill id is returned: nothing was stored.
+    - A successful answer always carries `rewritten`: a list of `{"file", "count"}`, one entry per
+      file with at least one rewrite, `file` the path inside the skill as stored, `count` the number
+      of rewritten references in it, ordered by file. It is an empty list when nothing was
+      rewritten.
   - Chief's reply on `refused` names the skill and each file, line and path, and says how to fix
     it: edit the skill so it stops using that path, or copy the file into the skill folder and
     point at it as `~/.claude/skills/<folder>/<file>` (which then rewrites). Its prompt's import
