@@ -361,7 +361,7 @@ func (m *Manager) stopQuietly(ctx context.Context, threadID string) (bool, error
 // release saves the unfinished work of the thread's worktree, removes the worktree and tells the
 // thread's subscribers. When the save fails nothing is removed.
 func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, reason string) error {
-	if err := m.checkWorktree(ctx, t.Worktree); err != nil {
+	if err := m.checkWorktree(t.Worktree); err != nil {
 		return err
 	}
 	runID, err := m.cfg.Store.LatestRun(ctx, t.ID)
@@ -389,7 +389,7 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	if !saved {
 		ref = ""
 	}
-	if err := m.checkWorktree(ctx, t.Worktree); err != nil {
+	if err := m.checkWorktree(t.Worktree); err != nil {
 		return err
 	}
 	if err := repo.Remove(ctx, rp.Path, t.Worktree); err != nil {
@@ -403,7 +403,7 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	return nil
 }
 
-func (m *Manager) checkWorktree(_ context.Context, path string) error {
+func (m *Manager) checkWorktree(path string) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("inspect worktree: %w", err)

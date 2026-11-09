@@ -43,27 +43,25 @@ never a dependency.
   | Ask | default mode + Reef's permission prompt tool | `approvalPolicy: untrusted` |
   | Full access | `--permission-mode bypassPermissions` | `danger-full-access` sandbox, `approvalPolicy: never` |
 
-  Codex protects the current worktree's git directory as read-only unless it is an explicit root.
-  When `extensions.worktreeConfig` is enabled, Codex Auto does not get either git worktrees root,
-  because it contains writable per-worktree config. Codex Auto cannot write the repo's `.git/config` or `.git/hooks`: either could escape the sandbox
-  when Reef next runs git. Reef disables hooks on its own git calls as a second guard. `start_work`
-  sets the branch upstream when origin exists, since the Bot cannot write config. `git push -u` pushes
-  but cannot save upstream. Git 2.53's commit and stash cleanup deletes `AUTO_MERGE`; the files
-  backend locks `packed-refs` for ref deletion even when the file does not exist. This can print
-  `packed-refs.lock: Read-only file system` while the command succeeds. Deleting a packed branch
-  fails. The common directory is excluded to protect config and hooks, and single-file roots crash
-  Codex's sandbox. Codex Auto's repo prompt tells the Bot to check the exit code before retrying.
-  If the worktree root contains the repo or its git common directory, it is not granted as a writable root.
-
-  Repo-local config can define commands such as filters, diff drivers and `core.sshCommand`. Claude
-  Auto can write that config, and per-worktree config is read when `extensions.worktreeConfig` is on.
-  These remain risks when Reef runs git. Snapshot staging disables repo-local filters, including
-  those from included config files; checkout
-  retains the user's filters so Git LFS works. A filter in `config.worktree` remains a risk.
-  Reef also runs `glab mr view` in the repo; if glab invokes git, it may read the repo's config.
-  A Bot process that outlives its run can swap a worktree path after Reef checks it and before git
-  removes it.
-  Codex Auto can also rewrite other worktrees' metadata and refs under the granted directories.
+  - Writable: the roots in the table include every worktree under the root. The session's git
+    directory is explicit because Codex otherwise protects it as read-only. When
+    `extensions.worktreeConfig` is enabled, neither git worktrees root is granted because they hold
+    writable per-worktree config. The worktree root is not granted if it contains the repo or its
+    git common directory.
+  - Read-only: the repo's `.git/config` and `.git/hooks`; either could escape the sandbox when
+    Reef next runs git. The common directory is excluded to protect them; single-file roots crash
+    Codex's sandbox. Reef disables hooks on its own git calls as a second guard. `start_work` sets
+    the branch upstream when origin exists; `git push -u` pushes but cannot save upstream.
+  - Known risks: Git 2.53's commit and stash cleanup deletes `AUTO_MERGE`; the files backend locks
+    `packed-refs` for ref deletion even when the file does not exist. A command can succeed while
+    printing `packed-refs.lock: Read-only file system`; deleting a packed branch fails. Codex Auto's
+    repo prompt says to check the exit code before retrying. Claude Auto can write repo-local config,
+    which can define commands such as filters, diff drivers and `core.sshCommand`. Per-worktree config
+    is read when `extensions.worktreeConfig` is on; a filter there remains a risk. Snapshot staging
+    disables repo-local filters, including included config; checkout keeps the user's filters so Git
+    LFS works. `glab mr view` runs in the repo and may invoke git using its config. A Bot process
+    that outlives its run can swap a worktree path between Reef's check and removal. Codex Auto can
+    rewrite other worktrees' metadata and refs under the granted directories.
 
   *Claude's auto mode classifier runs safe steps and blocks risky ones (Claude reports the block);
   explicit ask rules still come to the thread as cards.* Full access never asks, even to delete
@@ -266,6 +264,9 @@ after a failed undo counts a Bot that is already gone as removed.
   A helper's worktree goes with its boss's (see Delegation).
 - The read-only checkout is a detached git worktree of the repo's HEAD at `<data>/threads/<id>`,
   outside the worktree root. It is removed when the thread closes.
+- Reef's git disables hooks and fsmonitor, and uses `GIT_DIR` and `GIT_COMMON_DIR` from stored
+  worktree IDs. Snapshot staging neutralises repo-local filters; Reef checks for symlinks before
+  snapshot and removal. See Bots above for the access and remaining risks.
 - A new branch starts at `origin/HEAD` when it resolves, else HEAD. The server never fetches.
 - start_work's reply names the base, as the ref and its short commit (`origin/HEAD ee6ad1b`, or
   `HEAD ee6ad1b` without an origin). When the local default branch (the one origin/HEAD points at)

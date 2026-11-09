@@ -592,6 +592,69 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	}
 }
 
+func (m *Manager) codexAutoRoots(ctx context.Context, thread store.Thread, rp store.Repo) ([]string, error) {
+	var roots []string
+	root, err := m.WorktreeRoot(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load worktree root: %w", err)
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return nil, fmt.Errorf("make worktree root: %w", err)
+	}
+	if _, err := os.Stat(rp.Path); !errors.Is(err, os.ErrNotExist) {
+		common, err := repo.GitCommonDir(ctx, rp.Path)
+		if err != nil {
+			return nil, fmt.Errorf("find git directories: %w", err)
+		}
+		resolvedRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			return nil, fmt.Errorf("resolve worktree root: %w", err)
+		}
+		resolvedCommon, err := filepath.EvalSymlinks(common)
+		if err != nil {
+			return nil, fmt.Errorf("resolve git directory: %w", err)
+		}
+		rel, err := filepath.Rel(resolvedRoot, resolvedCommon)
+		if err != nil {
+			return nil, fmt.Errorf("compare git directory and worktree root: %w", err)
+		}
+		resolvedRepo, err := filepath.EvalSymlinks(rp.Path)
+		if err != nil {
+			return nil, fmt.Errorf("resolve repo: %w", err)
+		}
+		repoRel, err := filepath.Rel(resolvedRoot, resolvedRepo)
+		if err != nil {
+			return nil, fmt.Errorf("compare repo and worktree root: %w", err)
+		}
+		if (rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) && (repoRel == ".." || strings.HasPrefix(repoRel, ".."+string(filepath.Separator))) {
+			roots = []string{root}
+		}
+		roots = append(roots, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"))
+		if !repo.WorktreeConfig(ctx, rp.Path) {
+			roots = append(roots, filepath.Join(common, "worktrees"))
+			current, err := m.cfg.Store.Thread(ctx, thread.ID)
+			if err != nil {
+				return nil, fmt.Errorf("load thread git directory: %w", err)
+			}
+			id := current.CheckoutGitDir
+			if current.Worktree != "" {
+				id = current.WorktreeGitDir
+			}
+			gitDir, err := filepath.EvalSymlinks(filepath.Join(common, "worktrees", id))
+			if err != nil {
+				return nil, fmt.Errorf("resolve thread git directory: %w", err)
+			}
+			if id == "" || filepath.Dir(gitDir) != filepath.Join(resolvedCommon, "worktrees") {
+				return nil, errors.New("thread git directory is outside the registered repo")
+			}
+			if !slices.Contains(roots, gitDir) {
+				roots = append(roots, gitDir)
+			}
+		}
+	}
+	return roots, nil
+}
+
 // drive runs the provider session for one prompt and returns its reply.
 func (m *Manager) drive(a *active, text string, images []provider.Image) (string, error) {
 	thread, err := m.cfg.Store.Thread(a.ctx, a.threadID)
@@ -644,63 +707,8 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	cfg.Model = bot.Model
 	cfg.Mode = bot.Mode
 	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
-		root, err := m.WorktreeRoot(a.ctx)
-		if err != nil {
-			return "", fmt.Errorf("load worktree root: %w", err)
-		}
-		if err := os.MkdirAll(root, 0o755); err != nil {
-			return "", fmt.Errorf("make worktree root: %w", err)
-		}
-		if _, err := os.Stat(rp.Path); !errors.Is(err, os.ErrNotExist) {
-			common, err := repo.GitCommonDir(a.ctx, rp.Path)
-			if err != nil {
-				return "", fmt.Errorf("find git directories: %w", err)
-			}
-			resolvedRoot, err := filepath.EvalSymlinks(root)
-			if err != nil {
-				return "", fmt.Errorf("resolve worktree root: %w", err)
-			}
-			resolvedCommon, err := filepath.EvalSymlinks(common)
-			if err != nil {
-				return "", fmt.Errorf("resolve git directory: %w", err)
-			}
-			rel, err := filepath.Rel(resolvedRoot, resolvedCommon)
-			if err != nil {
-				return "", fmt.Errorf("compare git directory and worktree root: %w", err)
-			}
-			resolvedRepo, err := filepath.EvalSymlinks(rp.Path)
-			if err != nil {
-				return "", fmt.Errorf("resolve repo: %w", err)
-			}
-			repoRel, err := filepath.Rel(resolvedRoot, resolvedRepo)
-			if err != nil {
-				return "", fmt.Errorf("compare repo and worktree root: %w", err)
-			}
-			if (rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) && (repoRel == ".." || strings.HasPrefix(repoRel, ".."+string(filepath.Separator))) {
-				cfg.WritableRoots = []string{root}
-			}
-			cfg.WritableRoots = append(cfg.WritableRoots, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"))
-			if !repo.WorktreeConfig(a.ctx, rp.Path) {
-				cfg.WritableRoots = append(cfg.WritableRoots, filepath.Join(common, "worktrees"))
-				current, err := m.cfg.Store.Thread(a.ctx, thread.ID)
-				if err != nil {
-					return "", fmt.Errorf("load thread git directory: %w", err)
-				}
-				id := current.CheckoutGitDir
-				if current.Worktree != "" {
-					id = current.WorktreeGitDir
-				}
-				gitDir, err := filepath.EvalSymlinks(filepath.Join(common, "worktrees", id))
-				if err != nil {
-					return "", fmt.Errorf("resolve thread git directory: %w", err)
-				}
-				if id == "" || filepath.Dir(gitDir) != filepath.Join(resolvedCommon, "worktrees") {
-					return "", errors.New("thread git directory is outside the registered repo")
-				}
-				if !slices.Contains(cfg.WritableRoots, gitDir) {
-					cfg.WritableRoots = append(cfg.WritableRoots, gitDir)
-				}
-			}
+		if cfg.WritableRoots, err = m.codexAutoRoots(a.ctx, thread, rp); err != nil {
+			return "", err
 		}
 	}
 	onBossBranch := false

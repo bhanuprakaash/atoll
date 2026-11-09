@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"atoll/memory"
+	"atoll/provider"
 	"atoll/store"
 )
 
@@ -152,7 +153,7 @@ func messagePrompt(
 			case repo.Host == _hostGitHub:
 				work = _repoWorkGitHub
 			}
-			if bot.Provider == "codex" && bot.Mode == "auto" {
+			if bot.Provider == "codex" && bot.Mode == provider.ModeAuto {
 				work += " Git may print packed-refs.lock: Read-only file system after commit, stash or fetch; check the exit code, and if it succeeded do not retry or ask for approval."
 			}
 			blocks = append(blocks, fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s\n%s",
