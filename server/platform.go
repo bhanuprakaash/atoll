@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -420,6 +421,7 @@ const _platformTools = `[
 {"name":"create_skill","description":"Create a skill.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"}},"required":["name","content"]}},
 {"name":"edit_skill","description":"Edit a skill.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"content":{"type":"string"}},"required":["id"]}},
 {"name":"import_skill","description":"Import a local skill folder (SKILL.md and its text files), or update the skill imported from it. Returns what it added, changed, removed and skipped.","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"replace":{"type":"boolean","description":"Overwrite edits made in Reef. Only after the user agreed."}},"required":["path"]}},
+{"name":"import_agent","description":"Read an agent file from ~/.claude/agents.","inputSchema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}},
 {"name":"register_repo","description":"Register a local Git repository.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"path":{"type":"string"}},"required":["name","path"]}},
 {"name":"attach_connection","description":"Attach a connected account to a Bot.","inputSchema":{"type":"object","properties":{"bot_id":{"type":"string"},"connection_id":{"type":"string"}},"required":["bot_id","connection_id"]}},
 {"name":"list_bots","description":"List every Bot.","inputSchema":{"type":"object","properties":{}}},
@@ -460,7 +462,7 @@ func isPlatformTool(name string) bool {
 	return slices.Contains(_readTools, name) || slices.Contains([]string{
 		provider.ToolCreateBot, provider.ToolEditBot, provider.ToolCreateSkill,
 		provider.ToolEditSkill, provider.ToolImportSkill, provider.ToolRegisterRepo,
-		provider.ToolAttachConnection,
+		provider.ToolAttachConnection, provider.ToolImportAgent,
 	}, name)
 }
 
@@ -531,6 +533,19 @@ func (a *api) platformCall(
 	if !source.CanManagePlatform {
 		return nil, &rpcError{Code: _invalidParams, Message: "platform access denied"}
 	}
+	if name == provider.ToolImportAgent {
+		var in struct {
+			Path string `json:"path"`
+		}
+		if json.Unmarshal(args, &in) != nil || in.Path == "" {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid path"}
+		}
+		result, err := readAgent(in.Path)
+		if err != nil {
+			return nil, &rpcError{Code: _invalidParams, Message: err.Error()}
+		}
+		return a.jsonText(result)
+	}
 	if slices.Contains(_readTools, name) {
 		return a.readCall(ctx, name)
 	}
@@ -556,7 +571,7 @@ func (a *api) platformCall(
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid path"}
 		}
 		if imp, err = readImport(importArgs.Path); err != nil {
-			return nil, a.toolError(err)
+			return nil, &rpcError{Code: _invalidParams, Message: err.Error()}
 		}
 	}
 	tx, err := a.st.Begin(ctx)
@@ -895,17 +910,82 @@ type importedFile struct {
 // readImport reads the local skill folder at path. It reads the disk, so callers do not hold a
 // transaction.
 func readImport(path string) (skill.Import, error) {
+	resolved, err := importPath(path, []string{".claude/skills", ".codex/skills"})
+	if err != nil {
+		return skill.Import{}, err
+	}
+	return skill.Read(resolved)
+}
+
+func importPath(path string, folders []string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
 	if rest, ok := strings.CutPrefix(path, "~/"); ok {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return skill.Import{}, fmt.Errorf("find home: %w", err)
-		}
 		path = filepath.Join(home, rest)
 	}
 	if !filepath.IsAbs(path) {
-		return skill.Import{}, errors.New("path must be absolute or start with ~/")
+		return "", errors.New("path must be absolute or start with ~/")
 	}
-	return skill.Read(filepath.Clean(path))
+	resolved, err := filepath.EvalSymlinks(filepath.Clean(path))
+	if err != nil {
+		parent, parentErr := filepath.EvalSymlinks(filepath.Dir(filepath.Clean(path)))
+		if parentErr != nil {
+			return "", fmt.Errorf("%s is not in allowed folders: %s", path, strings.Join(folders, ", "))
+		}
+		resolved = filepath.Join(parent, filepath.Base(path))
+	}
+	for _, folder := range folders {
+		root, rootErr := filepath.EvalSymlinks(filepath.Join(home, folder))
+		if rootErr == nil && filepath.Dir(resolved) == root {
+			return resolved, nil
+		}
+	}
+	return "", fmt.Errorf("%s is not in allowed folders: %s", path, strings.Join(folders, ", "))
+}
+
+func readAgent(path string) (any, error) {
+	resolved, err := importPath(path, []string{".claude/agents"})
+	if err != nil {
+		return nil, err
+	}
+	if filepath.Ext(resolved) != ".md" {
+		return nil, errors.New("only .md files directly in ~/.claude/agents are read")
+	}
+	fd, err := syscall.Open(resolved, syscall.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("%s not found", path)
+		}
+		return nil, err
+	}
+	f := os.NewFile(uintptr(fd), resolved)
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
+	content, err := io.ReadAll(io.LimitReader(f, 256*1024+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(content) > 256*1024 {
+		return nil, errors.New("file exceeds 256 KiB")
+	}
+	if !utf8.Valid(content) {
+		return nil, errors.New("file is not UTF-8")
+	}
+	return struct {
+		Name    string `json:"name"`
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}{
+		Name: strings.TrimSuffix(filepath.Base(resolved), ".md"), Path: resolved, Content: string(content),
+	}, nil
 }
 
 // importSkill puts the skill folder read by readImport into the library. It updates the skill

@@ -390,7 +390,7 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 	if cfg.SkillDir != "" {
 		args = append(args, "--add-dir", cfg.SkillDir)
 	}
-	if cfg.NoTools {
+	if cfg.NoTools || cfg.NoShell {
 		args = append(args, "--tools", "")
 	}
 	return append(args, extra...), secrets, nil
