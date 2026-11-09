@@ -414,6 +414,20 @@ func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, error) {
 	case t.RepoID != "" && rp.ID == "":
 		dir = m.noAccessDir(t.ID)
 	case t.Worktree != "":
+		_, statErr := os.Stat(rp.Path)
+		if rp.ID != "" && t.WorktreeGitDir == "" && !errors.Is(statErr, os.ErrNotExist) {
+			common, err := repo.GitCommonDir(m.ctx, rp.Path)
+			if err != nil {
+				return "", err
+			}
+			id, err := repo.WorktreeID(common, t.Worktree)
+			if err != nil {
+				return "", err
+			}
+			if err := m.cfg.Store.SetGitDirs(m.ctx, t.ID, t.CheckoutGitDir, id); err != nil {
+				return "", err
+			}
+		}
 		return t.Worktree, nil
 	case rp.ID != "":
 		if err := repo.Checkout(m.ctx, rp.Path, dir); err != nil {
