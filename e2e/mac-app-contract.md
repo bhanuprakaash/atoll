@@ -252,3 +252,12 @@ no interrupted run remains running.
 - Not pinned: verb wording for `memory`, `platform` and `work` kinds, `Thinking`, the exact
   `activity` text, timestamps' format beyond RFC 3339, the creature picked when none is given, the
   skill editor, and the creature motion per tool kind (only reduced motion is tested).
+
+Status words use `Running make check` after `cd /a/b && make check`; reading a background
+output file with `cat` or `tail -f` uses `Waiting on a background task` without its file name.
+Chief's `list_*` tools use `Looking around`, writes use `Setting up`, and `finish_run` uses
+no `Setting up` activity.
+
+| Acceptance | Tests |
+| --- | --- |
+| Command, background output, read, write and finish status words | `TestRun_StatusWords` |
