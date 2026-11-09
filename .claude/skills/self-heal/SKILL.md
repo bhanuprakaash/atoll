@@ -50,19 +50,21 @@ observers read it. Apply it yourself when triaging and reviewing.
    (backend, ui, product, bots, llm), each told to read `references/observer-brief.md`, `references/owner-taste.md`
    and `references/round-live.md`
    and write `$REEF_HOME/findings/round<N>-<lens>.md`. They watch while Bots work and challenge each other at the end.
-4. **Drive.** Run `scripts/wait-any.sh $(date +%s%6N)` in the background after every action you take; it wakes you for
+4. **Log every action.** Right after each thing you do in Reef, `scripts/act.sh "<what>" <thread|PR> "<expected>"`.
+   Every observer judges every action from its lens; that's how bugs on any side surface.
+5. **Drive.** Run `scripts/wait-any.sh $(date +%s%6N)` in the background after every action you take; it wakes you for
    an approval card, a lead reply that asks for review or a decision, a failed run, or low memory. Answer decisions
    quickly (the lead stalls on them). Judge approval cards by the command (`scripts/pending.sh <bot>`) and click in the
    UI. Nudge the lead when slots sit idle.
-5. **Review.** For each PR the lead says is ready: read the diff, check CI (an e2e test PR fails only on its new test),
+6. **Review.** For each PR the lead says is ready: read the diff, check CI (an e2e test PR fails only on its new test),
    comment on the PR like a colleague, send fixes back through the lead. Tell the owner which PRs are ready, with
    checks. Test PRs merge before fix PRs (test-guard). Tell the lead when the owner merged, since nothing wakes it.
-6. **Integrate without waiting.** Merge reviewed PR branches into `dogfood/integration` (`scripts/rebuild.sh
+7. **Integrate without waiting.** Merge reviewed PR branches into `dogfood/integration` (`scripts/rebuild.sh
    origin/<branch> …`); Bots keep branching from `origin/main`, so PRs stay clean.
-7. **Feed misses back.** When the owner (or you) finds something no observer reported, write why each lens missed it
+8. **Feed misses back.** When the owner (or you) finds something no observer reported, write why each lens missed it
    and what changes, tell the running observers (append to their brief on disk), and add the lesson to
    `references/round-live.md` "Blind spots".
-8. **Close the round.** `touch $REEF_HOME/round-<N>.done` (observers challenge each other, then finish). Rebuild,
+9. **Close the round.** `touch $REEF_HOME/round-<N>.done` (observers challenge each other, then finish). Rebuild,
    stop Reef, swap `bin/atoll.new` in, restart on the same data (tests upgrade + restart recovery), reload the
    browser. Start one verify subagent: re-run every acceptance line of the round's tickets against the running app
    and record command + output. Do the real-provider lines yourself (e.g. a real Chief run). Merge confirmed findings

@@ -19,6 +19,15 @@ Read the other lens files for this round (round<N>-*.md). Add a "Challenges" sec
 findings you think is wrong, overstated or a duplicate, say why with evidence; confirm the ones you re-checked.
 Then finish and reply with your file path and a 3-line summary.
 
+## The driver's actions: every lens judges every one
+The driver logs each action it takes (a message to a Bot, an approval answered, a merge it reports, a rebuild, a
+restart, a setting changed) to `$REEF_HOME/actions.jsonl` (`{t, us, what, ref, expect}`) with `scripts/act.sh`.
+Each pass, read the new lines. For every action, judge it from your lens within a few minutes and append one line to
+your file under "Actions": `<t> <what> -> ok | finding <title>`, with evidence. Backend: did it store, start, log,
+clean up? UI: what did the screen show, before and after, and does it match the data? Product: friction, waiting,
+dead ends? Bots: how did the Bot take it? LLM: what did it cost, did it break the cache? `expect` is what the driver
+thought would happen; a difference is a finding even when nothing crashed.
+
 ## Blind spots (round 1 missed a person's message being refused and lost; owner found it)
 - Every "refused / blocked / 409 / disabled" rule in the spec or checklist is a candidate finding: ask what a
   person does now, and judge it by owner-taste.md (conversation first).
