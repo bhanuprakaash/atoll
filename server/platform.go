@@ -870,16 +870,17 @@ const (
 // importResult is what import_skill answers: the paths it added, changed and removed against the
 // skill it replaces, and what it left out of the folder.
 type importResult struct {
-	Status  string          `json:"status"`
-	Skill   *importedSkill  `json:"skill,omitempty"`
-	Added   []string        `json:"added"`
-	Changed []string        `json:"changed"`
-	Removed []string        `json:"removed"`
-	Skipped []skill.Skipped `json:"skipped"`
-	Name    string          `json:"name,omitempty"`
-	Reason  string          `json:"reason,omitempty"`
-	Refs    any             `json:"refs,omitempty"`
-	Warning string          `json:"warning,omitempty"`
+	Status    string          `json:"status"`
+	Skill     *importedSkill  `json:"skill,omitempty"`
+	Added     []string        `json:"added"`
+	Changed   []string        `json:"changed"`
+	Removed   []string        `json:"removed"`
+	Skipped   []skill.Skipped `json:"skipped"`
+	Name      string          `json:"name,omitempty"`
+	Reason    string          `json:"reason,omitempty"`
+	Refs      any             `json:"refs,omitempty"`
+	Warning   string          `json:"warning,omitempty"`
+	Rewritten map[string]int  `json:"rewritten,omitempty"`
 }
 
 type importedSkill struct {
@@ -947,7 +948,7 @@ func (a *api) importSkill(
 	next.Imported = skill.Hash(next)
 	res = importResult{
 		Status: _importCreated, Added: []string{}, Changed: []string{}, Removed: []string{},
-		Skipped: orEmpty(imp.Skipped),
+		Skipped: orEmpty(imp.Skipped), Rewritten: imp.Rewritten,
 	}
 	skills, err := st.Skills(ctx)
 	if err != nil {

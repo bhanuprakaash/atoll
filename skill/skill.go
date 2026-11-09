@@ -34,9 +34,10 @@ var (
 // Import is a skill read from a local folder: what was taken, what was left out and why, and the
 // home-relative paths still in its SKILL.md.
 type Import struct {
-	Skill   store.Skill
-	Skipped []Skipped
-	Refs    []homeRef
+	Skill     store.Skill
+	Skipped   []Skipped
+	Refs      []homeRef
+	Rewritten map[string]int
 }
 
 type homeRef struct {
@@ -205,15 +206,23 @@ func Read(dir string) (Import, error) {
 	}
 	name := filepath.Base(dir)
 	forms := []string{dir}
-	for _, root := range []string{".claude/skills/", ".codex/skills/", ".agents/skills/"} {
-		for _, prefix := range []string{"~/", "$HOME/", "${HOME}/"} {
-			forms = append(forms, prefix+root+name)
-		}
+	root := filepath.ToSlash(filepath.Join(filepath.Base(filepath.Dir(filepath.Dir(dir))), "skills")) + "/"
+	for _, prefix := range []string{"~/", "$HOME/", "${HOME}/"} {
+		forms = append(forms, prefix+root+name)
 	}
+	imp.Rewritten = make(map[string]int)
 	scan := func(file string, content *string) {
 		for _, form := range forms {
 			re := regexp.MustCompile(regexp.QuoteMeta(form) + `($|[^a-zA-Z0-9._-])`)
-			*content = re.ReplaceAllString(*content, "{{ATOLL_SKILL_DIR}}$1")
+			matches := re.FindAllStringSubmatchIndex(*content, -1)
+			for i := len(matches) - 1; i >= 0; i-- {
+				start, end := matches[i][0], matches[i][2]
+				if strings.HasPrefix(form, "~/") && start > 0 && strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/~", rune((*content)[start-1])) {
+					continue
+				}
+				*content = (*content)[:start] + "{{ATOLL_SKILL_DIR}}" + (*content)[end:]
+				imp.Rewritten[file]++
+			}
 		}
 		re := regexp.MustCompile("~/[^\\s`'\"\\)\\]]*|\\$HOME(?:/[^\\s`'\"\\)\\]]*)?|\\$\\{HOME\\}(?:/[^\\s`'\"\\)\\]]*)?|" + regexp.QuoteMeta(home) + "(?:/[^\\s`'\"\\)\\]]*)?")
 		for lineNo, line := range strings.Split(*content, "\n") {
