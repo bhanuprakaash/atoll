@@ -27,7 +27,7 @@
 - Own components, built for Reef: no off-the-shelf look, no Mermaid.
 - Designed errors: plain words, a next step, details tucked away; never a raw error or JSON.
 - Smallest change that closes the ticket; owner merges.
-- Fix the whole class: when one instance is found, find and fix all of them, in the same PR if small.
+- Fix the whole class: when one instance is found, fix all of them, in the same PR if small.
 - Design first: settle an unsettled design before test and code; ask once, with a recommendation.
 
 ## What Reef is
