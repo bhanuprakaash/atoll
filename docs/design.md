@@ -608,7 +608,10 @@ after a failed undo counts a Bot that is already gone as removed.
 - `import_skill` and Re-import take only a skill folder that, once resolved, is a direct child of
   the resolved `~/.claude/skills` or `~/.codex/skills`, under the path, symlink, `..` and error
   rules of `import_agent`. A skill whose source folder is elsewhere keeps working, but its Re-import
-  is refused with the same invalid-params error, naming the folder and the two allowed ones.
+  is refused with the same invalid-params error, naming the folder and the two allowed ones. Over
+  REST, Re-import of such a skill answers `400`, an input rule like the other input errors here,
+  not the `refused` status that Connections and skills gives an unrewritable home path (HTTP 200,
+  a content outcome). The folder check runs before the home-path scan, so one rule fires per skill.
 - `import_agent(path)` is a read tool: it records no change and writes nothing. Only a Bot with the
   platform switch is offered it; any other Bot neither lists nor can call it.
   - Path: absolute or starting with `~/`, resolved against the user's `HOME` (a custom
@@ -621,7 +624,8 @@ after a failed undo counts a Bot that is already gone as removed.
     device cannot hang the read and a swap after the check changes nothing.
   - Errors: JSON-RPC invalid-params, as `import_skill` returns. A refused path names the allowed
     folder; a path that is not a `.md` file says only `.md` files directly in `~/.claude/agents` are
-    read; a missing file says `not found`; a file over 256 KiB (a guard on what enters the model's
+    read; a directory, FIFO or device says `not a regular file` (invalid params, -32602); a missing
+    file says `not found`; a file over 256 KiB (a guard on what enters the model's
     context) or not valid UTF-8 says so.
   - Answer: `{name, path, content}`, with `name` the file name without `.md` and `path` the resolved
     path. Chief reads the frontmatter itself. There is no Codex agent folder.
