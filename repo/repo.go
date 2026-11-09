@@ -78,7 +78,8 @@ func Create(
 	if err == nil && Origin(ctx, repoPath) != "" {
 		for key, value := range map[string]string{"remote": "origin", "merge": "refs/heads/" + used} {
 			if _, err = git(ctx, repoPath, nil, "config", "branch."+used+"."+key, value); err != nil {
-				return path, used, base, fmt.Errorf("set upstream: %w", err)
+				err = errors.Join(fmt.Errorf("set upstream: %w", err), Remove(ctx, repoPath, path), DeleteBranch(ctx, repoPath, used))
+				return "", "", Base{}, err
 			}
 		}
 	}
@@ -253,7 +254,7 @@ func HasCommit(ctx context.Context, path string) bool {
 	return err == nil
 }
 
-// GitDirs supplies roots up front because Codex sets its sandbox at turn start, before start_work.
+// GitDirs returns the common git directory and the worktree's git directory.
 func GitDirs(ctx context.Context, path string) (string, string, error) {
 	common, err := git(ctx, path, nil, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {

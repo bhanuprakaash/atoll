@@ -71,6 +71,21 @@ func TestWorktrees(t *testing.T) {
 	write(src, "a.txt", "one\n")
 	git(src, "add", ".")
 	git(src, "commit", "-q", "-m", "init")
+	git(src, "remote", "add", "origin", src)
+	write(src, ".git/config.lock", "")
+	if _, _, _, err := Create(ctx, src, root, "demo", "fix/cleanup"); err == nil {
+		t.Fatal("Create with locked config succeeded")
+	}
+	if _, err := os.Stat(filepath.Join(root, "demo", "fix-cleanup")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("worktree after failed Create: %v", err)
+	}
+	if err := exec.Command("git", "-C", src, "show-ref", "--verify", "--quiet", "refs/heads/fix/cleanup").Run(); err == nil {
+		t.Fatal("branch remains after failed Create")
+	}
+	if err := os.Remove(filepath.Join(src, ".git", "config.lock")); err != nil {
+		t.Fatal(err)
+	}
+	git(src, "remote", "remove", "origin")
 
 	if !IsRepo(ctx, src) || IsRepo(ctx, t.TempDir()) {
 		t.Fatal("IsRepo: want true for the repo and false for a plain folder")

@@ -620,6 +620,7 @@ func threadParams(cfg provider.Config) (map[string]any, error) {
 		params["sandbox"] = "workspace-write"
 		switch cfg.Mode {
 		case provider.ModeAuto:
+			// Codex sets its sandbox at turn start, but start_work runs within the turn.
 			config["sandbox_workspace_write"] = map[string]any{
 				"writable_roots": append([]string{}, cfg.WritableRoots...),
 				"network_access": true,

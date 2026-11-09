@@ -632,9 +632,6 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			return "", fmt.Errorf("load repo: %w", err)
 		}
 		rp.Host = RepoHost(a.ctx, rp.Path)
-		if _, err := os.Stat(rp.Path); errors.Is(err, os.ErrNotExist) {
-			rp = store.Repo{}
-		}
 	}
 	if cfg.Cwd, err = m.workdir(thread, rp); err != nil {
 		return "", err
@@ -653,11 +650,14 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		if err := os.MkdirAll(root, 0o755); err != nil {
 			return "", fmt.Errorf("make worktree root: %w", err)
 		}
-		common, gitDir, err := repo.GitDirs(a.ctx, cfg.Cwd)
-		if err != nil {
-			return "", fmt.Errorf("find git directories: %w", err)
+		cfg.WritableRoots = []string{root}
+		if _, err := os.Stat(rp.Path); !errors.Is(err, os.ErrNotExist) {
+			common, gitDir, err := repo.GitDirs(a.ctx, cfg.Cwd)
+			if err != nil {
+				return "", fmt.Errorf("find git directories: %w", err)
+			}
+			cfg.WritableRoots = append(cfg.WritableRoots, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"), gitDir)
 		}
-		cfg.WritableRoots = []string{root, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"), gitDir}
 	}
 	onBossBranch := false
 	if thread.ParentThreadID != "" && thread.Branch != "" {
