@@ -669,6 +669,9 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		errors.Is(err, store.ErrExists), errors.Is(err, store.ErrUndone),
 		errors.Is(err, store.ErrInUse), errors.Is(err, store.ErrPinLimit):
 		fail(w, http.StatusConflict, err.Error())
+	case errors.Is(err, mcpserver.ErrKeychain):
+		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
+		fail(w, http.StatusInternalServerError, err.Error())
 	default:
 		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
 		fail(w, http.StatusInternalServerError, "internal error")

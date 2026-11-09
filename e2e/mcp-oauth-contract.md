@@ -139,10 +139,15 @@ Every item of `Catalog` and `Your servers` whose `status` is not empty shows it 
 - The fake providers need no change: they send the config's headers to the HTTP server and the
   scenario `mcp-use` calls it, so a call that succeeds proves the header arrived.
 
+When `ATOLL_SECRET_STORE_UNAVAILABLE` is non-empty, a failed OAuth token save returns an HTML
+callback with HTTP 500 or greater and a message naming the system keychain. The server remains
+not connected or needs sign-in, so sign-in remains available.
+
 ## Acceptance mapping (#65)
 
 | Acceptance | Tests |
 | --- | --- |
+| An unavailable keychain is named on the OAuth callback, and sign-in remains available | `TestKeychainFailure_MCPOAuth` |
 | Connect registers a client, returns the authorize URL, the callback finishes, Connected; client ID and tokens in the OS secret store only | Go `TestMCPOAuth_ConnectStoresTokensInTheOSStore` (registration, authorize query, PKCE and state at the fake, record in the keyring, scan of replies, `atoll.db`, data dir, log); UI `Add by URL to a server that needs sign-in offers Connect; Allow in the popup shows Connected` |
 | A Bot run gets `Authorization: Bearer <token>`; the scripted tool call succeeds | Go `TestMCPOAuth_RunGetsBearerToken/{claude,codex}` (the fake rejects any other header; scan after the run) |
 | Token expiring within ten minutes is refreshed before the run; rejected refresh gives Needs sign-in and a run that stops before the provider; Sign in again keeps id and picks | Go `TestMCPOAuth_ExpiringTokenIsRefreshedBeforeTheRun`, `TestMCPOAuth_RejectedRefreshNeedsSignIn`; UI `a rejected refresh shows Needs sign-in; Sign in again reconnects the same server` |

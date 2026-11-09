@@ -170,6 +170,11 @@ func (a *api) oauthCallback(w http.ResponseWriter, r *http.Request) {
 			callbackPage(w, http.StatusBadRequest, p.Server.Name+" was removed or changed. Close this window and connect again.")
 			return
 		}
+		if errors.Is(err, mcpserver.ErrKeychain) {
+			a.log.Error("MCP sign-in failed", "server", p.Server.Name, "err", err)
+			callbackPage(w, http.StatusInternalServerError, "Reef couldn't save the "+p.Server.Name+" sign-in to the system keychain: "+err.Error()+". Close this window and try again.")
+			return
+		}
 		if err != nil {
 			a.log.Error("MCP sign-in failed", "server", p.Server.Name, "err", err)
 			callbackPage(w, http.StatusBadGateway, "Sign-in to "+p.Server.Name+" failed. Close this window and try again.")

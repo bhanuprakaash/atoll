@@ -489,7 +489,9 @@ export function ThreadView({
   const log = useRef<HTMLDivElement>(null);
   const previousHeight = useRef<number | null>(null);
   const shownThread = useRef('');
+  const content = useRef<HTMLDivElement>(null);
   const wasAtLatest = useRef(true);
+  const lastTop = useRef(0);
   const [awayFromLatest, setAwayFromLatest] = useState(false);
   useLayoutEffect(() => {
     const element = log.current;
@@ -509,6 +511,18 @@ export function ThreadView({
     wasAtLatest.current = atLatest;
     setAwayFromLatest(!atLatest);
   }, [messages, threadId]);
+  useEffect(() => {
+    const element = log.current;
+    const inner = content.current;
+    if (!element || !inner) return;
+    const observer = new ResizeObserver(() => {
+      if (wasAtLatest.current && previousHeight.current === null) {
+        element.scrollTop = element.scrollHeight;
+      }
+    });
+    observer.observe(inner);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     if (messages.length > 50 && hasNextPage && !isFetching) void fetchNextPage();
   }, [fetchNextPage, hasNextPage, isFetching, messages.length]);
@@ -647,13 +661,15 @@ export function ThreadView({
           const element = log.current;
           if (!element) return;
           const atLatest = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
-          wasAtLatest.current = atLatest;
-          setAwayFromLatest(!atLatest);
+          if (atLatest) wasAtLatest.current = true;
+          else if (element.scrollTop < lastTop.current) wasAtLatest.current = false;
+          lastTop.current = element.scrollTop;
+          setAwayFromLatest(!wasAtLatest.current);
           loadOlder();
         }}
         className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-7 ${empty ? 'justify-center' : ''}`}
       >
-        <div className="mx-auto flex w-full max-w-190 flex-col gap-4.5 pt-6 pb-4">
+        <div ref={content} className="mx-auto flex w-full max-w-190 flex-col gap-4.5 pt-6 pb-4">
           {empty && (
             <EmptyThread
               botName={botName}
