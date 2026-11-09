@@ -126,6 +126,9 @@ func stream(log *fake.Log, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := autoMemory(args); err != nil {
+		return err
+	}
 	resume := flag(args, "--resume")
 	titling := strings.HasPrefix(flag(args, "--append-system-prompt"), fake.TitleSystem)
 	in := fake.Lines()
@@ -293,6 +296,24 @@ func load() ([]recording, error) {
 }
 
 // flag returns the value after name in args, or "".
+// autoMemory makes the memory folder real claude keeps per project under its config folder,
+// unless --settings or the environment turns auto memory off.
+func autoMemory(args []string) error {
+	var s struct {
+		AutoMemoryEnabled *bool `json:"autoMemoryEnabled"`
+	}
+	_ = json.Unmarshal([]byte(flag(args, "--settings")), &s)
+	if os.Getenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY") == "1" || s.AutoMemoryEnabled != nil && !*s.AutoMemoryEnabled {
+		return nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	project := strings.NewReplacer("/", "-", ".", "-").Replace(cwd)
+	return os.MkdirAll(filepath.Join(fake.ConfigDir("CLAUDE_CONFIG_DIR", ".claude"), "projects", project, "memory"), 0o755)
+}
+
 func flag(args []string, name string) string {
 	i := slices.Index(args, name)
 	if i < 0 || i+1 >= len(args) {
