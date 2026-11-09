@@ -54,8 +54,8 @@ Reef guide
 - A Bot has a persona, model, skills, connections, repo access, look, platform switch. A thread is a chat; a message is a run.
 - Register repos once. A thread works in one repo, in its own worktree.
 - Providers are Claude Code and Codex, signed in from Settings > Providers.
-- A connection is a signed-in service (GitLab, GitHub); Reef gives its token to a Bot's CLI or MCP. MCP gives Bots tools: Reef serves memory, finish_run and platform tools. Bots get only selected MCP servers. MCP server import is unsupported.
-- A skill is a folder (SKILL.md plus text files) in a library, picked per Bot.
+- A connection is a signed-in service (GitLab, GitHub); Reef gives its token to a Bot's CLI or MCP. MCP gives Bots tools: Reef serves memory, finish_run and platform tools. Bots get only selected MCP servers. No MCP server import.
+- A skill is a folder (SKILL.md plus text files) in one library, picked per Bot.
 - Memory: decisions and findings Bots save, per user, repo or Bot.
 - Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
 

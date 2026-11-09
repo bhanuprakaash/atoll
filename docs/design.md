@@ -107,8 +107,8 @@ after a failed undo counts a Bot that is already gone as removed.
   changes, its next run starts a fresh session and says so in the thread. New threads and delegation
   also start fresh sessions.
 - Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply stays
-  2–3 plain lines. *The report feeds memory, parents and fresh starts.* `blocked` is only what
-  the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
+  2–3 plain lines (except Chief's ask-first proposal). *The report feeds memory, parents and fresh
+  starts.* `blocked` is only what the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
   is not blocked, so the chat shows no Blocked line for it. A turn that ends without
   the report gets one more prompt in the same session asking for it; its text is not shown. If
   there is still none, the run ends `done` with `report: null` and a logged warning.
@@ -532,8 +532,9 @@ after a failed undo counts a Bot that is already gone as removed.
   a non-empty list. The platform block (Managing Reef) goes to a Bot with "Can manage the platform".
   The code part sits between How you talk and Memory; the platform block sits after Finish.
 - The platform block holds the Reef guide (so Chief answers without reading a file), the ask-first
-  rule for creates (it overrides the core's "ask only when two real readings") and Chief's voice.
-  The voice lives here, not in the persona; only a Bot with the switch has it.
+  rule for creates and Chief's voice. The ask-first rule overrides the core's "ask only when two
+  real readings" and exempts the ask-first message from the 2–3 line reply. The voice lives here,
+  not in the persona; only a Bot with the switch has it.
 - Chief imports a local skill folder with `import_skill(path)`: it reads the agent file with the
   provider's own file tool, imports each skill it names, attaches them through `create_bot`, and keeps
   `~/.claude` paths out of the persona. *Reopened "importing a local skill needs no new tool": passing
@@ -592,8 +593,8 @@ Reef guide
 - A Bot has a persona, model, skills, connections, repo access, look, platform switch. A thread is a chat; a message is a run.
 - Register repos once. A thread works in one repo, in its own worktree.
 - Providers are Claude Code and Codex, signed in from Settings > Providers.
-- A connection is a signed-in service (GitLab, GitHub); Reef gives its token to a Bot's CLI or MCP. MCP gives Bots tools: Reef serves memory, finish_run and platform tools. Bots get only selected MCP servers. MCP server import is unsupported.
-- A skill is a folder (SKILL.md plus text files) in a library, picked per Bot.
+- A connection is a signed-in service (GitLab, GitHub); Reef gives its token to a Bot's CLI or MCP. MCP gives Bots tools: Reef serves memory, finish_run and platform tools. Bots get only selected MCP servers. No MCP server import.
+- A skill is a folder (SKILL.md plus text files) in one library, picked per Bot.
 - Memory: decisions and findings Bots save, per user, repo or Bot.
 - Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
 
