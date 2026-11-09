@@ -56,16 +56,16 @@ func TestBotsPoll_Cost(t *testing.T) {
 	p50, p95 := took[_pollRequests/2], took[_pollRequests*95/100]
 	t.Logf("GET /api/bots, %d Bots x %d threads: p50 %v, p95 %v, %d queries per request",
 		_pollBots, _pollThreads, p50, p95, perRequest)
-	if p50 >= 100*time.Millisecond {
-		t.Errorf("p50 %v, want under 100ms", p50)
+	if p95 >= 50*time.Millisecond {
+		t.Errorf("p95 %v, want under 50ms", p95)
 	}
 	if perRequest != 2 {
 		t.Errorf("%d queries per request, want 2", perRequest)
 	}
 }
 
-// seedPoll gives every Bot _pollThreads threads of two runs each. The first thread of every
-// fifth Bot is running.
+// seedPoll gives every Bot _pollThreads threads of two runs each; nine in ten are closed, as most
+// threads are in real use. The first thread of every fifth Bot is running.
 func seedPoll(ctx context.Context, t *testing.T, st *store.Store) {
 	t.Helper()
 	var bots []store.Bot
@@ -83,7 +83,7 @@ func seedPoll(ctx context.Context, t *testing.T, st *store.Store) {
 	defer func() { _ = tx.Rollback() }()
 	stmts := map[string]*sql.Stmt{}
 	for name, q := range map[string]string{
-		"thread":  "INSERT INTO threads (id, bot_id, created, last_activity) VALUES (?, ?, ?, ?)",
+		"thread":  "INSERT INTO threads (id, bot_id, created, last_activity, closed) VALUES (?, ?, ?, ?, ?)",
 		"run":     "INSERT INTO runs (id, thread_id, status, started_at, finished_at) VALUES (?, ?, ?, ?, ?)",
 		"message": "INSERT INTO messages (id, thread_id, role, text, run_id) VALUES (?, ?, ?, ?, ?)",
 	} {
@@ -96,7 +96,7 @@ func seedPoll(ctx context.Context, t *testing.T, st *store.Store) {
 		for i := range _pollThreads {
 			n := b*_pollThreads + i
 			thread := fmt.Sprintf("t%d", n)
-			mustExec(t, stmts["thread"], thread, bot.ID, now, now+int64(n))
+			mustExec(t, stmts["thread"], thread, bot.ID, now, now+int64(n), i%10 != 0)
 			for r := range 2 {
 				id := fmt.Sprintf("r%d-%d", n, r)
 				status := []string{store.StatusDone, store.StatusFailed, store.StatusStopped}[n%3]
