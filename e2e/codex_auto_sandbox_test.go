@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -96,4 +97,36 @@ func codexWorkspaceWrite(t *testing.T, c *call) (method, cwd string, present boo
 	}
 	t.Fatal("codex session has no thread/start or thread/resume")
 	return "", "", false, nil, false
+}
+
+func TestRepo_ReefGitRunsNoRepoHooks(t *testing.T) {
+	f := newRepoFixture(t, "codex")
+	marker := filepath.Join(t.TempDir(), "hook-ran")
+	hook := "#!/bin/sh\necho \"$PWD\" >> " + marker + "\n"
+	hooks := filepath.Join(f.repo.Path, ".git", "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hooks, "post-checkout"), []byte(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	b := f.bot(t, "codex", "all", nil)
+	th := f.thread(t, b)
+	ch := f.s.events(t, th)
+	for _, step := range []struct{ git, prompt string }{
+		{"git worktree add --detach of the thread's clean checkout", _questionRepoPrompt},
+		{"git worktree add -b of start_work", _fixRepoPrompt},
+	} {
+		r := f.s.send(t, th, step.prompt)
+		if done := f.s.finished(t, ch, r.ID); done.Status != "done" {
+			t.Fatalf("run %q: %+v", step.prompt, done)
+		}
+		if ran, err := os.ReadFile(marker); err == nil {
+			t.Errorf("%s ran the repo's post-checkout hook in %s", step.git, strings.TrimSpace(string(ran)))
+			if err := os.Remove(marker); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 }
