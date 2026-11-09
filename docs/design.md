@@ -39,7 +39,7 @@ never a dependency.
 
   | Mode | Claude Code | Codex |
   | --- | --- | --- |
-  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; the worktree root (including every worktree under it), the repo's git objects, refs, logs and worktrees directories, and the session's own git directory are writable; `approvalPolicy: on-request` |
+  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; the worktree root (including every worktree under it), the repo's git objects, refs, logs and worktrees directories, the session's own git directory and the Bot's cache root are writable; `approvalPolicy: on-request` |
   | Ask | default mode + Reef's permission prompt tool | `approvalPolicy: untrusted` |
   | Full access | `--permission-mode bypassPermissions` | `danger-full-access` sandbox, `approvalPolicy: never` |
 
@@ -48,6 +48,15 @@ never a dependency.
     `extensions.worktreeConfig` is enabled, neither git worktrees root is granted because they hold
     writable per-worktree config. The worktree root is not granted if it contains the repo or its
     git common directory.
+    With a linked worktree, there are five or six roots plus the cache root; the worktree root may
+    be withheld. With `extensions.worktreeConfig` enabled, three or four roots plus the cache root
+    remain. For repo threads, Reef creates `<data>/cache/<bot id>/` per Bot. A Bot's threads on
+    any repo share its cache; Bots never share caches. Codex Ask and Full access and Claude get none.
+    It sets `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `GOCACHE`,
+    `GOLANGCI_LINT_CACHE`, `pnpm_config_store_dir` and `PNPM_HOME` to folders under that root.
+    Deleting the Bot removes its cache; Reef logs a removal failure after deleting the Bot.
+  - Known gap: `GOMODCACHE` and `GOPATH` are not moved. A first build needing a module absent
+    from `~/go` can fail on the read-only module cache. A real run can determine a follow-up.
   - Read-only: the repo's `.git/config` and `.git/hooks`; either could escape the sandbox when
     Reef next runs git. The common directory is excluded to protect them; single-file roots crash
     Codex's sandbox. Reef's git disables hooks and fsmonitor and uses `GIT_DIR` and `GIT_COMMON_DIR`
@@ -80,12 +89,37 @@ never a dependency.
   messages, runs and event files. Memory it saved stays, with its source. *Memory outlives the Bot
   that wrote it; a Bot's history does not.*
 
-**Chief.** Created on first launch. It has no repo access at all times: `PUT` and its own
-`edit_bot` refuse to give it repos, its Bot settings and empty thread offer none, and a launch moves
-an older install's Chief to none. It does no code work. It has the "Can manage the platform" switch
-on: tools to create and edit Bots (including model, look, Mode and delegates), skills and repos, and to attach
-connections, served as Reef's own MCP tools; read tools list Bots, skills, connections, repos, MCP
-servers and signed-in models and record no change.
+**Chief.** Created on first launch. It has no repo access at all times (a Chief on Codex
+keeps its shell: see Known gap): `PUT` and its own `edit_bot` refuse to give it repos, its Bot
+settings and empty thread offer none, and a launch moves an older install's Chief to none. It does
+no code work. It has the "Can manage the platform" switch
+on: tools to create and edit Bots (including model, look, Mode and delegates), skills and repos, and
+to attach connections, served as Reef's own MCP tools; read tools list Bots, skills, connections,
+repos, MCP servers and signed-in models and record no change.
+
+- Tools on Claude: only Reef's MCP tools, no shell and no file tools. Chief runs with `--tools ""`
+  next to its MCP config, in every Mode. *A prompt without the repos does not stop a Bash call from
+  reading them, and a Read allow-rule scoped to `~/.claude` does not hold under Auto or Full access
+  (Claude Code 2.1.319, real runs).* Whether a skill attached to Chief loads under `--tools ""` is
+  unverified. No other Bot gets `--tools ""`.
+- Local files: Chief reads an agent file with `import_agent(path)` and a skill folder with
+  `import_skill(path)`, both in the server and limited to the folders in Prompt, so neither reaches
+  a repo. `import_agent` is a read tool. It adds no reach for other platform Bots: a Bot with a
+  shell can already read `~/.claude/agents`.
+- Provider: Chief prefers Claude and must run for a user who has only Codex, since onboarding runs
+  through Chief. A Codex model stays allowed for it in `PUT`, `edit_bot` and the picker, and Chief
+  is never refused a run for lack of Claude. A first launch creates Chief on Claude's default model
+  when Claude is signed in, else on Codex's.
+- Move to Claude: an install that existed before this rule moves a Chief on a Codex model to
+  Claude's default model once, when Claude is signed in, kept by a stored flag. Chief's next first
+  reply says so in a plain note. A later Codex choice stays.
+- Known gap: no-shell is unproven on Codex, so a Chief on Codex keeps its shell and file tools. It
+  can run commands and read files, registered repos included, so "no repo access" does not hold for
+  it. Codex Auto's sandbox does not restrict reads (unverified). The #161 fix closes the gap once
+  the Codex probe shows that `features.shell_tool = false`, `view_image = false` and
+  `unified_exec` off keep Reef's MCP tools callable and stop shell and file reads. The platform
+  prompt names no Chief tools, so it stays true either way.
+
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
 registered repo has (REST answers 400 with the same text for repo, delegate and MCP server ids, and
@@ -110,6 +144,8 @@ after a failed undo counts a Bot that is already gone as removed.
 - Thread records retain the tracked MR title and state, close time, and worktree cleanup and snapshot
   status so the chat and threads popup can show them after a restart. `track_mr` accepts the MR title
   with its URL. A thread summary includes the current work verb and pending approval.
+- A run can start without a user message: a helper's report (Delegation) and a Reef wake for a
+  tracked MR (Repos and worktrees). Both are held when a run is going.
 - A thread is a chat with one Bot. Each message starts a run that resumes the Bot's session and
   exits after replying. No agent process lives between messages.
 - A thread records when the user last opened it (`POST /api/threads/{id}/opened`, sent by the
@@ -128,8 +164,9 @@ after a failed undo counts a Bot that is already gone as removed.
 - Resume by default. Each thread records the provider that owns its session. If the Bot's provider
   changes, its next run starts a fresh session and says so in the thread. New threads and delegation
   also start fresh sessions.
-- Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply stays
-  2–3 plain lines (except Chief's ask-first proposal). *The report feeds memory, parents and fresh
+- Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply
+  carries the answer itself, never only in the report or thinking. Status uses 2–3 plain lines,
+  not an answer the person asked for. *The report feeds memory, parents and fresh
   starts.* `blocked` is only what the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
   is not blocked, so the chat shows no Blocked line for it. A turn that ends without
   the report gets one more prompt in the same session asking for it; its text is not shown. If
@@ -262,7 +299,8 @@ after a failed undo counts a Bot that is already gone as removed.
   a setting). Read-only threads use a clean checkout.
 - The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs) at first edit; the app makes it
   lowercase, short and unique (`-2`). Fixed once created.
-- The worktree is removed when the MR merges or the thread closes; uncommitted work is saved first.
+- The worktree is removed when the GitLab MR merges or the thread closes; uncommitted work is
+  saved first.
   A helper's worktree goes with its boss's (see Delegation).
 - The read-only checkout is a detached git worktree of the repo's HEAD at `<data>/threads/<id>`,
   outside the worktree root. It is removed when the thread closes.
@@ -295,11 +333,114 @@ after a failed undo counts a Bot that is already gone as removed.
   meets a git auth error. A question in the repo needs no connection.
 - `track_mr` takes the full http(s) URL of the MR; a URL with another scheme or no host is a tool
   error. For GitHub it takes the PR URL (`<github>/<owner>/<repo>/pull/<n>`); the thread shows
-  it as `#<n>` where an MR shows `!<iid>`. PR state is not polled: the watcher never runs `glab`
-  for a GitHub repo's thread, the state stays `opened`, and the worktree goes when the thread closes.
-- Atoll checks each GitLab MR with `glab mr view` every minute (`ATOLL_REPO_POLL_INTERVAL`, a Go duration).
-  A merged MR with a worktree is cleaned up like a closed thread, but only while no run is going in
-  the thread. One watcher runs inside the server and resumes after a restart.
+  it as `#<n>` where an MR shows `!<iid>`.
+- One watcher runs inside the server and resumes after a restart. Every minute
+  (`ATOLL_REPO_POLL_INTERVAL`, a Go duration, the poll interval below) it reads each thread with a
+  tracked MR and a worktree (`Store.Watched`; closing a thread removes its worktree, so a closed
+  thread is never read). It reads the state (`opened`, `merged`, `closed`; GitLab's `locked`
+  counts as `opened`), the title and the CI summary. Fixtures lists the exact calls.
+- A GitLab MR is read with `glab mr view` and the Bot's GitLab environment. A GitHub PR is read
+  with the REST API and the token of the Bot's first GitHub connection, from
+  `connection.GitHubToken(id)` only. A Bot with no connection, or a thread whose Bot lost it, is
+  not read: never unauthenticated, never with the server's own `GH_TOKEN` or `GITHUB_TOKEN`. A
+  thread uses its own Bot's connection only.
+- A merged GitLab MR with a worktree is cleaned up like a closed thread, only while no run is going
+  in the thread; a woken run counts, so the release comes after the wake run ends. A closed MR
+  keeps its worktree. A merged GitHub PR keeps its worktree until the thread closes; the poll
+  updates its state and chip only.
+- GitHub reads per thread: the PR; and, while it is open and its head commit has no stored CI
+  result, the check runs and the combined status of that commit, with `per_page=100`, following
+  `Link` until every item is read. Each read sends `If-None-Match` with the last ETag, kept in
+  memory; a `304` costs no rate limit. GitLab reads one `glab mr view` per thread, plus one call
+  for the head pipeline's jobs when the pipeline turns final.
+- After a failed read (offline, token rejected, MR or PR not found, rate limit) the thread is read
+  again after twice the last wait: the poll interval times 1, 2, 4, 8, up to 15 times, back to the
+  interval after a good read. A `403` or `429` with `X-RateLimit-Remaining: 0` or `Retry-After`
+  pauses the reads of that connection (the limit is per token) until the reset time; a thread is
+  read when its own wait and its connection's pause are both over. Waits and pauses live in
+  memory, so a restart reads at once. A failed read changes nothing stored and posts nothing, in
+  the thread or elsewhere; it is logged. A `401` marks the connection `needs_sign_in` (see
+  Connections), which pauses its threads until the user signs in again; the first good read after
+  that finds what changed meanwhile and wakes once for it. A deleted PR or MR is a failed read,
+  never `closed`.
+- CI is finished on a head commit when it has at least one check and none is pending. GitHub counts
+  check runs and statuses of the commit; the combined status is ignored when its `total_count` is
+  0 (an Actions-only repo reports `pending` then), so the check runs decide alone. A check run is
+  pending when its `status` is `queued`, `in_progress`, `waiting`, `requested` or `pending`; once
+  `completed` it passed on conclusion `success`, `neutral` or `skipped` and failed on `failure`,
+  `timed_out`, `cancelled`, `action_required`, `stale` or `startup_failure`. A status passed on
+  `success`, failed on `failure` or `error`, and is pending on `pending`. GitLab: the head
+  pipeline's `status` is final on `success`, `failed` or `canceled`, and its jobs are counted the
+  same way (`success`, `skipped` passed; `failed`, `canceled` failed). A `skipped` pipeline, a
+  `manual` or `blocked` one, and a commit with no check never finish CI. *Checks of one commit
+  appear over a few seconds; a result seen on two reads in a row, for the same commit, is not a
+  first check that finished before the next one registered.*
+- Three events wake the thread's Bot, each at most once: the MR or PR is merged, is closed
+  unmerged, or CI finished on its open head commit. A push changes the head commit, clears the
+  stored CI result and lets the new commit's CI wake again. Reopening wakes nothing; the state
+  shown follows. Nothing wakes for a thread that is closed or has no tracked MR, or for a state the
+  thread already stored. The first good read of a thread whose `mr_wake` is 0 (a thread tracked
+  before this shipped) stores state, title and CI, wakes nothing and sets `mr_wake` to 1: a PR
+  open then wakes on its next event, one already merged or closed stays quiet.
+- A wake is stored in the same transaction as the state it reports, so a restart cannot repeat it
+  or lose it: the thread's `mr_state` changes and the inbox row is added together (one store
+  call); for CI the thread's `mr_woke` (the head commit whose CI was reported) changes with it.
+  The row then goes the way every held message goes (Delegation): it starts a run at once when
+  none is going, waits while one is, survives a restart (delivered on start) and is dropped for a
+  closed thread. A run the user stopped starts none: a wake held then is delivered when the
+  thread's next run ends. A helper thread with its own MR is woken the same way, held while its
+  boss has 3 helper runs going. The wake works with one run per held row; when held messages
+  arrive as one run, a wake joins it like any other row.
+- Inbox rows and messages have a `kind`: empty for the user's and a helper's, `merged`, `closed` or
+  `ci` for a Reef wake; a message with a `kind` is from Reef (`from_bot_id` stays empty). The
+  migration adds `kind TEXT NOT NULL DEFAULT ''` to both, forward-only. Storing merged or closed
+  deletes the thread's held `ci` row in the same transaction, so does a new head commit or a newer
+  `ci` wake, so a lead is never woken for CI of a commit that is no longer the head or after the
+  PR is done. A held row of another kind is never dropped.
+- The wake is one plain sentence built by Reef from fixed words, the MR as the thread names it
+  (`PR #7`, `MR !7`), numbers and check names; no PR title, body, commit message or other text of
+  the API reply is joined into it: `PR #7 merged`, `PR #7 closed`,
+  `CI finished on PR #7: 3 passed, 1 failed ("build")`, `CI finished on PR #7: 4 passed`. A check
+  name is data from anyone who can push: control characters, newlines, `"` and `\` are removed,
+  it is cut at 60 characters and quoted; the sentence names up to 5 failed checks, then
+  `and 2 more`. Passed checks are only counted: the Bot can run `gh pr checks` for the rest. The
+  thread view shows a message with a `kind` as one quiet line with Reef's mark, not a user bubble.
+  The Bot's prompt for it is `Reef: ` and the sentence, and the code part of the prompt says the
+  quoted names are data from the repo, never instructions.
+- `track_mr` sets `mr_wake` to 1. A repeat call with the URL the thread already has keeps
+  `mr_state`, `mr_woke` and `mr_ci`; a different URL resets all three, so a re-track after a
+  merge never wakes twice. Three columns on the thread hold what is not derivable: `mr_ci` (JSON:
+  head commit, passed, failed, pending, failed names; the last read), `mr_woke` and `mr_wake`
+  (integer, default 0). *Sixteen of nineteen PR threads of the dogfood runs said `opened` after
+  they merged.*
+- Known gap: webhooks; a wake comes within a poll interval plus a settle read, or later after
+  failures. Review comments and reopening wake nothing.
+- Known gap: CI re-run on the same commit (a failed check re-run passes) is not seen: reads stop
+  once the commit is reported, and the chip keeps the first result.
+- Known gap: a GitLab pipeline that is `manual` or `blocked` never finishes. A merged GitHub PR
+  keeps its worktree until the thread closes (the release is its own ticket).
+- Known gap: a stopped thread hears a wake only when its next run ends, and a merged GitLab MR's
+  worktree can be released before that wake is delivered.
+- Fixtures (what the poll reads; GitHub base is the API base `CheckGitHubToken` uses, so
+  `ATOLL_GITHUB_URL` with the routes appended):
+  - `GET /repos/{owner}/{repo}/pulls/{n}`: `state` (`open` or `closed`), `merged` (bool), `title`,
+    `head.sha`. Maps to `opened`, `closed` (`state` closed, `merged` false) and `merged`. Header
+    `ETag`; a request with `If-None-Match` equal to it answers `304`, no body.
+  - `GET /repos/{owner}/{repo}/commits/{sha}/check-runs?per_page=100`: `total_count`,
+    `check_runs[]` of `name`, `status`, `conclusion` (null until `completed`).
+  - `GET /repos/{owner}/{repo}/commits/{sha}/status?per_page=100`: `state`, `total_count`,
+    `statuses[]` of `context`, `state`. Answers `state: pending` with `total_count: 0` when the
+    commit has no statuses.
+  - All carry `Authorization: Bearer <token>` or `token <token>` of the connection. A rate limit
+    is `403` or `429` with `X-RateLimit-Remaining: 0`, `X-RateLimit-Reset` (epoch seconds) or
+    `Retry-After`; a rejected token is `401`; a missing PR is `404`.
+  - GitLab: `glab mr view --output json -- <url>` with `state` (`opened`, `merged`, `closed`,
+    `locked`), `title` and `head_pipeline` with `id` and `status` (`running`, `success`, `failed`,
+    `canceled`, `skipped`, `manual`, `blocked`); and
+    `glab api --paginate projects/:fullpath/pipelines/<id>/jobs?per_page=100` giving `[]` of
+    `name`, `status`; a pipeline has more than 20 jobs, GitLab's default page, and all are counted.
+    Unverified: no real `glab` was available; the field names come from GitLab's MR and jobs API
+    documentation, to be checked against `glab` when the fake is built.
 
 ## Providers
 
@@ -353,50 +494,57 @@ after a failed undo counts a Bot that is already gone as removed.
         `/CLAUDE.md` (writing one needs root).
     - `--settings` carries `autoMemoryEnabled: false`: no `memory/` folder under `projects/` and no
       auto-memory section in the system prompt.
-    - `--disallowedTools` removes every built-in tool that starts, messages, lists, schedules or
-      reaches other sessions, agents, projects, remote runs or the owner's machine outside the Bot's
-      own run. The value, exactly, is the lines below joined by single spaces (one argument):
-      ```text
-      Task Workflow ListAgents SendMessage SendToProject SendToProjectContext RemoteTrigger
-      DesignSync PublishPlugin ShareOnboardingGuide PushNotification CronCreate CronDelete
-      CronList ScheduleWakeup Monitor EnterWorktree ExitWorktree
-      ```
-      - Other sessions and agents: `Task` (the built-in Agent tool), `Workflow` (also starts
-        subagents, so removing only `Task` leaves them), `ListAgents` (lists Remote Control and
-        cloud sessions on other machines), `SendMessage` (messages them).
-      - Remote claude.ai: `SendToProject` (posts to a Claude Project as the user),
-        `SendToProjectContext` (its companion), `RemoteTrigger` (routines and their remote runs),
-        `DesignSync` (claude.ai design projects), `PublishPlugin` and `ShareOnboardingGuide`
-        (uploads to claude.ai).
-      - Scheduling and background: `CronCreate`, `CronDelete`, `CronList`, `ScheduleWakeup`
-        (re-enter a session after the run's turn), `Monitor` (background streams, including from a
-        WebSocket).
-      - The owner's machine: `PushNotification` (terminal notification, and the phone when Remote
-        Control is connected).
-      - Worktrees: `EnterWorktree`, `ExitWorktree`. `EnterWorktree` creates a worktree and a
-        `worktree-<name>` branch inside the repo (`<repo>/.claude/worktrees/<name>`); Reef owns
-        worktrees and nothing is written into the repo.
+    - `--tools Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write` is the whole
+      set of built-in tools a Bot has. The names go in this order, as one comma-separated argument
+      (the argv assertion pins the string). Reef's MCP tools are available through `--mcp-config`
+      and `--allowedTools`. A run that gets no built-in tools (Chief, the title run) uses
+      `--tools ""`: its `init` tool list holds only Reef's MCP tools.
+      - Why an allowlist: a tool added by a later Claude Code stays closed until it is named here.
+        A deny list would leave it open.
+      - A name `claude` no longer has is ignored: no error, no stderr, exit 0, and the name is
+        missing from the init list. Names are case-sensitive (`bash` is ignored, `Bash` is kept).
+        With only unknown names the init list holds Reef's MCP tools alone. A removed or renamed
+        tool therefore does not break a run; the Bot loses that tool silently.
+      - Left out, by class: other sessions and agents (`Task`, `Workflow`, `ListAgents`,
+        `SendMessage`); remote claude.ai (`SendToProject`, `SendToProjectContext`, `RemoteTrigger`,
+        `DesignSync`, `PublishPlugin`, `ShareOnboardingGuide`); scheduling and background
+        (`CronCreate`, `CronDelete`, `CronList`, `ScheduleWakeup`, `Monitor`, `TaskStop`); the
+        owner's machine (`PushNotification`); worktrees (`EnterWorktree`, `ExitWorktree`:
+        `EnterWorktree` creates a worktree and a `worktree-<name>` branch inside the repo, and Reef
+        owns worktrees).
+      - Left out because a headless run has no use for them and Reef never handles them:
+        `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode` (nobody answers in `-p`; a Bot asks in
+        its reply), `ReportFindings` (renders in a host UI Reef does not have) and `ToolSearch`
+        (Reef's MCP tools were callable without it in a 414-tool test).
+      - Kept for a reason: `Skill` loads Reef's skills (`--add-dir`). `WebFetch` and `WebSearch`
+        reach the internet, not other sessions or the machine's sessions. `NotebookEdit` writes a
+        file in the worktree, like `Edit`. `Glob` and `Grep` are named because Reef maps them
+        (`run/run.go`); Claude Code 2.1.319 lists both in its init event when they are named.
       - Delegation goes only through Reef's own tool (see Delegation). A dedicated helpers tool is
         a later ticket (#205).
-    - Tools that stay, from the `system/init` event of `claude` 2.1.319 with Reef's flags, the same
-      in Ask, Auto and Full: `AskUserQuestion`, `Bash`, `Edit`, `EnterPlanMode`, `ExitPlanMode`,
-      `NotebookEdit`, `Read`, `ReportFindings`, `Skill`, `TaskStop`, `ToolSearch`, `WebFetch`,
-      `WebSearch`, `Write` and Reef's `mcp__atoll__*` tools. That is 14 built-in tools plus Reef's
-      tools; without the flag the list has 35 entries. Run: with the list, none of the blocked tools
-      is in `init`, and a Bot called a Reef MCP tool, `Bash`, `Write` and `Read`.
-      - `TaskStop` stops background tasks of this session; with `Task`, `Workflow` and `Monitor`
-        blocked only Bash background tasks remain. Unverified: that another session's task ID is
-        refused.
-      - `WebFetch` and `WebSearch` reach the internet, not other sessions or the machine's
-        sessions, and stay. `WebFetch` is in the list only once `Task` is removed.
-      - `ReportFindings`, `AskUserQuestion` and the plan tools talk only to the host (Reef) and
-        stay.
-      - The init `mcp_servers` held only Reef's server. Unverified: an account with claude.ai
-        connectors (`ENABLE_CLAUDEAI_MCP_SERVERS=false` is set; the test account had none).
-      - Known gap: a deny list covers the tools of this version; a tool added by a later Claude Code
-        is open until listed. `--tools` with the 14 allowed names gave the same init list on
-        2.1.319 and would close that gap. The e2e check compares the init tool list with the set
-        above, so an upgrade that adds a tool fails it.
+    - Run, `claude` 2.1.319 with Reef's other flags and a local MCP server standing in for Reef's:
+      the `system/init` tool list in Ask, Auto and Full holds exactly the 10 built-in names above
+      plus Reef's tools, except the permission-prompt tool (`approve`), which `claude` keeps out of
+      the list: a stand-in with three Bot tools and `approve` showed 13 entries, 10 built-in and
+      three Reef; without `--permission-prompt-tool` the same server showed 14. The e2e check
+      excludes the permission-prompt tool from the comparison. A Bot called a Reef
+      MCP tool, `Bash`, `Write` and `Read` in each mode (Ask with an approval tool that allows).
+      A skill from `--add-dir` loaded through `Skill`. Reef's `finish_run`, the call every run ends
+      with, was called without `ToolSearch` (listed in none of the 10 names) and returned.
+      - CI runs the argv assertions with the scripted fake: they pin the allowlist string and its
+        order. The init-list comparison is a real-`claude` spec behind the `realclaude` build tag
+        (`go test -tags realclaude -run TestClaudeIsolation_Real ./e2e`), which CI does not run. It
+        runs by hand and in slice verification.
+      - An added built-in stays closed, so the comparison cannot fail on an addition. It catches a
+        named tool that is gone or renamed (missing from the init list) and any built-in outside
+        the set that appears (the allowlist stopped working). `finish_run` is one of the tested MCP
+        calls.
+      - Known gap: a tool that `claude` renames or removes is dropped silently, and only the
+        real-`claude` run above catches it; CI passes the argv assertions either way.
+      - Unverified: an account with claude.ai connectors (`ENABLE_CLAUDEAI_MCP_SERVERS=false` is
+        set; the test account had none); another session's `TaskStop` ID (the tool is left out, so
+        it only matters if it is added); that `ToolSearch` is unneeded for MCP tool sets larger
+        than the 414 tools tried or on other Claude Code versions.
     - The Bash tool runs through `CLAUDE_CODE_SHELL_PREFIX`, a script that unsets every variable
       starting with `CLAUDE` or `ATOLL_MCP_` and then runs the command. A Bot's shell has no
       `CLAUDE_CONFIG_DIR`, and `env | grep -c CLAUDE` prints 0.
@@ -543,9 +691,9 @@ after a failed undo counts a Bot that is already gone as removed.
 - A GitHub token has no refresh and no expiry. Before a run uses one, `GET /user` must accept it;
   a 401 marks that connection `needs_sign_in`, the run stops before the provider starts with
   "GitHub needs sign-in", and signing in again keeps the connection and its Bots. The OS secret
-  store holds the bare token under `github:<connection id>`. Only a run makes that check: the MR
-  watcher and the MR title lookup use GitLab's environment alone, so a GitHub failure never stops
-  GitLab polling.
+  store holds the bare token under `github:<connection id>`. A run checks it with `GET /user`; the
+  MR watcher does not, it uses the token on its own reads and treats a `401` the same way. A
+  thread's reads use the host's connection only, so a GitHub failure never stops GitLab polling.
 - GitLab OAuth records include the refresh token and expiry in the secret store. Before a run uses
   one, it refreshes a token that expires within ten minutes. Reads, refreshes and sign-in writes for
   one connection run one at a time because refresh tokens are single-use. A rejected refresh marks
@@ -575,6 +723,8 @@ after a failed undo counts a Bot that is already gone as removed.
   - Home reference: `~/` (not preceded by a letter, digit, `.`, `_`, `-`, `/` or `~`, so
     `https://x/~/y` and `a~/b` do not count), `$HOME` or `${HOME}` (with or without a following
     `/`), and the server's own home directory as an absolute path (`/Users/<name>`, `/home/<name>`).
+    - `$HOME` and `${HOME}` count only as whole variable names: `$HOMEWORK` and `$HOME_X` are other
+      variables and are not refused (the character after `$HOME` is not a letter, digit or `_`).
   - Rewritable: a home reference to the skill's own folder, and nothing more.
     - `import_skill` takes only a direct child of the resolved `~/.claude/skills` or
       `~/.codex/skills` (see Prompt). `<folder>` is the entry's name there, not its symlink target.
@@ -603,14 +753,22 @@ after a failed undo counts a Bot that is already gone as removed.
       `{{ATOLL_SKILL_DIR}}` gets it replaced like any other; it cannot be written literally.
   - The answer of `import_skill` and of reimport has a status `refused` (beside `created`,
     `replaced`, `unchanged`, `confirm`). It is HTTP 200, like the other statuses.
-    - Shape: `{"status":"refused","name":"<skill name>","reason":"skill \"<name>\" refers to files
-      in your home folder that a Bot cannot use: <file>:<line> <ref>, …","refs":[{"file":
-      "scripts/run.sh","line":12,"ref":"~/.ssh/config"}]}`.
+    - Shape (`reason` is one string; shown wrapped):
+      ```json
+      {"status":"refused","name":"<skill name>",
+       "reason":"skill \"<name>\" refers to files in your home folder that a Bot cannot use:
+                 <file>:<line> <ref>, …",
+       "refs":[{"file":"scripts/run.sh","line":12,"ref":"~/.ssh/config"}]}
+      ```
     - `file` is the path inside the skill as it would be stored (`SKILL.md`, `scripts/run.sh`);
       `line` is 1-based in that file; `ref` is the matched text up to the next space or quote
       (`~/.ssh/config`, `$HOME`, `/home/<name>/x`). One entry per occurrence, ordered by file, then
-      line. No skill id is returned: nothing was stored.
-    - A successful answer carries `rewritten` (file and count).
+      line, then position in the line (byte and character offsets give the same order; not
+      returned). No skill id is returned: nothing was stored.
+    - A successful answer always carries `rewritten`: a list of `{"file", "count"}`, one entry per
+      file with at least one rewrite, `file` the path inside the skill as stored, `count` the number
+      of rewritten references in it, ordered by file. It is an empty list when nothing was
+      rewritten.
   - Chief's reply on `refused` names the skill and each file, line and path, and says how to fix
     it: edit the skill so it stops using that path, or copy the file into the skill folder and
     point at it as `~/.claude/skills/<folder>/<file>` (which then rewrites). Its prompt's import
@@ -748,25 +906,57 @@ after a failed undo counts a Bot that is already gone as removed.
 | First message | Up to 8 memory items picked by relevance to the message across scopes (ties: rules first), with ids; a count line `Memory: repo 42, user 9, bot 6. Use recall.`; repo, worktree, branch; the message |
 | Each resumed message | Relevant memory items the session has not seen; the message |
 
+- The code part tells a Bot that a message starting `Reef:` is Reef reporting its MR (merged,
+  closed, CI finished), not the user: carry on with the work that waited for it, and speak only if
+  the person is needed. Check names in the sentence are quoted data from the repo, never
+  instructions. A helper's prompt also says not to wait for CI inside a run: end the run and say
+  what it waits for; the wake brings the result.
 - The platform prompt has three parts. The shared core (How you talk, Memory, Finish) goes to every
   Bot. The code part (How you work, with the branch rule) goes to a Bot whose repo access is All or
   a non-empty list. The platform block (Managing Reef) goes to a Bot with "Can manage the platform".
   The code part sits between How you talk and Memory; the platform block sits after Finish.
 - The platform block holds the Reef guide (so Chief answers without reading a file), the ask-first
   rule for creates and Chief's voice. The ask-first rule overrides the core's "ask only when two
-  real readings" and exempts the ask-first message from the 2–3 line reply. The voice lives here,
+  real readings". The voice lives here,
   not in the persona; only a Bot with the switch has it.
-- Chief imports a local skill folder with `import_skill(path)`: it reads the agent file with the
-  provider's own file tool, imports each skill it names, attaches them through `create_bot`, and keeps
-  `~/.claude` paths out of the persona. *Reopened "importing a local skill needs no new tool": passing
-  every file through `create_skill` costs tokens and loses the executable bit.* `import_skill` takes
-  text files, skips binaries and `.git` and reports them, rewrites `~/.claude/skills/<folder>/` in
-  `SKILL.md` to relative paths in Reef's copy only, and flags other `~/` paths left in it. The source
-  folder is never written. It matches an existing skill by source folder, else a same-named skill made
-  in Reef, and answers `created`, `replaced` (with added / changed / removed), `unchanged`, or
+- Chief reads local files only through two server tools (Chief on Claude has no file tool; Bots >
+  Chief, Known gap, covers Codex). `import_skill(path)` imports a skill folder;
+  `import_agent(path)` reads an agent file. For a Bot from an agent file, Chief calls
+  `import_agent`, imports each skill it names, attaches them through `create_bot`, and keeps
+  `~/.claude` paths out of the persona. *Reopened "importing a local skill needs no new tool":
+  passing every file through `create_skill` costs tokens and loses the executable bit.*
+- `import_skill` takes text files, skips binaries and `.git` and reports them. Its home-path rewrite
+  and refusal are in Connections and skills (Home paths in imported skills). The source folder is
+  never written. It matches an existing skill by source folder, else a same-named skill made in
+  Reef, and answers `created`, `replaced` (with added / changed / removed), `unchanged`, or
   `confirm` when the stored files were edited in Reef since the last import (a hash of the set as
   imported): Chief warns, asks, and calls again with `replace: true` after a yes. Both paths write
   through the same whole-set replace as `PUT`.
+- `import_skill` and Re-import take only a skill folder that, once resolved, is a direct child of
+  the resolved `~/.claude/skills` or `~/.codex/skills`, under the path, symlink, `..` and error
+  rules of `import_agent`. A skill whose source folder is elsewhere keeps working, but its Re-import
+  is refused with the same invalid-params error, naming the folder and the two allowed ones. Over
+  REST, Re-import of such a skill answers `400`, an input rule like the other input errors here,
+  not the `refused` status that Connections and skills gives an unrewritable home path (HTTP 200,
+  a content outcome). The folder check runs before the home-path scan, so one rule fires per skill.
+- `import_agent(path)` is a read tool: it records no change and writes nothing. Only a Bot with the
+  platform switch is offered it; any other Bot neither lists nor can call it.
+  - Path: absolute or starting with `~/`, resolved against the user's `HOME` (a custom
+    `CLAUDE_CONFIG_DIR` is not honoured). It names one `.md` file directly inside
+    `~/.claude/agents`.
+  - Resolving: the server cleans the path and resolves symlinks and `..` in it and in the allowed
+    folder, so a symlinked `~/.claude/agents` (a dotfiles repo) works and a symlink inside it that
+    leaves the folder is refused.
+  - Reading: it opens the file and checks that the same handle is a regular file, so a FIFO or
+    device cannot hang the read and a swap after the check changes nothing.
+  - Errors: JSON-RPC invalid-params, as `import_skill` returns. A refused path names the allowed
+    folder; a path that is not a `.md` file says only `.md` files directly in `~/.claude/agents` are
+    read; a directory, FIFO or device says `not a regular file` (invalid params, -32602); a missing
+    file says `not found`; a file over 256 KiB (a guard on what enters the model's
+    context) or not valid UTF-8 says so.
+  - Answer: `{name, path, content}`, with `name` the file name without `.md` and `path` the resolved
+    path. Chief reads the frontmatter itself. There is no Codex agent folder.
+- Both tools read the user's own files as the user, only on Chief's ask.
 - Relevance counts distinct non-stop-word message words matching body or why; ties favor convention, decision, lesson, finding, fact, then newer items.
 - In prompts a body is cut to 400 bytes and a why to 200, at a rune boundary, then `…`.
 - Seen items are tracked per provider session id, marked once the turn ends without error.
@@ -804,7 +994,7 @@ Memory
 - Scope: repo for this repo, user for {user}'s preferences, bot for your own lessons. If an item is wrong, replace it; don't add a contradicting one.
 
 Finish
-- End every run with finish_run: done, tried and failed, blocked on, next. Then reply in 2-3 lines.
+- End every run with finish_run: done, tried and failed, blocked on, next. The reply carries the answer itself, never only in finish_run or thinking. Use 2-3 lines for status, not for an answer the person asked for.
 
 Managing Reef
 - Manage Reef's Bots, skills, repos and connections with platform tools. Check list tools before changes.
@@ -820,11 +1010,11 @@ Reef guide
 - Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
 
 Ask first
-- To create a Bot or skill, ask in ONE message for every missing item, each with a proposed default. Include the full proposal for each Bot: model, skills, repo access, connections. This message is exempt from the 2-3 line rule. Create nothing in that run. "ok" means use the defaults. This overrides "ask only when two real readings".
+- To create a Bot or skill, ask in ONE message for every missing item, each with a proposed default. Include the full proposal for each Bot: model, skills, repo access, connections. Create nothing in that run. "ok" means use the defaults. This overrides "ask only when two real readings".
 - Small edits (rename, persona tweak, look) need no question.
 
 Import a local skill
-- Import a skill folder with import_skill(path). For a Bot from an agent file (~/.claude/agents/<name>.md): read it, import each skill it names, attach the ids in create_bot. Ask first applies.
+- Import a skill folder with import_skill(path). For a Bot from an agent file (~/.claude/agents/<name>.md): read it with import_agent(path), import each skill it names, attach the ids in create_bot. Ask first applies.
 - The persona keeps the agent's expertise, never a ~/.claude path.
 - Say what import_skill skipped or refused. Re-import: list added, changed, removed; on confirm, warn that Reef edits get overwritten; replace: true only after a yes.
 
@@ -982,8 +1172,14 @@ Voice
   shows the tool and its target.
 - Composer: the message, then the thread's repo, branch and MR as chips on one row, and Send or
   Stop. A long branch name ends in "…" with the full name on hover. The MR chip shows only its
-  reference (`#92`, `!12`) with a state dot (open, merged, closed); hovering shows its title. The MR
-  is not repeated in the log. A new
+  reference (`#92`, `!12`) with a state dot (open, merged, closed); hovering shows its title. While
+  the MR is open, a second mark shows its CI: running (muted), passed (green), failed (red);
+  hovering adds the summary (`CI: 3 passed, 1 failed (build)`). The `mr_updated` event carries
+  state, title, the CI summary and `change` (`tracked` from `track_mr`; `state`, `title` or `ci`
+  from the watcher), sent when any of them changes, and `GET /api/threads/{id}` gives `mr_ci`, so
+  the chip changes without a reload and survives one. Only `tracked` with state `opened` toasts.
+  The MR is not repeated in the log. A Reef wake shows in the thread as one muted line with
+  Reef's mark and the sentence (`PR #7 merged`), not as a bubble of the user's or a Bot's. A new
   thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message.
 - Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` region sits between
