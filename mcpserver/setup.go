@@ -31,7 +31,7 @@ func SaveClientID(ctx context.Context, st *store.Store, id, clientID string) err
 		return invalid("client_id is required")
 	}
 	if err := keyring.Set("atoll", clientIDUser(id), clientID); err != nil {
-		return fmt.Errorf("save Client ID of MCP server %s: %w", id, err)
+		return fmt.Errorf("save Client ID of MCP server %s: %w: %w", id, ErrKeychain, err)
 	}
 	if err := deleteTokens(id); err != nil {
 		return err

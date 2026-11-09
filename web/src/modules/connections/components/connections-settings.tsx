@@ -55,6 +55,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
         (err: Error) => {
           setFlow(null);
           setPollFailure({ id: flow.id, message: err.message });
+          void queryClient.invalidateQueries({ queryKey: ['connections'] });
         },
       );
     }, flow.interval_ms);
@@ -180,7 +181,6 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
           {signInAgain.isError && (
             <p className="text-sm text-danger">{signInAgain.error.message}</p>
           )}
-          {gitlabError && <p className="text-sm text-danger">{gitlabError}</p>}
           <button
             type="submit"
             disabled={start.isPending || !!flow}
@@ -199,6 +199,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
         </button>
       )}
       {startGithub.isError && <p className="text-sm text-danger">{startGithub.error.message}</p>}
+      {gitlabError && <p className="text-sm text-danger">{gitlabError}</p>}
       {githubError && <p className="text-sm text-danger">{githubError}</p>}
       {flow && (
         <div className="flex flex-col gap-1 rounded-2xl border border-line bg-box p-4 text-sm">
