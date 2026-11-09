@@ -1187,28 +1187,37 @@ var (
 	_backgroundOutput = regexp.MustCompile(`/tasks/[^\s;&|"']*\.output\b`)
 	_plainWord        = regexp.MustCompile(`^[A-Za-z][\w-]*$`)
 	_assignment       = regexp.MustCompile(`^\w+=`)
+	_quoted           = regexp.MustCompile(`\$\([^)]*\)|"[^"]*"|'[^']*'`)
 )
 
-func commandTarget(command string) string {
+func commandWords(command string) []string {
+	command = _quoted.ReplaceAllString(command, "_")
 	for _, part := range strings.FieldsFunc(command, func(r rune) bool { return r == ';' || r == '&' || r == '\n' }) {
 		fields := strings.Fields(part)
 		for len(fields) > 0 && _assignment.MatchString(fields[0]) {
 			fields = fields[1:]
 		}
-		if len(fields) == 0 || fields[0] == "cd" {
-			continue
+		if len(fields) > 0 && fields[0] != "cd" {
+			return fields
 		}
-		target := filepath.Base(fields[0])
-		if len(fields) > 1 && _plainWord.MatchString(fields[1]) {
-			target += " " + fields[1]
-		}
-		return target
 	}
-	return ""
+	return nil
+}
+
+func commandTarget(command string) string {
+	fields := commandWords(command)
+	if len(fields) == 0 {
+		return ""
+	}
+	target := filepath.Base(fields[0])
+	if len(fields) > 1 && _plainWord.MatchString(fields[1]) {
+		target += " " + fields[1]
+	}
+	return target
 }
 
 func program(command string) string {
-	fields := strings.Fields(command)
+	fields := commandWords(command)
 	if len(fields) == 0 {
 		return ""
 	}

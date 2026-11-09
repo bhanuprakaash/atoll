@@ -973,6 +973,8 @@ func TestToolKind(t *testing.T) {
 	tests := []struct{ name, tool, input, kind, target string }{
 		{"bash description", "Bash", `{"command":"ls ~/.claude/agents/ 2>/dev/null","description":"List agent files"}`, "command", "List agent files"},
 		{"bash program", "Bash", `{"command":"/usr/bin/grep -rn agent ~/.claude"}`, "command", "grep"},
+		{"bash substitution", "Bash", `{"command":"scratch=$(mktemp -d) git archive HEAD"}`, "command", "git archive"},
+		{"codex substitution", "commandExecution", `{"commandActions":[{"type":"unknown","command":"scratch=$(mktemp -d) git archive HEAD"}]}`, "command", "git"},
 		{"Reef memory", "mcp__atoll__recall", `{"query":"style"}`, "memory", "style"},
 		{"Reef note", "mcp__atoll__remember", `{"topic":"design"}`, "memory", "design"},
 		{"Reef work", "mcp__atoll__start_work", `{}`, "work", ""},
