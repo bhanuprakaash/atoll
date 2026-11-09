@@ -9,7 +9,6 @@ import (
 	"net/http/cgi"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -285,11 +284,7 @@ func newGitHubFixture(t *testing.T, provider string) *githubFixture {
 	t.Helper()
 	requireSecretStore(t)
 	m := newLoginsMachine(t, provider, false)
-	for _, key := range []string{"DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "XDG_DATA_HOME"} {
-		if v := os.Getenv(key); v != "" {
-			m.env = append(m.env, key+"="+v)
-		}
-	}
+	m.env = append(m.env, secretServiceEnv()...)
 	gh := newFakeGitHub(t)
 	m.env = append(m.env, "ATOLL_GITHUB_URL="+gh.URL, "ATOLL_GITHUB_MCP_URL="+gh.URL+"/mcp/")
 	writeFile(t, filepath.Join(m.bin, "github-url"), gh.URL)
