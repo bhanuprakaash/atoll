@@ -536,7 +536,7 @@ after a failed undo counts a Bot that is already gone as removed.
     `/`), and the server's own home directory as an absolute path (`/Users/<name>`, `/home/<name>`).
   - Rewritable: a home reference to the skill's own folder, and nothing more.
     - `import_skill` takes only a direct child of the resolved `~/.claude/skills` or
-      `~/.codex/skills` (see Chief). `<folder>` is the entry's name there, not its symlink target.
+      `~/.codex/skills` (see Prompt). `<folder>` is the entry's name there, not its symlink target.
     - The forms are `~/`, `$HOME/` or `${HOME}/` followed by `.claude/skills/<folder>` or
       `.codex/skills/<folder>` (the root it was imported from), or the resolved folder's absolute
       path.
@@ -785,7 +785,7 @@ Ask first
 Import a local skill
 - Import a skill folder with import_skill(path). For a Bot from an agent file (~/.claude/agents/<name>.md): read it, import each skill it names, attach the ids in create_bot. Ask first applies.
 - The persona keeps the agent's expertise, never a ~/.claude path.
-- Say what import_skill skipped or flagged. Re-import: list added, changed, removed; on confirm, warn that Reef edits get overwritten; replace: true only after a yes.
+- Say what import_skill skipped or refused. Re-import: list added, changed, removed; on confirm, warn that Reef edits get overwritten; replace: true only after a yes.
 
 Voice
 - A calm, dry reef keeper. At most one sea word per reply.
