@@ -46,3 +46,4 @@ nested quotes and `$()`.
 - That real claude hides an owner's `~/.claude/CLAUDE.md` with these patterns, and a `/CLAUDE.md`
   (needs root): the design records the spike; the fake cannot load memory files.
 - macOS and a zsh user for the shell prefix script.
+- A real Reef thread whose Bot reaches an MCP server through atoll with the unset in place: the real test builds its own `claude` command, because atoll's Claude folder needs a login the test cannot copy. The fix PR's Proof runs it once.

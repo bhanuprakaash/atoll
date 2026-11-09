@@ -198,7 +198,7 @@ func TestClaudeIsolation_RepoWorktreeWithGlobAndSpace(t *testing.T) {
 	if err := os.Symlink(filepath.Join(base, "real"), filepath.Join(base, "link")); err != nil {
 		t.Fatal(err)
 	}
-	f.root = filepath.Join(base, "link", "wt g[1]x*{a,b} p(q d")
+	f.root = filepath.Join(base, "link", `wt g[1]x*{a,b} p(q\d?`)
 	f.s.do(t, "PUT", "/api/settings", map[string]string{"worktree_root": f.root}, nil, http.StatusNoContent)
 
 	th, path, ch, _ := f.work(t, f.bot(t, "claude", "all", []string{connection}), _fixRepoPrompt, "fix/seeded-bug")

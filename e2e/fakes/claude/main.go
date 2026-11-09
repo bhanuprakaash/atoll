@@ -295,7 +295,6 @@ func load() ([]recording, error) {
 	return recs, nil
 }
 
-// flag returns the value after name in args, or "".
 // autoMemory makes the memory folder real claude keeps per project under its config folder,
 // unless --settings or the environment turns auto memory off.
 func autoMemory(args []string) error {
@@ -314,6 +313,7 @@ func autoMemory(args []string) error {
 	return os.MkdirAll(filepath.Join(fake.ConfigDir("CLAUDE_CONFIG_DIR", ".claude"), "projects", project, "memory"), 0o755)
 }
 
+// flag returns the value after name in args, or "".
 func flag(args []string, name string) string {
 	i := slices.Index(args, name)
 	if i < 0 || i+1 >= len(args) {
