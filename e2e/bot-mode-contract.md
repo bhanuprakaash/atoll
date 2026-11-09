@@ -58,8 +58,8 @@ work, and an ending, and expects no record after any step:
 | --- | --- |
 | `hooks` | `post-checkout`, `reference-transaction` and `post-index-change` in `<common>/hooks` |
 | `fsmonitor-in-config` | `core.fsmonitor` in `<common>/config` |
-| `filter-driver` | `filter.x.clean` in `<common>/config` and `* filter=x` in `<common>/info/attributes` |
-| `filter-name-with-equals` | `filter.x=y.clean` in `<common>/config` and `* filter=x=y` in `<common>/info/attributes`; a filter name may hold `=`, which a `-c` override reads as a different key |
+| `filter-driver` | `filter.x.clean` in `<common>/config` and `* filter=x` in `<common>/info/attributes`; asserted on the close only |
+| `filter-name-with-equals` | `filter.x=y.clean` in `<common>/config` and `* filter=x=y` in `<common>/info/attributes`; a filter name may hold `=`, which a `-c` override reads as a different key; asserted on the close only |
 | `commondir-rewritten` | `<common>/worktrees/<name>/commondir` pointing at a copy of the common dir whose config sets `core.fsmonitor` |
 | `gitfile-rewritten` | the worktree's `.git` file pointing at a copy of its git dir, whose `commondir` points at that copy; the ending may be refused, because git will not remove such a worktree |
 | `worktree-config` | `extensions.worktreeConfig` true in `<common>/config` and `core.fsmonitor` in `<common>/worktrees/<name>/config.worktree` |
@@ -88,10 +88,14 @@ with its uncommitted files. After such a plant, closing the thread may be refuse
 user's worktree and its uncommitted file in place (`TestRepo_CloseKeepsOtherWorktrees/{codex,claude}/close`).
 Its `control` runs `git worktree remove --force` with plain git and expects the user's file gone.
 
-A user's own git config may define a filter as required, as Git LFS does, and the repo's
-`.gitattributes` may apply it. The thread's clean checkout and `start_work` must still make their
-worktrees; whether the file comes out smudged is not pinned, because how Atoll treats the user's
-own filters is undecided (`TestRepo_UserFilterThatMustRunStillWorks`).
+Filters are neutralised only where Atoll stages the Bot's tree, the snapshot of a close (`Save`'s
+`status`, `add -A` and `write-tree`, which each can run a clean filter), not in `worktree add`: a user's own filter, such as Git LFS's, runs at checkout. So
+the `filter-driver` and `filter-name-with-equals` legs assert on the close only and nothing about
+filters during a checkout. A user's own config may define a filter as required and the repo's
+`.gitattributes` may apply it; the thread's clean checkout and `start_work` must still make their
+worktrees, and the checkout's smudge may run (`TestRepo_UserFilterThatMustRunStillWorks`). The race
+in which a Bot process that outlives the run swaps the folder between Atoll's symlink check and its
+git call is a documented residual risk (`docs/design.md`), not pinned.
 
 Not pinned: a filter driver in `config.worktree`, which no command-line flag of git suppresses and
 which a list of filters read from the trusted config does not name, and any other program a repo config can name that none of Atoll's calls runs.

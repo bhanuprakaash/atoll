@@ -120,6 +120,9 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 		// early plants before the first run, late after the run that leaves unsaved work.
 		early func(t *testing.T, p planter)
 		late  func(t *testing.T, p planter, worktree string)
+		// snapshotOnly routes run a program only where Atoll stages the Bot's tree, so nothing is
+		// asserted before the close: the checkout's own filters are the user's.
+		snapshotOnly bool
 		// anyClose accepts a refused close: git will not remove a worktree whose .git file no
 		// longer points at its registered git dir.
 		anyClose bool
@@ -132,12 +135,12 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 		{name: "fsmonitor-in-config", early: func(t *testing.T, p planter) {
 			gitIn(t, p.repo, "config", "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
 		}},
-		{name: "filter-driver", early: func(t *testing.T, p planter) {
+		{name: "filter-driver", snapshotOnly: true, early: func(t *testing.T, p planter) {
 			gitIn(t, p.repo, "config", "filter.x.clean", p.script(t, "clean", p.record+"cat\n"))
 			gitIn(t, p.repo, "config", "filter.x.smudge", "cat")
 			writeFile(t, filepath.Join(p.common, "info", "attributes"), "* filter=x\n")
 		}},
-		{name: "filter-name-with-equals", early: func(t *testing.T, p planter) {
+		{name: "filter-name-with-equals", snapshotOnly: true, early: func(t *testing.T, p planter) {
 			gitIn(t, p.repo, "config", "filter.x=y.clean", p.script(t, "clean", p.record+"cat\n"))
 			gitIn(t, p.repo, "config", "filter.x=y.smudge", "cat")
 			writeFile(t, filepath.Join(p.common, "info", "attributes"), "* filter=x=y\n")
@@ -228,6 +231,10 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 					}
 					if step.prompt == _fixRepoPrompt {
 						worktree, _ = repoEvent(t, es, "worktree_created").Data["path"].(string)
+					}
+					if route.snapshotOnly {
+						_ = os.Remove(marker)
+						continue
 					}
 					noRun(step.git)
 				}
@@ -417,7 +424,7 @@ func TestRepo_CloseKeepsOtherWorktrees(t *testing.T) {
 
 // TestRepo_UserFilterThatMustRunStillWorks has a repo with a Git LFS-style filter: the user's own
 // config defines it as required, the repo's .gitattributes applies it. Atoll's checkouts must still
-// be made; whether the file is smudged is not pinned.
+// be made; the checkout's smudge may run, it is the user's own filter.
 func TestRepo_UserFilterThatMustRunStillWorks(t *testing.T) {
 	f := newRepoFixture(t, "codex")
 	writeFile(t, filepath.Join(f.repo.Path, ".gitattributes"), "*.bin filter=lfs\n")
