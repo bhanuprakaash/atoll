@@ -681,6 +681,24 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			cfg.WritableRoots = append(cfg.WritableRoots, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"))
 			if !repo.WorktreeConfig(a.ctx, rp.Path) {
 				cfg.WritableRoots = append(cfg.WritableRoots, filepath.Join(common, "worktrees"))
+				current, err := m.cfg.Store.Thread(a.ctx, thread.ID)
+				if err != nil {
+					return "", fmt.Errorf("load thread git directory: %w", err)
+				}
+				id := current.CheckoutGitDir
+				if current.Worktree != "" {
+					id = current.WorktreeGitDir
+				}
+				gitDir, err := filepath.EvalSymlinks(filepath.Join(common, "worktrees", id))
+				if err != nil {
+					return "", fmt.Errorf("resolve thread git directory: %w", err)
+				}
+				if id == "" || filepath.Dir(gitDir) != filepath.Join(resolvedCommon, "worktrees") {
+					return "", errors.New("thread git directory is outside the registered repo")
+				}
+				if !slices.Contains(cfg.WritableRoots, gitDir) {
+					cfg.WritableRoots = append(cfg.WritableRoots, gitDir)
+				}
 			}
 		}
 	}

@@ -39,11 +39,12 @@ never a dependency.
 
   | Mode | Claude Code | Codex |
   | --- | --- | --- |
-  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; the worktree root (including every worktree under it), and the repo's git objects, refs, logs and worktrees directories are writable; `approvalPolicy: on-request` |
+  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; the worktree root (including every worktree under it), the repo's git objects, refs, logs and worktrees directories, and the session's own git directory are writable; `approvalPolicy: on-request` |
   | Ask | default mode + Reef's permission prompt tool | `approvalPolicy: untrusted` |
   | Full access | `--permission-mode bypassPermissions` | `danger-full-access` sandbox, `approvalPolicy: never` |
 
-  When `extensions.worktreeConfig` is enabled, Codex Auto does not get the git worktrees directory,
+  Codex protects the current worktree's git directory as read-only unless it is an explicit root.
+  When `extensions.worktreeConfig` is enabled, Codex Auto does not get either git worktrees root,
   because it contains writable per-worktree config. Codex Auto cannot write the repo's `.git/config` or `.git/hooks`: either could escape the sandbox
   when Reef next runs git. Reef disables hooks on its own git calls as a second guard. `start_work`
   sets the branch upstream when origin exists, since the Bot cannot write config. `git push -u` pushes
