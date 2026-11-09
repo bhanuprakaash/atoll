@@ -179,6 +179,8 @@ func TestGitHub_RunGetsTheConnection(t *testing.T) {
 				t.Errorf("get_me calls on the fake GitHub MCP server: %d, want 1", calls)
 			}
 
+			f.s.kill()
+			f.m.killFakes()
 			sessions := f.m.sessions(t, p)
 			if len(sessions) != 1 {
 				t.Fatalf("%s ran %d times, want 1", p, len(sessions))
@@ -205,7 +207,6 @@ func TestGitHub_RunGetsTheConnection(t *testing.T) {
 			}
 
 			assertNoSecret(t, token, f.m.data)
-			f.s.kill()
 			if bytes.Contains(f.s.log.Bytes(), []byte(token)) {
 				t.Fatalf("server log leaked the token:\n%s", f.s.log)
 			}

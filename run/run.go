@@ -592,6 +592,23 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	}
 }
 
+func (m *Manager) codexAutoCache(botID string) (string, []string, error) {
+	cache := filepath.Join(m.cfg.DataDir, "cache", botID)
+	var env []string
+	for name, dir := range map[string]string{
+		"XDG_CACHE_HOME": "xdg-cache", "XDG_DATA_HOME": "xdg-data", "XDG_STATE_HOME": "xdg-state",
+		"GOCACHE": "go-build", "GOLANGCI_LINT_CACHE": "golangci-lint",
+		"pnpm_config_store_dir": "pnpm-store", "PNPM_HOME": "pnpm-home",
+	} {
+		path := filepath.Join(cache, dir)
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			return "", nil, fmt.Errorf("make bot cache folder: %w", err)
+		}
+		env = append(env, name+"="+path)
+	}
+	return cache, env, nil
+}
+
 func (m *Manager) codexAutoRoots(ctx context.Context, thread store.Thread, rp store.Repo) ([]string, error) {
 	var roots []string
 	root, err := m.WorktreeRoot(ctx)
@@ -764,6 +781,14 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {
 		return "", err
+	}
+	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
+		cache, env, err := m.codexAutoCache(bot.ID)
+		if err != nil {
+			return "", err
+		}
+		cfg.WritableRoots = append(cfg.WritableRoots, cache)
+		cfg.Env = append(cfg.Env, env...)
 	}
 	if githubToken != "" {
 		cfg.GitHubMCPURL, cfg.GitHubToken = connection.GitHubMCPURL(), githubToken

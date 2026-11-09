@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -54,7 +55,16 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 
 func newRepoFixture(t *testing.T, provider string) *repoFixture {
 	t.Helper()
+	return newRepoFixtureIn(t, provider, "")
+}
+
+// newRepoFixtureIn is newRepoFixture with the data dir at data, when set.
+func newRepoFixtureIn(t *testing.T, provider, data string) *repoFixture {
+	t.Helper()
 	m := newMachine(t, provider, "glab")
+	if data != "" {
+		m.data = data
+	}
 	m.signIn(t, provider)
 	writeFile(t, filepath.Join(m.bin, "mr-state"), "opened")
 	// Share only the private Secret Service session, never the host's credentials or PATH.
@@ -470,6 +480,10 @@ func assertNoSecret(t *testing.T, token string, roots ...string) {
 	t.Helper()
 	for _, root := range roots {
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if errors.Is(err, fs.ErrNotExist) && path != root {
+				// The server renames or removes its temp files and folders while it runs.
+				return nil
+			}
 			if err != nil {
 				return err
 			}
@@ -477,6 +491,9 @@ func assertNoSecret(t *testing.T, token string, roots ...string) {
 				return nil
 			}
 			b, err := os.ReadFile(path)
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
 			if err != nil {
 				return err
 			}
