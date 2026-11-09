@@ -21,6 +21,11 @@ Design: Connections and skills, "Home paths in imported skills", in `docs/design
 - The own folder's root is the one the skill was imported from: a skill imported from
   `~/.codex/skills/<folder>` rewrites `~/.codex/skills/<folder>` and refuses
   `~/.claude/skills/<folder>`, and the other way round.
+- A skill folder may be a symlink to a sibling direct child of the skills folder (`~/.claude/skills/x`
+  to `~/.claude/skills/actual`; the folder rule accepts it). Its own folder is the entry the owner
+  imported from: `~/`, `$HOME/`, `${HOME}/` and absolute forms of the entry path rewrite, and so do
+  refs through the resolved path (`actual`). Another sibling (`other`) is still refused. The skill
+  is recorded under the entry (`source` is the entry path, not its target).
 - A successful answer carries `rewritten` (file and count). The tests pin only that it is present
   and names each rewritten file; the exact shape is not in the design.
 - The folder rule (the skill folder resolves to a direct child of `~/.claude/skills` or
@@ -55,6 +60,7 @@ Design: Connections and skills, "Home paths in imported skills", in `docs/design
 | The token is replaced by the run's copy path at placement; the stored text keeps it; a literal token is replaced | `TestSkillHome_TokenIsReplacedAtPlacement/{claude,codex}.{.claude,.codex}` |
 | Other home references refuse with exact refs (another skill, `~/.ssh`, `$HOME`, `${HOME}`, `$HOME/x`, absolute home path, a fenced example, `<folder>-v2`, the other root's folder), ordered by file then line; nothing stored; Chief's reply names skill, file, line, ref | `TestSkillHome_RefusesOtherHomeRefs/{claude,codex}/*` |
 | `https://x/~/a`, `a~/b` and the other preceded forms are not references; `$HOMEWORK` and `$HOME_X` are not either (the design is silent on what may follow `$HOME`: a guard) | `TestSkillHome_NotHomeReferences` |
+| A symlinked entry: entry-path and resolved-path refs rewrite, another sibling is refused, source is the entry | `TestSkillHome_SymlinkedEntryIsTheOwnFolder/{claude,codex}.{.claude,.codex}/{rewrites,refuses-other-sibling}` |
 | Re-import refused (HTTP 200, before `confirm`, with and without `replace`) keeps the stored skill; same answer as `import_skill` | `TestSkillHome_ReimportRefusedKeepsStored/{claude,codex}` |
 | The folder rule wins when both fire | `TestSkillHome_FolderRuleComesFirst` |
 | Chief's prompt says refused | `TestPrompt_ChiefImportRefusal/{claude,codex}` |

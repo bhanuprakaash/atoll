@@ -370,3 +370,68 @@ func TestPrompt_ChiefImportRefusal(t *testing.T) {
 		})
 	}
 }
+
+// A skill folder may be a symlink to a sibling direct child of the skills folder. Its own folder
+// is the entry the owner imported from, and the resolved folder counts too; another sibling does not.
+func TestSkillHome_SymlinkedEntryIsTheOwnFolder(t *testing.T) {
+	for _, p := range _providers {
+		for _, dot := range []string{".claude", ".codex"} {
+			t.Run(p+dot+"/rewrites", func(t *testing.T) {
+				m, s := startResolved(t, p)
+				skills := filepath.Join(m.home, dot, "skills")
+				entry := filepath.Join(skills, "x")
+				folder := "/" + dot + "/skills/"
+				writeFixture(t, filepath.Join(skills, "actual"), []fixtureFile{
+					{path: "SKILL.md", content: skillMD("x", "Entry: `~"+folder+"x/scripts/run.sh`\n"+
+						"Home: $HOME"+folder+"x/scripts/run.sh\n"+
+						"Braces: ${HOME}"+folder+"x/scripts/run.sh\n"+
+						"Absolute: "+entry+"/scripts/run.sh\n"+
+						"Resolved: ~"+folder+"actual/scripts/run.sh\n"+
+						"Resolved absolute: "+filepath.Join(skills, "actual")+"/scripts/run.sh\n")},
+					{path: "scripts/run.sh", content: "#!/bin/sh\nexec ~" + folder + "x/scripts/helper.sh\n", exec: true},
+				})
+				if err := os.Symlink("actual", entry); err != nil {
+					t.Fatal(err)
+				}
+
+				imp := newImporter(t, s).say(t, "Import the skill folder "+entry)
+				if imp.res.Status != "created" {
+					t.Fatalf("import: %q %+v, want created: every ref is to the skill's own folder", imp.summary, imp.res)
+				}
+				want := "---\nname: x\ndescription: Test skill.\n---\n" +
+					"Entry: `{{ATOLL_SKILL_DIR}}/scripts/run.sh`\n" +
+					"Home: {{ATOLL_SKILL_DIR}}/scripts/run.sh\n" +
+					"Braces: {{ATOLL_SKILL_DIR}}/scripts/run.sh\n" +
+					"Absolute: {{ATOLL_SKILL_DIR}}/scripts/run.sh\n" +
+					"Resolved: {{ATOLL_SKILL_DIR}}/scripts/run.sh\n" +
+					"Resolved absolute: {{ATOLL_SKILL_DIR}}/scripts/run.sh\n"
+				skill := onlySkill(t, s)
+				wantFiles := []skillFile{{Path: "scripts/run.sh", Content: "#!/bin/sh\nexec {{ATOLL_SKILL_DIR}}/scripts/helper.sh\n", Executable: true}}
+				if skill.Name != "x" || skill.Source != entry || skill.Content != want || !reflect.DeepEqual(skill.Files, wantFiles) {
+					t.Fatalf("stored %+v, want name x, source %s, content %q, files %+v", skill, entry, want, wantFiles)
+				}
+			})
+			t.Run(p+dot+"/refuses-other-sibling", func(t *testing.T) {
+				m, s := startResolved(t, p)
+				skills := filepath.Join(m.home, dot, "skills")
+				entry := filepath.Join(skills, "x")
+				folder := "/" + dot + "/skills/"
+				writeFixture(t, filepath.Join(skills, "actual"), []fixtureFile{{path: "SKILL.md", content: skillMD("x",
+					"Own: ~"+folder+"x/run now.\nSibling: ~"+folder+"other/run now.\n")}})
+				writeFixture(t, filepath.Join(skills, "other"), []fixtureFile{{path: "SKILL.md", content: skillMD("other", "Other.\n")}})
+				if err := os.Symlink("actual", entry); err != nil {
+					t.Fatal(err)
+				}
+
+				imp := newImporter(t, s).say(t, "Import the skill folder "+entry)
+				want := []refusal{{"SKILL.md", 6, "~" + folder + "other/run"}}
+				if imp.res.Status != "refused" || !reflect.DeepEqual(imp.res.Refs, want) {
+					t.Fatalf("import: %q %+v, want refused with %+v", imp.summary, imp.res, want)
+				}
+				if skills := getSkills(t, s); len(skills) != 0 {
+					t.Fatalf("library %+v, want nothing stored", skills)
+				}
+			})
+		}
+	}
+}
