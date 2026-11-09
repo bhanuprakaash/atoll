@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { api, newBotAPI, prompts, sendMessageAPI, startAtoll } from './atoll';
 
-for (const late of ['image', 'run'] as const) {
+for (const late of ['image', 'run', 'fast', 'burst'] as const) {
   test(`long replies stay at the bottom after late ${late} on fresh loads`, async ({ browser }) => {
     test.setTimeout(120_000);
     const m = await startAtoll();
@@ -17,7 +17,7 @@ for (const late of ['image', 'run'] as const) {
         try {
           await page.route('**/file?path=late.png', async (route) => {
             if (late === 'image') await ready;
-            const height = late === 'image' ? 600 : 1;
+            const height = late === 'image' ? 600 : late === 'fast' ? 26 : 1;
             await route.fulfill({
               contentType: 'image/svg+xml',
               body: `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="${height}" />`,
@@ -44,9 +44,11 @@ for (const late of ['image', 'run'] as const) {
           await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
           const log = page.getByRole('log', { name: 'Messages' });
           await expect(log.getByText('End of long reply.')).toBeAttached();
-          await expect
-            .poll(() => log.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight))
-            .toBeLessThanOrEqual(1);
+          if (late !== 'fast') {
+            await expect
+              .poll(() => log.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight))
+              .toBeLessThanOrEqual(1);
+          }
           release();
           if (late === 'image') {
             await expect(log.getByRole('img', { name: 'late image' })).toHaveJSProperty(
@@ -60,8 +62,24 @@ for (const late of ['image', 'run'] as const) {
                   .evaluate((el) => el.getBoundingClientRect().height),
               )
               .toBe(600);
-          } else {
+          } else if (late === 'run') {
             await expect(log.getByText(/^Blocked: Waiting for a detailed review/)).toBeVisible();
+          } else if (late === 'fast') {
+            await expect(log.getByRole('img', { name: 'late image' })).toHaveJSProperty(
+              'complete',
+              true,
+            );
+            await page.waitForTimeout(1500);
+          } else {
+            await log.evaluate(async (el) => {
+              for (let n = 0; n < 30; n++) {
+                const node = document.createElement('div');
+                node.style.height = '20px';
+                node.style.flexShrink = '0';
+                el.firstElementChild!.append(node);
+                await new Promise((resolve) => setTimeout(resolve, 3));
+              }
+            });
           }
           await page.evaluate(
             () =>
