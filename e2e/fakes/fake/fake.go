@@ -31,7 +31,7 @@ type Dir struct {
 	Writable bool   `json:"writable"`
 }
 
-var _probed = []string{"XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "GOCACHE", "GOLANGCI_LINT_CACHE", "npm_config_store_dir", "PNPM_HOME"}
+var _probed = []string{"XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "GOCACHE", "GOLANGCI_LINT_CACHE", "pnpm_config_store_dir", "PNPM_HOME"}
 
 func probe() map[string]Dir {
 	dirs := map[string]Dir{}
