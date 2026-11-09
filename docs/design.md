@@ -80,9 +80,10 @@ never a dependency.
   messages, runs and event files. Memory it saved stays, with its source. *Memory outlives the Bot
   that wrote it; a Bot's history does not.*
 
-**Chief.** Created on first launch. It has no repo access at all times: `PUT` and its own
-`edit_bot` refuse to give it repos, its Bot settings and empty thread offer none, and a launch moves
-an older install's Chief to none. It does no code work. It has the "Can manage the platform" switch
+**Chief.** Created on first launch. It has no repo access at all times (a Chief on Codex
+keeps its shell: see Known gap): `PUT` and its own `edit_bot` refuse to give it repos, its Bot
+settings and empty thread offer none, and a launch moves an older install's Chief to none. It does
+no code work. It has the "Can manage the platform" switch
 on: tools to create and edit Bots (including model, look, Mode and delegates), skills and repos, and
 to attach connections, served as Reef's own MCP tools; read tools list Bots, skills, connections,
 repos, MCP servers and signed-in models and record no change.
@@ -91,7 +92,7 @@ repos, MCP servers and signed-in models and record no change.
   next to its MCP config, in every Mode. *A prompt without the repos does not stop a Bash call from
   reading them, and a Read allow-rule scoped to `~/.claude` does not hold under Auto or Full access
   (Claude Code 2.1.319, real runs).* Whether a skill attached to Chief loads under `--tools ""` is
-  unverified. No other Bot gets the flag.
+  unverified. No other Bot gets `--tools ""`.
 - Local files: Chief reads an agent file with `import_agent(path)` and a skill folder with
   `import_skill(path)`, both in the server and limited to the folders in Prompt, so neither reaches
   a repo. `import_agent` is a read tool. It adds no reach for other platform Bots: a Bot with a
