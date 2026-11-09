@@ -90,6 +90,32 @@ func TestWorktrees(t *testing.T) {
 	if !IsRepo(ctx, src) || IsRepo(ctx, t.TempDir()) {
 		t.Fatal("IsRepo: want true for the repo and false for a plain folder")
 	}
+	t.Run("snapshot ignores redirected common directory", func(t *testing.T) {
+		work, _, _, err := Create(ctx, src, root, "demo", "fix/redirect")
+		if err != nil {
+			t.Fatal(err)
+		}
+		common := filepath.Join(src, ".git")
+		id, err := WorktreeID(common, work)
+		if err != nil {
+			t.Fatal(err)
+		}
+		evil := t.TempDir()
+		git(evil, "init", "-q")
+		git(evil, "fetch", "-q", src, "HEAD:refs/heads/fix/redirect")
+		write(work, "a.txt", "snapshot\n")
+		commondir := filepath.Join(common, "worktrees", id, "commondir")
+		defer func() { _ = os.WriteFile(commondir, []byte("../..\n"), 0o600) }()
+		if err := os.WriteFile(commondir, []byte(filepath.Join(evil, ".git")+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if saved, err := Save(WithWorktree(ctx, common, id), work, "refs/atoll/unfinished/redirect"); err != nil || !saved {
+			t.Fatalf("Save = %v, %v", saved, err)
+		}
+		if got := git(src, "show", "refs/atoll/unfinished/redirect:a.txt"); got != "snapshot" {
+			t.Fatalf("snapshot = %q", got)
+		}
+	})
 
 	first, used, base, err := Create(ctx, src, root, "demo", "fix/bug")
 	if err != nil || used != "fix/bug" || first != filepath.Join(root, "demo", "fix-bug") {

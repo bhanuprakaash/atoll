@@ -239,7 +239,11 @@ func Save(ctx context.Context, dir, ref string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("commit tree: %w", err)
 	}
-	if _, err := git(ctx, dir, nil, "update-ref", ref, commit); err != nil {
+	var refEnv []string
+	if trusted, ok := ctx.Value(gitContextKey{}).([]string); ok {
+		refEnv = []string{"GIT_DIR=" + strings.TrimPrefix(trusted[1], "GIT_COMMON_DIR=")}
+	}
+	if _, err := git(ctx, dir, refEnv, "update-ref", ref, commit); err != nil {
 		return false, fmt.Errorf("write ref: %w", err)
 	}
 	return true, nil
