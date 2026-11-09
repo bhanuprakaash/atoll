@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // Contract: claude-isolation-contract.md.
@@ -279,5 +280,97 @@ func TestClaudeIsolation_ShellPrefixScript(t *testing.T) {
 	out, err := cmd.Output()
 	if got, want := string(out), "0\nSURVIVES\na b\n"; got != want {
 		t.Errorf("the script printed %q (error %v), want %q", got, err, want)
+	}
+}
+
+// readScript is the script at path without its last newline.
+func readScript(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimRight(string(b), "\n")
+}
+
+func TestClaudeIsolation_ShellPrefixSurvivesStaleTemp(t *testing.T) {
+	m := ownerSetupMachine(t)
+	bin := filepath.Join(m.data, "bin")
+	stale := filepath.Join(bin, ".claude-shell-prefix.tmp")
+	writeFile(t, stale, "#!/bin/bash\nfor v in $(compg")
+	if err := os.Chmod(stale, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(stale, 0o600) })
+
+	m.serve(t)
+
+	prefix := filepath.Join(bin, "claude-shell-prefix")
+	if got := readScript(t, prefix); got != _shellPrefixScript {
+		t.Errorf("%s holds\n%s\nwant\n%s", prefix, got, _shellPrefixScript)
+	}
+	if fi, err := os.Stat(prefix); err != nil || fi.Mode() != 0o500 {
+		t.Errorf("%s: mode %v, error %v, want -r-x------", prefix, fi, err)
+	}
+	if _, err := os.Lstat(stale); err == nil {
+		t.Errorf("the stale %s is still there, want it replaced and renamed away", stale)
+	}
+}
+
+func TestClaudeIsolation_ShellPrefixReplacedWholeOnRestart(t *testing.T) {
+	m := ownerSetupMachine(t)
+	prefix := filepath.Join(m.data, "bin", "claude-shell-prefix")
+	const old = "#!/bin/bash\n# an older script\nexec bash -c \"$*\""
+	writeFile(t, prefix, old+"\n")
+	if err := os.Chmod(prefix, 0o500); err != nil {
+		t.Fatal(err)
+	}
+
+	// A reader opens the path all through the start. A write in place is seen empty or cut short.
+	stop, done := make(chan struct{}), make(chan int)
+	go func() {
+		reads := 0
+		defer func() { done <- reads }()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			b, err := os.ReadFile(prefix)
+			if got := strings.TrimRight(string(b), "\n"); err != nil || got != old && got != _shellPrefixScript {
+				t.Errorf("a read of %s during the start gave %q (error %v), want the old script or the new one whole", prefix, b, err)
+				return
+			}
+			reads++
+		}
+	}()
+	m.serve(t)
+	time.Sleep(50 * time.Millisecond)
+	close(stop)
+	if reads := <-done; reads == 0 {
+		t.Error("the reader never read the script")
+	}
+	if got := readScript(t, prefix); got != _shellPrefixScript {
+		t.Errorf("after the start %s holds\n%s\nwant\n%s", prefix, got, _shellPrefixScript)
+	}
+}
+
+func TestClaudeIsolation_ShellPrefixIsAbsoluteForRelativeDataDir(t *testing.T) {
+	m := ownerSetupMachine(t)
+	// The server starts in a new temp folder next to the data dir's parent, so this reaches m.data.
+	rel := filepath.Join("..", filepath.Base(filepath.Dir(filepath.Dir(m.data))), "Application Support", "Atoll")
+	m.env = append(m.env, "ATOLL_DATA_DIR="+rel)
+	s := m.serve(t)
+
+	var b bot
+	s.do(t, "POST", "/api/bots", map[string]string{"name": "Relative", "persona": "x", "provider": "claude"}, &b, http.StatusCreated)
+	th := s.newThread(t, b)
+	s.finished(t, s.events(t, th), s.send(t, th, _keepPrompt).ID)
+
+	got := m.sessions(t, "claude")[0].env["CLAUDE_CODE_SHELL_PREFIX"]
+	want := filepath.Join(m.data, "bin", "claude-shell-prefix")
+	if !filepath.IsAbs(got) || resolved(t, got)[0] != resolved(t, want)[0] {
+		t.Errorf("with ATOLL_DATA_DIR=%s, CLAUDE_CODE_SHELL_PREFIX=%q, want the absolute path %s", rel, got, want)
 	}
 }
