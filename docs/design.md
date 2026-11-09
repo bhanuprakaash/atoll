@@ -567,6 +567,8 @@ after a failed undo counts a Bot that is already gone as removed.
   - Home reference: `~/` (not preceded by a letter, digit, `.`, `_`, `-`, `/` or `~`, so
     `https://x/~/y` and `a~/b` do not count), `$HOME` or `${HOME}` (with or without a following
     `/`), and the server's own home directory as an absolute path (`/Users/<name>`, `/home/<name>`).
+    - `$HOME` and `${HOME}` count only as whole variable names: `$HOMEWORK` and `$HOME_X` are other
+      variables and are not refused (the character after `$HOME` is not a letter, digit or `_`).
   - Rewritable: a home reference to the skill's own folder, and nothing more.
     - `import_skill` takes only a direct child of the resolved `~/.claude/skills` or
       `~/.codex/skills` (see Prompt). `<folder>` is the entry's name there, not its symlink target.
@@ -601,8 +603,12 @@ after a failed undo counts a Bot that is already gone as removed.
     - `file` is the path inside the skill as it would be stored (`SKILL.md`, `scripts/run.sh`);
       `line` is 1-based in that file; `ref` is the matched text up to the next space or quote
       (`~/.ssh/config`, `$HOME`, `/home/<name>/x`). One entry per occurrence, ordered by file, then
-      line. No skill id is returned: nothing was stored.
-    - A successful answer carries `rewritten` (file and count).
+      line, then column (1-based in the line, not returned). No skill id is returned: nothing was
+      stored.
+    - A successful answer always carries `rewritten`: a list of `{"file", "count"}`, one entry per
+      file with at least one rewrite, `file` the path inside the skill as stored, `count` the number
+      of rewritten references in it, ordered by file. It is an empty list when nothing was
+      rewritten.
   - Chief's reply on `refused` names the skill and each file, line and path, and says how to fix
     it: edit the skill so it stops using that path, or copy the file into the skill folder and
     point at it as `~/.claude/skills/<folder>/<file>` (which then rewrites). Its prompt's import
