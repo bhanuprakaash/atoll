@@ -73,3 +73,9 @@ thought would happen; a difference is a finding even when nothing crashed.
   stopping when blocked vs guessing, runs that end with nothing done, loops. Efficiency: turns, tokens and minutes per
   accepted PR and per ticket, rework rate. Each finding: numbers, the pattern, what in Reef (prompt, tool, memory,
   UI) causes it, the smallest change, and the expected effect.
+- Round 2: the owner spotted the sidebar marking both the Bot row (heavy fill) and the open thread as selected; no lens
+  reported it. The UI lens checked that markers match data, not whether the screen says one thing at a time. For every
+  screen ask: how many things look selected, active or urgent at once, and is the heaviest one the most important?
+- Round 2: the owner said the driver was spoon-feeding the lead (ticket order, "put X with Y", code fixes in chat). Bots
+  lens: judge every driver message too. Flag any that hands the lead a plan or code instead of a goal, a reason or a
+  decision, and note whether the lead plans on its own afterwards.
