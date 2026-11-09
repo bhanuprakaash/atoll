@@ -52,8 +52,8 @@ chronological order. A message has its stable `id`, role, text and created time.
   It reaches the last message when clicked, is absent at the bottom, and during a run has
   `data-working="true"` with the working creature inside.
 
-- A long markdown reply opens at the bottom after late content loads on ten fresh pages, with no
-  `Jump to latest` button. A new event does not move a reader who scrolled up.
+- A long markdown reply opens at the bottom after a late image or run result loads on ten fresh
+  pages each, with no `Jump to latest` button. A new event does not move a reader who scrolled up.
 
 ## Acceptance mapping
 
@@ -66,4 +66,4 @@ chronological order. A message has its stable `id`, role, text and created time.
 | Pin Bots | `TestChatPolish_PinBotsPersistAndOrder`, `chat-polish.spec.ts` pin controls test |
 | Older messages | `TestChatPolish_OlderMessages`, `chat-polish.spec.ts` older messages test |
 | Jump to latest | `chat-polish.spec.ts` jump test |
-| Thread scroll on open and while reading | `thread-scroll.spec.ts` long replies and new events tests |
+| Thread scroll on open and while reading | `thread-scroll.spec.ts` late image, late run and new events tests |
