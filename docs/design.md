@@ -332,10 +332,22 @@ after a failed undo counts a Bot that is already gone as removed.
     - `--settings` carries `claudeMdExcludes`. `--setting-sources project` still loads the `CLAUDE.md`,
       `CLAUDE.local.md`, `.claude/CLAUDE.md` and `.claude/rules` of every directory above the cwd, so the
       owner's `~/.claude/CLAUDE.md` reaches a Bot whenever the worktree sits under their home. For
-      each directory strictly above the run's cwd, up to `/`, the list holds `<dir>/*.md` and
-      `<dir>/.claude/**`; the cwd itself is never listed, so the repo's own `CLAUDE.md` (and the
-      `AGENTS.md` it imports) and its `.claude/skills` still load, and so do the skills from
-      `--add-dir`. *Not used: `--setting-sources ""` and `CLAUDE_CODE_DISABLE_CLAUDE_MDS` also drop the
+      each ancestor directory the list holds `<dir>/*.md` and `<dir>/.claude/**`; the cwd itself is never
+      listed, so the repo's own `CLAUDE.md` (and the `AGENTS.md` it imports) and its `.claude/skills`
+      still load, and so do the skills from `--add-dir`. The exact rule, from probes of the real CLI:
+      - Ancestors are every directory strictly above the cwd as Reef starts `claude` (`cmd.Dir`, which Go
+        also sets as `PWD`) *and* above its `EvalSymlinks` form, up to and including `/`, with
+        duplicates dropped. Run: with the cwd reached through a symlinked ancestor, a pattern with the
+        symlink's path and a pattern with the resolved path each hid the file, and both together did too;
+        this is also the macOS `/var` vs `/private/var` case, not run there.
+      - Glob characters in `<dir>`: each of `\ * ? [ ] { } ( )` is replaced by `?` (one character,
+        never `/`). Run: a folder `g[1]x*{a,b}` was not matched when written raw or with backslash
+        escapes, and was matched with `?` (also with `[[]`-style classes, which are longer); a folder
+        with a backslash needs `?` too; a lone `(` breaks a raw pattern while `) ! + @ ^ $ # , %` do
+        not. Spaces and non-ASCII (`café-日本-😀 x`) match raw, so they are left as they are.
+      - `/` gives `/*.md` and `/.claude/**`; claude accepted them with no error, but a `/CLAUDE.md`
+        could not be written to prove it hides one (belief). `<dir>/*.md` also hides a `README.md`,
+        which `claude` never loads as memory, so that is harmless. *Not used: `--setting-sources ""` and `CLAUDE_CODE_DISABLE_CLAUDE_MDS` also drop the
       repo's files; a `!` negation in the list does not work.*
     - `--settings` carries `autoMemoryEnabled: false`: no `memory/` folder under `projects/` and no
       auto-memory section in the system prompt.
@@ -346,9 +358,23 @@ after a failed undo counts a Bot that is already gone as removed.
       variable starting with `CLAUDE` or `ATOLL_MCP_` and then runs the command (`exec bash -c "$*"`), so a Bot's shell
       has no `CLAUDE_CONFIG_DIR` and `env | grep -c CLAUDE` prints 0. `ATOLL_MCP_<n>` carry the MCP
       secrets (see below) and would otherwise sit in the shell's `env` (checked: they do). Claude Code keeps
-      its own copy and still reads the folder and expands `${ATOLL_MCP_<n>}` (the child shell's unset cannot reach its process). The server writes the script on every start to `<data dir>/bin/claude-shell-prefix`
-      (mode 0500, owned by the user running Reef, replaced by a rename from a temp file), and every
-      run's env points at that path. The prefix must be one path (a value with spaces fails).
+      its own copy and still reads the folder and expands `${ATOLL_MCP_<n>}` (the child shell's unset cannot reach its process). The server writes the script on every start to `<data dir>/bin/claude-shell-prefix`, through a temp file
+      in the same folder (`.claude-shell-prefix.tmp`, so the rename never crosses a filesystem), mode 0500,
+      owned by the user running Reef; every run's env sets `CLAUDE_CODE_SHELL_PREFIX` to that path. The
+      value is the plain path with no quotes: a path with a space (the macOS data dir is `~/Library/Application
+      Support/Atoll`) works, while literal quotes around it make every Bash call fail with exit 127. Extra
+      arguments after the path were not tested, so none are used. The script is exactly:
+      ```sh
+      #!/bin/bash
+      for v in $(compgen -e | grep -E '^(CLAUDE|ATOLL_MCP_)'); do unset "$v"; done
+      exec bash -c "$*"
+      ```
+      `claude` passes the whole command as one argument (a `source <snapshot> … eval '<cmd>'` string), so
+      `"$*"` is right; nested quotes, `$()`, pipes and `cd` ran correctly. The script's shell is `bash`
+      (macOS `/bin/bash` 3.2 has `compgen -e`); the user's own login shell is still what the
+      snapshot sets up inside it. Run on Linux with bash, by the author and the reviewer: `CLAUDE` count 0
+      and `ATOLL_MCP` count 0 in the Bot's shell, and an MCP server still received `Bearer <ATOLL_MCP_0
+      value>`. Not run: macOS, a zsh user.
       *Not used: `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` forces permission mode `default`, which breaks Auto
       and Full access; a `PreToolUse` hook would need `disableAllHooks` off; a settings `env` entry
       changes `claude` itself and signs it out; `BASH_ENV` does not reach a login shell.*
@@ -388,6 +414,11 @@ after a failed undo counts a Bot that is already gone as removed.
   `XDG_RUNTIME_DIR` and `DISPLAY`. The strip is the same on every OS (macOS sets none of them; its
   keychain has a per-app ACL) and for both providers, since it lives in `provider.Env`. Other `XDG_*`
   variables (`XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`) stay: they lead to no secret store.
+  Side effects, accepted: with `XDG_RUNTIME_DIR` gone, a Bot's tools lose what lives under it:
+  `systemctl --user`, rootless containers, Wayland and PipeWire sockets (so a browser run), a gpg-agent
+  socket under `/run/user/<uid>`. `claude` itself does not need it (every probe here ran without it).
+  Not run: those tools; `gpgconf --list-dirs agent-socket` printed the same path with and without it on
+  this machine, which has no `/run/user`, so it shows nothing.
   Both of the first two must go: on Linux, `secret-tool` still reached the store with only one removed (the
   address is the default `$XDG_RUNTIME_DIR/bus` when unset), and failed with "Cannot autolaunch
   D-Bus without X11 $DISPLAY" with both removed. *`DISPLAY` is dropped because that autolaunch
@@ -494,27 +525,37 @@ after a failed undo counts a Bot that is already gone as removed.
     `a~/b` do not count), `$HOME` or `${HOME}` (with or without a following `/`), and the server's own home
     directory as an absolute path (`/Users/<name>`, `/home/<name>`).
   - Rewritable: a home reference to the skill's own source folder and nothing more. That is `~/`,
-    `$HOME/` or `${HOME}/` followed by the folder's path under the owner's home
-    (`.claude/skills/<folder>`, `.codex/skills/<folder>`, `.agents/skills/<folder>`: whichever it was
-    imported from), or the folder's absolute path, and then either `/…` or the end of the name (the next
+    `$HOME/` or `${HOME}/` followed by `.claude/skills/<folder>` or `.codex/skills/<folder>`, whichever
+    root the folder was imported from (`import_skill` takes only a direct child of the resolved
+    `~/.claude/skills` or `~/.codex/skills`, see Chief; `<folder>` is the entry's name there, not its
+    symlink target), or the resolved folder's absolute path, and then either `/…` or the end of the name (the next
     character is not a letter, digit, `.`, `_` or `-`, so `~/.claude/skills/x-v2` is not the folder `x`).
     It becomes `{{ATOLL_SKILL_DIR}}`: `~/.claude/skills/x/scripts/run.sh` is stored as
     `{{ATOLL_SKILL_DIR}}/scripts/run.sh`. After the rewrite a stored skill holds no own-folder home path.
     *A relative path (the old rewrite) is wrong for scripts: a Bot's cwd is the repo worktree.*
   - Refused: any other home reference left after the rewrite: another skill (`~/.claude/skills/<other>/`),
     `~/.ssh`, dotfiles, shared tools, a bare `$HOME`, an absolute home path. The refusal is atomic: nothing
-    is stored, and on Re-import the stored skill stays as it was. A path that is not under home (a skill
-    imported from `/tmp/x`) has no `~/` form to rewrite, only the absolute one.
+    is stored, and on Re-import the stored skill stays as it was. The check runs after the rewrite and
+    before the `unchanged` / `confirm` comparison, so a refused skill never reaches `confirm`. Prose counts:
+    a `~/` or `$HOME` in an example or a fenced block is refused like a script's, on purpose.
   - Placement, per run and for both providers, replaces every `{{ATOLL_SKILL_DIR}}` in the copies of `SKILL.md`
     and the text files with the absolute path of that copy: `<run folder>/.claude/skills/<name>` for Claude
     Code, `<run folder>/<name>` for Codex (`<name>` is the folder name `Place` already chooses). The path
     is unknown at import, which is why the stored text keeps a token. The scripts then run from the
-    placed copy and the owner's files stay out of it. The token also works in skills written in Reef.
+    placed copy and the owner's files stay out of it. The token also works in skills written in Reef. A skill that already contains the literal
+    `{{ATOLL_SKILL_DIR}}` gets it replaced like any other, and there is no way to write it literally;
+    that is accepted.
   - Shown: `import_skill` and the reimport answer get a status `refused` (beside `created`, `replaced`,
-    `unchanged`, `confirm`) with `reason` and `refs`, a list of `{file, line, ref}` (`ref` is the matched
-    path up to the next space or quote); not an HTTP error. A successful answer carries `rewritten` (file
+    `unchanged`, `confirm`) with `reason` and `refs`; not an HTTP error (200, like the other statuses). Exact shape:
+    `{"status":"refused","name":"<skill name>","reason":"skill \"<name>\" refers to files in your home
+    folder that a Bot cannot use: <file>:<line> <ref>, …","refs":[{"file":"scripts/run.sh","line":12,
+    "ref":"~/.ssh/config"}]}`. `file` is the path inside the skill as it would be stored (`SKILL.md`,
+    `scripts/run.sh`), `line` is 1-based in that file, `ref` is the matched text up to the next space or
+    quote (`~/.ssh/config`, `$HOME`, `/home/<name>/x`), one entry per occurrence, ordered by file then
+    line. No `skill` or id is returned, since nothing was stored. A successful answer carries `rewritten` (file
     and count). Chief's reply on `refused` names the skill, each offending file, line and path, and says
-    how to fix it: edit the skill so it stops using that path, or copy the file into the skill folder and
+    how to fix it (its prompt's import line says "refused" in place of "flagged"; the platform
+    block must stay within its 2000 bytes): edit the skill so it stops using that path, or copy the file into the skill folder and
     point at it as `~/.claude/skills/<folder>/<file>` (which then rewrites). Re-import in Settings > Skills
     shows the same reason and list inline. Nothing about a skill's stored files changes in Settings: there
     is no warning on a skill row. Skills imported before this stay as stored until Re-import.
