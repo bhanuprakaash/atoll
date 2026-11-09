@@ -42,10 +42,12 @@ and nothing else, so the same values anywhere else do not count. Paths compare a
 resolve and a trailing slash is dropped. Ask and Full access have no `sandbox_workspace_write` key.
 The spec runs a plain clone.
 
-Codex on Auto can write the repo's `.git/hooks`, because the git common dir is a writable root. The
-git commands Atoll runs itself, outside any sandbox, must therefore not run the repo's hooks: a
-`post-checkout` hook in `<repo>/.git/hooks` does not run for the `git worktree add --detach` that
-makes a thread's clean checkout, nor for the `git worktree add -b` of `start_work`.
+Codex on Auto can write the repo's `.git/hooks`, because the git common dir is a writable root. None
+of Atoll's own git calls in the repo, which run outside any sandbox, may therefore run a repo hook.
+The spec plants `post-checkout`, `reference-transaction` and `post-index-change` hooks that record
+a call made with `GIT_TERMINAL_PROMPT=0`, as Atoll's git does, and expects no record after the
+thread's clean checkout, after `start_work`, after a run that leaves unsaved work, and after the
+thread closes (save and remove).
 
 ## Chief
 
@@ -72,7 +74,7 @@ saves as you change it and shows again after a reload.
 | Bot settings Mode control; Full access text | UI `Bot settings pick a Mode; Full access warns and the choice persists` |
 | Chief `create_bot`/`edit_bot` take `mode`; `list_bots` shows it; change with Undo | `TestBotMode_Chief/{claude,codex}` |
 | A change of mode mid-run applies from the next run | `TestBotMode_ChangeMidRunAppliesFromNextRun/{claude,codex}` |
-| Atoll's own `git worktree add` (clean checkout, `start_work`) runs no hook of the repo | `TestRepo_ReefGitRunsNoRepoHooks` |
+| None of Atoll's own git calls in the repo (clean checkout, `start_work`, close with unsaved work) runs a repo hook | `TestRepo_ReefGitRunsNoRepoHooks` |
 | Codex Auto starts and resumes with the `worktree_root` folder, the repo's git common dir and the session cwd's git dir as writable roots and network access; Ask and Full access carry neither | `TestCodexAuto_SandboxCoversWorktreeAndNetwork/{auto,ask,full}` |
 
 Not covered here: the spike and the real-Claude line are implementer and user proof. Not pinned:

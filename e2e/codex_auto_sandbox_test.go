@@ -102,31 +102,50 @@ func codexWorkspaceWrite(t *testing.T, c *call) (method, cwd string, present boo
 func TestRepo_ReefGitRunsNoRepoHooks(t *testing.T) {
 	f := newRepoFixture(t, "codex")
 	marker := filepath.Join(t.TempDir(), "hook-ran")
-	hook := "#!/bin/sh\necho \"$PWD\" >> " + marker + "\n"
+	// Only Atoll's own git sets GIT_TERMINAL_PROMPT=0; the fake provider's git commits and pushes
+	// run the same hooks and must not count.
+	hook := "#!/bin/sh\n[ \"$GIT_TERMINAL_PROMPT\" = 0 ] && echo \"$(basename \"$0\") $PWD\" >> " + marker + "\nexit 0\n"
 	hooks := filepath.Join(f.repo.Path, ".git", "hooks")
 	if err := os.MkdirAll(hooks, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(hooks, "post-checkout"), []byte(hook), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	b := f.bot(t, "codex", "all", nil)
-	th := f.thread(t, b)
-	ch := f.s.events(t, th)
-	for _, step := range []struct{ git, prompt string }{
-		{"git worktree add --detach of the thread's clean checkout", _questionRepoPrompt},
-		{"git worktree add -b of start_work", _fixRepoPrompt},
-	} {
-		r := f.s.send(t, th, step.prompt)
-		if done := f.s.finished(t, ch, r.ID); done.Status != "done" {
-			t.Fatalf("run %q: %+v", step.prompt, done)
+	for _, name := range []string{"post-checkout", "reference-transaction", "post-index-change"} {
+		if err := os.WriteFile(filepath.Join(hooks, name), []byte(hook), 0o755); err != nil {
+			t.Fatal(err)
 		}
+	}
+	noHook := func(what string) {
+		t.Helper()
 		if ran, err := os.ReadFile(marker); err == nil {
-			t.Errorf("%s ran the repo's post-checkout hook in %s", step.git, strings.TrimSpace(string(ran)))
+			t.Errorf("%s ran repo hooks:\n%s", what, ran)
 			if err := os.Remove(marker); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
+
+	b := f.bot(t, "codex", "all", nil)
+	th := f.thread(t, b)
+	ch := f.s.events(t, th)
+	var worktree, lastRun string
+	for _, step := range []struct{ git, prompt string }{
+		{"the thread's clean checkout (git worktree add --detach)", _questionRepoPrompt},
+		{"start_work (git worktree add -b)", _fixRepoPrompt},
+		{"a run that leaves unsaved work", _unfinishedRepoPrompt},
+	} {
+		r := f.s.send(t, th, step.prompt)
+		lastRun = r.ID
+		es := until(t, ch, r.ID, "run_finished")
+		if done := f.s.run(t, r.ID); done.Status != "done" {
+			t.Fatalf("run %q: %+v", step.prompt, done)
+		}
+		if step.prompt == _fixRepoPrompt {
+			worktree, _ = repoEvent(t, es, "worktree_created").Data["path"].(string)
+		}
+		noHook(step.git)
+	}
+
+	f.s.do(t, "POST", "/api/threads/"+th.ID+"/close", nil, nil, 204)
+	assertRemoved(t, ch, lastRun, worktree, "closed")
+	noHook("closing a thread with unsaved work (save, remove)")
 }
