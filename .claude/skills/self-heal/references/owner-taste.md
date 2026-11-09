@@ -43,3 +43,7 @@ in their briefs. Each line: the principle, then (where it came from).
 - Track evolution: each round, re-check last round's findings and fixes. Was it fixed? Is the fix good? Did it
   regress something? New features get the hardest look.
 - When unsure what the owner would want, apply these principles and say which one you used.
+
+## Learned while driving (round 1)
+- Fix the class: a security hole found for one provider (Codex sandbox) usually exists for the others (Claude Auto has
+  no sandbox); harden the shared path (Reef's own git calls), not just the provider. (#122)
