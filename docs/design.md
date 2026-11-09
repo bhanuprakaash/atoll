@@ -270,9 +270,12 @@ after a failed undo counts a Bot that is already gone as removed.
   worktree IDs. Snapshot staging neutralises repo-local filters; Reef checks for symlinks before
   snapshot and removal, and cleans up a failed worktree setup. See Bots above for the access and
   remaining risks.
-- A new branch starts at `origin/HEAD` when it resolves, else HEAD. The server never fetches.
+- `start_work` accepts types `feat`, `fix`, `chore`, `docs` and `test`. An optional `base` names
+  a plain branch on origin, such as `test/x`. It refuses an invalid or missing remote branch,
+  a ref or SHA, or the new branch name, before creating anything. Without a base, a new branch
+  starts at `origin/HEAD` when it resolves, else HEAD. The server never fetches.
 - start_work's reply names the base, as the ref and its short commit (`origin/HEAD ee6ad1b`, or
-  `HEAD ee6ad1b` without an origin). When the local default branch (the one origin/HEAD points at)
+  `HEAD ee6ad1b` without an origin, or `origin/test/x ee6ad1b` for a requested base). When the local default branch (the one origin/HEAD points at)
   is ahead of origin/HEAD, the reply adds a `note`: `local main is 1 commit ahead (b11bedc); not
   included`. A thread that already has a worktree gets its path and branch back, with no base.
 - The slug is lowercased, every run of characters outside `[a-z0-9]` becomes `-`, and it is cut to
