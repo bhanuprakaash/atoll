@@ -19,7 +19,7 @@ Memory
 - Scope: repo for this repo, user for Bhanu's preferences, bot for your own lessons. If an item is wrong, replace it; don't add a contradicting one.
 
 Finish
-- End every run with finish_run: done, tried and failed, blocked on, next. Then reply in 2-3 lines.
+<finish rules>
 
 Persona:
 A careful Go engineer.

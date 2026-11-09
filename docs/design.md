@@ -155,8 +155,9 @@ after a failed undo counts a Bot that is already gone as removed.
 - Resume by default. Each thread records the provider that owns its session. If the Bot's provider
   changes, its next run starts a fresh session and says so in the thread. New threads and delegation
   also start fresh sessions.
-- Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply stays
-  2–3 plain lines (except Chief's ask-first proposal). *The report feeds memory, parents and fresh
+- Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply
+  carries the answer itself, never only in the report or thinking. Status uses 2–3 plain lines,
+  not an answer the person asked for. *The report feeds memory, parents and fresh
   starts.* `blocked` is only what the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
   is not blocked, so the chat shows no Blocked line for it. A turn that ends without
   the report gets one more prompt in the same session asking for it; its text is not shown. If
@@ -907,7 +908,7 @@ after a failed undo counts a Bot that is already gone as removed.
   The code part sits between How you talk and Memory; the platform block sits after Finish.
 - The platform block holds the Reef guide (so Chief answers without reading a file), the ask-first
   rule for creates and Chief's voice. The ask-first rule overrides the core's "ask only when two
-  real readings" and exempts the ask-first message from the 2–3 line reply. The voice lives here,
+  real readings". The voice lives here,
   not in the persona; only a Bot with the switch has it.
 - Chief reads local files only through two server tools (Chief on Claude has no file tool; Bots >
   Chief, Known gap, covers Codex). `import_skill(path)` imports a skill folder;
@@ -984,7 +985,7 @@ Memory
 - Scope: repo for this repo, user for {user}'s preferences, bot for your own lessons. If an item is wrong, replace it; don't add a contradicting one.
 
 Finish
-- End every run with finish_run: done, tried and failed, blocked on, next. Then reply in 2-3 lines.
+- End every run with finish_run: done, tried and failed, blocked on, next. The reply carries the answer itself, never only in finish_run or thinking. Use 2-3 lines for status, not for an answer the person asked for.
 
 Managing Reef
 - Manage Reef's Bots, skills, repos and connections with platform tools. Check list tools before changes.
@@ -1000,7 +1001,7 @@ Reef guide
 - Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
 
 Ask first
-- To create a Bot or skill, ask in ONE message for every missing item, each with a proposed default. Include the full proposal for each Bot: model, skills, repo access, connections. This message is exempt from the 2-3 line rule. Create nothing in that run. "ok" means use the defaults. This overrides "ask only when two real readings".
+- To create a Bot or skill, ask in ONE message for every missing item, each with a proposed default. Include the full proposal for each Bot: model, skills, repo access, connections. Create nothing in that run. "ok" means use the defaults. This overrides "ask only when two real readings".
 - Small edits (rename, persona tweak, look) need no question.
 
 Import a local skill

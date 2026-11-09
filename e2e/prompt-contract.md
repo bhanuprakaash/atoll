@@ -72,7 +72,7 @@ exact heading line and the non-empty lines after it, up to the next blank line.
 | Section | Heading line | Fixed |
 | --- | --- | --- |
 | Reef guide | `Reef guide` | names connections (any case) and `MCP` |
-| Ask-first rule | `Ask first` | at least one line; contains (any case) `proposal`, `model`, `skills`, `repo`, `connections`, `exempt` and `2-3` |
+| Ask-first rule | `Ask first` | at least one line; contains (any case) `proposal`, `model`, `skills`, `repo` and `connections` |
 | Voice | `Voice` | 1 to 3 lines |
 
 - The whole block, headings included, is at most 2000 bytes (the design's ~500 token budget).
@@ -85,7 +85,7 @@ exact heading line and the non-empty lines after it, up to the next blank line.
 | --- | --- |
 | Voice at most 3 lines, in the platform block, not the persona | `TestPrompt_ChiefPlatformBlock` |
 | Platform block, guide included, under about 500 tokens | `TestPrompt_ChiefPlatformBlock` |
-| The ask-first message holds the full proposal and is exempt from the short-reply rule | `TestPrompt_ChiefAskFirstCarriesProposal` |
+| The ask-first message holds the full proposal | `TestPrompt_ChiefAskFirstCarriesProposal` |
 | Only Chief has a voice (via the platform block) | `TestPrompt_NoSwitchNoPlatformTextNoVoice` |
 | "ok" creates the Bot; the thread shows the change card with Undo | existing `e2e/ui/skills.spec.ts` "Chief creates a skill and Bot in chat, and Undo removes the Bot" |
 
@@ -94,3 +94,28 @@ repo and no file read; one message asking for model, repo access, skills and con
 default each, creating nothing; rename without asking; sign-in is the user's; refusing code work;
 the voice's tone and plain questions, errors and undo. `TestPrompt_ChiefPlatformBlock` covers the
 deterministic part behind them: the guide and the ask-first rule are in the prompt.
+
+## The reply carries the answer
+
+Tests: `e2e/answer_in_reply_test.go`. One rule in the shared core's `Finish` section, for every
+Bot (plain, repo, platform, Chief), on both providers. The `Finish` section, lowercased, is matched
+by meaning: each rule needs one word from each keyword group anywhere in the section, not in one
+sentence.
+
+| Rule | Keyword groups |
+| --- | --- |
+| The reply carries the answer | `reply` or `response`; `answer`; `itself`, `in full`, `carries`, `holds`, `contains` or `includes` |
+| 2-3 lines is for status, not an asked-for answer | `2-3`; `status`, `progress`, `what you did` or `what was done`; `answer`; `not`, `never` or `n't` |
+| The answer is never only in finish_run or thinking | `finish_run`; `answer`; `not`, `never` or `n't`; and `thinking`; `not`, `never` or `n't` |
+
+- `2-3` appears once in the whole system prompt, so Chief's ask-first block has no special
+  exemption (no `exempt` anywhere), and Chief's platform block stays at most 2000 bytes.
+- `testdata/golden/system.txt` holds `<finish rules>` in place of the `Finish` lines
+  (`TestMemory_PromptGoldenAndBudget` swaps them before comparing), so no exact wording is pinned.
+
+| Acceptance | Test |
+| --- | --- |
+| Every Bot's core says the reply holds the answer; 2-3 lines is for status; one rule, no Chief exemption | `TestPrompt_ReplyCarriesAnswerRule/{claude,codex}` |
+
+Real-provider only: "What are this repo's product principles?" gets the principles in the visible
+reply.
