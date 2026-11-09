@@ -360,7 +360,7 @@ func (a *api) reimportSkill(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	imp, err := readImport(sk.Source)
+	imp, err := a.readImport(sk.Source)
 	if err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
@@ -570,7 +570,7 @@ func (a *api) platformCall(
 		if json.Unmarshal(args, &importArgs) != nil || importArgs.Path == "" {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid path"}
 		}
-		if imp, err = readImport(importArgs.Path); err != nil {
+		if imp, err = a.readImport(importArgs.Path); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: err.Error()}
 		}
 	}
@@ -909,19 +909,20 @@ type importedFile struct {
 
 // readImport reads the local skill folder at path. It reads the disk, so callers do not hold a
 // transaction.
-func readImport(path string) (skill.Import, error) {
-	resolved, err := importPath(path, []string{".claude/skills", ".codex/skills"})
+func (a *api) readImport(path string) (skill.Import, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		a.log.Error("find home", "err", err)
+		return skill.Import{}, fmt.Errorf("find home: %w", err)
+	}
+	resolved, err := importPath(path, home, []string{".claude/skills", ".codex/skills"})
 	if err != nil {
 		return skill.Import{}, err
 	}
 	return skill.Read(resolved)
 }
 
-func importPath(path string, folders []string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
+func importPath(path, home string, folders []string) (string, error) {
 	if rest, ok := strings.CutPrefix(path, "~/"); ok {
 		path = filepath.Join(home, rest)
 	}
@@ -946,21 +947,24 @@ func importPath(path string, folders []string) (string, error) {
 }
 
 func readAgent(path string) (any, error) {
-	resolved, err := importPath(path, []string{".claude/agents"})
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("find home: %w", err)
+	}
+	resolved, err := importPath(path, home, []string{".claude/agents"})
 	if err != nil {
 		return nil, err
 	}
 	if filepath.Ext(resolved) != ".md" {
 		return nil, errors.New("only .md files directly in ~/.claude/agents are read")
 	}
-	fd, err := syscall.Open(resolved, syscall.O_RDONLY|syscall.O_NONBLOCK, 0)
+	f, err := os.OpenFile(resolved, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("%s not found", path)
 		}
 		return nil, err
 	}
-	f := os.NewFile(uintptr(fd), resolved)
 	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {

@@ -107,6 +107,7 @@ type Config struct {
 	Mode string
 	// NoTools disables tools, or confines them to a read-only, no-network sandbox.
 	NoTools bool
+	// NoShell disables Claude's built-in tools while retaining MCP tools.
 	NoShell bool
 }
 
