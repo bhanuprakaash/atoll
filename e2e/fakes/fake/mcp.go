@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,6 +29,14 @@ var _placeholder = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 func ExpandEnv(s string, getenv func(string) string) string {
 	return _placeholder.ReplaceAllStringFunc(s, func(m string) string { return getenv(m[2 : len(m)-1]) })
 }
+
+// RPCError is the error object of a JSON-RPC response.
+type RPCError struct {
+	Code    int
+	Message string
+}
+
+func (e *RPCError) Error() string { return e.Message }
 
 // MCP is a client of one MCP server, as the real CLIs speak it: streamable HTTP, or a local
 // process on stdio.
@@ -170,6 +177,7 @@ func (c *MCP) request(method string, params any) (json.RawMessage, error) {
 				ID     json.RawMessage `json:"id"`
 				Result json.RawMessage `json:"result"`
 				Error  *struct {
+					Code    int    `json:"code"`
 					Message string `json:"message"`
 				} `json:"error"`
 			}
@@ -177,7 +185,7 @@ func (c *MCP) request(method string, params any) (json.RawMessage, error) {
 				continue
 			}
 			if m.Error != nil {
-				return nil, errors.New(m.Error.Message)
+				return nil, &RPCError{m.Error.Code, m.Error.Message}
 			}
 			return m.Result, nil
 		}
@@ -202,6 +210,7 @@ func (c *MCP) request(method string, params any) (json.RawMessage, error) {
 			ID     json.RawMessage `json:"id"`
 			Result json.RawMessage `json:"result"`
 			Error  *struct {
+				Code    int    `json:"code"`
 				Message string `json:"message"`
 			} `json:"error"`
 		}
@@ -209,7 +218,7 @@ func (c *MCP) request(method string, params any) (json.RawMessage, error) {
 			return false
 		}
 		if m.Error != nil {
-			rpcErr = errors.New(m.Error.Message)
+			rpcErr = &RPCError{m.Error.Code, m.Error.Message}
 		}
 		result = m.Result
 		return true
