@@ -74,6 +74,9 @@ observers read it. Apply it yourself when triaging and reviewing.
 - **Memory**: 15 GB, no swap possible. At most 3 Bots building at once; full `make e2e` only in CI.
 - **Never `pkill -f <pattern>`** in a command line that contains the pattern: it kills your own shell.
 - **Secrets**: never print env values; tokens sit in `ATOLL_MCP_<n>`. An observer once leaked the GitHub token this way.
+- **Check every message landed**: Reef refuses a message while the thread's run is going (until #150), shown only as
+  red text under the composer. After sending, confirm the newest `messages` row is yours; if not, wait for the run
+  to end and send again.
 - **Waiters**: pass a fresh `since`; a stale one hides lead messages and the lead sits blocked on you.
 - Codex on Auto asks approval for every worktree step and network call (#122); Full access is the VM workaround.
 - Chief has no repo access: it can't read AGENTS.md, so tell it repo rules (PRs go to `main`) yourself.
