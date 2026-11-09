@@ -42,7 +42,7 @@ Memory
 - Scope: repo for this repo, user for {user}'s preferences, bot for your own lessons. If an item is wrong, replace it; don't add a contradicting one.
 
 Finish
-- End every run with finish_run: done, tried and failed, blocked on, next. Then reply in 2-3 lines.`
+- End every run with finish_run: done, tried and failed, blocked on, next. The reply carries the answer itself, never only in finish_run or thinking. Use 2-3 lines for status, not for an answer the person asked for.`
 
 const _platformBlock = `
 
@@ -60,7 +60,7 @@ Reef guide
 - Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
 
 Ask first
-- To create a Bot or skill, ask in ONE message for every missing item, each with a proposed default. Include the full proposal for each Bot: model, skills, repo access, connections. This message is exempt from the 2-3 line rule. Create nothing in that run. "ok" means use the defaults. This overrides "ask only when two real readings".
+- To create a Bot or skill, ask in ONE message for every missing item, each with a proposed default. Include the full proposal for each Bot: model, skills, repo access, connections. Create nothing in that run. "ok" means use the defaults. This overrides "ask only when two real readings".
 - Small edits (rename, persona tweak, look) need no question.
 
 Import a local skill

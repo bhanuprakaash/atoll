@@ -43,6 +43,8 @@ func TestCodexAuto_SandboxCoversWorktreeAndNetwork(t *testing.T) {
 					if len(wantRoots) != 6 {
 						t.Fatalf("%s ran in %q, want a linked worktree with its own git dir", method, cwd)
 					}
+					wantRoots = append(wantRoots, resolveLoose(t, filepath.Join(f.m.data, "cache", b.ID)))
+					slices.Sort(wantRoots)
 					if i == 1 && !strings.HasPrefix(resolved(t, cwd)[0], resolved(t, f.root)[0]+string(filepath.Separator)) {
 						t.Fatalf("%s ran in %q, want the thread's worktree under %q", method, cwd, f.root)
 					}
