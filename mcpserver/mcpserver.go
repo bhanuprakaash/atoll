@@ -19,6 +19,7 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+// ErrKeychain is wrapped when the system keychain fails.
 var ErrKeychain = errors.New("system keychain failed")
 
 // ErrInvalid is wrapped when a server cannot be saved as given.
