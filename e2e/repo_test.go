@@ -68,11 +68,7 @@ func newRepoFixtureIn(t *testing.T, provider, data string) *repoFixture {
 	m.signIn(t, provider)
 	writeFile(t, filepath.Join(m.bin, "mr-state"), "opened")
 	// Share only the private Secret Service session, never the host's credentials or PATH.
-	for _, key := range []string{"DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "XDG_DATA_HOME"} {
-		if v := os.Getenv(key); v != "" {
-			m.env = append(m.env, key+"="+v)
-		}
-	}
+	m.env = append(m.env, secretServiceEnv()...)
 	m.env = append(m.env, "ATOLL_REPO_POLL_INTERVAL=100ms")
 	f := &repoFixture{m: m, root: t.TempDir(), origin: filepath.Join(t.TempDir(), "origin.git")}
 	repoPath := t.TempDir()
