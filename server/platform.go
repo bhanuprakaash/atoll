@@ -123,6 +123,9 @@ func (a *api) botSummary(
 			b.Activity = needsYou(approvals[0])
 			return b
 		}
+		if b.State == "" {
+			b.Activity = a.liveVerb(t.ThreadID)
+		}
 		b.State = "working"
 	}
 	for _, h := range helpers {

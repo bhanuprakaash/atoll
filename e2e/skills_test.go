@@ -122,6 +122,19 @@ func TestSkills_ChiefCreatesAndUndo(t *testing.T) {
 			if len(inventory) != 1 || inventory[0].Name != "reef-greeting" {
 				t.Fatalf("placed skills: %+v", inventory)
 			}
+			if p == "claude" {
+				calls := m.sessions(t, p)
+				if len(calls) != 2 {
+					t.Fatalf("claude ran %d sessions, want Chief and Bot", len(calls))
+				}
+				for _, c := range calls {
+					m.assertClaudeIsolated(t, c)
+				}
+				extra := flagValue(calls[1].argv, "--add-dir")
+				if extra == "" || !strings.HasPrefix(inventory[0].Path, filepath.Join(extra, ".claude", "skills")+string(os.PathSeparator)) {
+					t.Errorf("placed skill %q not discovered through --add-dir %q", inventory[0].Path, extra)
+				}
+			}
 			if p == "codex" && (strings.Contains(inventory[0].Text, "allowed-tools:") || strings.Contains(inventory[0].Text, "context:")) {
 				t.Fatalf("Claude-only frontmatter in Codex copy: %s", inventory[0].Text)
 			}
