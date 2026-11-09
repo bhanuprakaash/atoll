@@ -338,23 +338,29 @@ after a failed undo counts a Bot that is already gone as removed.
   reported) changes with it. The row then goes the way every held message goes (Delegation): it
   starts a run at once when none is going, waits while one is, survives a restart (delivered on
   start) and is dropped for a closed thread. A helper thread with its own MR is woken the same
-  way, held while its boss has 3 helper runs going. If merged or closed is stored while a CI wake
-  is still held, both are delivered.
+  way, held while its boss has 3 helper runs going.
+- The inbox row has a `kind` (empty for every message today, `ci` for a CI wake). Storing merged
+  or closed deletes the thread's held `ci` row in the same transaction, so a lead is never woken
+  for CI after the PR is done. A held row that is not `ci` is never dropped. When held messages
+  arrive as one run (#190), that run is built from the rows left, so a merged or closed wake is
+  never joined by a stale CI one; a CI wake and a helper's report held together are one run.
 - The wake is a message from Reef, not from the user or a Bot: the inbox row and message carry
   `from_reef`, `from_bot_id` stays empty, and the thread view shows it as one quiet line with
   Reef's mark instead of a user bubble. The text is one plain sentence, naming the MR as the
-  thread does (`PR #7`, `MR !7`): `PR #7 merged`, `PR #7 closed`, `CI finished on PR #7: 3 passed,
-  1 failed (build)`, `CI finished on PR #7: 4 passed`. It names up to 5 failed checks and then
-  `and 2 more`; passed ones are only counted. The Bot's prompt for it is `Reef: ` and the sentence.
-- Three columns on the thread hold what is not derivable: `mr_ci` (JSON: head commit, passed, failed,
-  pending, failed names; the last read) and `mr_woke` (above). `mr_wake` (integer, default 0) is
-  set to 1 by `track_mr`, so a thread tracked before this shipped updates its state and chip from
-  the poll but wakes nothing; a PR long merged is not announced to a Bot that stopped waiting for
-  it. *Sixteen of nineteen PR threads of the dogfood runs said `opened` after they merged.*
+  thread does (`PR #7`, `MR !7`): `PR #7 merged`, `PR #7 closed`,
+  `CI finished on PR #7: 3 passed, 1 failed (build)`, `CI finished on PR #7: 4 passed`. It names up
+  to 5 failed checks and then `and 2 more`; passed ones are only counted, which deviates from
+  #163's "pass/fail per check": a full list is long and the Bot can run `gh pr checks`. The Bot's
+  prompt for it is `Reef: ` and the sentence.
+- Three columns on the thread hold what is not derivable: `mr_ci` (JSON: head commit, passed,
+  failed, pending, failed names; the last read), `mr_woke` (above) and `mr_wake` (integer, default
+  0). `track_mr` sets `mr_wake` to 1, so a thread tracked before this shipped updates its state and
+  chip from the poll but wakes nothing; a PR long merged is not announced to a Bot that stopped
+  waiting for it. *Sixteen of nineteen PR threads of the dogfood runs said `opened` after they
+  merged.*
 - Known gaps: webhooks (polling is the design for a desktop app; a wake comes within a minute plus
   a CI settle read, or later after failures); review comments and reopening wake nothing; a
-  merged event and its held CI wake are two runs until held messages arrive as one run (see
-  Delegation); a GitLab pipeline that is `manual` or `blocked` never finishes.
+  GitLab pipeline that is `manual` or `blocked` never finishes.
 
 ## Providers
 
