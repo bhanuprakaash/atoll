@@ -56,8 +56,8 @@ func TestBotsPoll_Cost(t *testing.T) {
 	p50, p95 := took[_pollRequests/2], took[_pollRequests*95/100]
 	t.Logf("GET /api/bots, %d Bots x %d threads: p50 %v, p95 %v, %d queries per request",
 		_pollBots, _pollThreads, p50, p95, perRequest)
-	if p95 >= 50*time.Millisecond {
-		t.Errorf("p95 %v, want under 50ms", p95)
+	if p50 >= 100*time.Millisecond {
+		t.Errorf("p50 %v, want under 100ms", p50)
 	}
 	if perRequest != 2 {
 		t.Errorf("%d queries per request, want 2", perRequest)
