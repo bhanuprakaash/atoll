@@ -31,7 +31,7 @@ func TestCodexAuto_SandboxCoversWorktreeAndNetwork(t *testing.T) {
 				t.Fatalf("codex ran %d sessions, want 2", len(sessions))
 			}
 			common := gitIn(t, f.repo.Path, "rev-parse", "--path-format=absolute", "--git-common-dir")
-			wantRoots := resolved(t, f.root, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"), filepath.Join(common, "worktrees"))
+			fixed := []string{f.root, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"), filepath.Join(common, "worktrees")}
 			for i, c := range sessions {
 				checkMode(t, "codex", mode, c)
 				method, cwd, present, roots, network := codexWorkspaceWrite(t, c)
@@ -39,6 +39,10 @@ func TestCodexAuto_SandboxCoversWorktreeAndNetwork(t *testing.T) {
 					t.Fatalf("session %d began with %q, want %s", i+1, method, want)
 				}
 				if mode == "auto" {
+					wantRoots := resolved(t, append(fixed, gitIn(t, cwd, "rev-parse", "--absolute-git-dir"))...)
+					if len(wantRoots) != 6 {
+						t.Fatalf("%s ran in %q, want a linked worktree with its own git dir", method, cwd)
+					}
 					if i == 1 && !strings.HasPrefix(resolved(t, cwd)[0], resolved(t, f.root)[0]+string(filepath.Separator)) {
 						t.Fatalf("%s ran in %q, want the thread's worktree under %q", method, cwd, f.root)
 					}

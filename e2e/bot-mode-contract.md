@@ -31,12 +31,14 @@ Codex may carry them as params or in `config` (`sandbox_mode`, `approval_policy`
 while a run goes applies from the next run; the going run keeps the mode it started with.
 
 Codex on Auto in a repo thread also starts every run, `thread/start` and `thread/resume` alike, with
-`config.sandbox_workspace_write.writable_roots` holding exactly these five folders, in any order:
-the `worktree_root` folder and the git common dir's `objects`, `refs`, `logs` and `worktrees`; and
-`config.sandbox_workspace_write.network_access` true. The set is the same for every session, the
-first in the repo's clean checkout and a resumed one in the thread's worktree: `start_work` makes
-the worktree during a run, so its git dir is covered by `worktrees`, not by a root of its own. A
-root must be a folder. The common dir itself, its `config` and its `hooks` are not roots, so the
+`config.sandbox_workspace_write.writable_roots` holding exactly these six folders, in any order:
+the `worktree_root` folder, the git common dir's `objects`, `refs`, `logs` and `worktrees`, and the
+absolute git dir of the session's `cwd` (`git -C <cwd> rev-parse --absolute-git-dir`); and
+`config.sandbox_workspace_write.network_access` true. The cwd is a linked worktree in both
+sessions, the first in the repo's clean checkout and a resumed one in the thread's worktree, so
+that last root is `<repo>/.git/worktrees/<id>` and differs per session. Codex keeps the cwd's own
+git dir read-only unless it is a root itself, even inside a writable `worktrees`; the worktree
+`start_work` makes during a run is covered by `worktrees`. A root must be a folder. The common dir itself, its `config` and its `hooks` are not roots, so the
 Bot cannot change the repo's config or hooks. Codex reads those keys there and nothing else, so
 the same values anywhere else do not count. Paths compare after symlinks resolve and a trailing
 slash is dropped. Ask and Full access have no `sandbox_workspace_write` key. The spec runs a plain
@@ -137,7 +139,7 @@ saves as you change it and shows again after a reload.
 | A user's required filter (Git LFS style) does not stop the clean checkout or `start_work` | `TestRepo_UserFilterThatMustRunStillWorks` |
 | `start_work` sets the new branch's upstream to `origin` | `TestRepo_StartWorkSetsUpstream` |
 | None of Atoll's own git calls in the repo (clean checkout, `start_work`, close with unsaved work) runs a program a planted hook, `core.fsmonitor`, filter driver, `commondir`, `.git` file or `config.worktree` names, and a close keeps the snapshot in the repo, for a Codex and a Claude Bot | `TestRepo_ReefGitRunsNoRepoCode/{codex/close,codex/delete,claude/close}/<route>`, each with `TestRepo_ReefGitRunsNoRepoCode/control/<route>` for `<route>` in `hooks`, `fsmonitor-in-config`, `filter-driver`, `filter-name-with-equals`, `commondir-rewritten`, `gitfile-rewritten`, `worktree-config` |
-| Codex Auto starts and resumes with the `worktree_root` folder, the git common dir's `objects`, `refs`, `logs` and `worktrees` (not the common dir, `config` or `hooks`) as writable roots and network access; Ask and Full access carry neither | `TestCodexAuto_SandboxCoversWorktreeAndNetwork/{auto,ask,full}` |
+| Codex Auto starts and resumes with the `worktree_root` folder, the git common dir's `objects`, `refs`, `logs` and `worktrees` and the session cwd's git dir (not the common dir, `config` or `hooks`) as writable roots and network access; Ask and Full access carry neither | `TestCodexAuto_SandboxCoversWorktreeAndNetwork/{auto,ask,full}` |
 
 Not covered here: the spike and the real-Claude line are implementer and user proof. Not pinned:
 Codex's sandbox on Ask beyond not being `danger-full-access`; whether Claude on Full access still
