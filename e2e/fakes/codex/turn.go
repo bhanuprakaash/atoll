@@ -325,6 +325,10 @@ func (t *turn) mcpUse(in *bufio.Scanner, log *fake.Log) (string, error) {
 			lines = append(lines, fake.MCPLine(call, "unavailable"))
 			continue
 		}
+		if bad := call.Undeclared(c); bad != "" {
+			lines = append(lines, fake.MCPLine(call, bad))
+			continue
+		}
 		it := map[string]any{"type": "mcpToolCall", "id": fmt.Sprintf("mcp-use-%d", i+1), "server": call.Server, "tool": call.Tool,
 			"status": "inProgress", "arguments": call.Args, "result": nil, "error": nil, "durationMs": nil}
 		emit := func(method string) {

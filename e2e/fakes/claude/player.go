@@ -276,6 +276,10 @@ func (p *player) mcpUse() (string, error) {
 			lines = append(lines, fake.MCPLine(call, "unavailable"))
 			continue
 		}
+		if bad := call.Undeclared(c); bad != "" {
+			lines = append(lines, fake.MCPLine(call, bad))
+			continue
+		}
 		use := toolUse{Type: "tool_use", ID: fmt.Sprintf("toolu_mcp_use_%d", i+1), Name: "mcp__" + call.Server + "__" + call.Tool, Input: call.Args}
 		p.uses[use.ID] = use
 		emit := func(l map[string]any) {
