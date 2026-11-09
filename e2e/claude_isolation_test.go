@@ -21,6 +21,9 @@ const _shellPrefixScript = `#!/bin/bash
 for v in $(compgen -e | grep -E '^(CLAUDE|ATOLL_MCP_)'); do unset "$v"; done
 exec bash -c "$*"`
 
+// _botTools is the whole set of built-in tools a Claude Bot has: the value of --tools.
+const _botTools = "Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write"
+
 // _globReplacer replaces the characters that are glob syntax by ? in the folder names of a claudeMdExcludes pattern.
 var _globReplacer = strings.NewReplacer(`\`, "?", "*", "?", "?", "?", "[", "?", "]", "?", "{", "?", "}", "?", "(", "?", ")", "?")
 
@@ -72,6 +75,15 @@ func claudeSettingsJSON(t *testing.T, c *call) map[string]json.RawMessage {
 	return out
 }
 
+// toolsFlag is the value of --tools, or "<none>" when the flag is not there.
+func toolsFlag(c *call) string {
+	i := slices.Index(c.argv, "--tools")
+	if i < 0 || i+1 >= len(c.argv) {
+		return "<none>"
+	}
+	return c.argv[i+1]
+}
+
 // disallowedTools is the set of tools c's --disallowedTools flags name, space or comma separated.
 func disallowedTools(c *call) []string {
 	var out []string
@@ -98,8 +110,13 @@ func (m *machine) assertOwnerSetupOff(t *testing.T, c *call, what string, bases 
 	if got := flagValue(c.argv, "--setting-sources"); got != "project" {
 		t.Errorf("%s: --setting-sources %q, want project", what, got)
 	}
-	if got, want := disallowedTools(c), []string{"Task", "Workflow"}; !slices.Equal(got, want) {
-		t.Errorf("%s: --disallowedTools %q, want %q", what, got, want)
+	if got := toolsFlag(c); got != _botTools {
+		t.Errorf("%s: --tools %q, want %q", what, got, _botTools)
+	}
+	for _, tool := range disallowedTools(c) {
+		if tool == "Task" || tool == "Workflow" {
+			t.Errorf("%s: --disallowedTools names %s, want the --tools allowlist instead", what, tool)
+		}
 	}
 
 	settings := claudeSettingsJSON(t, c)
@@ -372,5 +389,39 @@ func TestClaudeIsolation_ShellPrefixIsAbsoluteForRelativeDataDir(t *testing.T) {
 	want := filepath.Join(m.data, "bin", "claude-shell-prefix")
 	if !filepath.IsAbs(got) || resolved(t, got)[0] != resolved(t, want)[0] {
 		t.Errorf("with ATOLL_DATA_DIR=%s, CLAUDE_CODE_SHELL_PREFIX=%q, want the absolute path %s", rel, got, want)
+	}
+}
+
+func TestClaudeIsolation_ToolsByKindOfRun(t *testing.T) {
+	m := ownerSetupMachine(t)
+	s := m.serve(t)
+	var keeper bot
+	s.do(t, "POST", "/api/bots", map[string]any{"name": "Keeper", "persona": "Keeps the reef.", "provider": "claude", "repo_access": "all", "can_manage_platform": true}, &keeper, http.StatusCreated)
+	chiefBot := chief(t, s).bot
+
+	tools := func(b bot) *call {
+		heySystem(t, s, "claude", b)
+		sessions := m.sessions(t, "claude")
+		return sessions[len(sessions)-1]
+	}
+	if c := tools(chiefBot); toolsFlag(c) != "" || !strings.Contains(flagValue(c.argv, "--mcp-config"), `"atoll"`) || flagValue(c.argv, "--allowedTools") != "mcp__atoll" {
+		t.Errorf("Chief: --tools %q, want the empty value, with the atoll MCP config and --allowedTools mcp__atoll kept", toolsFlag(c))
+	}
+	for _, b := range []bot{keeper, s.newBot(t, "Plain", "claude")} {
+		if c := tools(b); toolsFlag(c) != _botTools {
+			t.Errorf("%s: --tools %q, want %q", b.Name, toolsFlag(c), _botTools)
+		}
+	}
+
+	// The title run gets no built-in tools either.
+	th := s.newThread(t, s.newBot(t, "Ada", "claude"))
+	s.finished(t, s.events(t, th), s.send(t, th, _titlePrompt).ID)
+	titled(t, s, th.ID, _titleWant)
+	titles := m.titles(t, "claude")
+	if len(titles) != 1 {
+		t.Fatalf("%d title runs, want 1", len(titles))
+	}
+	if got := toolsFlag(titles[0]); got != "" {
+		t.Errorf("title run --tools %q, want the empty value", got)
 	}
 }
