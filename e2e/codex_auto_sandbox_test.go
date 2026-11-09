@@ -132,6 +132,11 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 		{name: "fsmonitor-in-config", early: func(t *testing.T, p planter) {
 			gitIn(t, p.repo, "config", "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
 		}},
+		{name: "filter-driver", early: func(t *testing.T, p planter) {
+			gitIn(t, p.repo, "config", "filter.x.clean", p.script(t, "clean", p.record+"cat\n"))
+			gitIn(t, p.repo, "config", "filter.x.smudge", "cat")
+			writeFile(t, filepath.Join(p.common, "info", "attributes"), "* filter=x\n")
+		}},
 		{name: "commondir-rewritten", late: func(t *testing.T, p planter, worktree string) {
 			writeFile(t, filepath.Join(p.gitDir(t, worktree), "commondir"), p.evilCommon(t)+"\n")
 		}},
@@ -140,6 +145,10 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 			copyDir(t, p.gitDir(t, worktree), evil)
 			writeFile(t, filepath.Join(evil, "commondir"), p.evilCommon(t)+"\n")
 			writeFile(t, filepath.Join(worktree, ".git"), "gitdir: "+evil+"\n")
+		}},
+		{name: "worktree-config", late: func(t *testing.T, p planter, worktree string) {
+			gitIn(t, p.repo, "config", "extensions.worktreeConfig", "true")
+			gitIn(t, p.repo, "config", "-f", filepath.Join(p.gitDir(t, worktree), "config.worktree"), "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
 		}},
 	}
 	for _, route := range routes {

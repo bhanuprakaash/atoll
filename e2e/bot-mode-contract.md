@@ -58,8 +58,10 @@ work, and an ending, and expects no record after any step:
 | --- | --- |
 | `hooks` | `post-checkout`, `reference-transaction` and `post-index-change` in `<common>/hooks` |
 | `fsmonitor-in-config` | `core.fsmonitor` in `<common>/config` |
+| `filter-driver` | `filter.x.clean` in `<common>/config` and `* filter=x` in `<common>/info/attributes` |
 | `commondir-rewritten` | `<common>/worktrees/<name>/commondir` pointing at a copy of the common dir whose config sets `core.fsmonitor` |
 | `gitfile-rewritten` | the worktree's `.git` file pointing at a copy of its git dir, whose `commondir` points at that copy; the ending may be refused, because git will not remove such a worktree |
+| `worktree-config` | `extensions.worktreeConfig` true in `<common>/config` and `core.fsmonitor` in `<common>/worktrees/<name>/config.worktree` |
 
 The endings are the thread's close (which saves the unsaved work) and the Bot's deletion, which closes
 each of its threads, so it runs the same git as a close. Every ending
@@ -70,20 +72,23 @@ folder the Bot controls and the close would then remove the work.
 
 Each route also has a control, `control/<route>`, that makes the same repo and plants the same route,
 then runs the operations Atoll runs (worktree add for the clean checkout and for a new branch, status,
-add, write-tree, update-ref and worktree remove) with plain git and expects the program to run. It
+add, write-tree, update-ref and worktree remove) with plain git and expects the program to run. Every
+route fires under plain git with those commands. It
 uses no product code, so it passes with and without the fix: it proves the route is live and the
 program records, so that a route or a recorder that stopped working cannot make a leg pass. The
 recorder does not depend on anything Atoll sets, so dropping an Atoll environment variable cannot
 make a leg pass either.
 
-Not pinned: `config.worktree` (with `extensions.worktreeConfig`) and a filter driver, which no
-command-line flag of git suppresses; they are a written residual risk. `git branch -D`
-(`DeleteBranch`) is not exercised: Atoll runs it only when `start_work` fails or a delegate is
-abandoned, so the "delete" of the issue's third line is covered only as the close that deleting a Bot
-runs. Not driven separately: the other git calls that share the one exec site with those that are
-(`CreateFrom`, `IsRepo`, `Origin`, `HasCommit`). Git names a worktree's git dir after its folder, and
-Atoll's folders are unique per repo (`-2`, `-3`), so a git-dir id that git suffixes cannot be made
-through the API.
+Not pinned: a filter driver in `config.worktree`, which no command-line flag of git suppresses and
+which a list of filters read from the trusted config does not name, and any other program a repo config can name that none of Atoll's calls runs.
+The "delete" of the issue's third line is covered in part. Deleting a Bot closes each of its threads,
+so the Bot-deletion ending runs `CloseThread`: `Save` (status, rev-parse, add, write-tree,
+commit-tree, update-ref) and `Remove` (`git worktree remove`). `DeleteBranch` (`git branch -D`) is
+not reached by any leg: Atoll runs it only when `start_work` fails and when a delegate's helper is
+abandoned (`run/work.go`, `run/delegate.go`). Not driven separately either: `CreateFrom` and the
+reads `IsRepo`, `Origin` and `HasCommit`, which share the one exec site. Git names a worktree's git
+dir after its folder, and Atoll's folders are unique per repo (`-2`, `-3`), so a git-dir id that git
+suffixes cannot be made through the API.
 
 ## Chief
 
@@ -111,7 +116,7 @@ saves as you change it and shows again after a reload.
 | Chief `create_bot`/`edit_bot` take `mode`; `list_bots` shows it; change with Undo | `TestBotMode_Chief/{claude,codex}` |
 | A change of mode mid-run applies from the next run | `TestBotMode_ChangeMidRunAppliesFromNextRun/{claude,codex}` |
 | `start_work` sets the new branch's upstream to `origin` | `TestRepo_StartWorkSetsUpstream` |
-| None of Atoll's own git calls in the repo (clean checkout, `start_work`, close with unsaved work) runs a program a planted hook, `core.fsmonitor`, `commondir` or `.git` file names, and a close keeps the snapshot in the repo, for a Codex and a Claude Bot | `TestRepo_ReefGitRunsNoRepoCode/{codex/close,codex/delete,claude/close}/<route>`, each with `TestRepo_ReefGitRunsNoRepoCode/control/<route>` for `<route>` in `hooks`, `fsmonitor-in-config`, `commondir-rewritten`, `gitfile-rewritten` |
+| None of Atoll's own git calls in the repo (clean checkout, `start_work`, close with unsaved work) runs a program a planted hook, `core.fsmonitor`, filter driver, `commondir`, `.git` file or `config.worktree` names, and a close keeps the snapshot in the repo, for a Codex and a Claude Bot | `TestRepo_ReefGitRunsNoRepoCode/{codex/close,codex/delete,claude/close}/<route>`, each with `TestRepo_ReefGitRunsNoRepoCode/control/<route>` for `<route>` in `hooks`, `fsmonitor-in-config`, `filter-driver`, `commondir-rewritten`, `gitfile-rewritten`, `worktree-config` |
 | Codex Auto starts and resumes with the `worktree_root` folder, the git common dir's `objects`, `refs`, `logs` and `worktrees` (not the common dir, `config` or `hooks`) as writable roots and network access; Ask and Full access carry neither | `TestCodexAuto_SandboxCoversWorktreeAndNetwork/{auto,ask,full}` |
 
 Not covered here: the spike and the real-Claude line are implementer and user proof. Not pinned:
