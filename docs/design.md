@@ -343,9 +343,11 @@ after a failed undo counts a Bot that is already gone as removed.
         ancestor, a pattern with the link path and a pattern with the resolved path each hide the
         file, and so do both together (macOS `/var` vs `/private/var` is the same case).
       - In `<dir>`, each of `\ * ? [ ] { } ( )` is replaced by `?`, which matches one character and
-        never `/`. A folder named `g[1]x*{a,b}` is not matched written raw or with backslash
-        escapes, and is matched with `?`. A folder with a backslash needs `?` too. A lone `(` breaks
-        a raw pattern; `) ! + @ ^ $ # , %` do not. Spaces and non-ASCII (`café-日本-😀 x`) match raw
+        never `/`. That hides the file in every case run: folders `g[1]x`, `a*b`, `c{a,b}d`,
+        `g[1]x*{a,b}`, `p(q` and one with a backslash.
+      - A raw pattern with these characters is unreliable. Run, raw: `g[1]x` and `a*b` hide the
+        file; `c{a,b}d`, `g[1]x*{a,b}` and `p(q` do not (two runs each). Backslash escapes do not
+        work either. `) ! + @ ^ $ # , %` match raw. Spaces and non-ASCII (`café-日本-😀 x`) match raw
         and are left as they are.
       - `/` gives `/*.md` and `/.claude/**`, which `claude` accepts. Unverified: that they hide a
         `/CLAUDE.md` (writing one needs root).
