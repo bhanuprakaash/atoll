@@ -39,15 +39,22 @@ never a dependency.
 
   | Mode | Claude Code | Codex |
   | --- | --- | --- |
-  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; the worktree root (including every worktree under it), the repo's git objects, refs and logs, and the thread's own git directory are writable; `approvalPolicy: on-request` |
+  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; the worktree root (including every worktree under it), and the repo's git objects, refs, logs and worktrees directories are writable; `approvalPolicy: on-request` |
   | Ask | default mode + Reef's permission prompt tool | `approvalPolicy: untrusted` |
   | Full access | `--permission-mode bypassPermissions` | `danger-full-access` sandbox, `approvalPolicy: never` |
 
-  Codex Auto cannot write the repo's `.git/config` or `.git/hooks`: either could escape the sandbox
+  When `extensions.worktreeConfig` is enabled, Codex Auto does not get the git worktrees directory,
+  because it contains writable per-worktree config. Codex Auto cannot write the repo's `.git/config` or `.git/hooks`: either could escape the sandbox
   when Reef next runs git. Reef disables hooks on its own git calls as a second guard. `start_work`
   sets the branch upstream when origin exists, since the Bot cannot write config. `git push -u` pushes
   but cannot save upstream. Git may print `packed-refs.lock: Read-only file system` on commit, pull
   or stash; these commands can still succeed with exit 0.
+  If the worktree root contains the repo's git common directory, it is not granted as a writable root.
+
+  Repo-local config can define commands such as filters, diff drivers and `core.sshCommand`. Claude
+  Auto can write that config, and per-worktree config is read when `extensions.worktreeConfig` is on.
+  These remain risks when Reef runs git; snapshot staging can run clean filters.
+  Reef also runs `glab mr view` in the repo; if glab invokes git, it may read the repo's config.
 
   *Claude's auto mode classifier runs safe steps and blocks risky ones (Claude reports the block);
   explicit ask rules still come to the thread as cards.* Full access never asks, even to delete

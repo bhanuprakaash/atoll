@@ -55,6 +55,46 @@ type Base struct {
 	Note string
 }
 
+type gitContextKey struct{}
+
+// WorktreeID validates the Git metadata for an existing worktree.
+func WorktreeID(common, worktree string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(worktree, ".git"))
+	if err != nil {
+		return "", fmt.Errorf("read worktree git file: %w", err)
+	}
+	path := strings.TrimSpace(strings.TrimPrefix(string(data), "gitdir: "))
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(worktree, path)
+	}
+	root, err := filepath.EvalSymlinks(filepath.Join(common, "worktrees"))
+	if err != nil {
+		return "", fmt.Errorf("resolve worktree git root: %w", err)
+	}
+	path, err = filepath.EvalSymlinks(path)
+	if err != nil || filepath.Dir(path) != root {
+		return "", errors.New("worktree git directory is outside the registered repo")
+	}
+	back, err := os.ReadFile(filepath.Join(path, "gitdir"))
+	if err != nil {
+		return "", fmt.Errorf("read worktree git backlink: %w", err)
+	}
+	want, err := filepath.EvalSymlinks(filepath.Join(worktree, ".git"))
+	if err != nil {
+		return "", fmt.Errorf("resolve worktree git file: %w", err)
+	}
+	got, err := filepath.EvalSymlinks(strings.TrimSpace(string(back)))
+	if err != nil || got != want {
+		return "", errors.New("worktree git backlink does not match")
+	}
+	return filepath.Base(path), nil
+}
+
+// WithWorktree supplies the trusted git directories for a worktree.
+func WithWorktree(ctx context.Context, common, id string) context.Context {
+	return context.WithValue(ctx, gitContextKey{}, []string{"GIT_DIR=" + filepath.Join(common, "worktrees", id), "GIT_COMMON_DIR=" + common})
+}
+
 // Create makes a new worktree of repoPath on a new branch at <root>/<repoName>/<folder>, where
 // folder is the branch with "/" replaced by "-". When the branch or the folder exists it tries
 // <branch>-2, <branch>-3 and so on. The branch starts at origin/HEAD when that resolves, else at
@@ -254,14 +294,15 @@ func HasCommit(ctx context.Context, path string) bool {
 	return err == nil
 }
 
-// GitDirs returns the common git directory and the worktree's git directory.
-func GitDirs(ctx context.Context, path string) (string, string, error) {
-	common, err := git(ctx, path, nil, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	if err != nil {
-		return "", "", err
-	}
-	dir, err := git(ctx, path, nil, "rev-parse", "--absolute-git-dir")
-	return common, dir, err
+// GitCommonDir returns the common git directory.
+func GitCommonDir(ctx context.Context, path string) (string, error) {
+	return git(ctx, path, nil, "rev-parse", "--path-format=absolute", "--git-common-dir")
+}
+
+// WorktreeConfig reports whether Git uses per-worktree configuration.
+func WorktreeConfig(ctx context.Context, path string) bool {
+	value, err := git(ctx, path, nil, "config", "--type=bool", "--default=false", "--get", "extensions.worktreeConfig")
+	return err != nil || value == "true"
 }
 
 func seedIndex(ctx context.Context, dir, to string) error {
@@ -283,8 +324,17 @@ func seedIndex(ctx context.Context, dir, to string) error {
 }
 
 func git(ctx context.Context, dir string, env []string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=/dev/null", "-C", dir}, args...)...)
-	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0"), env...)
+	base := []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-C", dir}
+	trusted, _ := ctx.Value(gitContextKey{}).([]string)
+	allEnv := append(append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0"), trusted...), env...)
+	config := exec.CommandContext(ctx, "git", append(base, "config", "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process)$`)...)
+	config.Env = allEnv
+	keys, _ := config.Output()
+	for _, key := range strings.Fields(string(keys)) {
+		base = append(base, "-c", key+"=")
+	}
+	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
+	cmd.Env = allEnv
 	out, err := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(out))
 	if err != nil {

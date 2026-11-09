@@ -650,13 +650,30 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		if err := os.MkdirAll(root, 0o755); err != nil {
 			return "", fmt.Errorf("make worktree root: %w", err)
 		}
-		cfg.WritableRoots = []string{root}
 		if _, err := os.Stat(rp.Path); !errors.Is(err, os.ErrNotExist) {
-			common, gitDir, err := repo.GitDirs(a.ctx, cfg.Cwd)
+			common, err := repo.GitCommonDir(a.ctx, rp.Path)
 			if err != nil {
 				return "", fmt.Errorf("find git directories: %w", err)
 			}
-			cfg.WritableRoots = append(cfg.WritableRoots, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"), gitDir)
+			resolvedRoot, err := filepath.EvalSymlinks(root)
+			if err != nil {
+				return "", fmt.Errorf("resolve worktree root: %w", err)
+			}
+			resolvedCommon, err := filepath.EvalSymlinks(common)
+			if err != nil {
+				return "", fmt.Errorf("resolve git directory: %w", err)
+			}
+			rel, err := filepath.Rel(resolvedRoot, resolvedCommon)
+			if err != nil {
+				return "", fmt.Errorf("compare git directory and worktree root: %w", err)
+			}
+			if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				cfg.WritableRoots = []string{root}
+			}
+			cfg.WritableRoots = append(cfg.WritableRoots, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"))
+			if !repo.WorktreeConfig(a.ctx, rp.Path) {
+				cfg.WritableRoots = append(cfg.WritableRoots, filepath.Join(common, "worktrees"))
+			}
 		}
 	}
 	onBossBranch := false

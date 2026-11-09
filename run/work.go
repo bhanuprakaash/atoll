@@ -143,8 +143,19 @@ func (m *Manager) StartWork(
 	if path, branch, base, err = repo.Create(ctx, rp.Path, root, rp.Name, name); err != nil {
 		return "", "", repo.Base{}, err
 	}
+	common, err := repo.GitCommonDir(ctx, rp.Path)
+	if err != nil {
+		return "", "", repo.Base{}, err
+	}
+	id, err := repo.WorktreeID(common, path)
+	if err != nil {
+		return "", "", repo.Base{}, err
+	}
 	if err := m.cfg.Store.SetWorktree(ctx, t.ID, branch, path); err != nil {
 		err = errors.Join(err, repo.Remove(ctx, rp.Path, path), repo.DeleteBranch(ctx, rp.Path, branch))
+		return "", "", repo.Base{}, err
+	}
+	if err := m.cfg.Store.SetGitDirs(ctx, t.ID, t.CheckoutGitDir, id); err != nil {
 		return "", "", repo.Base{}, err
 	}
 	m.publish(a, EventWorktreeCreated,
@@ -350,7 +361,20 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 		return err
 	}
 	ref := _snapshotRefPrefix + t.ID
-	saved, err := repo.Save(ctx, t.Worktree, ref)
+	common, err := repo.GitCommonDir(ctx, rp.Path)
+	if err != nil {
+		return err
+	}
+	id := t.WorktreeGitDir
+	if id == "" {
+		if id, err = repo.WorktreeID(common, t.Worktree); err != nil {
+			return err
+		}
+		if err := m.cfg.Store.SetGitDirs(ctx, t.ID, t.CheckoutGitDir, id); err != nil {
+			return err
+		}
+	}
+	saved, err := repo.Save(repo.WithWorktree(ctx, common, id), t.Worktree, ref)
 	if err != nil {
 		return fmt.Errorf("save unfinished work: %w", err)
 	}
@@ -394,6 +418,19 @@ func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, error) {
 	case rp.ID != "":
 		if err := repo.Checkout(m.ctx, rp.Path, dir); err != nil {
 			return "", err
+		}
+		if t.CheckoutGitDir == "" {
+			common, err := repo.GitCommonDir(m.ctx, rp.Path)
+			if err != nil {
+				return "", err
+			}
+			id, err := repo.WorktreeID(common, dir)
+			if err != nil {
+				return "", err
+			}
+			if err := m.cfg.Store.SetGitDirs(m.ctx, t.ID, id, t.WorktreeGitDir); err != nil {
+				return "", err
+			}
 		}
 		return dir, nil
 	}
