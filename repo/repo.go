@@ -16,12 +16,7 @@ import (
 
 const _maxSlug = 40
 
-var (
-	// ErrType means the branch type is not one of feat, fix, chore, docs or test.
-	ErrType = errors.New("type must be feat, fix, chore, docs or test")
-
-	_nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
-)
+var _nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Branch normalises a branch name: ("fix", "Seeded BUG") -> "fix/seeded-bug". The slug is
 // lowercased, every run of characters outside [a-z0-9] becomes "-", the ends are trimmed of "-"
@@ -30,7 +25,7 @@ func Branch(typ, slug string) (string, error) {
 	switch typ {
 	case "feat", "fix", "chore", "docs", "test":
 	default:
-		return "", fmt.Errorf("branch type %q: %w", typ, ErrType)
+		return "", fmt.Errorf("branch type %q: type must be feat, fix, chore, docs or test", typ)
 	}
 	s := Slug(slug)
 	if s == "" {
@@ -99,8 +94,9 @@ func WithWorktree(ctx context.Context, common, id string) context.Context {
 
 // Create makes a new worktree of repoPath on a new branch at <root>/<repoName>/<folder>, where
 // folder is the branch with "/" replaced by "-". When the branch or the folder exists it tries
-// <branch>-2, <branch>-3 and so on. The branch starts at origin/HEAD when that resolves, else at
-// HEAD. It returns the absolute path, the branch used and the base. No fetch, no network.
+// <branch>-2, <branch>-3 and so on. A requested base names a branch on origin. Without one,
+// the branch starts at origin/HEAD when that resolves, else HEAD. It returns the absolute path,
+// the branch used and the base. No fetch, no network.
 func Create(
 	ctx context.Context, repoPath, root, repoName, branch, requestedBase string,
 ) (path, used string, base Base, err error) {
@@ -109,7 +105,8 @@ func Create(
 		ref := "refs/remotes/origin/" + requestedBase
 		_, validErr := git(ctx, repoPath, nil, "check-ref-format", "--branch", requestedBase)
 		_, refErr := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
-		if validErr != nil || refErr != nil || requestedBase == branch || requestedBase == "HEAD" || strings.HasPrefix(requestedBase, "origin/") || strings.HasPrefix(requestedBase, "refs/") {
+		if validErr != nil || refErr != nil || requestedBase == branch || requestedBase == "HEAD" ||
+			strings.HasPrefix(requestedBase, "origin/") || strings.HasPrefix(requestedBase, "refs/") {
 			return "", "", Base{}, errors.New("base must be a plain branch on origin, e.g. test/x")
 		}
 		start = ref

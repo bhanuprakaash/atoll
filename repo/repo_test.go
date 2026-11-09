@@ -38,8 +38,8 @@ func TestBranch(t *testing.T) {
 			}
 		})
 	}
-	if _, err := Branch("wip", "x"); !errors.Is(err, ErrType) {
-		t.Errorf("Branch with a bad type: %v, want ErrType", err)
+	if _, err := Branch("wip", "x"); err == nil || err.Error() != `branch type "wip": type must be feat, fix, chore, docs or test` {
+		t.Errorf("Branch with a bad type: %v", err)
 	}
 }
 

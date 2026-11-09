@@ -2,8 +2,8 @@
 
 ## Rules
 
-1. One ticket per branch, named `<type>/<slug>` (`feat`, `fix`, `chore`, `docs`, `test`), with a PR to
-   `main`. Never push `main`; never merge your own PR.
+1. One ticket per branch, named `<type>/<slug>` (`feat`, `fix`, `chore`, `docs`, `test`), with a
+   PR to `main`. Never push `main`; never merge your own PR.
 2. Smallest diff that closes the ticket. Nothing speculative: no option, layer or wrapper the ticket
    does not need now.
 3. Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `build:`): one-line subject,
