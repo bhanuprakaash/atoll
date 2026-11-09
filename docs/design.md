@@ -99,11 +99,13 @@ limited to the folders in Prompt, so Chief has no reach into a repo through them
 Chief runs on Claude only: `PUT` and `edit_bot` refuse a Codex model for it (same refusal style as
 repo access), and its model picker lists Claude's models. A Codex Chief comes back only when its
 no-shell setup is proven (`features.shell_tool = false` and `view_image = false` are the
-candidates; not run). A launch moves an older install's Chief from a Codex model to Claude's
-default model, and a first launch creates Chief on Claude. With Claude Code not signed in, Chief's
-thread answers "Sign in to Claude Code in Settings > Providers to use Chief" and runs nothing. The
-platform prompt says nothing about Chief's tools, so it stays true. Other Bots with the platform
-switch keep their file tools; `import_agent` adds no reach for them.
+candidates; not run). A launch moves a Chief that is on a Codex model to Claude's default model,
+and Chief's next first reply says so in a plain note. On a first launch with only Codex signed in,
+Chief is not started, and its thread and sidebar row say in plain words "Chief needs Claude. Sign in
+to Claude to use it." (no red, no error text). The platform prompt says nothing about Chief's tools,
+so it stays true. Other Bots with the platform switch keep their file tools. `import_agent` adds no
+reach for them: a Bot with a shell can already read `~/.claude/agents`, while Chief, with no shell,
+gets it only through this tool.
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
 registered repo has (REST answers 400 with the same text for repo, delegate and MCP server ids, and
