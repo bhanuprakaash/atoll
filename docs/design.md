@@ -96,16 +96,20 @@ access). Reef's MCP tools are unchanged and no other Bot gets the flag. Whether 
 Chief still loads under `--tools ""` is not verified. Chief reads a local agent file with
 `import_agent(path)` and a skill folder with `import_skill(path)`, both in the server, and both
 limited to the folders in Prompt, so Chief has no reach into a repo through them either.
-Chief runs on Claude only: `PUT` and `edit_bot` refuse a Codex model for it (same refusal style as
-repo access), and its model picker lists Claude's models. A Codex Chief comes back only when its
-no-shell setup is proven (`features.shell_tool = false` and `view_image = false` are the
-candidates; not run). A launch moves a Chief that is on a Codex model to Claude's default model,
-and Chief's next first reply says so in a plain note. On a first launch with only Codex signed in,
-Chief is not started, and its thread and sidebar row say in plain words "Chief needs Claude. Sign in
-to Claude to use it." (no red, no error text). The platform prompt says nothing about Chief's tools,
-so it stays true. Other Bots with the platform switch keep their file tools. `import_agent` adds no
-reach for them: a Bot with a shell can already read `~/.claude/agents`, while Chief, with no shell,
-gets it only through this tool.
+Chief prefers Claude. It must run for a user who has only Codex, since onboarding runs through
+Chief, so a Codex model stays allowed for it in `PUT`, `edit_bot` and the picker. A launch moves a
+Chief that is on a Codex model to Claude's default model only when Claude Code is signed in, and
+Chief's next first reply says so in a plain note. A first launch creates Chief on Claude's default
+model when Claude is signed in, else on Codex's. Chief is never refused a run for lack of Claude.
+**Known gap:** no-shell is not proven on Codex, so a Chief on Codex still has its shell and file
+tools. It can run commands and read files the Codex sandbox lets it read, which includes
+registered repos (I believe the Auto sandbox leaves reads open; not checked here), so "no repo
+access" does not hold for it. The #161 fix closes the gap once a Codex probe shows that
+`features.shell_tool = false`, `view_image = false` and `unified_exec` off leave Reef's MCP tools
+callable and stop shell and file reads; until then this section is not true of a Codex Chief. The
+platform prompt says nothing about Chief's tools, so it stays true either way. Other Bots with the
+platform switch keep their file tools. `import_agent` adds no reach for them: a Bot with a shell
+can already read `~/.claude/agents`, while Chief, with no shell, gets it only through this tool.
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
 registered repo has (REST answers 400 with the same text for repo, delegate and MCP server ids, and
