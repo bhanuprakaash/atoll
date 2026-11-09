@@ -328,6 +328,123 @@ after a failed undo counts a Bot that is already gone as removed.
     `--setting-sources project` (user and local settings off; hides the skills synced from the user's claude.ai account),
     `disableAllHooks`, `disableBundledSkills` and `skillOverrides` turning off `design`, `doctor`,
     `plugin-authoring` (the bundled skills that survive `disableBundledSkills`).
+  - Claude Code also keeps the owner's own setup out of a Bot's session (Claude Code 2.1.319):
+    - Ancestor `CLAUDE.md` files. `--setting-sources project` still loads the `CLAUDE.md`,
+      `CLAUDE.local.md`, `.claude/CLAUDE.md` and `.claude/rules` of every directory above the cwd,
+      so the owner's `~/.claude/CLAUDE.md` reaches a Bot whenever the worktree is under their home.
+      `--settings` carries `claudeMdExcludes` to stop that. The repo's own `CLAUDE.md` (and the
+      `AGENTS.md` it imports), its `.claude/skills` and the `--add-dir` skills still load.
+      - Each ancestor `<dir>` gets two entries: `<dir>/*.md` and `<dir>/.claude/**`. The cwd itself
+        is never listed. `<dir>/*.md` also hides a `README.md`, which `claude` never loads as
+        memory.
+      - Ancestors are every directory strictly above the cwd, up to and including `/`, taken from
+        the cwd as Reef starts `claude` (`cmd.Dir`, which Go also sets as `PWD`) and from its
+        `EvalSymlinks` form, with duplicates dropped. With the cwd reached through a symlinked
+        ancestor, a pattern with the link path and a pattern with the resolved path each hide the
+        file, and so do both together (macOS `/var` vs `/private/var` is the same case).
+      - In `<dir>`, each of `\ * ? [ ] { } ( )` is replaced by `?`, which matches one character and
+        never `/`. That hides the file in every case run: folders `g[1]x`, `a*b`, `c{a,b}d`,
+        `g[1]x*{a,b}`, `p(q` and one with a backslash.
+      - A raw pattern with these characters is unreliable. Run, raw: `g[1]x` and `a*b` hide the
+        file; `c{a,b}d`, `g[1]x*{a,b}` and `p(q` do not (two runs each). Backslash escapes do not
+        work either. `) ! + @ ^ $ # , %` match raw. Spaces and non-ASCII (`café-日本-😀 x`) match raw
+        and are left as they are.
+      - `/` gives `/*.md` and `/.claude/**`, which `claude` accepts. Unverified: that they hide a
+        `/CLAUDE.md` (writing one needs root).
+    - `--settings` carries `autoMemoryEnabled: false`: no `memory/` folder under `projects/` and no
+      auto-memory section in the system prompt.
+    - `--disallowedTools` removes every built-in tool that starts, messages, lists, schedules or
+      reaches other sessions, agents, projects, remote runs or the owner's machine outside the Bot's
+      own run. The value, exactly, is the lines below joined by single spaces (one argument):
+      ```text
+      Task Workflow ListAgents SendMessage SendToProject SendToProjectContext RemoteTrigger
+      DesignSync PublishPlugin ShareOnboardingGuide PushNotification CronCreate CronDelete
+      CronList ScheduleWakeup Monitor EnterWorktree ExitWorktree
+      ```
+      - Other sessions and agents: `Task` (the built-in Agent tool), `Workflow` (also starts
+        subagents, so removing only `Task` leaves them), `ListAgents` (lists Remote Control and
+        cloud sessions on other machines), `SendMessage` (messages them).
+      - Remote claude.ai: `SendToProject` (posts to a Claude Project as the user),
+        `SendToProjectContext` (its companion), `RemoteTrigger` (routines and their remote runs),
+        `DesignSync` (claude.ai design projects), `PublishPlugin` and `ShareOnboardingGuide`
+        (uploads to claude.ai).
+      - Scheduling and background: `CronCreate`, `CronDelete`, `CronList`, `ScheduleWakeup`
+        (re-enter a session after the run's turn), `Monitor` (background streams, including from a
+        WebSocket).
+      - The owner's machine: `PushNotification` (terminal notification, and the phone when Remote
+        Control is connected).
+      - Worktrees: `EnterWorktree`, `ExitWorktree`. `EnterWorktree` creates a worktree and a
+        `worktree-<name>` branch inside the repo (`<repo>/.claude/worktrees/<name>`); Reef owns
+        worktrees and nothing is written into the repo.
+      - Delegation goes only through Reef's own tool (see Delegation). A dedicated helpers tool is
+        a later ticket (#205).
+    - Tools that stay, from the `system/init` event of `claude` 2.1.319 with Reef's flags, the same
+      in Ask, Auto and Full: `AskUserQuestion`, `Bash`, `Edit`, `EnterPlanMode`, `ExitPlanMode`,
+      `NotebookEdit`, `Read`, `ReportFindings`, `Skill`, `TaskStop`, `ToolSearch`, `WebFetch`,
+      `WebSearch`, `Write` and Reef's `mcp__atoll__*` tools. That is 14 built-in tools plus Reef's
+      tools; without the flag the list has 35 entries. Run: with the list, none of the blocked tools
+      is in `init`, and a Bot called a Reef MCP tool, `Bash`, `Write` and `Read`.
+      - `TaskStop` stops background tasks of this session; with `Task`, `Workflow` and `Monitor`
+        blocked only Bash background tasks remain. Unverified: that another session's task ID is
+        refused.
+      - `WebFetch` and `WebSearch` reach the internet, not other sessions or the machine's
+        sessions, and stay. `WebFetch` is in the list only once `Task` is removed.
+      - `ReportFindings`, `AskUserQuestion` and the plan tools talk only to the host (Reef) and
+        stay.
+      - The init `mcp_servers` held only Reef's server. Unverified: an account with claude.ai
+        connectors (`ENABLE_CLAUDEAI_MCP_SERVERS=false` is set; the test account had none).
+      - Known gap: a deny list covers the tools of this version; a tool added by a later Claude Code
+        is open until listed. `--tools` with the 14 allowed names gave the same init list on
+        2.1.319 and would close that gap. The e2e check compares the init tool list with the set
+        above, so an upgrade that adds a tool fails it.
+    - The Bash tool runs through `CLAUDE_CODE_SHELL_PREFIX`, a script that unsets every variable
+      starting with `CLAUDE` or `ATOLL_MCP_` and then runs the command. A Bot's shell has no
+      `CLAUDE_CONFIG_DIR`, and `env | grep -c CLAUDE` prints 0.
+      - `ATOLL_MCP_<n>` carry the MCP secrets (see the known gap below) and are otherwise in the
+        shell's `env`. `claude` keeps its own copy: it still reads its config folder and expands
+        `${ATOLL_MCP_<n>}` in MCP headers (an MCP server received `Bearer <ATOLL_MCP_0 value>`).
+      - The script, exactly:
+        ```sh
+        #!/bin/bash
+        for v in $(compgen -e | grep -E '^(CLAUDE|ATOLL_MCP_)'); do unset "$v"; done
+        exec bash -c "$*"
+        ```
+      - `claude` passes the whole command as one argument (a `source <snapshot> … eval '<cmd>'`
+        string), so `"$*"` is right. Nested quotes, `$()`, pipes and `cd` run correctly.
+      - The server writes the script on every start to `<data dir>/bin/claude-shell-prefix`, through
+        `.claude-shell-prefix.tmp` in the same folder (so the rename stays on one filesystem), mode
+        0500, owned by the user running Reef. Every run sets `CLAUDE_CODE_SHELL_PREFIX` to that
+        path.
+      - The value is the plain path, no quotes. A path with a space works (the macOS data dir is
+        `~/Library/Application Support/Atoll`); literal quotes around it make every Bash call fail
+        with exit 127. Extra arguments after the path are unverified, so none are used.
+      - The script's shell is `bash` (macOS `/bin/bash` 3.2 has `compgen -e`); the snapshot inside
+        it still sets up the user's own shell. Unverified: macOS and a zsh user (the check is the
+        same run on a Mac).
+    - Not used: `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` (forces permission mode `default`, which breaks
+      Auto and Full access); a `PreToolUse` hook (needs `disableAllHooks` off); a settings `env`
+      entry (changes `claude` itself and signs it out); `BASH_ENV` (a login shell ignores it);
+      `--setting-sources ""` and `CLAUDE_CODE_DISABLE_CLAUDE_MDS` (also drop the repo's files);
+      a `!` negation in `claudeMdExcludes` (does not work).
+    - Known gap (issue #173 owns the fix): a Bot can read other runs' secrets and Reef's own
+      environment through `/proc`. Bots run as the same OS user as Reef, so on Linux a Bot can read
+      `/proc/<pid>/environ` of `claude` and of any other process of that user.
+      - `claude`'s environment holds `CLAUDE_CONFIG_DIR` (Reef's provider folder, with the login).
+      - It holds `ATOLL_MCP_<n>`, one per secret `argv` hides: Reef's MCP URL for the run (it
+        carries the run's token), the GitHub MCP bearer (the same token as `GH_TOKEN`), and every
+        secret, header and env value of the MCP servers attached to that Bot, an OAuth bearer
+        included.
+      - It holds the extras given to the run on purpose (`GH_TOKEN`, `OAUTH_TOKEN`, `GIT_CONFIG_*`,
+        `GH_CONFIG_DIR`, `GLAB_CONFIG_DIR`), which the shell has anyway.
+      - Only this Bot's own connections and servers are in there, none that were not attached.
+      - The same read reaches other live runs' `claude` processes (their MCP URLs and run tokens)
+        and the Reef server's own environment, which is not stripped.
+      - The prefix hides the variables from `env`; it is not a boundary. A Bot can also run `claude`
+        itself, which then uses the owner's `~/.claude`, because `HOME` is never changed.
+      - Observed on Linux: a Bot's shell listed `/proc/*/environ` entries holding
+        `CLAUDE_CONFIG_DIR` and `ATOLL_MCP_0` for `claude` and for other sessions. Unverified:
+        macOS has no `/proc`, but `ps eww -p <pid>` should show a same-user process's environment;
+        Codex's process holds the same extras.
   - Codex: `skills.bundled.enabled=false`; plugins, remote plugins and apps off; each skill in
     `~/.agents/skills` disabled by the path of its `SKILL.md`, since a skill's name can differ from
     its folder (Codex finds that folder through `HOME`).
@@ -345,6 +462,26 @@ after a failed undo counts a Bot that is already gone as removed.
   `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`) and the settings that carry a login (`OAUTH_TOKEN`,
   `GITLAB_HOST`, `GIT_CONFIG_PARAMETERS`, `SSH_AUTH_SOCK`), with PATH set to the discovery folders
   first.
+  - It also drops `DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR` and `DISPLAY`, so a Bot's shell
+    cannot reach the Linux secret store (Secret Service) where Reef keeps its tokens.
+  - The strip is the same on every OS (macOS sets none of them; its keychain has a per-app ACL) and
+    for both providers, because it lives in `provider.Env`.
+  - `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` stay: they lead to no secret store.
+  - Both of the first two must go. On Linux, `secret-tool` still reached the store with only one
+    removed (an unset address defaults to `$XDG_RUNTIME_DIR/bus`), and failed with "Cannot
+    autolaunch D-Bus without X11 $DISPLAY" with both removed (run against a private `dbus-daemon`
+    and `gnome-keyring-daemon`). `DISPLAY` goes because that autolaunch would find a bus on an X
+    session. Unverified: the autolaunch case (needs an X server) and Codex (same shared code).
+  - Side effects, accepted: without `XDG_RUNTIME_DIR` a Bot's tools lose what lives under it:
+    `systemctl --user`, rootless containers, Wayland and PipeWire sockets (so a browser run) and a
+    gpg-agent socket under `/run/user/<uid>`. `claude` itself does not need it. Unverified: those
+    tools.
+  - Only provider children get the stripped env. The server keeps its own and reads tokens
+    in-process. It hands a Bot only what the run needs (`GH_TOKEN` or `OAUTH_TOKEN` for `gh` and
+    `glab`, MCP headers), so `gh auth status` in a GitHub-connected Bot still works.
+  - Limit: a same-user process can still open the bus socket by its path (`/run/user/<uid>/bus`).
+    The strip hides the address; it is not a boundary. A same-user process can also kill the host
+    keyring daemon by signal, and a run failed with "failed to unlock collection" when one did.
 - Transport: Codex through `codex app-server` (JSON-RPC over stdio). Claude Code as
   `claude -p --input-format stream-json --output-format stream-json`, driven from Go. Copy both
   adapters from old Reef (`agent/codex`, `agent/claude`). *The Claude Agent SDK runs the same CLI
@@ -430,6 +567,57 @@ after a failed undo counts a Bot that is already gone as removed.
   an overlapping run and change files a live run reads.* A provider without skills gets a list in the
   prompt and reads the file on demand. Never written into the repo. Skills the repo commits itself (`.claude/skills`,
   `.agents/skills`) still load, like its CLAUDE.md.
+- Home paths in imported skills. An imported skill's files may point at the owner's own home
+  (poteto-mode's scripts call `~/.claude/skills/poteto-mode/scripts/...`); left alone, a Bot would
+  run the owner's real files. Import and Re-import (`import_skill`,
+  `POST /api/skills/{id}/reimport`, same code) go over `SKILL.md` and every other stored text file
+  (scripts included; binaries are not stored) and never write the source folder.
+  - Home reference: `~/` (not preceded by a letter, digit, `.`, `_`, `-`, `/` or `~`, so
+    `https://x/~/y` and `a~/b` do not count), `$HOME` or `${HOME}` (with or without a following
+    `/`), and the server's own home directory as an absolute path (`/Users/<name>`, `/home/<name>`).
+  - Rewritable: a home reference to the skill's own folder, and nothing more.
+    - `import_skill` takes only a direct child of the resolved `~/.claude/skills` or
+      `~/.codex/skills` (see Prompt). `<folder>` is the entry's name there, not its symlink target.
+    - The forms are `~/`, `$HOME/` or `${HOME}/` followed by `.claude/skills/<folder>` or
+      `.codex/skills/<folder>` (the root it was imported from), or the resolved folder's absolute
+      path.
+    - The name must end there: the next character is `/` or not a letter, digit, `.`, `_` or `-`,
+      so `~/.claude/skills/x-v2` is not the folder `x`.
+    - It becomes `{{ATOLL_SKILL_DIR}}`: `~/.claude/skills/x/scripts/run.sh` is stored as
+      `{{ATOLL_SKILL_DIR}}/scripts/run.sh`. A stored skill holds no own-folder home path.
+    - A relative path would be wrong for scripts: a Bot's cwd is the repo worktree.
+  - Refused: any other home reference left after the rewrite: another skill
+    (`~/.claude/skills/<other>/`), `~/.ssh`, dotfiles, shared tools, a bare `$HOME`, an absolute
+    home path. There is no warning path.
+    - The refusal is atomic: nothing is stored, and on Re-import the stored skill stays as it was.
+    - The check runs after the rewrite and before the `unchanged` / `confirm` comparison, so a
+      refused skill never reaches `confirm`.
+    - Prose counts: a `~/` or `$HOME` in an example or a fenced block is refused like a script's.
+  - Placement, per run and for both providers, replaces every `{{ATOLL_SKILL_DIR}}` in the copies
+    of `SKILL.md` and the text files with the absolute path of that copy:
+    `<run folder>/.claude/skills/<name>` for Claude Code, `<run folder>/<name>` for Codex
+    (`<name>` is the folder name `Place` already chooses).
+    - The stored text keeps a token because the path is unknown at import.
+    - The scripts then run from the placed copy and the owner's files stay out of it.
+    - The token also works in skills written in Reef. A skill that already contains the literal
+      `{{ATOLL_SKILL_DIR}}` gets it replaced like any other; it cannot be written literally.
+  - The answer of `import_skill` and of reimport has a status `refused` (beside `created`,
+    `replaced`, `unchanged`, `confirm`). It is HTTP 200, like the other statuses.
+    - Shape: `{"status":"refused","name":"<skill name>","reason":"skill \"<name>\" refers to files
+      in your home folder that a Bot cannot use: <file>:<line> <ref>, …","refs":[{"file":
+      "scripts/run.sh","line":12,"ref":"~/.ssh/config"}]}`.
+    - `file` is the path inside the skill as it would be stored (`SKILL.md`, `scripts/run.sh`);
+      `line` is 1-based in that file; `ref` is the matched text up to the next space or quote
+      (`~/.ssh/config`, `$HOME`, `/home/<name>/x`). One entry per occurrence, ordered by file, then
+      line. No skill id is returned: nothing was stored.
+    - A successful answer carries `rewritten` (file and count).
+  - Chief's reply on `refused` names the skill and each file, line and path, and says how to fix
+    it: edit the skill so it stops using that path, or copy the file into the skill folder and
+    point at it as `~/.claude/skills/<folder>/<file>` (which then rewrites). Its prompt's import
+    line says "refused" in place of "flagged"; the platform block stays within 2000 bytes.
+  - Settings > Skills shows the same reason and list inline on Re-import. A skill row carries no
+    warning.
+  - A skill imported before this stays as stored until Re-import.
 
 ## MCP servers
 
@@ -638,7 +826,7 @@ Ask first
 Import a local skill
 - Import a skill folder with import_skill(path). For a Bot from an agent file (~/.claude/agents/<name>.md): read it, import each skill it names, attach the ids in create_bot. Ask first applies.
 - The persona keeps the agent's expertise, never a ~/.claude path.
-- Say what import_skill skipped or flagged. Re-import: list added, changed, removed; on confirm, warn that Reef edits get overwritten; replace: true only after a yes.
+- Say what import_skill skipped or refused. Re-import: list added, changed, removed; on confirm, warn that Reef edits get overwritten; replace: true only after a yes.
 
 Voice
 - A calm, dry reef keeper. At most one sea word per reply.

@@ -268,11 +268,13 @@ func importAgent(call func(string, any) (map[string]any, error), prompt string) 
 // deniedImport is a Bot without the platform switch guessing import_skill: it must not be listed
 // and the call must fail.
 func deniedImport(c *MCP) (string, error) {
-	if c.Tools["import_skill"] {
-		return "", fmt.Errorf("non-platform Bot received import_skill")
-	}
-	if text, bad, err := c.Call("import_skill", json.RawMessage(`{"path":"/"}`)); err == nil && !bad {
-		return "", fmt.Errorf("non-platform guessed import_skill succeeded: %s", text)
+	for _, tool := range []string{"import_skill", "import_agent"} {
+		if c.Tools[tool] {
+			return "", fmt.Errorf("non-platform Bot received %s", tool)
+		}
+		if text, bad, err := c.Call(tool, json.RawMessage(`{"path":"/"}`)); err == nil && !bad {
+			return "", fmt.Errorf("non-platform guessed %s succeeded: %s", tool, text)
+		}
 	}
 	return "import_skill denied.", nil
 }
@@ -374,6 +376,10 @@ func callOne(c *MCP, prompt string, before func(string, json.RawMessage) error) 
 	}
 	text, bad, err := c.Call(in.Tool, in.Args)
 	if err != nil {
+		var rpc *RPCError
+		if errors.As(err, &rpc) {
+			return fmt.Sprintf("Error: %s\n(JSON-RPC error %d)", rpc.Message, rpc.Code), nil
+		}
 		return "Error: " + errors.Unwrap(err).Error(), nil
 	}
 	if bad {
