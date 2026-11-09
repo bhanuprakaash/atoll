@@ -99,7 +99,11 @@ limited to the folders in Prompt, so Chief has no reach into a repo through them
 Chief runs on Claude only: `PUT` and `edit_bot` refuse a Codex model for it (same refusal style as
 repo access), and its model picker lists Claude's models. A Codex Chief comes back only when its
 no-shell setup is proven (`features.shell_tool = false` and `view_image = false` are the
-candidates; not run). The platform prompt says nothing about Chief's tools, so it stays true.
+candidates; not run). A launch moves an older install's Chief from a Codex model to Claude's
+default model, and a first launch creates Chief on Claude. With Claude Code not signed in, Chief's
+thread answers "Sign in to Claude Code in Settings > Providers to use Chief" and runs nothing. The
+platform prompt says nothing about Chief's tools, so it stays true. Other Bots with the platform
+switch keep their file tools; `import_agent` adds no reach for them.
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
 registered repo has (REST answers 400 with the same text for repo, delegate and MCP server ids, and
@@ -610,9 +614,10 @@ after a failed undo counts a Bot that is already gone as removed.
   Codex agent folder until a real one is shown: add it with a Codex Chief.
 - `import_skill` and Re-import take only a skill folder that is, once resolved, a direct child of the
   resolved `~/.claude/skills` or `~/.codex/skills`, with the same symlink, `..` and error rules as
-  `import_agent`. Before this, any absolute path worked, so Chief could copy a repo's text files into
+  `import_agent`; `path` is absolute or starts with `~/`, and a `~/` path resolves against `HOME`.
+  Before this, any absolute path worked, so Chief could copy a repo's text files into
   Reef's store and read them there. A skill imported earlier from another folder keeps working but
-  its Re-import is refused until the folder is moved under one of the two. Both tools read the
+  its Re-import is refused (the same invalid-params error, naming the folder and the two allowed ones) until the folder is moved under one of the two. Both tools read the
   user's own files as the user, only on Chief's ask.
 - Relevance counts distinct non-stop-word message words matching body or why; ties favor convention, decision, lesson, finding, fact, then newer items.
 - In prompts a body is cut to 400 bytes and a why to 200, at a rune boundary, then `…`.
