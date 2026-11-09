@@ -39,9 +39,15 @@ never a dependency.
 
   | Mode | Claude Code | Codex |
   | --- | --- | --- |
-  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; every worktree under the worktree root and the registered repo's git common directory are writable; `approvalPolicy: on-request` |
+  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; the worktree root (including every worktree under it), the repo's git objects, refs and logs, and the thread's own git directory are writable; `approvalPolicy: on-request` |
   | Ask | default mode + Reef's permission prompt tool | `approvalPolicy: untrusted` |
   | Full access | `--permission-mode bypassPermissions` | `danger-full-access` sandbox, `approvalPolicy: never` |
+
+  Codex Auto cannot write the repo's `.git/config` or `.git/hooks`: either could escape the sandbox
+  when Reef next runs git. Reef disables hooks on its own git calls as a second guard. `start_work`
+  sets the branch upstream when origin exists, since the Bot cannot write config. `git push -u` pushes
+  but cannot save upstream. Git may print `packed-refs.lock: Read-only file system` on commit, pull
+  or stash; these commands can still succeed with exit 0.
 
   *Claude's auto mode classifier runs safe steps and blocks risky ones (Claude reports the block);
   explicit ask rules still come to the thread as cards.* Full access never asks, even to delete

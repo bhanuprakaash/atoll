@@ -75,6 +75,13 @@ func Create(
 		base.Note = aheadNote(ctx, repoPath)
 	}
 	path, used, err = add(ctx, repoPath, root, repoName, branch, start)
+	if err == nil && Origin(ctx, repoPath) != "" {
+		for key, value := range map[string]string{"remote": "origin", "merge": "refs/heads/" + used} {
+			if _, err = git(ctx, repoPath, nil, "config", "branch."+used+"."+key, value); err != nil {
+				return path, used, base, fmt.Errorf("set upstream: %w", err)
+			}
+		}
+	}
 	return path, used, base, err
 }
 
@@ -246,6 +253,16 @@ func HasCommit(ctx context.Context, path string) bool {
 	return err == nil
 }
 
+// GitDirs supplies roots up front because Codex sets its sandbox at turn start, before start_work.
+func GitDirs(ctx context.Context, path string) (string, string, error) {
+	common, err := git(ctx, path, nil, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return "", "", err
+	}
+	dir, err := git(ctx, path, nil, "rev-parse", "--absolute-git-dir")
+	return common, dir, err
+}
+
 func seedIndex(ctx context.Context, dir, to string) error {
 	from, err := git(ctx, dir, nil, "rev-parse", "--path-format=absolute", "--git-path", "index")
 	if err != nil {
@@ -265,7 +282,7 @@ func seedIndex(ctx context.Context, dir, to string) error {
 }
 
 func git(ctx context.Context, dir string, env []string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=/dev/null", "-C", dir}, args...)...)
 	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0"), env...)
 	out, err := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(out))
