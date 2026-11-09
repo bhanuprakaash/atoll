@@ -19,19 +19,49 @@ var _rpcCode = regexp.MustCompile(`\n\(JSON-RPC error (-?\d+)\)$`)
 
 const _invalidParams = "-32602"
 
-// chiefTool has Chief call one tool. It returns the result text, or for an error the message and
-// the JSON-RPC code ("" for a tool result with isError).
+// botTool has b call one tool. It returns the result text, or for an error the message and the
+// JSON-RPC code ("" for a tool result with isError), and the run's events.
+func botTool(t *testing.T, s *server, b bot, tool string, args map[string]any) (text, code string, failed bool, events []event) {
+	t.Helper()
+	th := s.newThread(t, b)
+	ch := s.events(t, th)
+	payload, _ := json.Marshal(map[string]any{"tool": tool, "args": args})
+	r := s.send(t, th, "Call a platform tool. "+string(payload))
+	events = until(t, ch, r.ID, "run_finished")
+	done := s.run(t, r.ID)
+	if done.Status != "done" {
+		t.Fatalf("%s %s %s: %+v", b.Name, tool, payload, done)
+	}
+	reply, isErr := strings.CutPrefix(done.Reply, "Error: ")
+	if !isErr {
+		return reply, "", false, events
+	}
+	if m := _rpcCode.FindStringSubmatch(reply); m != nil {
+		return strings.TrimSuffix(reply, m[0]), m[1], true, events
+	}
+	return reply, "", true, events
+}
+
+// chiefTool has Chief call one tool.
 func chiefTool(t *testing.T, s *server, tool string, args map[string]any) (text, code string, failed bool) {
 	t.Helper()
-	reply := chiefCall(t, s, tool, args).reply
-	msg, isErr := strings.CutPrefix(reply, "Error: ")
-	if !isErr {
-		return reply, "", false
+	text, code, failed, _ = botTool(t, s, chief(t, s).bot, tool, args)
+	return text, code, failed
+}
+
+// noPlatformChange checks a read call recorded no change: no event and no entry in the thread's changes.
+func noPlatformChange(t *testing.T, s *server, c chiefRun) {
+	t.Helper()
+	for _, e := range c.events {
+		if e.Type == "platform_changed" {
+			t.Errorf("import_agent recorded a change: %v", e.Data)
+		}
 	}
-	if m := _rpcCode.FindStringSubmatch(msg); m != nil {
-		return strings.TrimSuffix(msg, m[0]), m[1], true
+	var changes []any
+	s.do(t, "GET", "/api/threads/"+c.thread+"/changes", nil, &changes, http.StatusOK)
+	if len(changes) != 0 {
+		t.Errorf("import_agent left changes: %v", changes)
 	}
-	return msg, "", true
 }
 
 func TestChiefNoShell_ClaudeRunsWithoutTools(t *testing.T) {
@@ -102,6 +132,7 @@ func TestChiefNoShell_ImportAgent(t *testing.T) {
 	writeFile(t, secret, "outside")
 	writeFile(t, filepath.Join(agents, "sub", "deep.md"), "nested")
 	writeFile(t, filepath.Join(agents, "notes.txt"), "text")
+	writeFile(t, filepath.Join(agents, "exact.md"), strings.Repeat("a", 256*1024))
 	writeFile(t, filepath.Join(agents, "big.md"), strings.Repeat("a", 256*1024+1))
 	writeFile(t, filepath.Join(agents, "bad.md"), "\xff\xfe not utf-8")
 	if err := os.Mkdir(filepath.Join(agents, "dir.md"), 0o755); err != nil {
@@ -119,19 +150,24 @@ func TestChiefNoShell_ImportAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if text, _, failed := chiefTool(t, s, "import_agent", map[string]any{"path": "~/.claude/agents/exact.md"}); failed || !strings.Contains(text, `"exact"`) {
+		t.Errorf("a file of exactly 256 KiB: %q (error %v), want it read", text[:min(len(text), 200)], failed)
+	}
+
+	const folder, onlyMD, regular = ".claude/agents", "only .md files directly in", "regular file"
 	for _, tt := range []struct{ name, path, want string }{
-		{"dot-dot out of the folder", "~/.claude/agents/../secret.md", "agents"},
-		{"dot-dot in an absolute path", agents + "/../secret.md", "agents"},
-		{"nested folder", "~/.claude/agents/sub/deep.md", "agents"},
-		{"not markdown", "~/.claude/agents/notes.txt", ".md"},
-		{"symlink to a file outside", "~/.claude/agents/link.md", "agents"},
-		{"symlink to a file in .claude", "~/.claude/agents/up.md", "agents"},
-		{"directory", "~/.claude/agents/dir.md", ".md"},
-		{"fifo", "~/.claude/agents/pipe.md", ".md"},
-		{"over 256 KiB", "~/.claude/agents/big.md", "256"},
+		{"dot-dot out of the folder", "~/.claude/agents/../secret.md", folder},
+		{"dot-dot in an absolute path", agents + "/../secret.md", folder},
+		{"nested folder", "~/.claude/agents/sub/deep.md", folder},
+		{"not markdown", "~/.claude/agents/notes.txt", onlyMD},
+		{"symlink to a file outside", "~/.claude/agents/link.md", folder},
+		{"symlink to a file in .claude", "~/.claude/agents/up.md", folder},
+		{"directory", "~/.claude/agents/dir.md", regular},
+		{"fifo", "~/.claude/agents/pipe.md", regular},
+		{"over 256 KiB", "~/.claude/agents/big.md", "256 KiB"},
 		{"not UTF-8", "~/.claude/agents/bad.md", "UTF-8"},
 		{"missing", "~/.claude/agents/gone.md", "not found"},
-		{"a folder", t.TempDir(), "agents"},
+		{"a folder", t.TempDir(), folder},
 	} {
 		text, code, failed := chiefTool(t, s, "import_agent", map[string]any{"path": tt.path})
 		if !failed {
@@ -190,6 +226,10 @@ func TestChiefNoShell_ImportSkillOnlyFromSkillFolders(t *testing.T) {
 	if err := os.MkdirAll(skills, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	link := filepath.Join(skills, "linked")
+	if err := os.Symlink(skill(t.TempDir(), "outside"), link); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, tt := range []struct{ name, path string }{
 		{"a registered repo's skill folder", skill(filepath.Join(repoPath, ".claude", "skills"), "in-repo")},
@@ -199,7 +239,8 @@ func TestChiefNoShell_ImportSkillOnlyFromSkillFolders(t *testing.T) {
 		{"the repo itself", repoPath},
 		{"the skills folder itself", skills},
 		{"a folder two levels down", skill(filepath.Join(skills, "group"), "nested")},
-		{"a dot-dot way out", filepath.Join(skills, "..", "elsewhere", filepath.Base(skill(filepath.Join(m.home, ".claude", "elsewhere"), "up")))},
+		{"dot-dot out of the skills folder", skills + "/../elsewhere/" + filepath.Base(skill(filepath.Join(m.home, ".claude", "elsewhere"), "up"))},
+		{"a skill-folder name that is a symlink to /tmp", link},
 	} {
 		text, code, failed := chiefTool(t, s, "import_skill", map[string]any{"path": tt.path})
 		if !failed {
@@ -269,6 +310,8 @@ func TestChiefNoShell_ChiefStillDoesItsJob(t *testing.T) {
 		t.Fatalf("import_agent reply %q, want lagoon and its file", imp.reply)
 	}
 
+	noPlatformChange(t, s, imp)
+
 	sk := chiefCall(t, s, "import_skill", map[string]any{"path": "~/.claude/skills/reef-greeting"})
 	var imported importResult
 	if err := json.Unmarshal([]byte(sk.reply), &imported); err != nil || imported.Status != "created" || imported.Skill == nil {
@@ -281,4 +324,74 @@ func TestChiefNoShell_ChiefStillDoesItsJob(t *testing.T) {
 		t.Fatalf("created Bot: %+v", b)
 	}
 	platformChange(t, created.events, "chief", created.thread, created.run, "bot", id, "create")
+}
+
+func TestChiefNoShell_ImportAgentForAnyPlatformBot(t *testing.T) {
+	m, s := start(t, "claude")
+	writeFile(t, filepath.Join(m.home, ".claude", "agents", "lagoon.md"), "---\nname: lagoon\n---\nHi.\n")
+	var keeper bot
+	s.do(t, "POST", "/api/bots", map[string]any{"name": "Keeper", "persona": "Keeps the reef.", "provider": "claude", "repo_access": "all", "can_manage_platform": true}, &keeper, http.StatusCreated)
+	text, _, failed, events := botTool(t, s, keeper, "import_agent", map[string]any{"path": "~/.claude/agents/lagoon.md"})
+	var got struct{ Name string }
+	if failed || json.Unmarshal([]byte(text), &got) != nil || got.Name != "lagoon" {
+		t.Fatalf("a platform Bot that is not Chief called import_agent: %q (error %v)", text, failed)
+	}
+	for _, e := range events {
+		if e.Type == "platform_changed" {
+			t.Errorf("import_agent recorded a change: %v", e.Data)
+		}
+	}
+}
+
+func TestChiefNoShell_ReimportRefusedOutsideSkillFolders(t *testing.T) {
+	m, s := start(t, "claude")
+	root := filepath.Join(m.home, ".claude", "skills", "greet")
+	writeFile(t, filepath.Join(root, "SKILL.md"), "---\nname: greet\ndescription: Greets.\n---\nHello.\n")
+	if text, _, failed := chiefTool(t, s, "import_skill", map[string]any{"path": root}); failed || !strings.Contains(text, `"created"`) {
+		t.Fatalf("import_skill %s: %q (error %v)", root, text, failed)
+	}
+	var skills []librarySkill
+	s.do(t, "GET", "/api/skills", nil, &skills, http.StatusOK)
+	if len(skills) != 1 {
+		t.Fatalf("library: %+v", skills)
+	}
+
+	// An earlier Reef imported it from a folder outside the two roots.
+	elsewhere := filepath.Join(t.TempDir(), "greet")
+	writeFile(t, filepath.Join(elsewhere, "SKILL.md"), "---\nname: greet\ndescription: Greets.\n---\nHello.\n")
+	s.kill()
+	dbExec(t, m, "UPDATE skills SET source = '"+elsewhere+"'")
+	s = m.serve(t)
+
+	var refused struct {
+		Error string `json:"error"`
+	}
+	s.do(t, "POST", "/api/skills/"+skills[0].ID+"/reimport", map[string]bool{"replace": false}, &refused, http.StatusBadRequest)
+	for _, want := range []string{elsewhere, ".claude/skills", ".codex/skills"} {
+		if !strings.Contains(refused.Error, want) {
+			t.Errorf("reimport refusal %q does not name %q", refused.Error, want)
+		}
+	}
+	s.do(t, "GET", "/api/skills", nil, &skills, http.StatusOK)
+	if len(skills) != 1 || !strings.Contains(skills[0].Content, "Hello.") {
+		t.Errorf("the skill stopped working after the refusal: %+v", skills)
+	}
+}
+
+func TestChiefNoShell_ChiefProvider(t *testing.T) {
+	m := newMachine(t, "claude", "codex")
+	m.signIn(t, "claude")
+	m.signIn(t, "codex")
+	s := m.serve(t)
+	if got := chief(t, s).Provider; got != "claude" {
+		t.Fatalf("first launch with both signed in: Chief on %q, want claude", got)
+	}
+
+	// A deliberate Codex choice stays through launches while Claude is signed in.
+	s.do(t, "PUT", "/api/bots/chief", map[string]string{"provider": "codex", "model": _fakeModels["codex"][0]}, nil, http.StatusOK)
+	s.kill()
+	s = m.serve(t)
+	if got := chief(t, s).Provider; got != "codex" {
+		t.Errorf("Chief after a deliberate switch to codex and a launch: %q, want codex", got)
+	}
 }
