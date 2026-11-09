@@ -28,14 +28,15 @@ type (
 				Executable bool   `json:"executable"`
 			} `json:"files"`
 		} `json:"skill"`
-		Added   []string  `json:"added"`
-		Changed []string  `json:"changed"`
-		Removed []string  `json:"removed"`
-		Skipped []skipped `json:"skipped"`
-		Warning string    `json:"warning"`
-		Name    string    `json:"name"`
-		Reason  string    `json:"reason"`
-		Refs    []refusal `json:"refs"`
+		Added     []string        `json:"added"`
+		Changed   []string        `json:"changed"`
+		Removed   []string        `json:"removed"`
+		Skipped   []skipped       `json:"skipped"`
+		Warning   string          `json:"warning"`
+		Name      string          `json:"name"`
+		Reason    string          `json:"reason"`
+		Refs      []refusal       `json:"refs"`
+		Rewritten json.RawMessage `json:"rewritten"`
 	}
 
 	// refusal is one home reference a refused import found.
@@ -243,7 +244,7 @@ func TestSkillFiles_BotRunsPlacedScript(t *testing.T) {
 			if filepath.Dir(placed.Path) != dir || strings.HasPrefix(placed.Path, m.home+string(filepath.Separator)) {
 				t.Fatalf("placed at %s, want %s outside HOME", placed.Path, dir)
 			}
-			checkPlaced(t, placed.Files, placed.Path, files)
+			checkPlaced(t, placed.Files, filepath.Dir(placed.Path), files)
 			folderGone(t, filepath.Join(m.providerDir(p), "runs", r.ID))
 		})
 	}
@@ -356,7 +357,7 @@ func TestSkillFiles_SmallerSetIsPlaced(t *testing.T) {
 			}
 			inventory := skillInventories(t, m, p)
 			last := potetoCopy(t, inventory[len(inventory)-1])
-			checkPlaced(t, last.Files, last.Path, put.Files)
+			checkPlaced(t, last.Files, filepath.Dir(last.Path), put.Files)
 		})
 	}
 }
@@ -487,7 +488,7 @@ func TestSkillFiles_LiveRunKeepsItsCopy(t *testing.T) {
 			}
 			inventory := skillInventories(t, m, p)
 			first := potetoCopy(t, inventory[len(inventory)-1])
-			checkPlaced(t, first.Files, first.Path, old)
+			checkPlaced(t, first.Files, filepath.Dir(first.Path), old)
 			folderGone(t, filepath.Join(m.providerDir(p), "runs", live.ID))
 
 			next := s.send(t, th, "Run the poteto-mode script scripts/check.")
@@ -497,7 +498,7 @@ func TestSkillFiles_LiveRunKeepsItsCopy(t *testing.T) {
 			}
 			inventory = skillInventories(t, m, p)
 			second := potetoCopy(t, inventory[len(inventory)-1])
-			checkPlaced(t, second.Files, second.Path, changed)
+			checkPlaced(t, second.Files, filepath.Dir(second.Path), changed)
 		})
 	}
 }

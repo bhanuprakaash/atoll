@@ -34,6 +34,16 @@ func spacedHome(t *testing.T, m *machine) string {
 	return m.home
 }
 
+// startResolved starts a machine whose HOME is already resolved, so the server's own home is the
+// same text with or without symlink resolution (on macOS the temporary folder is behind /var).
+func startResolved(t *testing.T, p string) (*machine, *server) {
+	t.Helper()
+	m := newMachine(t, p)
+	m.home = resolvedHome(t, m)
+	m.signIn(t, p)
+	return m, m.serve(t)
+}
+
 func resolvedHome(t *testing.T, m *machine) string {
 	t.Helper()
 	home, err := filepath.EvalSymlinks(m.home)
@@ -48,17 +58,18 @@ func skillMD(name, body string) string {
 }
 
 // ownRefs is a poteto-mode folder whose files point at their own folder in every form.
-func ownRefs(root string) []fixtureFile {
+func ownRefs(root, dot string) []fixtureFile {
+	folder := "/" + dot + "/skills/poteto-mode"
 	return []fixtureFile{
-		{path: "SKILL.md", content: skillMD("poteto-mode", "Tilde: `~/.claude/skills/poteto-mode/scripts/run.sh`\n"+
-			"Home: $HOME/.claude/skills/poteto-mode/scripts/run.sh\n"+
-			"Braces: ${HOME}/.claude/skills/poteto-mode/scripts/run.sh\n"+
+		{path: "SKILL.md", content: skillMD("poteto-mode", "Tilde: `~"+folder+"/scripts/run.sh`\n"+
+			"Home: $HOME"+folder+"/scripts/run.sh\n"+
+			"Braces: ${HOME}"+folder+"/scripts/run.sh\n"+
 			"Absolute: "+root+"/scripts/run.sh\n"+
-			"Folder: (~/.claude/skills/poteto-mode)\n")},
+			"Folder: (~"+folder+")\n")},
 		{path: "scripts/check", content: _checkScript, exec: true},
-		{path: "scripts/run.sh", content: "#!/bin/sh\nexec ~/.claude/skills/poteto-mode/scripts/helper.sh \"$@\"\n", exec: true},
+		{path: "scripts/run.sh", content: "#!/bin/sh\nexec ~" + folder + "/scripts/helper.sh \"$@\"\n", exec: true},
 		{path: "scripts/helper.sh", content: "#!/bin/sh\nexec \"" + root + "/scripts/check\"\n", exec: true},
-		{path: "notes.md", content: "See ${HOME}/.claude/skills/poteto-mode/notes.md and {{ATOLL_SKILL_DIR}}/literal.md\n"},
+		{path: "notes.md", content: "See ${HOME}" + folder + "/notes.md and {{ATOLL_SKILL_DIR}}/literal.md\n"},
 	}
 }
 
@@ -75,14 +86,14 @@ const (
 )
 
 // importOwnRefs imports ownRefs from a HOME with a space and returns what the library holds.
-func importOwnRefs(t *testing.T, p string) (*machine, *server, string, fileSkill) {
+func importOwnRefs(t *testing.T, p, dot string) (*machine, *server, string, fileSkill, importResult) {
 	t.Helper()
 	m := newMachine(t, p)
 	home := spacedHome(t, m)
 	m.signIn(t, p)
 	s := m.serve(t)
-	root := filepath.Join(home, ".claude", "skills", "poteto-mode")
-	writeFixture(t, root, ownRefs(root))
+	root := filepath.Join(home, dot, "skills", "poteto-mode")
+	writeFixture(t, root, ownRefs(root, dot))
 	before := treeSum(t, root)
 	imp := newImporter(t, s).say(t, "Import the skill folder "+root)
 	if imp.res.Status != "created" {
@@ -91,87 +102,96 @@ func importOwnRefs(t *testing.T, p string) (*machine, *server, string, fileSkill
 	if after := treeSum(t, root); after != before {
 		t.Fatal("import changed the source folder")
 	}
-	return m, s, root, onlySkill(t, s)
+	return m, s, root, onlySkill(t, s), imp.res
 }
 
 func TestSkillHome_OwnFolderBecomesToken(t *testing.T) {
 	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			m, s, root, skill := importOwnRefs(t, p)
-			wantFiles := []skillFile{
-				{Path: "notes.md", Content: _ownNotes},
-				{Path: "scripts/check", Content: _checkScript, Executable: true},
-				{Path: "scripts/helper.sh", Content: _ownHelper, Executable: true},
-				{Path: "scripts/run.sh", Content: _ownRun, Executable: true},
-			}
-			if skill.Content != _ownSkillMD || !reflect.DeepEqual(skill.Files, wantFiles) {
-				t.Fatalf("stored SKILL.md %q files %+v, want the folder as {{ATOLL_SKILL_DIR}}:\n%q\n%+v", skill.Content, skill.Files, _ownSkillMD, wantFiles)
-			}
-			stored := skill.Content
-			for _, f := range skill.Files {
-				stored += f.Content
-			}
-			for _, bad := range []string{"~/.claude", "$HOME", "${HOME}", resolvedHome(t, m), root} {
-				if strings.Contains(stored, bad) {
-					t.Fatalf("stored skill still holds %q:\n%s", bad, stored)
+		for _, dot := range []string{".claude", ".codex"} {
+			t.Run(p+dot, func(t *testing.T) {
+				m, s, root, skill, res := importOwnRefs(t, p, dot)
+				wantFiles := []skillFile{
+					{Path: "notes.md", Content: _ownNotes},
+					{Path: "scripts/check", Content: _checkScript, Executable: true},
+					{Path: "scripts/helper.sh", Content: _ownHelper, Executable: true},
+					{Path: "scripts/run.sh", Content: _ownRun, Executable: true},
 				}
-			}
-			// A skill row carries no warning.
-			for _, path := range []string{"/api/skills", "/api/skills/" + skill.ID} {
-				if raw := s.rawDo(t, "GET", path, nil, 200); strings.Contains(string(raw), `"warnings"`) {
-					t.Fatalf("GET %s has a warnings field: %s", path, raw)
+				if skill.Content != _ownSkillMD || !reflect.DeepEqual(skill.Files, wantFiles) {
+					t.Fatalf("stored SKILL.md %q files %+v, want the folder as {{ATOLL_SKILL_DIR}}:\n%q\n%+v", skill.Content, skill.Files, _ownSkillMD, wantFiles)
 				}
-			}
-		})
+				for _, f := range []string{"SKILL.md", "notes.md", "scripts/helper.sh", "scripts/run.sh"} {
+					if !strings.Contains(string(res.Rewritten), f) {
+						t.Fatalf("rewritten %s does not name %q", res.Rewritten, f)
+					}
+				}
+				stored := skill.Content
+				for _, f := range skill.Files {
+					stored += f.Content
+				}
+				for _, bad := range []string{"~/" + dot, "$HOME", "${HOME}", resolvedHome(t, m), root} {
+					if strings.Contains(stored, bad) {
+						t.Fatalf("stored skill still holds %q:\n%s", bad, stored)
+					}
+				}
+				// A skill row carries no warning.
+				for _, path := range []string{"/api/skills", "/api/skills/" + skill.ID} {
+					if raw := s.rawDo(t, "GET", path, nil, 200); strings.Contains(string(raw), `"warnings"`) {
+						t.Fatalf("GET %s has a warnings field: %s", path, raw)
+					}
+				}
+			})
+		}
 	}
 }
 
 func TestSkillHome_TokenIsReplacedAtPlacement(t *testing.T) {
 	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			m, s, _, skill := importOwnRefs(t, p)
-			var b platformBot
-			s.do(t, "POST", "/api/bots", map[string]any{"name": "Skilled", "persona": "A guide.", "provider": p, "skills": []string{skill.ID}}, &b, 201)
-			th := s.newThread(t, b.bot)
-			ch := s.events(t, th)
-			r := s.send(t, th, "Run the poteto-mode script scripts/check.")
-			if got := s.finished(t, ch, r.ID); got.Status != "done" {
-				t.Fatalf("run: %+v", got)
-			}
-
-			inventory := skillInventories(t, m, p)
-			placed := potetoCopy(t, inventory[len(inventory)-1])
-			dir := placedDir(m, p, r.ID)
-			if filepath.Dir(placed.Path) != dir {
-				t.Fatalf("placed at %s, want %s", filepath.Dir(placed.Path), dir)
-			}
-			want := map[string]string{
-				"SKILL.md":          strings.ReplaceAll(_ownSkillMD, _skillDir, dir),
-				"notes.md":          "See " + dir + "/notes.md and " + dir + "/literal.md\n",
-				"scripts/check":     _checkScript,
-				"scripts/helper.sh": "#!/bin/sh\nexec \"" + dir + "/scripts/check\"\n",
-				"scripts/run.sh":    "#!/bin/sh\nexec " + dir + "/scripts/helper.sh \"$@\"\n",
-			}
-			if len(placed.Files) != len(want) {
-				t.Fatalf("placed %d files, want %d:\n%s", len(placed.Files), len(want), placedNames(placed.Files))
-			}
-			for _, f := range placed.Files {
-				if f.Text != want[f.Path] {
-					t.Fatalf("placed %s is %q, want %q", f.Path, f.Text, want[f.Path])
+		for _, dot := range []string{".claude", ".codex"} {
+			t.Run(p+dot, func(t *testing.T) {
+				m, s, _, skill, _ := importOwnRefs(t, p, dot)
+				var b platformBot
+				s.do(t, "POST", "/api/bots", map[string]any{"name": "Skilled", "persona": "A guide.", "provider": p, "skills": []string{skill.ID}}, &b, 201)
+				th := s.newThread(t, b.bot)
+				ch := s.events(t, th)
+				r := s.send(t, th, "Run the poteto-mode script scripts/check.")
+				if got := s.finished(t, ch, r.ID); got.Status != "done" {
+					t.Fatalf("run: %+v", got)
 				}
-			}
-			if got := onlySkill(t, s); got.Content != _ownSkillMD {
-				t.Fatalf("the stored skill changed with the run: %q", got.Content)
-			}
-		})
+
+				inventory := skillInventories(t, m, p)
+				placed := potetoCopy(t, inventory[len(inventory)-1])
+				dir := placedDir(m, p, r.ID)
+				if filepath.Dir(placed.Path) != dir {
+					t.Fatalf("placed at %s, want %s", filepath.Dir(placed.Path), dir)
+				}
+				want := map[string]string{
+					"SKILL.md":          strings.ReplaceAll(_ownSkillMD, _skillDir, dir),
+					"notes.md":          "See " + dir + "/notes.md and " + dir + "/literal.md\n",
+					"scripts/check":     _checkScript,
+					"scripts/helper.sh": "#!/bin/sh\nexec \"" + dir + "/scripts/check\"\n",
+					"scripts/run.sh":    "#!/bin/sh\nexec " + dir + "/scripts/helper.sh \"$@\"\n",
+				}
+				if len(placed.Files) != len(want) {
+					t.Fatalf("placed %d files, want %d:\n%s", len(placed.Files), len(want), placedNames(placed.Files))
+				}
+				for _, f := range placed.Files {
+					if f.Text != want[f.Path] {
+						t.Fatalf("placed %s is %q, want %q", f.Path, f.Text, want[f.Path])
+					}
+				}
+				if got := onlySkill(t, s); got.Content != _ownSkillMD {
+					t.Fatalf("the stored skill changed with the run: %q", got.Content)
+				}
+			})
+		}
 	}
 }
 
 func TestSkillHome_RefusesOtherHomeRefs(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
-			m, s := start(t, p)
-			home := resolvedHome(t, m)
+			m, s := startResolved(t, p)
+			home := m.home
 			tests := []struct {
 				name  string
 				files []fixtureFile
@@ -193,7 +213,18 @@ func TestSkillHome_RefusesOtherHomeRefs(t *testing.T) {
 				{"tidy", []fixtureFile{{path: "SKILL.md", content: skillMD("tidy", "Run ~/.claude/skills/tidy-v2/run now.\nOwn: ~/.claude/skills/tidy/ok now.\n")}},
 					[]refusal{{"SKILL.md", 5, "~/.claude/skills/tidy-v2/run"}}},
 			}
+			codex := filepath.Join(m.home, ".codex", "skills", "codexy")
 			c := newImporter(t, s)
+			t.Run("other-root", func(t *testing.T) {
+				writeFixture(t, codex, []fixtureFile{{path: "SKILL.md", content: skillMD("codexy", "Own: ~/.codex/skills/codexy/run now.\nOther root: ~/.claude/skills/codexy/run now.\n")}})
+				imp := c.say(t, "Import the skill folder "+codex)
+				if want := []refusal{{"SKILL.md", 6, "~/.claude/skills/codexy/run"}}; imp.res.Status != "refused" || !reflect.DeepEqual(imp.res.Refs, want) {
+					t.Fatalf("import: %q %+v, want refused with %+v: only the root it came from is its own folder", imp.summary, imp.res, want)
+				}
+				if skills := getSkills(t, s); len(skills) != 0 {
+					t.Fatalf("library %+v, want nothing stored", skills)
+				}
+			})
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
 					root := filepath.Join(m.home, ".claude", "skills", tt.name)
@@ -235,9 +266,9 @@ func TestSkillHome_RefusesOtherHomeRefs(t *testing.T) {
 }
 
 func TestSkillHome_NotHomeReferences(t *testing.T) {
-	m, s := start(t, "claude")
+	m, s := startResolved(t, "claude")
 	root := filepath.Join(m.home, ".claude", "skills", "plain")
-	text := "Docs: https://x/~/a and a~/b, 1~/c, a.~/d, a_~/e, a-~/f, ~~/g, /~/h and $HOMEWORK.\n"
+	text := "Docs: https://x/~/a and a~/b, 1~/c, a.~/d, a_~/e, a-~/f, ~~/g, /~/h, $HOMEWORK and $HOME_X.\n"
 	writeFixture(t, root, []fixtureFile{
 		{path: "SKILL.md", content: skillMD("plain", text)},
 		{path: "notes.md", content: "A URL https://x/~/a.\n"},
@@ -254,7 +285,7 @@ func TestSkillHome_NotHomeReferences(t *testing.T) {
 func TestSkillHome_ReimportRefusedKeepsStored(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
-			m, s := start(t, p)
+			m, s := startResolved(t, p)
 			root := filepath.Join(m.home, ".claude", "skills", "tidy")
 			writeFixture(t, root, []fixtureFile{
 				{path: "SKILL.md", content: skillMD("tidy", "Run ~/.claude/skills/tidy/scripts/run.sh first.\n")},
@@ -305,7 +336,7 @@ func TestSkillHome_ReimportRefusedKeepsStored(t *testing.T) {
 // The folder rule runs first: a skill whose source resolves outside ~/.claude/skills and
 // ~/.codex/skills gets the folder error (400), not the refused status.
 func TestSkillHome_FolderRuleComesFirst(t *testing.T) {
-	m, s := start(t, "claude")
+	m, s := startResolved(t, "claude")
 	root := filepath.Join(m.home, ".claude", "skills", "tidy")
 	writeFixture(t, root, []fixtureFile{{path: "SKILL.md", content: skillMD("tidy", "Clean.\n")}})
 	newImporter(t, s).say(t, "Import the skill folder "+root)
