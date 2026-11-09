@@ -342,6 +342,9 @@ func (m *machine) assertClaudeIsolated(t *testing.T, c *call) {
 	if !slices.Contains(c.argv, "--strict-mcp-config") {
 		t.Errorf("claude argv has no --strict-mcp-config: %q", c.argv)
 	}
+	if got := flagValue(c.argv, "--setting-sources"); got != "project" {
+		t.Errorf("claude --setting-sources %q, want project; argv %q", got, c.argv)
+	}
 	for k, want := range map[string]string{
 		"ENABLE_CLAUDEAI_MCP_SERVERS": "false",
 		"CLAUDE_CONFIG_DIR":           m.providerDir("claude"),
