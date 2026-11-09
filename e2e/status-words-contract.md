@@ -1,7 +1,7 @@
 # Status words test contract
 
 Extends [mac-app-contract.md](mac-app-contract.md) for the status line and sidebar. The real
-binary sends tool events from a scripted Claude session. The status line joins the event's verb
+binary sends tool events from a scripted Claude and Codex sessions. The status line joins the event's verb
 and target, and the sidebar uses the Bot's live activity from the API.
 
 A `cd /a/b && make check` command shows `Running make check`. Reading a background task output
@@ -11,10 +11,16 @@ by `pgrep`. A regular `cat build/report.output` keeps `Running cat`. Chief's `li
 show `Looking around`; writes keep `Setting up` and their target. If `finish_run` emits a tool
 call, its activity does not start with `Setting up`.
 
+Codex `commandExecution` skips leading `cd` and assignments: the command target is the first
+program only, so `cd /a/b && make check` shows `Running make`, `cd e2e/ui && node ...`
+shows `Running node`, and `cd x; make` shows `Running make`. Plain Codex commands retain
+the existing program-only target.
+
 ## Acceptance mapping
 
 | Acceptance | Tests |
 | --- | --- |
-| Command after `cd` names the program and argument | `TestRun_StatusWords` |
+| Claude command after `cd` names the program and argument | `TestRun_StatusWords` |
+| Codex commands after `cd` and assignments name the first program | `TestRun_StatusWords/codex` |
 | Background task output stays out of status and sidebar; ordinary output files remain commands | `TestRun_StatusWords` |
 | Read, write and finish activity words | `TestRun_StatusWords` |

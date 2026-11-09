@@ -59,4 +59,23 @@ func TestRun_StatusWords(t *testing.T) {
 			t.Errorf("finish_run activity = %q", activity)
 		}
 	}
+	t.Run("codex", func(t *testing.T) {
+		_, s := start(t, "codex")
+		th := s.newThread(t, s.newBot(t, "Ada", "codex"))
+		ev := s.events(t, th)
+		r := s.send(t, th, "Show Codex command status words.")
+		want := []string{"Running make", "Running node", "Running make", "Running make", "Running make"}
+		for i, w := range want {
+			e := until(t, ev, r.ID, "tool_call")
+			data := e[len(e)-1].Data
+			verb, _ := data["verb"].(string)
+			target, _ := data["target"].(string)
+			activity := strings.TrimSpace(verb + " " + target)
+			if data["name"] != "commandExecution" || activity != w {
+				t.Errorf("Codex tool %d: %q activity %q, want commandExecution activity %q", i, data["name"], activity, w)
+			}
+		}
+		until(t, ev, r.ID, "run_finished")
+	})
+
 }
