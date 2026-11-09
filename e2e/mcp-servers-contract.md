@@ -203,10 +203,13 @@ itself is kept: `GET /api/bots/{id}` still lists it. A Bot that picks the same u
 the GitHub connection gets it as the user made it (its own name, URL and headers, and no `github`
 entry): the dedupe is only against the connection's entry in the same run.
 
+A secret save failure reports that the system keychain could not save the credentials.
+
 ## Acceptance mapping (#64)
 
 | Acceptance | Tests |
 | --- | --- |
+| An unavailable keychain is named when saving an MCP server secret fails, with no raw JSON on the page | `TestKeychainFailure_MCPSecret`; `ui/keychain-failure.spec.ts` |
 | Settings lists the Context7 entry and the user's servers; Add local; Add by URL | Go `TestMCPServers_LibraryKeepsSecretsInTheOSStore`, `TestMCPServers_Refusals`; UI `the page lists Context7, adds a local and a remote server, and shows names only for secrets` |
 | Env and header values in the OS secret store, never the DB or a log; names only in the API | Go `TestMCPServers_LibraryKeepsSecretsInTheOSStore` (keyring, `atoll.db`, data dir, server log, reply), `TestMCPServers_RunGetsExactlyThePickedServers` (again after runs); UI same test (page text) |
 | Bot settings switches; Chief `create_bot`/`edit_bot` take them; `list_mcp_servers` | UI `Bot settings lists MCP servers as switches; ...`; Go `TestMCPServers_BotPicks`, `TestChiefBot_MCPServers/{claude,codex}` |

@@ -37,10 +37,13 @@ that existing connection and replies `201` like `/api/connections/gitlab/start`,
 same `id`. Polling it to completion stores the new record and sets status `connected`. No
 second connection is created, and Bots that had it still list it.
 
+A secret save failure reports that the system keychain could not save the credentials.
+
 ## Acceptance mapping
 
 | Acceptance | Tests |
 | --- | --- |
+| A keychain save failure names the keychain, exits Pending, offers Sign in again, and displays no raw JSON | `TestKeychainFailure_Connections/GitLab`; `ui/keychain-failure.spec.ts` |
 | Expired token refreshed once; the run pushes | `TestGitLabRefresh_ExpiredTokenIsRefreshedForTheRun` |
 | Stored tokens replaced; next run does not refresh | `TestGitLabRefresh_RefreshedTokensReplaceTheOldOnes` |
 | `invalid_grant` gives `needs_sign_in` and a run error | `TestGitLabRefresh_InvalidGrantNeedsSignIn` |
