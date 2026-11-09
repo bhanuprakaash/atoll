@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { BrandLogo, type Brand } from '@/components/brand-logo';
+import { skillDescription } from '@/utils/skill-description';
 
 type Choice = { id: string; name: string; brand?: Brand; content?: string; path?: string };
 
-const detailOf = (c: Choice) =>
-  c.path ?? c.content?.match(/^description:\s*(.*)$/m)?.[1] ?? undefined;
+const detailOf = (c: Choice) => c.path ?? (c.content ? skillDescription(c.content) : undefined);
 
 function Icon({ d, size = 16 }: { d: string; size?: number }) {
   return (

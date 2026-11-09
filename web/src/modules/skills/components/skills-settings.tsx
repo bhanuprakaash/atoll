@@ -14,6 +14,7 @@ import {
   UsedBy,
 } from '@/components/settings-ui';
 import { TextArea, TextField } from '@/components/text-field';
+import { join, setSkillDescription, skillDescription, split } from '@/utils/skill-description';
 import {
   type Reimport,
   type Skill,
@@ -27,12 +28,6 @@ type Bot = { id: string; name: string; look: CreatureLook; skills: string[] };
 
 const labelClass = 'text-xs tracking-wide text-label';
 
-function split(content: string) {
-  const m = content.match(/^---\n([\s\S]*?)\n?---\n?([\s\S]*)$/);
-  return m ? { head: m[1], body: m[2] } : { head: '', body: content };
-}
-const join = (head: string, body: string) => (head ? `---\n${head}\n---\n${body}` : body);
-const descriptionLine = /^description:.*$/m;
 const modes = [
   ['Edit', false],
   ['Preview', true],
@@ -167,7 +162,7 @@ function SkillEditor({
   const reimport = useReimportSkill(skill.id);
   const { name, content, files } = edit;
   const { head, body } = split(content);
-  const description = head.match(/^description:\s*(.*)$/m)?.[1] ?? '';
+  const description = skillDescription(content);
   const users = bots.filter((b) => b.skills?.includes(skill.id));
   const changed = !same(edit, base);
   const canSave = isNew ? name.trim() !== '' : changed;
@@ -202,17 +197,7 @@ function SkillEditor({
     setOpen(path);
   }
   function setDescription(value: string) {
-    const line = `description: ${value}`;
-    setContent(
-      join(
-        descriptionLine.test(head)
-          ? head.replace(descriptionLine, line)
-          : head
-            ? `${line}\n${head}`
-            : line,
-        body,
-      ),
-    );
+    setContent(join(setSkillDescription(head, value), body));
   }
   const runReimport = (replace: boolean) =>
     reimport.mutate(replace, { onSuccess: (r) => setResult(r) });
@@ -581,11 +566,7 @@ export function SkillsSettings({ bots = [] }: { bots?: Bot[] }) {
                 <Tile>
                   <FileIcon size={16} />
                 </Tile>
-                <RowText
-                  title={s.name}
-                  monoTitle
-                  detail={split(s.content).head.match(/^description:\s*(.*)$/m)?.[1]}
-                />
+                <RowText title={s.name} monoTitle detail={skillDescription(s.content)} />
                 {users.length > 0 ? (
                   <UsedBy bots={users} />
                 ) : (
