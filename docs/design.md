@@ -343,17 +343,30 @@ after a failed undo counts a Bot that is already gone as removed.
       `Workflow` also starts subagents, so removing only `Task` leaves the hole. Subagents come only
       from Reef's delegation (see Delegation).
     - The Bash tool runs through `CLAUDE_CODE_SHELL_PREFIX`, a Reef-written script that unsets every
-      variable starting with `CLAUDE` and then runs the command (`exec bash -c "$*"`), so a Bot's shell
-      has no `CLAUDE_CONFIG_DIR` and `env | grep -c CLAUDE` prints 0. Claude Code keeps its own copy
-      and still reads the folder. The server writes the script on every start to `<data dir>/bin/claude-shell-prefix`
+      variable starting with `CLAUDE` or `ATOLL_MCP_` and then runs the command (`exec bash -c "$*"`), so a Bot's shell
+      has no `CLAUDE_CONFIG_DIR` and `env | grep -c CLAUDE` prints 0. `ATOLL_MCP_<n>` carry the MCP
+      secrets (see below) and would otherwise sit in the shell's `env` (checked: they do). Claude Code keeps
+      its own copy and still reads the folder and expands `${ATOLL_MCP_<n>}` (the child shell's unset cannot reach its process). The server writes the script on every start to `<data dir>/bin/claude-shell-prefix`
       (mode 0500, owned by the user running Reef, replaced by a rename from a temp file), and every
       run's env points at that path. The prefix must be one path (a value with spaces fails).
       *Not used: `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` forces permission mode `default`, which breaks Auto
       and Full access; a `PreToolUse` hook would need `disableAllHooks` off; a settings `env` entry
       changes `claude` itself and signs it out; `BASH_ENV` does not reach a login shell.*
-    - What remains: Bots run as the same OS user as Reef, so a Bot can still read `claude`'s environment
-      through `/proc/<pid>/environ`, and can run `claude` itself (which then uses the owner's `~/.claude`,
-      since `HOME` is never changed). The prefix hides the variable from `env`; it is not a boundary.
+    - Known risk, no fix this round: Bots run as the same OS user as Reef, so on Linux a Bot can read
+      `/proc/<pid>/environ` of `claude` (and of any other process of that user). `claude`'s environment
+      holds `CLAUDE_CONFIG_DIR` (Reef's provider folder with the login); `ATOLL_MCP_<n>`, one per
+      secret `argv` hides: Reef's own MCP URL for the run (it carries the run's token), the GitHub MCP
+      bearer (the same token as `GH_TOKEN`), and every secret, header and env value of the MCP servers
+      attached to that Bot, an OAuth bearer included; and the extras handed to the run on purpose
+      (`GH_TOKEN`, `OAUTH_TOKEN`, `GIT_CONFIG_*`, `GH_CONFIG_DIR`, `GLAB_CONFIG_DIR`), which the shell
+      holds anyway. Only this Bot's own connections and servers are in there, none that were not
+      attached. The same read reaches other live runs' `claude` processes (their MCP URLs and run
+      tokens) and the Reef server's own environment, which is not stripped. The prefix hides
+      the variables from `env`; it is not a boundary. A Bot can also run `claude` itself, which
+      then uses the owner's `~/.claude`, since `HOME` is never changed. *Verified on Linux: a Bot's
+      shell listed `/proc/*/environ` entries with `CLAUDE_CONFIG_DIR` and `ATOLL_MCP_0` for `claude` and
+      for sibling sessions. Believed, not run: macOS has no `/proc`, but `ps eww -p <pid>` shows a
+      same-user process's environment; Codex's process holds the same extras.*
   - Codex: `skills.bundled.enabled=false`; plugins, remote plugins and apps off; each skill in
     `~/.agents/skills` disabled by the path of its `SKILL.md`, since a skill's name can differ from
     its folder (Codex finds that folder through `HOME`).
@@ -472,31 +485,37 @@ after a failed undo counts a Bot that is already gone as removed.
 - Home paths in imported skills. An imported skill's files may point at the owner's own home (poteto-mode's
   scripts call `~/.claude/skills/poteto-mode/scripts/...`); left alone, a Bot would run the owner's real
   files. Import and Re-import (`import_skill`, `POST /api/skills/{id}/reimport`, same code) go over
-  `SKILL.md` and every other stored text file (scripts included; binaries are not stored) and never write the source folder:
-  - Rewritten: a reference to the skill's own folder, which is `~/`, `$HOME/` or `${HOME}/` followed by the
-    folder's path under the owner's home (`.claude/skills/<folder>`, `.codex/skills/<folder>`,
-    `.agents/skills/<folder>`: whichever it was imported from), or that folder's absolute path.
-    It becomes `{{ATOLL_SKILL_DIR}}`, so `~/.claude/skills/x/scripts/run.sh` is stored as
-    `{{ATOLL_SKILL_DIR}}/scripts/run.sh`. After the rewrite a stored skill holds no own-folder `~/` path.
+  `SKILL.md` and every other stored text file (scripts included; binaries are not stored) and never write
+  the source folder. A skill that points anywhere in the owner's home besides its own folder is refused;
+  there is no warning path.
+  - Home reference: `~/` (not preceded by a letter, digit, `.`, `_`, `-`, `/` or `~`, so `https://x/~/y` and
+    `a~/b` do not count), `$HOME` or `${HOME}` (with or without a following `/`), and the server's own home
+    directory as an absolute path (`/Users/<name>`, `/home/<name>`).
+  - Rewritable: a home reference to the skill's own source folder and nothing more. That is `~/`,
+    `$HOME/` or `${HOME}/` followed by the folder's path under the owner's home
+    (`.claude/skills/<folder>`, `.codex/skills/<folder>`, `.agents/skills/<folder>`: whichever it was
+    imported from), or the folder's absolute path, and then either `/…` or the end of the name (the next
+    character is not a letter, digit, `.`, `_` or `-`, so `~/.claude/skills/x-v2` is not the folder `x`).
+    It becomes `{{ATOLL_SKILL_DIR}}`: `~/.claude/skills/x/scripts/run.sh` is stored as
+    `{{ATOLL_SKILL_DIR}}/scripts/run.sh`. After the rewrite a stored skill holds no own-folder home path.
     *A relative path (the old rewrite) is wrong for scripts: a Bot's cwd is the repo worktree.*
+  - Refused: any other home reference left after the rewrite: another skill (`~/.claude/skills/<other>/`),
+    `~/.ssh`, dotfiles, shared tools, a bare `$HOME`, an absolute home path. The refusal is atomic: nothing
+    is stored, and on Re-import the stored skill stays as it was. A path that is not under home (a skill
+    imported from `/tmp/x`) has no `~/` form to rewrite, only the absolute one.
   - Placement, per run and for both providers, replaces every `{{ATOLL_SKILL_DIR}}` in the copies of `SKILL.md`
     and the text files with the absolute path of that copy: `<run folder>/.claude/skills/<name>` for Claude
     Code, `<run folder>/<name>` for Codex (`<name>` is the folder name `Place` already chooses). The path
     is unknown at import, which is why the stored text keeps a token. The scripts then run from the
     placed copy and the owner's files stay out of it. The token also works in skills written in Reef.
-  - Warning: after the rewrite, any remaining `~/`, `$HOME` or `${HOME}` in a stored text file, or the
-    server's own home directory as an absolute path (`/Users/<name>/`, `/home/<name>/`). That covers
-    other skills (`~/.claude/skills/<other>/`), `~/.ssh`, dotfiles and shared tools. A warning is
-    `{file, line, ref}`, `ref` being the matched path up to the next space or quote. The skill is still
-    imported, never refused, and the reference stays as written: Reef cannot make it work in a Bot
-    and does not block it at run time.
-  - Shown: `import_skill` and the reimport answer carry `rewritten` (file and count) next to
-    `warnings`; `GET /api/skills` and `GET /api/skills/{id}` carry `warnings` (empty for none), worked
-    out from the stored files on each read for a skill with a source folder, so editing the file
-    clears it. Settings > Skills marks a row with warnings ("N home paths"); the open skill shows a notice
-    above its files listing each `file:line ref`, and clicking one selects that file. Chief names every
-    warning (file, line, ref) in its import reply beside the skipped and flagged files, and says which paths
-    it rewrote. Skills imported before this stay as stored until Re-import.
+  - Shown: `import_skill` and the reimport answer get a status `refused` (beside `created`, `replaced`,
+    `unchanged`, `confirm`) with `reason` and `refs`, a list of `{file, line, ref}` (`ref` is the matched
+    path up to the next space or quote); not an HTTP error. A successful answer carries `rewritten` (file
+    and count). Chief's reply on `refused` names the skill, each offending file, line and path, and says
+    how to fix it: edit the skill so it stops using that path, or copy the file into the skill folder and
+    point at it as `~/.claude/skills/<folder>/<file>` (which then rewrites). Re-import in Settings > Skills
+    shows the same reason and list inline. Nothing about a skill's stored files changes in Settings: there
+    is no warning on a skill row. Skills imported before this stay as stored until Re-import.
 
 ## MCP servers
 
