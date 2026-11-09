@@ -597,9 +597,13 @@ after a failed undo counts a Bot that is already gone as removed.
       `{{ATOLL_SKILL_DIR}}` gets it replaced like any other; it cannot be written literally.
   - The answer of `import_skill` and of reimport has a status `refused` (beside `created`,
     `replaced`, `unchanged`, `confirm`). It is HTTP 200, like the other statuses.
-    - Shape: `{"status":"refused","name":"<skill name>","reason":"skill \"<name>\" refers to files
-      in your home folder that a Bot cannot use: <file>:<line> <ref>, …","refs":[{"file":
-      "scripts/run.sh","line":12,"ref":"~/.ssh/config"}]}`.
+    - Shape (`reason` is one string; shown wrapped):
+      ```json
+      {"status":"refused","name":"<skill name>",
+       "reason":"skill \"<name>\" refers to files in your home folder that a Bot cannot use:
+                 <file>:<line> <ref>, …",
+       "refs":[{"file":"scripts/run.sh","line":12,"ref":"~/.ssh/config"}]}
+      ```
     - `file` is the path inside the skill as it would be stored (`SKILL.md`, `scripts/run.sh`);
       `line` is 1-based in that file; `ref` is the matched text up to the next space or quote
       (`~/.ssh/config`, `$HOME`, `/home/<name>/x`). One entry per occurrence, ordered by file, then
