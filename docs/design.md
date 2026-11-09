@@ -277,7 +277,8 @@ after a failed undo counts a Bot that is already gone as removed.
 - start_work's reply names the base, as the ref and its short commit (`origin/HEAD ee6ad1b`, or
   `HEAD ee6ad1b` without an origin, or `origin/test/x ee6ad1b` for a requested base). When the local
   default branch (the one origin/HEAD points at) is ahead of origin/HEAD, the reply adds a `note`:
-  `local main is 1 commit ahead (b11bedc); not included`. A thread that already has a worktree gets its path and branch back, with no base.
+  `local main is 1 commit ahead (b11bedc); not included`. A thread that already has a worktree
+  gets its path and branch back, with no base.
 - The slug is lowercased, every run of characters outside `[a-z0-9]` becomes `-`, and it is cut to
   40 characters. The worktree folder is the branch with `/` replaced by `-`.
 - Repo names are unique, because the worktree folder uses them. A name is one folder name: letters,
