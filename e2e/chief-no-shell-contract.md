@@ -56,4 +56,4 @@ when a non-platform Bot lists `import_agent` or its guessed call works.
 | `import_skill` refuses folders outside `~/.claude/skills` and `~/.codex/skills`; the two still import | `TestChiefNoShell_ImportSkillOnlyFromSkillFolders` |
 | The prompt names `import_agent`, not a file read | `TestChiefNoShell_PromptNamesImportAgent/{claude,codex}` |
 | Chief registers a repo, imports an agent and a skill, creates a Bot | `TestChiefNoShell_ChiefStillDoesItsJob` |
-| Chief makes no tool call that reads a repo file | not covered: real Claude only (no e2e test runs a real provider); listed under "Only you can check" in the PR |
+| Chief makes no tool call that reads a repo file | not covered by the fakes: the fix author runs it with real Claude in Reef and pastes the reply into the fix PR's Proof |
