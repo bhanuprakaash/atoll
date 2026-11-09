@@ -880,7 +880,12 @@ type importResult struct {
 	Reason    string          `json:"reason,omitempty"`
 	Refs      any             `json:"refs,omitempty"`
 	Warning   string          `json:"warning,omitempty"`
-	Rewritten map[string]int  `json:"rewritten,omitempty"`
+	Rewritten []rewrittenFile `json:"rewritten"`
+}
+
+type rewrittenFile struct {
+	File  string `json:"file"`
+	Count int    `json:"count"`
 }
 
 type importedSkill struct {
@@ -948,8 +953,12 @@ func (a *api) importSkill(
 	next.Imported = skill.Hash(next)
 	res = importResult{
 		Status: _importCreated, Added: []string{}, Changed: []string{}, Removed: []string{},
-		Skipped: orEmpty(imp.Skipped), Rewritten: imp.Rewritten,
+		Skipped: orEmpty(imp.Skipped), Rewritten: []rewrittenFile{},
 	}
+	for file, count := range imp.Rewritten {
+		res.Rewritten = append(res.Rewritten, rewrittenFile{File: file, Count: count})
+	}
+	slices.SortFunc(res.Rewritten, func(a, b rewrittenFile) int { return strings.Compare(a.File, b.File) })
 	skills, err := st.Skills(ctx)
 	if err != nil {
 		return res, prev, next, err

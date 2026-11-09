@@ -206,6 +206,9 @@ func Read(dir string) (Import, error) {
 	}
 	name := filepath.Base(dir)
 	forms := []string{dir}
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil && resolved != dir {
+		forms = append(forms, resolved)
+	}
 	root := filepath.ToSlash(filepath.Join(filepath.Base(filepath.Dir(filepath.Dir(dir))), "skills")) + "/"
 	for _, prefix := range []string{"~/", "$HOME/", "${HOME}/"} {
 		forms = append(forms, prefix+root+name)
