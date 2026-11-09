@@ -308,7 +308,7 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	}
 	cmd := exec.Command(cfg.Bin, args...)
 	cmd.Dir = cfg.Cwd
-	cmd.Env = append(configEnv(cfg.Dir), "ENABLE_CLAUDEAI_MCP_SERVERS=false", "MCP_TOOL_TIMEOUT=1800000")
+	cmd.Env = append(configEnv(cfg.Dir), "ENABLE_CLAUDEAI_MCP_SERVERS=false", "MCP_TOOL_TIMEOUT=1800000", "CLAUDE_CODE_SHELL_PREFIX="+filepath.Join(cfg.Dir, "..", "..", "bin", "claude-shell-prefix"))
 	cmd.Env = append(cmd.Env, secrets...)
 	cmd.Env = append(cmd.Env, cfg.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -341,6 +341,10 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 		secrets = append(secrets, name+"="+value)
 		return "${" + name + "}"
 	}
+	isolation, err := IsolationArgs(cfg.Cwd)
+	if err != nil {
+		return nil, nil, err
+	}
 	args := []string{
 		"-p",
 		"--input-format", "stream-json",
@@ -348,9 +352,8 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 		"--verbose",
 		"--include-partial-messages",
 		"--strict-mcp-config",
-		"--setting-sources", "project",
-		"--settings", `{"disableAllHooks":true,"disableBundledSkills":true,"skillOverrides":{"design":"off","doctor":"off","plugin-authoring":"off"}}`,
 	}
+	args = append(args, isolation...)
 	if cfg.Model != "" {
 		args = append(args, "--model", cfg.Model)
 	}
@@ -394,6 +397,42 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 		args = append(args, "--tools", "")
 	}
 	return append(args, extra...), secrets, nil
+}
+
+// IsolationArgs returns the isolation flags shared by Claude model sessions.
+func IsolationArgs(cwd string) ([]string, error) {
+	excludes := []string{}
+	seen := map[string]bool{}
+	paths := []string{cwd}
+	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
+		paths = append(paths, resolved)
+	}
+	replacer := strings.NewReplacer(`\`, "?", "*", "?", "?", "?", "[", "?", "]", "?", "{", "?", "}", "?", "(", "?", ")", "?")
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+			for _, pattern := range []string{filepath.Join(replacer.Replace(dir), "*.md"), filepath.Join(replacer.Replace(dir), ".claude", "**")} {
+				if !seen[pattern] {
+					excludes = append(excludes, pattern)
+					seen[pattern] = true
+				}
+			}
+			if dir == filepath.Dir(dir) {
+				break
+			}
+		}
+	}
+	settings, err := json.Marshal(map[string]any{
+		"disableAllHooks": true, "disableBundledSkills": true,
+		"skillOverrides":    map[string]string{"design": "off", "doctor": "off", "plugin-authoring": "off"},
+		"autoMemoryEnabled": false, "claudeMdExcludes": excludes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return []string{"--setting-sources", "project", "--settings", string(settings), "--disallowedTools", "Task Workflow"}, nil
 }
 
 func userServer(m provider.UserMCPServer, hide func(string) string) map[string]any {

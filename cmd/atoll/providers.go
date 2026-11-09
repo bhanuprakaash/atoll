@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"atoll/provider"
+	"atoll/provider/claude"
 	"atoll/server"
 	"atoll/store"
 )
@@ -286,12 +287,26 @@ func probeModels(parent context.Context, name, bin, dir string) []server.Model {
 	defer cancel()
 	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"}
 	env := "CLAUDE_CONFIG_DIR=" + dir
+	if name == "claude" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return []server.Model{}
+		}
+		isolation, err := claude.IsolationArgs(cwd)
+		if err != nil {
+			return []server.Model{}
+		}
+		args = append(args, isolation...)
+	}
 	if name == "codex" {
 		args = []string{"app-server"}
 		env = "CODEX_HOME=" + dir
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Env = provider.Env(env)
+	if name == "claude" {
+		cmd.Env = append(cmd.Env, "ENABLE_CLAUDEAI_MCP_SERVERS=false", "CLAUDE_CODE_SHELL_PREFIX="+filepath.Join(dir, "..", "..", "bin", "claude-shell-prefix"))
+	}
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return []server.Model{}
