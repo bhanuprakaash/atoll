@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -15,6 +16,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 
 	"atoll/store"
@@ -132,14 +134,7 @@ func Check(files []store.SkillFile) error {
 // relative to the skill. Name is SKILL.md's frontmatter name, else the folder name.
 func Read(dir string) (Import, error) {
 	skillPath := filepath.Join(dir, "SKILL.md")
-	info, err := os.Lstat(skillPath)
-	if err != nil {
-		return Import{}, fmt.Errorf("stat SKILL.md: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return Import{}, errors.New("SKILL.md is not a regular file")
-	}
-	data, err := os.ReadFile(skillPath)
+	data, _, err := readFile(skillPath)
 	if err != nil {
 		return Import{}, fmt.Errorf("read SKILL.md: %w", err)
 	}
@@ -180,7 +175,7 @@ func Read(dir string) (Import, error) {
 			imp.Skipped = append(imp.Skipped, Skipped{Path: rel, Reason: SkippedOther})
 			return nil
 		}
-		data, err := os.ReadFile(file)
+		data, info, err := readFile(file)
 		if err != nil {
 			return err
 		}
@@ -247,6 +242,23 @@ func Read(dir string) (Import, error) {
 	}
 	slices.SortStableFunc(imp.Refs, func(a, b homeRef) int { return strings.Compare(a.File, b.File) })
 	return imp, nil
+}
+
+func readFile(path string) ([]byte, fs.FileInfo, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, nil, errors.New("not a regular file")
+	}
+	data, err := io.ReadAll(f)
+	return data, info, err
 }
 
 // Hash identifies a skill's SKILL.md and files, whatever order the files come in.
