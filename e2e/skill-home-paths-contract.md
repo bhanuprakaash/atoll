@@ -15,11 +15,19 @@ Design: Connections and skills, "Home paths in imported skills", in `docs/design
 - Any other home reference left refuses the import: HTTP 200 (REST) with
   `{status: "refused", name, reason, refs: [{file, line, ref}]}`. `file` is relative to the skill
   folder, `line` is 1-based, `ref` runs to the next space or quote; refs are ordered by file, then
-  line. Nothing is stored. The reason reads `skill "<name>" refers to files in your home folder
+  line (refs on one line keep their column order; the design does not say so yet). Nothing is
+  stored. The reason reads `skill "<name>" refers to files in your home folder
   that a Bot cannot use: <file>:<line> <ref>, ...`. Fenced examples count.
+- The own folder's root is the one the skill was imported from: a skill imported from
+  `~/.codex/skills/<folder>` rewrites `~/.codex/skills/<folder>` and refuses
+  `~/.claude/skills/<folder>`, and the other way round.
+- A successful answer carries `rewritten` (file and count). The tests pin only that it is present
+  and names each rewritten file; the exact shape is not in the design.
 - The folder rule (the skill folder resolves to a direct child of `~/.claude/skills` or
   `~/.codex/skills`) runs first: outside it, the answer is the folder error (REST `400`), not
-  `refused`. The refuse check runs before `unchanged` and `confirm`.
+  `refused`. The refuse check runs before `unchanged` and `confirm`. The folder rule is a separate
+  design (Chief without a shell): `TestSkillHome_FolderRuleComesFirst` passes only once that change
+  is merged, so merge it before the fix PR for this ticket.
 - Re-import of a stored skill whose source is now refused keeps the stored skill and its files as
   they were.
 - At placement, `{{ATOLL_SKILL_DIR}}` in every placed text file becomes the absolute path of the
@@ -30,7 +38,9 @@ Design: Connections and skills, "Home paths in imported skills", in `docs/design
 
 ## Fixtures and fakes
 
-- The own-folder skill is `~/.claude/skills/poteto-mode/` under a HOME with a space in its name
+- Machines use a HOME that is already resolved (`EvalSymlinks`), so the server's own home is the same
+  text either way (macOS temporary folders sit behind `/var -> /private/var`).
+- The own-folder skill is `~/.claude/skills/poteto-mode/` (and the same under `~/.codex/skills/`) under a HOME with a space in its name
   (resolved with `EvalSymlinks`): SKILL.md with the five forms, `scripts/check`, `scripts/run.sh`,
   `scripts/helper.sh`, `notes.md` (one `${HOME}` form and a literal token).
 - Both fakes' `platform-skill-import` scenario takes the rest of the line as the path, so a HOME
@@ -41,10 +51,10 @@ Design: Connections and skills, "Home paths in imported skills", in `docs/design
 
 | Requirement | Tests |
 | --- | --- |
-| Own-folder forms become `{{ATOLL_SKILL_DIR}}` in SKILL.md and every text file; no `~/.claude`, `$HOME`, `${HOME}` or absolute home in the stored skill; source untouched; no `warnings` field | `TestSkillHome_OwnFolderBecomesToken/{claude,codex}` |
-| The token is replaced by the run's copy path at placement; the stored text keeps it; a literal token is replaced | `TestSkillHome_TokenIsReplacedAtPlacement/{claude,codex}` |
-| Other home references refuse with exact refs (another skill, `~/.ssh`, `$HOME`, `${HOME}`, `$HOME/x`, absolute home path, a fenced example, `<folder>-v2`), ordered by file then line; nothing stored; Chief's reply names skill, file, line, ref | `TestSkillHome_RefusesOtherHomeRefs/{claude,codex}/*` |
-| `https://x/~/a`, `a~/b` and the other preceded forms are not references | `TestSkillHome_NotHomeReferences` |
+| Own-folder forms become `{{ATOLL_SKILL_DIR}}` in SKILL.md and every text file; no `~/.claude`, `$HOME`, `${HOME}` or absolute home in the stored skill; source untouched; no `warnings` field | `TestSkillHome_OwnFolderBecomesToken/{claude,codex}.{.claude,.codex}` (import root; `rewritten` names each file) |
+| The token is replaced by the run's copy path at placement; the stored text keeps it; a literal token is replaced | `TestSkillHome_TokenIsReplacedAtPlacement/{claude,codex}.{.claude,.codex}` |
+| Other home references refuse with exact refs (another skill, `~/.ssh`, `$HOME`, `${HOME}`, `$HOME/x`, absolute home path, a fenced example, `<folder>-v2`, the other root's folder), ordered by file then line; nothing stored; Chief's reply names skill, file, line, ref | `TestSkillHome_RefusesOtherHomeRefs/{claude,codex}/*` |
+| `https://x/~/a`, `a~/b` and the other preceded forms are not references; `$HOMEWORK` and `$HOME_X` are not either (the design is silent on what may follow `$HOME`: a guard) | `TestSkillHome_NotHomeReferences` |
 | Re-import refused (HTTP 200, before `confirm`, with and without `replace`) keeps the stored skill; same answer as `import_skill` | `TestSkillHome_ReimportRefusedKeepsStored/{claude,codex}` |
 | The folder rule wins when both fire | `TestSkillHome_FolderRuleComesFirst` |
 | Chief's prompt says refused | `TestPrompt_ChiefImportRefusal/{claude,codex}` |
