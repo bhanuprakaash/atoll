@@ -31,8 +31,8 @@ Codex may carry them as params or in `config` (`sandbox_mode`, `approval_policy`
 while a run goes applies from the next run; the going run keeps the mode it started with.
 
 Codex on Auto in a repo thread also starts every run, `thread/start` and `thread/resume` alike, with
-`config.sandbox_workspace_write.writable_roots` holding exactly these six folders, in any order:
-the `worktree_root` folder, the git common dir's `objects`, `refs`, `logs` and `worktrees`, and the
+`config.sandbox_workspace_write.writable_roots` holding exactly these six folders, plus the Bot's cache root
+(next section), in any order: the `worktree_root` folder, the git common dir's `objects`, `refs`, `logs` and `worktrees`, and the
 absolute git dir of the session's `cwd` (`git -C <cwd> rev-parse --absolute-git-dir`); and
 `config.sandbox_workspace_write.network_access` true. The cwd is a linked worktree in both
 sessions, the first in the repo's clean checkout and a resumed one in the thread's worktree, so
@@ -43,6 +43,22 @@ Bot cannot change the repo's config or hooks. Codex reads those keys there and n
 the same values anywhere else do not count. Paths compare after symlinks resolve and a trailing
 slash is dropped. Ask and Full access have no `sandbox_workspace_write` key. The spec runs a plain
 clone.
+
+## Tool caches
+
+Codex on Auto cannot build with the tools' default caches: they live under the user's home, outside
+its writable roots. Every Codex Auto run in a repo thread, `thread/start` and `thread/resume` alike,
+gets a Reef-owned cache root, `<data>/cache/<bot id>/`: one per Bot, shared by all of that Bot's runs
+so caches stay warm, never shared across Bots and never under the user's `~/.cache` or `~/go`. The
+root is one of the thread's `writable_roots` and exists, writable, before the provider starts. The
+run's env sets each of these to a folder strictly under the root: `XDG_CACHE_HOME`, `XDG_DATA_HOME`
+and `XDG_STATE_HOME` (three different folders), `GOCACHE`, `GOLANGCI_LINT_CACHE`, `pnpm_config_store_dir`
+(pnpm's store-dir setting) and `PNPM_HOME`. pnpm also keeps state under the XDG data and state
+folders, so a store dir alone is not enough. Ask, Full access and Claude Bots get none of this: no
+cache env under `<data>/cache/`, no cache folder made. A Bot run leaves the user's `~/.cache` and
+`~/go` as they were (files, modes, mtimes). Deleting a Bot removes its cache folder and no other.
+Paths compare after symlinks resolve; the data dir may contain a space. Not covered: Codex Auto in a
+thread without a repo.
 
 `git push -u` cannot save the upstream when `config` is read-only, so `start_work` sets it when it
 makes the branch: `branch.<branch>.remote` is `origin` and `branch.<branch>.merge` is
@@ -139,7 +155,11 @@ saves as you change it and shows again after a reload.
 | A user's required filter (Git LFS style) does not stop the clean checkout or `start_work` | `TestRepo_UserFilterThatMustRunStillWorks` |
 | `start_work` sets the new branch's upstream to `origin` | `TestRepo_StartWorkSetsUpstream` |
 | None of Atoll's own git calls in the repo (clean checkout, `start_work`, close with unsaved work) runs a program a planted hook, `core.fsmonitor`, filter driver, `commondir`, `.git` file or `config.worktree` names, and a close keeps the snapshot in the repo, for a Codex and a Claude Bot | `TestRepo_ReefGitRunsNoRepoCode/{codex/close,codex/delete,claude/close}/<route>`, each with `TestRepo_ReefGitRunsNoRepoCode/control/<route>` for `<route>` in `hooks`, `fsmonitor-in-config`, `filter-driver`, `filter-name-with-equals`, `commondir-rewritten`, `gitfile-rewritten`, `worktree-config` |
-| Codex Auto starts and resumes with the `worktree_root` folder, the git common dir's `objects`, `refs`, `logs` and `worktrees` and the session cwd's git dir (not the common dir, `config` or `hooks`) as writable roots and network access; Ask and Full access carry neither | `TestCodexAuto_SandboxCoversWorktreeAndNetwork/{auto,ask,full}` |
+| Codex Auto starts and resumes with the `worktree_root` folder, the git common dir's `objects`, `refs`, `logs` and `worktrees` and the session cwd's git dir (not the common dir, `config` or `hooks`) as writable roots, plus the Bot's cache root, and network access; Ask and Full access carry neither | `TestCodexAuto_SandboxCoversWorktreeAndNetwork/{auto,ask,full}` |
+| A Codex Auto run's env sets `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `GOCACHE`, `GOLANGCI_LINT_CACHE`, `pnpm_config_store_dir` and `PNPM_HOME` under `<data>/cache/<bot id>/`, a writable root that exists before the run starts, in a data dir with or without a space | `TestCodexAuto_RunGetsReefOwnedCaches/{plain data dir,data dir with a space}` |
+| The user's `~/.cache` and `~/go` are untouched by a Bot run | `TestCodexAuto_RunGetsReefOwnedCaches/*` (snapshot of files, modes, mtimes) |
+| The cache root is per Bot, shared across its runs, and deleting the Bot removes only its folder | `TestCodexAuto_CachesArePerBotAndGoWithTheBot` |
+| Codex on Ask and Full access, and Claude Bots, get no cache env under `<data>/cache/` and no folder | `TestCodexAuto_OtherModesAndClaudeGetNoCaches/{codex,claude}/<mode>` |
 
 Not covered here: the spike and the real-Claude line are implementer and user proof. Not pinned:
 Codex's sandbox on Ask beyond not being `danger-full-access`; whether Claude on Full access still

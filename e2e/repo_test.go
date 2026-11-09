@@ -55,7 +55,16 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 
 func newRepoFixture(t *testing.T, provider string) *repoFixture {
 	t.Helper()
+	return newRepoFixtureIn(t, provider, "")
+}
+
+// newRepoFixtureIn is newRepoFixture with the data dir at data, when set.
+func newRepoFixtureIn(t *testing.T, provider, data string) *repoFixture {
+	t.Helper()
 	m := newMachine(t, provider, "glab")
+	if data != "" {
+		m.data = data
+	}
 	m.signIn(t, provider)
 	writeFile(t, filepath.Join(m.bin, "mr-state"), "opened")
 	// Share only the private Secret Service session, never the host's credentials or PATH.
