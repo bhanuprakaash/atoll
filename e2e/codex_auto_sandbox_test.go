@@ -137,6 +137,11 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 			gitIn(t, p.repo, "config", "filter.x.smudge", "cat")
 			writeFile(t, filepath.Join(p.common, "info", "attributes"), "* filter=x\n")
 		}},
+		{name: "filter-name-with-equals", early: func(t *testing.T, p planter) {
+			gitIn(t, p.repo, "config", "filter.x=y.clean", p.script(t, "clean", p.record+"cat\n"))
+			gitIn(t, p.repo, "config", "filter.x=y.smudge", "cat")
+			writeFile(t, filepath.Join(p.common, "info", "attributes"), "* filter=x=y\n")
+		}},
 		{name: "commondir-rewritten", late: func(t *testing.T, p planter, worktree string) {
 			writeFile(t, filepath.Join(p.gitDir(t, worktree), "commondir"), p.evilCommon(t)+"\n")
 		}},
@@ -326,6 +331,116 @@ func TestRepo_StartWorkSetsUpstream(t *testing.T) {
 	} {
 		if got := gitIn(t, path, "config", "--default", "", "--get", key); got != want {
 			t.Errorf("git config %s in the worktree = %q, want %q", key, got, want)
+		}
+	}
+}
+
+// TestRepo_CloseKeepsOtherWorktrees plants what a Bot with the worktree root and <common>/worktrees
+// writable can: its own worktree folder swapped for a symlink to another linked worktree of the
+// repo, one the user made outside the root, and its own entry's gitdir file pointed at nothing, so
+// that git no longer finds the entry pointing back. Git then resolves the symlink when asked to
+// remove the folder and removes the user's worktree. The control runs that removal with plain git.
+func TestRepo_CloseKeepsOtherWorktrees(t *testing.T) {
+	plant := func(t *testing.T, repo, worktree, user string) {
+		t.Helper()
+		entries, err := filepath.Glob(filepath.Join(repo, ".git", "worktrees", "*", "gitdir"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, gitdir := range entries {
+			if b, err := os.ReadFile(gitdir); err == nil && strings.TrimSpace(string(b)) == filepath.Join(worktree, ".git") {
+				writeFile(t, gitdir, "/nonexistent/.git\n")
+			}
+		}
+		if err := os.Rename(worktree, worktree+".moved"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(user, worktree); err != nil {
+			t.Fatal(err)
+		}
+	}
+	userWorktree := func(t *testing.T, repo string) string {
+		t.Helper()
+		user := filepath.Join(t.TempDir(), "user-worktree")
+		gitIn(t, repo, "worktree", "add", "-b", "user/work", user, "HEAD")
+		writeFile(t, filepath.Join(user, "precious.txt"), "uncommitted\n")
+		return user
+	}
+
+	t.Run("control", func(t *testing.T) {
+		repo := t.TempDir()
+		gitIn(t, repo, "init", "-b", "main")
+		writeFile(t, filepath.Join(repo, "answer.txt"), "41\n")
+		gitIn(t, repo, "add", "answer.txt")
+		gitIn(t, repo, "commit", "-m", "seed")
+		user := userWorktree(t, repo)
+		worktree := filepath.Join(t.TempDir(), "thread-worktree")
+		gitIn(t, repo, "worktree", "add", "--no-track", "-b", "fix/x", worktree, "HEAD")
+		plant(t, repo, worktree, user)
+		_ = exec.CommandContext(t.Context(), "git", "-C", repo, "worktree", "remove", "--force", worktree).Run()
+		if _, err := os.Stat(filepath.Join(user, "precious.txt")); err == nil {
+			t.Error("plain git kept the user's worktree: the plant does not work, so the close below would pass without testing anything")
+		}
+	})
+
+	for _, provider := range []string{"codex", "claude"} {
+		t.Run(provider+"/close", func(t *testing.T) {
+			f := newRepoFixture(t, provider)
+			user := userWorktree(t, f.repo.Path)
+			b := f.bot(t, provider, "all", nil)
+			th := f.thread(t, b)
+			ch := f.s.events(t, th)
+			r := f.s.send(t, th, _unfinishedRepoPrompt)
+			es := until(t, ch, r.ID, "run_finished")
+			if done := f.s.run(t, r.ID); done.Status != "done" {
+				t.Fatalf("run: %+v", done)
+			}
+			worktree, _ := repoEvent(t, es, "worktree_created").Data["path"].(string)
+			plant(t, f.repo.Path, worktree, user)
+
+			// A refused close is fine; removing the user's worktree is not.
+			req, err := http.NewRequestWithContext(t.Context(), "POST", f.s.url+"/api/threads/"+th.ID+"/close", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = resp.Body.Close()
+			if _, err := os.Stat(filepath.Join(user, "precious.txt")); err != nil {
+				t.Errorf("closing the thread removed the user's worktree: %v", err)
+			}
+		})
+	}
+}
+
+// TestRepo_UserFilterThatMustRunStillWorks has a repo with a Git LFS-style filter: the user's own
+// config defines it as required, the repo's .gitattributes applies it. Atoll's checkouts must still
+// be made; whether the file is smudged is not pinned.
+func TestRepo_UserFilterThatMustRunStillWorks(t *testing.T) {
+	f := newRepoFixture(t, "codex")
+	writeFile(t, filepath.Join(f.repo.Path, ".gitattributes"), "*.bin filter=lfs\n")
+	writeFile(t, filepath.Join(f.repo.Path, "big.bin"), "content\n")
+	gitIn(t, f.repo.Path, "add", ".gitattributes", "big.bin")
+	gitIn(t, f.repo.Path, "commit", "-m", "add a binary")
+	gitIn(t, f.repo.Path, "push", "origin", "main")
+	writeFile(t, filepath.Join(f.m.home, ".gitconfig"), "[filter \"lfs\"]\n\tclean = cat\n\tsmudge = cat\n\trequired = true\n")
+
+	b := f.bot(t, "codex", "all", nil)
+	th := f.thread(t, b)
+	ch := f.s.events(t, th)
+	for _, prompt := range []string{_questionRepoPrompt, _unfinishedRepoPrompt} {
+		r := f.s.send(t, th, prompt)
+		es := until(t, ch, r.ID, "run_finished")
+		if done := f.s.run(t, r.ID); done.Status != "done" {
+			t.Fatalf("run %q: %+v", prompt, done)
+		}
+		if prompt == _unfinishedRepoPrompt {
+			worktree, _ := repoEvent(t, es, "worktree_created").Data["path"].(string)
+			if _, err := os.Stat(filepath.Join(worktree, "big.bin")); err != nil {
+				t.Errorf("start_work made a worktree without big.bin: %v", err)
+			}
 		}
 	}
 }
