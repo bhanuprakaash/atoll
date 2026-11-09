@@ -139,10 +139,15 @@ today), within its existing size limit.
   any request without the valid bearer token. The fake git remote is real `git http-backend` behind
   basic auth: only user `x-access-token` with the valid token gets in.
 
+When `ATOLL_SECRET_STORE_UNAVAILABLE` is non-empty, every secret-store read and write fails on
+Linux and macOS. A secret save failure reports that the system keychain could not save the
+credentials, with an HTTP status of 500 or greater.
+
 ## Acceptance mapping
 
 | Acceptance | Tests |
 | --- | --- |
+| With `ATOLL_SECRET_STORE_UNAVAILABLE=1`, a keychain save failure returns HTTP 500 or greater, names the keychain, exits Pending, offers Sign in again, and displays no raw JSON | `TestKeychainFailure_Connections/GitHub`; `ui/keychain-failure.spec.ts` |
 | Connect shows the code and opens `github.com/login/device`; with the fake approving, `GET /api/connections` lists `github` connected; token in the OS secret store, in no file or log | `TestGitHub_ConnectKeepsTheTokenInTheSecretStore`; `e2e/ui/github-connection.spec.ts` "the GitHub card says what Bots get; Connect shows the code, opens GitHub and connects" |
 | A run gets `GH_TOKEN` and the git helper through env; `gh api user` returns the fake user; `git push` authenticates as `x-access-token` | `TestGitHub_RunGetsTheConnection/{claude,codex}` |
 | MCP config has a `github` entry with the Bearer header (Claude, Codex); a scripted provider calls one tool and gets the answer | `TestGitHub_RunGetsTheConnection/{claude,codex}` |
