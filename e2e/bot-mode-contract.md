@@ -32,29 +32,39 @@ while a run goes applies from the next run; the going run keeps the mode it star
 
 Codex on Auto in a repo thread also starts every run, `thread/start` and `thread/resume` alike, with
 `config.sandbox_workspace_write.writable_roots` holding exactly these five folders, in any order:
-the `worktree_root` folder, the repo's git common dir's `objects`, `refs` and `logs`, and the
-absolute git dir of that session's `cwd` (`git -C <cwd> rev-parse --absolute-git-dir`), and
-`config.sandbox_workspace_write.network_access` true. Both a first run, in the repo's clean
-checkout, and a resumed run, in the thread's worktree, start in a linked worktree, so the last root
-is `<repo>/.git/worktrees/<name>`, different per session. Codex mounts the git dir of a linked
-worktree cwd read-only unless it is a root itself, and a root must be a folder. The common dir
-itself, its `config` and its `hooks` are not roots, so the Bot cannot change the repo's config or
-hooks. Codex reads those keys there and nothing else, so the same values anywhere else do not
-count. Paths compare after symlinks resolve and a trailing slash is dropped. Ask and Full access
-have no `sandbox_workspace_write` key. The spec runs a plain clone.
+the `worktree_root` folder and the git common dir's `objects`, `refs`, `logs` and `worktrees`; and
+`config.sandbox_workspace_write.network_access` true. The set is the same for every session, the
+first in the repo's clean checkout and a resumed one in the thread's worktree: `start_work` makes
+the worktree during a run, so its git dir is covered by `worktrees`, not by a root of its own. A
+root must be a folder. The common dir itself, its `config` and its `hooks` are not roots, so the
+Bot cannot change the repo's config or hooks. Codex reads those keys there and nothing else, so
+the same values anywhere else do not count. Paths compare after symlinks resolve and a trailing
+slash is dropped. Ask and Full access have no `sandbox_workspace_write` key. The spec runs a plain
+clone.
 
 `git push -u` cannot save the upstream when `config` is read-only, so `start_work` sets it when it
 makes the branch: `branch.<branch>.remote` is `origin` and `branch.<branch>.merge` is
 `refs/heads/<branch>`, with no run pushing anything. A repo without an `origin` remote is not
 covered.
 
-Codex on Auto cannot write the repo's `.git/hooks` or `.git/config`: the git common dir itself is
-not a root, only `objects`, `refs`, `logs` and the session's own git dir are. Atoll's own git runs
-outside the sandbox, so as a second guard none of its calls in the repo may run a repo hook.
-The spec plants `post-checkout`, `reference-transaction` and `post-index-change` hooks that record
-a call made with `GIT_TERMINAL_PROMPT=0`, as Atoll's git does, and expects no record after the
-thread's clean checkout, after `start_work`, after a run that leaves unsaved work, and after the
-thread closes (save and remove).
+A writable git dir lets a Bot plant routes that make git run a program, and a Claude Bot on Auto has
+no sandbox at all. Atoll's own git runs outside any sandbox and is one function, so none of its calls
+in the repo may run a program the repo names, whichever provider the Bot uses. The spec plants each
+route the way a Bot would, with a program that records a call made with `GIT_TERMINAL_PROMPT=0`, as
+Atoll's git does, then drives the thread's clean checkout, `start_work`, a run that leaves unsaved
+work and the close that saves and removes, and expects no record after any of them:
+
+| Route | Planted |
+| --- | --- |
+| `hooks` | `post-checkout`, `reference-transaction` and `post-index-change` in `<common>/hooks` |
+| `fsmonitor-in-config` | `core.fsmonitor` in `<common>/config` |
+| `filter-driver` | `filter.x.clean` in `<common>/config` and `* filter=x` in `<common>/info/attributes` |
+| `commondir-rewritten` | `<common>/worktrees/<name>/commondir` pointing at a copy of the common dir whose config sets `core.fsmonitor` and a clean filter |
+| `gitfile-rewritten` | the worktree's `.git` file pointing at a copy of its git dir whose `commondir` points at that copy; the close may be refused, because git will not remove such a worktree |
+| `worktree-config` | `extensions.worktreeConfig` true and `core.fsmonitor` in `<common>/worktrees/<name>/config.worktree` |
+
+Every other close returns `204`. Not pinned: a filter driver in `config.worktree`, and any other
+program a repo config can name that none of Atoll's calls runs.
 
 ## Chief
 
@@ -82,8 +92,8 @@ saves as you change it and shows again after a reload.
 | Chief `create_bot`/`edit_bot` take `mode`; `list_bots` shows it; change with Undo | `TestBotMode_Chief/{claude,codex}` |
 | A change of mode mid-run applies from the next run | `TestBotMode_ChangeMidRunAppliesFromNextRun/{claude,codex}` |
 | `start_work` sets the new branch's upstream to `origin` | `TestRepo_StartWorkSetsUpstream` |
-| None of Atoll's own git calls in the repo (clean checkout, `start_work`, close with unsaved work) runs a repo hook | `TestRepo_ReefGitRunsNoRepoHooks` |
-| Codex Auto starts and resumes with the `worktree_root` folder, the git common dir's `objects`, `refs` and `logs` and the session cwd's git dir (not the common dir, `config` or `hooks`) as writable roots and network access; Ask and Full access carry neither | `TestCodexAuto_SandboxCoversWorktreeAndNetwork/{auto,ask,full}` |
+| None of Atoll's own git calls in the repo (clean checkout, `start_work`, close with unsaved work) runs a program a planted hook, config, filter, `commondir`, `.git` file or `config.worktree` names, for a Codex and a Claude Bot | `TestRepo_ReefGitRunsNoRepoCode/{codex,claude}/{hooks,fsmonitor-in-config,filter-driver,commondir-rewritten,gitfile-rewritten,worktree-config}` |
+| Codex Auto starts and resumes with the `worktree_root` folder, the git common dir's `objects`, `refs`, `logs` and `worktrees` (not the common dir, `config` or `hooks`) as writable roots and network access; Ask and Full access carry neither | `TestCodexAuto_SandboxCoversWorktreeAndNetwork/{auto,ask,full}` |
 
 Not covered here: the spike and the real-Claude line are implementer and user proof. Not pinned:
 Codex's sandbox on Ask beyond not being `danger-full-access`; whether Claude on Full access still

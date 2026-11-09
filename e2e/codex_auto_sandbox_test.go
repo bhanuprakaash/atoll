@@ -2,7 +2,9 @@ package e2e
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -29,6 +31,7 @@ func TestCodexAuto_SandboxCoversWorktreeAndNetwork(t *testing.T) {
 				t.Fatalf("codex ran %d sessions, want 2", len(sessions))
 			}
 			common := gitIn(t, f.repo.Path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+			wantRoots := resolved(t, f.root, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"), filepath.Join(common, "worktrees"))
 			for i, c := range sessions {
 				checkMode(t, "codex", mode, c)
 				method, cwd, present, roots, network := codexWorkspaceWrite(t, c)
@@ -36,9 +39,8 @@ func TestCodexAuto_SandboxCoversWorktreeAndNetwork(t *testing.T) {
 					t.Fatalf("session %d began with %q, want %s", i+1, method, want)
 				}
 				if mode == "auto" {
-					wantRoots := resolved(t, f.root, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"), gitIn(t, cwd, "rev-parse", "--absolute-git-dir"))
-					if len(wantRoots) != 5 || i == 1 && !strings.HasPrefix(resolved(t, cwd)[0], resolved(t, f.root)[0]+string(filepath.Separator)) {
-						t.Fatalf("%s ran in %q, want a linked worktree (with its own git dir), under %q when resumed", method, cwd, f.root)
+					if i == 1 && !strings.HasPrefix(resolved(t, cwd)[0], resolved(t, f.root)[0]+string(filepath.Separator)) {
+						t.Fatalf("%s ran in %q, want the thread's worktree under %q", method, cwd, f.root)
 					}
 					if !network {
 						t.Errorf("codex on auto, %s: config.sandbox_workspace_write.network_access is not true", method)
@@ -105,55 +107,161 @@ func codexWorkspaceWrite(t *testing.T, c *call) (method, cwd string, present boo
 	return "", "", false, nil, false
 }
 
-func TestRepo_ReefGitRunsNoRepoHooks(t *testing.T) {
-	f := newRepoFixture(t, "codex")
-	marker := filepath.Join(t.TempDir(), "hook-ran")
-	// Only Atoll's own git sets GIT_TERMINAL_PROMPT=0; the fake provider's git commits and pushes
-	// run the same hooks and must not count.
-	hook := "#!/bin/sh\n[ \"$GIT_TERMINAL_PROMPT\" = 0 ] && echo \"$(basename \"$0\") $PWD\" >> " + marker + "\nexit 0\n"
-	hooks := filepath.Join(f.repo.Path, ".git", "hooks")
-	if err := os.MkdirAll(hooks, 0o755); err != nil {
+// TestRepo_ReefGitRunsNoRepoCode plants, the way a Bot that can write in the repo would, each route
+// by which git runs a program the repo names, then makes Atoll run its own git (the thread's clean
+// checkout, start_work, a close that saves unsaved work) and expects none of the programs to run.
+// Only Atoll's own git sets GIT_TERMINAL_PROMPT=0; the fake provider's git runs the same programs
+// and must not count. Atoll's git is one function, so the provider does not matter to it.
+func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
+	routes := []struct {
+		name string
+		// early plants before the first run, late after the run that leaves unsaved work.
+		early func(t *testing.T, p planter)
+		late  func(t *testing.T, p planter, worktree string)
+		// anyClose accepts a refused close: git will not remove a worktree whose .git file no
+		// longer points at its registered git dir.
+		anyClose bool
+	}{
+		{name: "hooks", early: func(t *testing.T, p planter) {
+			for _, h := range []string{"post-checkout", "reference-transaction", "post-index-change"} {
+				writeExec(t, filepath.Join(p.common, "hooks", h), p.record+"exit 0\n")
+			}
+		}},
+		{name: "fsmonitor-in-config", early: func(t *testing.T, p planter) {
+			gitIn(t, p.repo, "config", "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
+		}},
+		{name: "filter-driver", early: func(t *testing.T, p planter) {
+			gitIn(t, p.repo, "config", "filter.x.clean", p.script(t, "clean", p.record+"cat\n"))
+			gitIn(t, p.repo, "config", "filter.x.smudge", "cat")
+			writeFile(t, filepath.Join(p.common, "info", "attributes"), "* filter=x\n")
+		}},
+		{name: "commondir-rewritten", late: func(t *testing.T, p planter, worktree string) {
+			writeFile(t, filepath.Join(p.gitDir(t, worktree), "commondir"), p.evilCommon(t)+"\n")
+		}},
+		{name: "gitfile-rewritten", anyClose: true, late: func(t *testing.T, p planter, worktree string) {
+			evil := filepath.Join(t.TempDir(), "gitdir")
+			copyDir(t, p.gitDir(t, worktree), evil)
+			writeFile(t, filepath.Join(evil, "commondir"), p.evilCommon(t)+"\n")
+			writeFile(t, filepath.Join(worktree, ".git"), "gitdir: "+evil+"\n")
+		}},
+		{name: "worktree-config", late: func(t *testing.T, p planter, worktree string) {
+			gitIn(t, p.repo, "config", "extensions.worktreeConfig", "true")
+			gitIn(t, p.repo, "config", "-f", filepath.Join(p.gitDir(t, worktree), "config.worktree"), "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
+		}},
+	}
+	for _, provider := range []string{"codex", "claude"} {
+		for _, route := range routes {
+			t.Run(provider+"/"+route.name, func(t *testing.T) {
+				f := newRepoFixture(t, provider)
+				marker := filepath.Join(t.TempDir(), "ran")
+				p := planter{repo: f.repo.Path, common: filepath.Join(f.repo.Path, ".git"), dir: t.TempDir()}
+				p.record = "#!/bin/sh\n[ \"$GIT_TERMINAL_PROMPT\" = 0 ] && echo \"$0 $PWD\" >> " + marker + "\n"
+				noRun := func(what string) {
+					t.Helper()
+					if ran, err := os.ReadFile(marker); err == nil {
+						t.Errorf("%s ran a program planted by the Bot (%s):\n%s", what, route.name, ran)
+						if err := os.Remove(marker); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				if route.early != nil {
+					route.early(t, p)
+				}
+
+				b := f.bot(t, provider, "all", nil)
+				th := f.thread(t, b)
+				ch := f.s.events(t, th)
+				var worktree string
+				for _, step := range []struct{ git, prompt string }{
+					{"the thread's clean checkout", _questionRepoPrompt},
+					{"start_work", _fixRepoPrompt},
+					{"a run that leaves unsaved work", _unfinishedRepoPrompt},
+				} {
+					r := f.s.send(t, th, step.prompt)
+					es := until(t, ch, r.ID, "run_finished")
+					if done := f.s.run(t, r.ID); done.Status != "done" {
+						t.Fatalf("run %q: %+v", step.prompt, done)
+					}
+					if step.prompt == _fixRepoPrompt {
+						worktree, _ = repoEvent(t, es, "worktree_created").Data["path"].(string)
+					}
+					noRun(step.git)
+				}
+				if route.late != nil {
+					route.late(t, p, worktree)
+				}
+
+				defer noRun("closing a thread with unsaved work")
+				req, err := http.NewRequestWithContext(t.Context(), "POST", f.s.url+"/api/threads/"+th.ID+"/close", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_ = resp.Body.Close()
+				if resp.StatusCode != 204 && !route.anyClose {
+					t.Errorf("close: status %d, want 204", resp.StatusCode)
+				}
+			})
+		}
+	}
+}
+
+// planter holds what a route needs to plant: the repo, its git common dir, a scratch folder, and
+// the start of a script that records a call of Atoll's own git in the marker file.
+type planter struct{ repo, common, dir, record string }
+
+// script writes an executable named name that runs body, and returns its path.
+func (p planter) script(t *testing.T, name, body string) string {
+	t.Helper()
+	path := filepath.Join(p.dir, name)
+	writeExec(t, path, body)
+	return path
+}
+
+// gitDir is the git dir of the linked worktree.
+func (p planter) gitDir(t *testing.T, worktree string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(worktree, ".git"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"post-checkout", "reference-transaction", "post-index-change"} {
-		if err := os.WriteFile(filepath.Join(hooks, name), []byte(hook), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	noHook := func(what string) {
-		t.Helper()
-		if ran, err := os.ReadFile(marker); err == nil {
-			t.Errorf("%s ran repo hooks:\n%s", what, ran)
-			if err := os.Remove(marker); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
+	return strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir: "))
+}
 
-	b := f.bot(t, "codex", "all", nil)
-	th := f.thread(t, b)
-	ch := f.s.events(t, th)
-	var worktree, lastRun string
-	for _, step := range []struct{ git, prompt string }{
-		{"the thread's clean checkout (git worktree add --detach)", _questionRepoPrompt},
-		{"start_work (git worktree add -b)", _fixRepoPrompt},
-		{"a run that leaves unsaved work", _unfinishedRepoPrompt},
-	} {
-		r := f.s.send(t, th, step.prompt)
-		lastRun = r.ID
-		es := until(t, ch, r.ID, "run_finished")
-		if done := f.s.run(t, r.ID); done.Status != "done" {
-			t.Fatalf("run %q: %+v", step.prompt, done)
-		}
-		if step.prompt == _fixRepoPrompt {
-			worktree, _ = repoEvent(t, es, "worktree_created").Data["path"].(string)
-		}
-		noHook(step.git)
-	}
+// evilCommon is a copy of the git common dir whose config runs the script as core.fsmonitor and as
+// the clean filter of every file.
+func (p planter) evilCommon(t *testing.T) string {
+	t.Helper()
+	evil := filepath.Join(t.TempDir(), "common")
+	copyDir(t, p.common, evil)
+	gitIn(t, p.repo, "config", "-f", filepath.Join(evil, "config"), "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
+	gitIn(t, p.repo, "config", "-f", filepath.Join(evil, "config"), "filter.evil.clean", p.script(t, "clean", p.record+"cat\n"))
+	writeFile(t, filepath.Join(evil, "info", "attributes"), "* filter=evil\n")
+	return evil
+}
 
-	f.s.do(t, "POST", "/api/threads/"+th.ID+"/close", nil, nil, 204)
-	assertRemoved(t, ch, lastRun, worktree, "closed")
-	noHook("closing a thread with unsaved work (save, remove)")
+func writeExec(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func copyDir(t *testing.T, from, to string) {
+	t.Helper()
+	if err := os.MkdirAll(to, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.CommandContext(t.Context(), "cp", "-R", from+"/.", to).CombinedOutput(); err != nil {
+		t.Fatalf("copy %s: %v: %s", from, err, out)
+	}
 }
 
 func TestRepo_StartWorkSetsUpstream(t *testing.T) {
