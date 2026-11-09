@@ -54,18 +54,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	bin := filepath.Join(data, "bin")
-	if err := os.MkdirAll(bin, 0o700); err != nil {
-		return err
-	}
-	tmp := filepath.Join(bin, ".claude-shell-prefix.tmp")
-	if err := os.WriteFile(tmp, []byte("#!/bin/bash\nfor v in $(compgen -e | grep -E '^(CLAUDE|ATOLL_MCP_)'); do unset \"$v\"; done\nexec bash -c \"$*\"\n"), 0o500); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, 0o500); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, filepath.Join(bin, "claude-shell-prefix")); err != nil {
+	if err := writeClaudeShellPrefix(data); err != nil {
 		return err
 	}
 	st, err := store.Open(data)
@@ -194,4 +183,25 @@ func pollInterval() time.Duration {
 		return time.Minute
 	}
 	return d
+}
+
+func writeClaudeShellPrefix(data string) error {
+	bin := filepath.Join(data, "bin")
+	if err := os.MkdirAll(bin, 0o700); err != nil {
+		return err
+	}
+	tmp := filepath.Join(bin, ".claude-shell-prefix.tmp")
+	if err := os.Remove(tmp); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.WriteFile(tmp, []byte("#!/bin/bash\nfor v in $(compgen -e | grep -E '^(CLAUDE|ATOLL_MCP_)'); do unset \"$v\"; done\nexec bash -c \"$*\"\n"), 0o500); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, 0o500); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, filepath.Join(bin, "claude-shell-prefix")); err != nil {
+		return err
+	}
+	return nil
 }

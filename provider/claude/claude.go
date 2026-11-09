@@ -399,7 +399,7 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 	return append(args, extra...), secrets, nil
 }
 
-// IsolationArgs returns the isolation flags shared by Claude model sessions.
+// IsolationArgs excludes ancestor instructions, so cwd must be the repo root to keep its CLAUDE.md.
 func IsolationArgs(cwd string) ([]string, error) {
 	excludes := []string{}
 	seen := map[string]bool{}
