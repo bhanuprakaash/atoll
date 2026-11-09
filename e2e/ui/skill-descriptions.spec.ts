@@ -34,19 +34,22 @@ const skills = [
   },
 ];
 
-const createSkills = () =>
-  Promise.all(
-    skills.map((s) =>
-      api(m, "POST", "/api/skills", {
-        name: s.name,
-        content: `---\nname: ${s.name}\n${s.yaml}\n---\nBody.\n`,
-      }),
-    ),
-  );
+type Case = { name: string; yaml: string; text: string; descFirst?: boolean };
+
+const create = (s: Case, eol = "\n") => {
+  const lines = [`name: ${s.name}`, s.yaml];
+  if (s.descFirst) lines.reverse();
+  return api(m, "POST", "/api/skills", {
+    name: s.name,
+    content: `---\n${lines.join("\n")}\n---\nBody.\n`.replaceAll("\n", eol),
+  });
+};
+
+const createSkills = () => Promise.all(skills.map((s) => create(s)));
 
 async function expectTexts(
   scope: ReturnType<Page["locator"]> | Page,
-  names = skills,
+  names: Case[] = skills,
 ) {
   for (const s of names) {
     await expect(scope.getByText(s.text, { exact: true })).toBeVisible();
@@ -85,12 +88,30 @@ test("the New Bot skill list shows the descriptions as text", async ({
   await expectTexts(page.getByRole("dialog", { name: "Add skill" }));
 });
 
-for (const index of [0, 3]) {
-  const { name, text } = skills[index];
+const edgeCases: Case[] = [
+  { name: "null-skill", yaml: "description:", text: "", descFirst: true },
+  {
+    name: "comment-skill",
+    yaml: "description: # c",
+    text: "",
+    descFirst: true,
+  },
+  {
+    name: "colon-skill",
+    yaml: "description: Use when: needed",
+    text: "Use when: needed",
+  },
+];
+
+for (const { name, yaml, text, descFirst } of [
+  skills[0],
+  skills[3],
+  ...edgeCases,
+] as Case[]) {
   test(`editing the description of ${name} writes YAML that parses back to the same text`, async ({
     page,
   }) => {
-    const made = await createSkills();
+    const made = await create({ name, yaml, text, descFirst });
     const edited = 'Use for "x": a #1 case, then more';
     await page.goto(`${m.url}/settings/skills`);
     await page
@@ -108,9 +129,35 @@ for (const index of [0, 3]) {
       panel.getByRole("button", { name: /^Save/ }).click(),
     ]);
 
-    const { content } = await api(m, "GET", `/api/skills/${made[index].id}`);
+    const { content } = await api(m, "GET", `/api/skills/${made.id}`);
     const [, front, body] = content.split(/^---\n/m);
     expect(parse(front)).toEqual({ name, description: edited });
     expect(body).toBe("Body.\n");
   });
 }
+
+test("a plain description with a colon shows its text, not a blank", async ({
+  page,
+}) => {
+  await create(edgeCases[2]);
+  await page.goto(`${m.url}/settings/skills`);
+  await expectTexts(page, [edgeCases[2]]);
+});
+
+test("a SKILL.md with CRLF line endings shows its description", async ({
+  page,
+}) => {
+  const crlf = {
+    name: "crlf-skill",
+    yaml: "description: Works with CRLF files",
+    text: "Works with CRLF files",
+  };
+  const made = await create(crlf, "\r\n");
+  await newBotAPI(m, "Kelp", "claude", { skills: [made.id] });
+  await page.goto(`${m.url}/settings/skills`);
+  await expectTexts(page, [crlf]);
+  await page.goto(m.url);
+  await sidebarRow(page, "Kelp").click();
+  await page.getByRole("button", { name: "Bot settings" }).click();
+  await expectTexts(page.getByRole("dialog", { name: "Bot settings" }), [crlf]);
+});
