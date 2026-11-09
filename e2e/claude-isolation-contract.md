@@ -47,6 +47,7 @@ nested quotes and `$()`.
 | A relative `ATOLL_DATA_DIR` gives an absolute `CLAUDE_CODE_SHELL_PREFIX` in the Bot's env | `TestClaudeIsolation_ShellPrefixIsAbsoluteForRelativeDataDir` |
 | Chief and every title run have `--tools ""` (Chief keeps its atoll MCP config and `--allowedTools mcp__atoll`); a platform Bot that is not Chief and a plain Bot have the allowlist | `TestClaudeIsolation_ToolsByKindOfRun` (Chief's part passes only once the Chief no-shell change, PR #202, is on main) |
 | Real claude still reaches its MCP servers with `ATOLL_MCP_*` unset in Bash | `TestClaudeIsolation_RealClaudeReachesMCPServers` (build tag `realclaude`: `go test -tags realclaude -run TestClaudeIsolation_Real ./e2e`; needs a signed-in claude; not in `make e2e` or CI) |
+| The model-list probe (`claude -p` with an `initialize` request and no user turn, started on Refresh) has the same `--tools` allowlist and `--setting-sources project` | `TestClaudeIsolation_ModelDiscoveryHasTheAllowlist` |
 | With the argv and env atoll builds for a Bot in Ask, Auto and Full (captured from the fake) and a stand-in MCP server, real claude's `system/init` tool list is exactly the ten allowlisted built-ins plus the stand-in's tools (not the `--permission-prompt-tool` one, which claude keeps out of the list); a tool a later Claude Code adds fails it only if the allowlist stops closing it | `TestClaudeIsolation_RealClaudeToolList/{ask,auto,full}` (same tag) |
 
 ## Not covered
@@ -54,5 +55,4 @@ nested quotes and `$()`.
 - That real claude hides an owner's `~/.claude/CLAUDE.md` with these patterns, and a `/CLAUDE.md`
   (needs root): the design records the spike; the fake cannot load memory files.
 - macOS and a zsh user for the shell prefix script.
-- Real claude 2.1.319 lists `Glob` and `Grep` in its init event (the design says it does not); the test expects them.
 - A real Reef thread whose Bot reaches an MCP server through atoll with the unset in place: the real test builds its own `claude` command, because atoll's Claude folder needs a login the test cannot copy. The fix PR's Proof runs it once.

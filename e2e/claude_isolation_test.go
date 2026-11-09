@@ -428,3 +428,27 @@ func TestClaudeIsolation_ToolsByKindOfRun(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudeIsolation_ModelDiscoveryHasTheAllowlist(t *testing.T) {
+	m, s := start(t, "claude")
+	var providers []map[string]any
+	s.do(t, "POST", "/api/providers/refresh", nil, &providers, http.StatusOK)
+
+	// The model-list probe starts claude -p, asks for the models and sends no user turn.
+	probes := 0
+	for _, c := range m.calls(t, "claude") {
+		if !slices.Contains(c.argv, "-p") || slices.ContainsFunc(c.stdin, isTurn) || !slices.ContainsFunc(c.stdin, func(l string) bool { return strings.Contains(l, `"initialize"`) }) {
+			continue
+		}
+		probes++
+		if got := toolsFlag(c); got != _botTools {
+			t.Errorf("model discovery run %d: --tools %q, want %q", c.pid, got, _botTools)
+		}
+		if got := flagValue(c.argv, "--setting-sources"); got != "project" {
+			t.Errorf("model discovery run %d: --setting-sources %q, want project", c.pid, got)
+		}
+	}
+	if probes == 0 {
+		t.Fatal("no model discovery run of claude")
+	}
+}
