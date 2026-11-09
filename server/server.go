@@ -270,7 +270,7 @@ func (a *api) botList(
 }
 
 func (a *api) threadRuns(ctx context.Context) (threads, helpers map[string][]store.ThreadRun, err error) {
-	runs, err := a.st.ThreadRuns(ctx, "")
+	runs, err := a.st.PollThreadRuns(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
