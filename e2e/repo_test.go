@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -477,6 +478,10 @@ func assertNoSecret(t *testing.T, token string, roots ...string) {
 				return nil
 			}
 			b, err := os.ReadFile(path)
+			if errors.Is(err, fs.ErrNotExist) {
+				// The server renames its temp files (hosts.yml.<random>) away while it runs.
+				return nil
+			}
 			if err != nil {
 				return err
 			}
