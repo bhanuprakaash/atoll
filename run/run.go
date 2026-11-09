@@ -667,7 +667,15 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			if err != nil {
 				return "", fmt.Errorf("compare git directory and worktree root: %w", err)
 			}
-			if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			resolvedRepo, err := filepath.EvalSymlinks(rp.Path)
+			if err != nil {
+				return "", fmt.Errorf("resolve repo: %w", err)
+			}
+			repoRel, err := filepath.Rel(resolvedRoot, resolvedRepo)
+			if err != nil {
+				return "", fmt.Errorf("compare repo and worktree root: %w", err)
+			}
+			if (rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) && (repoRel == ".." || strings.HasPrefix(repoRel, ".."+string(filepath.Separator))) {
 				cfg.WritableRoots = []string{root}
 			}
 			cfg.WritableRoots = append(cfg.WritableRoots, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"))

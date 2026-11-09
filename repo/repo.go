@@ -56,6 +56,8 @@ type Base struct {
 }
 
 type gitContextKey struct{}
+type snapshotKey struct{}
+type gitDirs struct{ common, dir string }
 
 // WorktreeID validates the Git metadata for an existing worktree.
 func WorktreeID(common, worktree string) (string, error) {
@@ -90,9 +92,9 @@ func WorktreeID(common, worktree string) (string, error) {
 	return filepath.Base(path), nil
 }
 
-// WithWorktree supplies the trusted git directories for a worktree.
+// WithWorktree uses the stored ID because worktree gitfiles and metadata are Bot-writable.
 func WithWorktree(ctx context.Context, common, id string) context.Context {
-	return context.WithValue(ctx, gitContextKey{}, []string{"GIT_DIR=" + filepath.Join(common, "worktrees", id), "GIT_COMMON_DIR=" + common})
+	return context.WithValue(ctx, gitContextKey{}, gitDirs{common: common, dir: filepath.Join(common, "worktrees", id)})
 }
 
 // Create makes a new worktree of repoPath on a new branch at <root>/<repoName>/<folder>, where
@@ -203,7 +205,8 @@ func Checkout(ctx context.Context, repoPath, dir string) error {
 // built in a temporary index that starts as a copy of the real one. It returns false and writes
 // nothing when the checkout is clean.
 func Save(ctx context.Context, dir, ref string) (bool, error) {
-	status, err := git(ctx, dir, nil, "status", "--porcelain")
+	snapshot := context.WithValue(ctx, snapshotKey{}, true)
+	status, err := git(snapshot, dir, nil, "status", "--porcelain")
 	if err != nil {
 		return false, fmt.Errorf("read status: %w", err)
 	}
@@ -228,10 +231,10 @@ func Save(ctx context.Context, dir, ref string) (bool, error) {
 		"GIT_AUTHOR_NAME=Atoll", "GIT_AUTHOR_EMAIL=atoll@localhost",
 		"GIT_COMMITTER_NAME=Atoll", "GIT_COMMITTER_EMAIL=atoll@localhost",
 	}
-	if _, err := git(ctx, dir, env, "add", "-A"); err != nil {
+	if _, err := git(snapshot, dir, env, "add", "-A"); err != nil {
 		return false, fmt.Errorf("stage changes: %w", err)
 	}
-	tree, err := git(ctx, dir, env, "write-tree")
+	tree, err := git(snapshot, dir, env, "write-tree")
 	if err != nil {
 		return false, fmt.Errorf("write tree: %w", err)
 	}
@@ -240,8 +243,9 @@ func Save(ctx context.Context, dir, ref string) (bool, error) {
 		return false, fmt.Errorf("commit tree: %w", err)
 	}
 	var refEnv []string
-	if trusted, ok := ctx.Value(gitContextKey{}).([]string); ok {
-		refEnv = []string{"GIT_DIR=" + strings.TrimPrefix(trusted[1], "GIT_COMMON_DIR=")}
+	if trusted, ok := ctx.Value(gitContextKey{}).(gitDirs); ok {
+		// Git may follow the Bot-writable commondir for refs even with GIT_COMMON_DIR set.
+		refEnv = []string{"GIT_DIR=" + trusted.common}
 	}
 	if _, err := git(ctx, dir, refEnv, "update-ref", ref, commit); err != nil {
 		return false, fmt.Errorf("write ref: %w", err)
@@ -328,14 +332,38 @@ func seedIndex(ctx context.Context, dir, to string) error {
 }
 
 func git(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+	// Hooks and fsmonitor can run commands from Bot-writable repo config.
 	base := []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-C", dir}
-	trusted, _ := ctx.Value(gitContextKey{}).([]string)
-	allEnv := append(append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0"), trusted...), env...)
-	config := exec.CommandContext(ctx, "git", append(base, "config", "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process)$`)...)
-	config.Env = allEnv
-	keys, _ := config.Output()
-	for _, key := range strings.Fields(string(keys)) {
-		base = append(base, "-c", key+"=")
+	trusted, hasTrusted := ctx.Value(gitContextKey{}).(gitDirs)
+	allEnv := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if hasTrusted {
+		allEnv = append(allEnv, "GIT_DIR="+trusted.dir, "GIT_COMMON_DIR="+trusted.common)
+	}
+	allEnv = append(allEnv, env...)
+	if enabled, _ := ctx.Value(snapshotKey{}).(bool); enabled {
+		common := trusted.common
+		if !hasTrusted {
+			var err error
+			common, err = GitCommonDir(context.WithValue(ctx, snapshotKey{}, false), dir)
+			if err != nil {
+				return "", err
+			}
+		}
+		config := exec.CommandContext(ctx, "git", "config", "--null", "--file", filepath.Join(common, "config"), "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process)$`)
+		config.Env = allEnv
+		keys, err := config.Output()
+		var exit *exec.ExitError
+		if err != nil && !(errors.As(err, &exit) && exit.ExitCode() == 1) {
+			return "", fmt.Errorf("list repo filters: %w", err)
+		}
+		count := 0
+		for _, key := range strings.Split(string(keys), "\x00") {
+			if key != "" {
+				allEnv = append(allEnv, "GIT_CONFIG_KEY_"+strconv.Itoa(count)+"="+key, "GIT_CONFIG_VALUE_"+strconv.Itoa(count)+"=")
+				count++
+			}
+		}
+		allEnv = append(allEnv, "GIT_CONFIG_COUNT="+strconv.Itoa(count))
 	}
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	cmd.Env = allEnv

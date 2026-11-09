@@ -143,6 +143,12 @@ func (m *Manager) StartWork(
 	if path, branch, base, err = repo.Create(ctx, rp.Path, root, rp.Name, name); err != nil {
 		return "", "", repo.Base{}, err
 	}
+	createdPath, createdBranch := path, branch
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, repo.Remove(ctx, rp.Path, createdPath), repo.DeleteBranch(ctx, rp.Path, createdBranch))
+		}
+	}()
 	common, err := repo.GitCommonDir(ctx, rp.Path)
 	if err != nil {
 		return "", "", repo.Base{}, err
@@ -152,11 +158,10 @@ func (m *Manager) StartWork(
 		return "", "", repo.Base{}, err
 	}
 	if err := m.cfg.Store.SetWorktree(ctx, t.ID, branch, path); err != nil {
-		err = errors.Join(err, repo.Remove(ctx, rp.Path, path), repo.DeleteBranch(ctx, rp.Path, branch))
 		return "", "", repo.Base{}, err
 	}
 	if err := m.cfg.Store.SetGitDirs(ctx, t.ID, t.CheckoutGitDir, id); err != nil {
-		return "", "", repo.Base{}, err
+		return "", "", repo.Base{}, errors.Join(err, m.cfg.Store.SetWorktree(context.WithoutCancel(ctx), t.ID, "", ""))
 	}
 	m.publish(a, EventWorktreeCreated,
 		WorktreeCreated{RunID: a.run.ID, RepoID: t.RepoID, Path: path, Branch: branch})
@@ -356,6 +361,9 @@ func (m *Manager) stopQuietly(ctx context.Context, threadID string) (bool, error
 // release saves the unfinished work of the thread's worktree, removes the worktree and tells the
 // thread's subscribers. When the save fails nothing is removed.
 func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, reason string) error {
+	if err := m.checkWorktree(ctx, t.Worktree); err != nil {
+		return err
+	}
 	runID, err := m.cfg.Store.LatestRun(ctx, t.ID)
 	if err != nil {
 		return err
@@ -381,6 +389,9 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	if !saved {
 		ref = ""
 	}
+	if err := m.checkWorktree(ctx, t.Worktree); err != nil {
+		return err
+	}
 	if err := repo.Remove(ctx, rp.Path, t.Worktree); err != nil {
 		return err
 	}
@@ -389,6 +400,44 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	}
 	m.announce(t.ID, runID, EventWorktreeRemoved,
 		WorktreeRemoved{RunID: runID, Path: t.Worktree, Reason: reason, SnapshotRef: ref})
+	return nil
+}
+
+func (m *Manager) checkWorktree(ctx context.Context, path string) error {
+	root, err := m.WorktreeRoot(ctx)
+	if err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect worktree: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("refuse symlink worktree")
+	}
+	root, err = filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return errors.New("worktree is outside its root")
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return err
+	}
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+	if resolvedPath != filepath.Join(resolvedRoot, rel) {
+		return errors.New("refuse worktree with symlink in its path")
+	}
 	return nil
 }
 

@@ -49,12 +49,15 @@ never a dependency.
   sets the branch upstream when origin exists, since the Bot cannot write config. `git push -u` pushes
   but cannot save upstream. Git may print `packed-refs.lock: Read-only file system` on commit, pull
   or stash; these commands can still succeed with exit 0.
-  If the worktree root contains the repo's git common directory, it is not granted as a writable root.
+  If the worktree root contains the repo or its git common directory, it is not granted as a writable root.
 
   Repo-local config can define commands such as filters, diff drivers and `core.sshCommand`. Claude
   Auto can write that config, and per-worktree config is read when `extensions.worktreeConfig` is on.
-  These remain risks when Reef runs git; snapshot staging can run clean filters.
+  These remain risks when Reef runs git. Snapshot staging disables repo-local filters; checkout
+  retains the user's filters so Git LFS works. A filter in `config.worktree` remains a risk.
   Reef also runs `glab mr view` in the repo; if glab invokes git, it may read the repo's config.
+  A Bot process that outlives its run can swap a worktree path after Reef checks it and before git
+  removes it.
 
   *Claude's auto mode classifier runs safe steps and blocks risky ones (Claude reports the block);
   explicit ask rules still come to the thread as cards.* Full access never asks, even to delete
