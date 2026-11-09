@@ -6,7 +6,7 @@
    `main`. Never push `main`; never merge your own PR.
 2. Smallest diff that closes the ticket. Nothing speculative: no option, layer or wrapper the ticket
    does not need now.
-3. Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `build:`): one-line subject, no ticket
+3. Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `build:`): one-line subject, no ticket
    ids in the subject, no AI attribution anywhere (commits, PRs, issues, comments).
 4. Prove every acceptance line by running the real thing (binary, API, app). "It compiles" is not
    proof. Put the command and what it showed in the PR under Proof.
@@ -15,6 +15,20 @@
 6. Comments only for a constraint the code cannot show.
 7. Go follows [`docs/go-style.md`](docs/go-style.md); the web app follows
    [`docs/react-style.md`](docs/react-style.md).
+
+## Product principles
+
+- Conversation first: a reply in chat resolves whatever waits; no widget forces an answer.
+- Attention: one pending item shows in every place it matters, clears in all, never twice.
+- Plain words: answer first, short, specific. A long report is a smell.
+- Evidence over claims: show what ran and what it cost; never claim what was not checked.
+- Isolation: a Bot sees only what it was given.
+- Calm colour: colour carries meaning; red only for real danger or failure.
+- Own components, built for Reef: no off-the-shelf look, no Mermaid.
+- Designed errors: plain words, a next step, details tucked away; never a raw error or JSON.
+- Smallest change that closes the ticket; owner merges.
+- Fix the whole class: when one instance is found, find and fix all of them.
+- Design first: settle an unsettled design before test and code; ask once, with a recommendation.
 
 ## What Reef is
 
@@ -83,6 +97,8 @@ issues and PRs start from the templates in `.github/`.
 - `e2e/` tests come from a ticket's acceptance lines, in their own commit, before the code, written
   by the user or a separate session. The implementing agent never edits `e2e/`.
 - If a test looks wrong, stop and report it. Never edit, skip or weaken a test to make code pass.
+- A test-only PR says so in its title (`test:`), links the issue in the body (`Refs #N`), and
+  cleans up in `finally`.
 - Unit tests are for fiddly logic. Add a case to an existing table-driven test, not a test per bug.
 - `test-guard` (`scripts/check-tests`) fails a PR that mixes `e2e/` with other code, deletes a
   test, adds a skip or `.only(`, or edits `.github/workflows/`. Only the user decides to merge a PR
