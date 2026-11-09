@@ -587,9 +587,9 @@ after a failed undo counts a Bot that is already gone as removed.
   Chief calls `import_agent`, imports each skill it names, attaches them through `create_bot`, and
   keeps `~/.claude` paths out of the persona. *Reopened "importing a local skill needs no new tool":
   passing every file through `create_skill` costs tokens and loses the executable bit.*
-  `import_skill` takes text files, skips binaries and `.git` and reports them, rewrites
-  `~/.claude/skills/<folder>/` in `SKILL.md` to relative paths in Reef's copy only, and flags other
-  `~/` paths left in it. The source folder is never written. It matches an existing skill by source
+  `import_skill` takes text files, skips binaries and `.git` and reports them; its home-path
+  rewrite and refusal are in Connections and skills (Home paths in imported skills). The source folder is never
+  written. It matches an existing skill by source
   folder, else a same-named skill made in Reef, and answers `created`, `replaced` (with added /
   changed / removed), `unchanged`, or `confirm` when the stored files were edited in Reef since the
   last import (a hash of the set as imported): Chief warns, asks, and calls again with
