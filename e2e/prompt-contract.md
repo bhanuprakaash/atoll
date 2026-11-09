@@ -72,7 +72,7 @@ exact heading line and the non-empty lines after it, up to the next blank line.
 | Section | Heading line | Fixed |
 | --- | --- | --- |
 | Reef guide | `Reef guide` | names connections (any case) and `MCP` |
-| Ask-first rule | `Ask first` | at least one line |
+| Ask-first rule | `Ask first` | at least one line; contains (any case) `proposal`, `model`, `skills`, `repo`, `connections`, `exempt` and `2-3` |
 | Voice | `Voice` | 1 to 3 lines |
 
 - The whole block, headings included, is at most 2000 bytes (the design's ~500 token budget).
@@ -85,6 +85,7 @@ exact heading line and the non-empty lines after it, up to the next blank line.
 | --- | --- |
 | Voice at most 3 lines, in the platform block, not the persona | `TestPrompt_ChiefPlatformBlock` |
 | Platform block, guide included, under about 500 tokens | `TestPrompt_ChiefPlatformBlock` |
+| The ask-first message holds the full proposal and is exempt from the short-reply rule | `TestPrompt_ChiefAskFirstCarriesProposal` |
 | Only Chief has a voice (via the platform block) | `TestPrompt_NoSwitchNoPlatformTextNoVoice` |
 | "ok" creates the Bot; the thread shows the change card with Undo | existing `e2e/ui/skills.spec.ts` "Chief creates a skill and Bot in chat, and Undo removes the Bot" |
 
