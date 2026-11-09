@@ -80,12 +80,37 @@ never a dependency.
   messages, runs and event files. Memory it saved stays, with its source. *Memory outlives the Bot
   that wrote it; a Bot's history does not.*
 
-**Chief.** Created on first launch. It has no repo access at all times: `PUT` and its own
-`edit_bot` refuse to give it repos, its Bot settings and empty thread offer none, and a launch moves
-an older install's Chief to none. It does no code work. It has the "Can manage the platform" switch
-on: tools to create and edit Bots (including model, look, Mode and delegates), skills and repos, and to attach
-connections, served as Reef's own MCP tools; read tools list Bots, skills, connections, repos, MCP
-servers and signed-in models and record no change.
+**Chief.** Created on first launch. It has no repo access at all times (a Chief on Codex
+keeps its shell: see Known gap): `PUT` and its own `edit_bot` refuse to give it repos, its Bot
+settings and empty thread offer none, and a launch moves an older install's Chief to none. It does
+no code work. It has the "Can manage the platform" switch
+on: tools to create and edit Bots (including model, look, Mode and delegates), skills and repos, and
+to attach connections, served as Reef's own MCP tools; read tools list Bots, skills, connections,
+repos, MCP servers and signed-in models and record no change.
+
+- Tools on Claude: only Reef's MCP tools, no shell and no file tools. Chief runs with `--tools ""`
+  next to its MCP config, in every Mode. *A prompt without the repos does not stop a Bash call from
+  reading them, and a Read allow-rule scoped to `~/.claude` does not hold under Auto or Full access
+  (Claude Code 2.1.319, real runs).* Whether a skill attached to Chief loads under `--tools ""` is
+  unverified. No other Bot gets `--tools ""`.
+- Local files: Chief reads an agent file with `import_agent(path)` and a skill folder with
+  `import_skill(path)`, both in the server and limited to the folders in Prompt, so neither reaches
+  a repo. `import_agent` is a read tool. It adds no reach for other platform Bots: a Bot with a
+  shell can already read `~/.claude/agents`.
+- Provider: Chief prefers Claude and must run for a user who has only Codex, since onboarding runs
+  through Chief. A Codex model stays allowed for it in `PUT`, `edit_bot` and the picker, and Chief
+  is never refused a run for lack of Claude. A first launch creates Chief on Claude's default model
+  when Claude is signed in, else on Codex's.
+- Move to Claude: an install that existed before this rule moves a Chief on a Codex model to
+  Claude's default model once, when Claude is signed in, kept by a stored flag. Chief's next first
+  reply says so in a plain note. A later Codex choice stays.
+- Known gap: no-shell is unproven on Codex, so a Chief on Codex keeps its shell and file tools. It
+  can run commands and read files, registered repos included, so "no repo access" does not hold for
+  it. Codex Auto's sandbox does not restrict reads (unverified). The #161 fix closes the gap once
+  the Codex probe shows that `features.shell_tool = false`, `view_image = false` and
+  `unified_exec` off keep Reef's MCP tools callable and stop shell and file reads. The platform
+  prompt names no Chief tools, so it stays true either way.
+
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
 registered repo has (REST answers 400 with the same text for repo, delegate and MCP server ids, and
@@ -773,17 +798,44 @@ after a failed undo counts a Bot that is already gone as removed.
   rule for creates and Chief's voice. The ask-first rule overrides the core's "ask only when two
   real readings" and exempts the ask-first message from the 2–3 line reply. The voice lives here,
   not in the persona; only a Bot with the switch has it.
-- Chief imports a local skill folder with `import_skill(path)`: it reads the agent file with the
-  provider's own file tool, imports each skill it names, attaches them through `create_bot`, and keeps
-  `~/.claude` paths out of the persona. *Reopened "importing a local skill needs no new tool": passing
-  every file through `create_skill` costs tokens and loses the executable bit.* `import_skill` takes
-  text files, skips binaries and `.git` and reports them, rewrites `~/.claude/skills/<folder>/` in
-  `SKILL.md` to relative paths in Reef's copy only, and flags other `~/` paths left in it. The source
-  folder is never written. It matches an existing skill by source folder, else a same-named skill made
-  in Reef, and answers `created`, `replaced` (with added / changed / removed), `unchanged`, or
+- Chief reads local files only through two server tools (Chief on Claude has no file tool; Bots >
+  Chief, Known gap, covers Codex). `import_skill(path)` imports a skill folder;
+  `import_agent(path)` reads an agent file. For a Bot from an agent file, Chief calls
+  `import_agent`, imports each skill it names, attaches them through `create_bot`, and keeps
+  `~/.claude` paths out of the persona. *Reopened "importing a local skill needs no new tool":
+  passing every file through `create_skill` costs tokens and loses the executable bit.*
+- `import_skill` takes text files, skips binaries and `.git` and reports them. Its home-path rewrite
+  and refusal are in Connections and skills (Home paths in imported skills). The source folder is
+  never written. It matches an existing skill by source folder, else a same-named skill made in
+  Reef, and answers `created`, `replaced` (with added / changed / removed), `unchanged`, or
   `confirm` when the stored files were edited in Reef since the last import (a hash of the set as
   imported): Chief warns, asks, and calls again with `replace: true` after a yes. Both paths write
   through the same whole-set replace as `PUT`.
+- `import_skill` and Re-import take only a skill folder that, once resolved, is a direct child of
+  the resolved `~/.claude/skills` or `~/.codex/skills`, under the path, symlink, `..` and error
+  rules of `import_agent`. A skill whose source folder is elsewhere keeps working, but its Re-import
+  is refused with the same invalid-params error, naming the folder and the two allowed ones. Over
+  REST, Re-import of such a skill answers `400`, an input rule like the other input errors here,
+  not the `refused` status that Connections and skills gives an unrewritable home path (HTTP 200,
+  a content outcome). The folder check runs before the home-path scan, so one rule fires per skill.
+- `import_agent(path)` is a read tool: it records no change and writes nothing. Only a Bot with the
+  platform switch is offered it; any other Bot neither lists nor can call it.
+  - Path: absolute or starting with `~/`, resolved against the user's `HOME` (a custom
+    `CLAUDE_CONFIG_DIR` is not honoured). It names one `.md` file directly inside
+    `~/.claude/agents`.
+  - Resolving: the server cleans the path and resolves symlinks and `..` in it and in the allowed
+    folder, so a symlinked `~/.claude/agents` (a dotfiles repo) works and a symlink inside it that
+    leaves the folder is refused.
+  - Reading: it opens the file and checks that the same handle is a regular file, so a FIFO or
+    device cannot hang the read and a swap after the check changes nothing.
+  - Errors: JSON-RPC invalid-params, as `import_skill` returns. A refused path names the allowed
+    folder; a path that is not a `.md` file says only `.md` files directly in `~/.claude/agents` are
+    read; a directory, FIFO or device says `not a regular file` (invalid params, -32602); a missing
+    file says `not found`; a file over 256 KiB (a guard on what enters the model's
+    context) or not valid UTF-8 says so.
+  - Answer: `{name, path, content}`, with `name` the file name without `.md` and `path` the resolved
+    path. Chief reads the frontmatter itself. There is no Codex agent folder.
+- Both tools read the user's own files as the user, only on Chief's ask.
 - Relevance counts distinct non-stop-word message words matching body or why; ties favor convention, decision, lesson, finding, fact, then newer items.
 - In prompts a body is cut to 400 bytes and a why to 200, at a rune boundary, then `…`.
 - Seen items are tracked per provider session id, marked once the turn ends without error.
@@ -841,7 +893,7 @@ Ask first
 - Small edits (rename, persona tweak, look) need no question.
 
 Import a local skill
-- Import a skill folder with import_skill(path). For a Bot from an agent file (~/.claude/agents/<name>.md): read it, import each skill it names, attach the ids in create_bot. Ask first applies.
+- Import a skill folder with import_skill(path). For a Bot from an agent file (~/.claude/agents/<name>.md): read it with import_agent(path), import each skill it names, attach the ids in create_bot. Ask first applies.
 - The persona keeps the agent's expertise, never a ~/.claude path.
 - Say what import_skill skipped or refused. Re-import: list added, changed, removed; on confirm, warn that Reef edits get overwritten; replace: true only after a yes.
 
