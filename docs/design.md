@@ -50,8 +50,10 @@ never a dependency.
     git common directory.
   - Read-only: the repo's `.git/config` and `.git/hooks`; either could escape the sandbox when
     Reef next runs git. The common directory is excluded to protect them; single-file roots crash
-    Codex's sandbox. Reef disables hooks on its own git calls as a second guard. `start_work` sets
-    the branch upstream when origin exists; `git push -u` pushes but cannot save upstream.
+    Codex's sandbox. Reef's git disables hooks and fsmonitor and uses `GIT_DIR` and `GIT_COMMON_DIR`
+    from stored worktree IDs. Reef checks for symlinks before snapshot and removal, and cleans up a
+    failed worktree setup. `start_work` sets the branch upstream when origin exists; `git push -u`
+    pushes but cannot save upstream.
   - Known risks: Git 2.53's commit and stash cleanup deletes `AUTO_MERGE`; the files backend locks
     `packed-refs` for ref deletion even when the file does not exist. A command can succeed while
     printing `packed-refs.lock: Read-only file system`; deleting a packed branch fails. Codex Auto's
@@ -266,7 +268,8 @@ after a failed undo counts a Bot that is already gone as removed.
   outside the worktree root. It is removed when the thread closes.
 - Reef's git disables hooks and fsmonitor, and uses `GIT_DIR` and `GIT_COMMON_DIR` from stored
   worktree IDs. Snapshot staging neutralises repo-local filters; Reef checks for symlinks before
-  snapshot and removal. See Bots above for the access and remaining risks.
+  snapshot and removal, and cleans up a failed worktree setup. See Bots above for the access and
+  remaining risks.
 - A new branch starts at `origin/HEAD` when it resolves, else HEAD. The server never fetches.
 - start_work's reply names the base, as the ref and its short commit (`origin/HEAD ee6ad1b`, or
   `HEAD ee6ad1b` without an origin). When the local default branch (the one origin/HEAD points at)
