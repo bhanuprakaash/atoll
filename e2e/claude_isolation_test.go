@@ -413,15 +413,18 @@ func TestClaudeIsolation_ToolsByKindOfRun(t *testing.T) {
 		}
 	}
 
-	// The title run gets no built-in tools either.
+	// Title runs get no built-in tools either.
 	th := s.newThread(t, s.newBot(t, "Ada", "claude"))
 	s.finished(t, s.events(t, th), s.send(t, th, _titlePrompt).ID)
 	titled(t, s, th.ID, _titleWant)
+	// Every thread gets its own title run, so no count is pinned.
 	titles := m.titles(t, "claude")
-	if len(titles) != 1 {
-		t.Fatalf("%d title runs, want 1", len(titles))
+	if len(titles) == 0 {
+		t.Fatal("no title run started")
 	}
-	if got := toolsFlag(titles[0]); got != "" {
-		t.Errorf("title run --tools %q, want the empty value", got)
+	for _, c := range titles {
+		if got := toolsFlag(c); got != "" {
+			t.Errorf("title run %d --tools %q, want the empty value", c.pid, got)
+		}
 	}
 }
