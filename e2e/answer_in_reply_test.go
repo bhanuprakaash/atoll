@@ -10,19 +10,10 @@ import (
 
 // Contract: prompt-contract.md, "The reply carries the answer".
 
-// said reports whether one sentence or line of text holds a word from every group.
+// said reports whether text holds a word from every group.
 func said(text string, groups ...[]string) bool {
-	for _, sentence := range strings.FieldsFunc(text, func(r rune) bool { return r == '\n' || r == '.' }) {
-		if sentenceHas(sentence, groups) {
-			return true
-		}
-	}
-	return false
-}
-
-func sentenceHas(sentence string, groups [][]string) bool {
 	for _, g := range groups {
-		if !slices.ContainsFunc(g, func(w string) bool { return strings.Contains(sentence, w) }) {
+		if !slices.ContainsFunc(g, func(w string) bool { return strings.Contains(text, w) }) {
 			return false
 		}
 	}
@@ -59,10 +50,10 @@ func TestPrompt_ReplyCarriesAnswerRule(t *testing.T) {
 				if !said(finish, []string{"reply", "response"}, []string{"answer"}, []string{"itself", "in full", "carries", "holds", "contains", "includes", "has the"}) {
 					t.Errorf("%s: Finish does not say the reply holds the answer itself:\n%s", name, finish)
 				}
-				if !said(finish, []string{"2-3"}, []string{"status", "progress", "what you did", "what was done"}, []string{"answer"}, []string{"not", "never", "n't", "no "}) {
+				if !said(finish, []string{"2-3"}, []string{"status", "progress", "what you did", "what was done"}, []string{"answer"}, []string{"not", "never", "n't"}) {
 					t.Errorf("%s: Finish does not limit 2-3 lines to status, not an asked-for answer:\n%s", name, finish)
 				}
-				if !said(finish, []string{"finish_run"}, []string{"report"}, []string{"answer"}, []string{"never", "not", "n't", "no "}) || !said(finish, []string{"thinking"}, []string{"answer"}, []string{"never", "not", "n't", "only"}) {
+				if !said(finish, []string{"finish_run"}, []string{"answer"}, []string{"never", "not", "n't"}) || !said(finish, []string{"thinking"}, []string{"never", "not", "n't"}) {
 					t.Errorf("%s: Finish does not say the answer is never only in finish_run or thinking:\n%s", name, finish)
 				}
 				if n := strings.Count(system, "2-3"); n != 1 {

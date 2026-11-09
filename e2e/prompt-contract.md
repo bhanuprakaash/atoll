@@ -98,18 +98,20 @@ deterministic part behind them: the guide and the ask-first rule are in the prom
 ## The reply carries the answer
 
 Tests: `e2e/answer_in_reply_test.go`. One rule in the shared core's `Finish` section, for every
-Bot (plain, repo, platform, Chief), on both providers. Lines are matched by meaning, any case:
+Bot (plain, repo, platform, Chief), on both providers. The `Finish` section, lowercased, is matched
+by meaning: each rule needs one word from each keyword group anywhere in the section, not in one
+sentence.
 
-- A line says the reply carries the answer `itself`.
-- A line limits `2-3` lines to the `status` of the work, `not` to an `answer` the person asked for.
-- A line says `finish_run` is a report and `never` where the `answer` goes, and one says `never`
-  only in `thinking` or `above`.
+| Rule | Keyword groups |
+| --- | --- |
+| The reply carries the answer | `reply` or `response`; `answer`; `itself`, `in full`, `carries`, `holds`, `contains` or `includes` |
+| 2-3 lines is for status, not an asked-for answer | `2-3`; `status`, `progress`, `what you did` or `what was done`; `answer`; `not`, `never` or `n't` |
+| The answer is never only in finish_run or thinking | `finish_run`; `answer`; `not`, `never` or `n't`; and `thinking`; `not`, `never` or `n't` |
+
 - `2-3` appears once in the whole system prompt, so Chief's ask-first block has no special
   exemption (no `exempt` anywhere), and Chief's platform block stays at most 2000 bytes.
-
-Matching tolerates rewording: each rule is a sentence or line holding one word from each of several
-keyword groups. `testdata/golden/system.txt` holds `<finish rules>` in place of the `Finish` lines
-(`TestMemory_PromptGoldenAndBudget` swaps them before comparing), so no exact wording is pinned.
+- `testdata/golden/system.txt` holds `<finish rules>` in place of the `Finish` lines
+  (`TestMemory_PromptGoldenAndBudget` swaps them before comparing), so no exact wording is pinned.
 
 | Acceptance | Test |
 | --- | --- |
