@@ -85,7 +85,7 @@ never a dependency.
 an older install's Chief to none. It does no code work. It has the "Can manage the platform" switch
 on: tools to create and edit Bots (including model, look, Mode and delegates), skills and repos, and to attach
 connections, served as Reef's own MCP tools; read tools list Bots, skills, connections, repos, MCP
-servers and signed-in models and record no change; `import_agent` is one more read tool (Prompt).
+servers and signed-in models and record no change; `import_agent` is one more read tool (Prompt, the `import_agent` bullet).
 On Claude, Chief has no shell and no file tools, only Reef's MCP tools. *"No repo access" means no
 reach into repos: a prompt that leaves the repos out does not stop a Bash call from reading them,
 and Chief's own folder is not a boundary. A Read allow-rule scoped to `~/.claude` does not hold
@@ -95,10 +95,11 @@ Mode (shown on 2.1.319: Reef's tool answered, Bash and Read failed under default
 access). Reef's MCP tools are unchanged and no other Bot gets the flag. Whether a skill attached to
 Chief still loads under `--tools ""` is not verified. Chief reads a local agent file with
 `import_agent(path)` and a skill folder with `import_skill(path)`, both in the server, and both
-limited to the folders below, so Chief has no reach into a repo through them either. **Known gap:**
-Codex has no proven equivalent (`features.shell_tool = false` and `view_image = false` are the
-candidates), so a Chief the user moves to Codex keeps its shell and repo reach until a follow-up
-proves the Codex flags. That Chief is not covered by this section.
+limited to the folders in Prompt, so Chief has no reach into a repo through them either.
+Chief runs on Claude only: `PUT` and `edit_bot` refuse a Codex model for it (same refusal style as
+repo access), and its model picker lists Claude's models. A Codex Chief comes back only when its
+no-shell setup is proven (`features.shell_tool = false` and `view_image = false` are the
+candidates; not run). The platform prompt says nothing about Chief's tools, so it stays true.
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
 registered repo has (REST answers 400 with the same text for repo, delegate and MCP server ids, and
@@ -601,10 +602,11 @@ after a failed undo counts a Bot that is already gone as removed.
   resolved file to be directly inside the resolved `~/.claude/agents`. A symlinked
   `~/.claude/agents` (a dotfiles repo) therefore works, and a symlink inside it that points to
   another folder is refused. It opens the file and checks that same handle is a regular file, so a
-  FIFO or device cannot hang the read and a swap after the check changes nothing. Errors are MCP tool
-  errors: a refused path names the allowed folder; a missing file says `not found`; a file over
+  FIFO or device cannot hang the read and a swap after the check changes nothing. Errors are JSON-RPC invalid-params
+  errors, as `import_skill` returns: a refused path names the allowed folder; a missing file says `not found`; a file over
   256 KiB (a guard on what enters the model's context) or not valid UTF-8 says so. It answers
-  `{path, content}`, with `path` the resolved path; Chief reads the frontmatter itself. There is no
+  `{name, path, content}`: `name` is the file name without `.md`, `path` the resolved path, and Chief
+  reads the frontmatter itself. There is no
   Codex agent folder until a real one is shown: add it with a Codex Chief.
 - `import_skill` and Re-import take only a skill folder that is, once resolved, a direct child of the
   resolved `~/.claude/skills` or `~/.codex/skills`, with the same symlink, `..` and error rules as
