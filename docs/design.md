@@ -299,7 +299,7 @@ after a failed undo counts a Bot that is already gone as removed.
   as T3 Code; Bot sessions stay out of the user's own history.*
 - Every run also sets:
   - Claude Code: `--strict-mcp-config` with only Reef's servers, `ENABLE_CLAUDEAI_MCP_SERVERS=false`,
-    `--setting-sources project` (hides the skills synced from the user's claude.ai account),
+    `--setting-sources project` (user and local settings off; hides the skills synced from the user's claude.ai account),
     `disableAllHooks`, `disableBundledSkills` and `skillOverrides` turning off `design`, `doctor`,
     `plugin-authoring` (the bundled skills that survive `disableBundledSkills`).
   - Codex: `skills.bundled.enabled=false`; plugins, remote plugins and apps off; each skill in
@@ -321,7 +321,7 @@ after a failed undo counts a Bot that is already gone as removed.
   (single-use refresh tokens); a fresh `CLAUDE_CONFIG_DIR` is signed out until logged in there; with
   the flags above neither provider shows personal MCP servers, skills or subagents; Bot skills load
   from `<config dir>/skills`; resume works inside the folder. Hiding claude.ai connectors is untested
-  (the test account had none).
+  (the test account had none). On 2.1.319, `--setting-sources project` hides the claude.ai account skills.
 
 ## Connections and skills
 
