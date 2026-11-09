@@ -280,7 +280,19 @@ func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := save(); err != nil {
-		a.fail(w, r, err)
+		a.log.Error("save sign-in", "connection_id", c.ID, "kind", c.Kind, "error", err)
+		a.mu.Lock()
+		delete(a.devices, c.ID)
+		a.mu.Unlock()
+		if err := a.st.SetConnectionStatus(r.Context(), c.ID, store.ConnectionNeedsSignIn); err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		name := "GitLab"
+		if c.Kind == store.KindGitHub {
+			name = "GitHub"
+		}
+		fail(w, http.StatusInternalServerError, "Reef couldn't save the "+name+" sign-in to the system keychain: "+err.Error())
 		return
 	}
 	if err := a.st.SetConnectionStatus(r.Context(), c.ID, store.ConnectionConnected); err != nil {

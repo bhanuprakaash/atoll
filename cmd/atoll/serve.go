@@ -18,6 +18,8 @@ import (
 	threadrun "atoll/run"
 	"atoll/server"
 	"atoll/store"
+
+	"github.com/zalando/go-keyring"
 )
 
 const (
@@ -45,6 +47,9 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		}()
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	if os.Getenv("ATOLL_SECRET_STORE_UNAVAILABLE") != "" {
+		keyring.MockInitWithError(errors.New("secret store unavailable"))
+	}
 	data, err := dataDir()
 	if err != nil {
 		return err

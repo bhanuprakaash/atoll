@@ -393,7 +393,7 @@ func saveTokens(id string, tokens Tokens) error {
 		return fmt.Errorf("encode sign-in: %w", err)
 	}
 	if err := keyring.Set("atoll", tokensUser(id), string(b)); err != nil {
-		return fmt.Errorf("save sign-in of MCP server %s: %w", id, err)
+		return fmt.Errorf("save sign-in of MCP server %s: %w: %w", id, ErrKeychain, err)
 	}
 	return nil
 }

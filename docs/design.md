@@ -306,7 +306,10 @@ after a failed undo counts a Bot that is already gone as removed.
     its folder (Codex finds that folder through `HOME`).
 - Env knobs, for tests and dev: `ATOLL_DATA_DIR` replaces `~/Library/Application Support/Atoll`;
   `ATOLL_PROVIDER_PATH` (PATH syntax) is the only place discovery looks; `ATOLL_CLAUDE_PATH` and
-  `ATOLL_CODEX_PATH` are the path override when no path override is stored.
+  `ATOLL_CODEX_PATH` are the path override when no path override is stored;
+  `ATOLL_SECRET_STORE_UNAVAILABLE` (any non-empty value) makes every secret-store read and write fail.
+  A failed save of a GitHub or GitLab sign-in or an MCP server secret answers 500 with a message that
+  names the system keychain; the connection goes to "Needs sign-in".
 - Providers get the parent env minus `ANTHROPIC_*`, `CLAUDE*`, `OPENAI_*`, `CODEX_*` and the user's
   GitLab and GitHub tokens (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`,
   `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`) and the settings that carry a login (`OAUTH_TOKEN`,

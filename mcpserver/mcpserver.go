@@ -19,6 +19,9 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+// ErrKeychain is wrapped when the system keychain cannot save a secret.
+var ErrKeychain = errors.New("system keychain failed")
+
 // ErrInvalid is wrapped when a server cannot be saved as given.
 var ErrInvalid = errors.New("invalid MCP server")
 
@@ -269,7 +272,7 @@ func secretUser(s store.MCPServer, name string) string {
 func saveSecrets(s store.MCPServer, values map[string]string) error {
 	for name, value := range values {
 		if err := keyring.Set("atoll", secretUser(s, name), value); err != nil {
-			return fmt.Errorf("save %s of MCP server %s: %w", name, s.Name, err)
+			return fmt.Errorf("save %s of MCP server %s: %w: %w", name, s.Name, ErrKeychain, err)
 		}
 	}
 	return nil
