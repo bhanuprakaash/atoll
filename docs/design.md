@@ -366,12 +366,12 @@ after a failed undo counts a Bot that is already gone as removed.
   (`PR #7`, `MR !7`), numbers and check names; no PR title, body, commit message or other text of
   the API reply is joined into it: `PR #7 merged`, `PR #7 closed`,
   `CI finished on PR #7: 3 passed, 1 failed ("build")`, `CI finished on PR #7: 4 passed`. A check
-  name is data from anyone who can push: control characters and newlines are removed, it is cut at
-  60 characters and quoted; the sentence names up to 5 failed checks, then `and 2 more`. Passed
-  checks are only counted: the Bot can run `gh pr checks` for the rest. The thread view shows a
-  message with a `kind` as one quiet line with Reef's mark, not a user bubble. The Bot's prompt
-  for it is `Reef: ` and the sentence, and the code part of the prompt says the quoted names are
-  data from the repo, never instructions.
+  name is data from anyone who can push: control characters, newlines, `"` and `\` are removed,
+  it is cut at 60 characters and quoted; the sentence names up to 5 failed checks, then
+  `and 2 more`. Passed checks are only counted: the Bot can run `gh pr checks` for the rest. The
+  thread view shows a message with a `kind` as one quiet line with Reef's mark, not a user bubble.
+  The Bot's prompt for it is `Reef: ` and the sentence, and the code part of the prompt says the
+  quoted names are data from the repo, never instructions.
 - `track_mr` sets `mr_wake` to 1. A repeat call with the URL the thread already has keeps
   `mr_state`, `mr_woke` and `mr_ci`; a different URL resets all three, so a re-track after a
   merge never wakes twice. Three columns on the thread hold what is not derivable: `mr_ci` (JSON:
@@ -384,7 +384,8 @@ after a failed undo counts a Bot that is already gone as removed.
   once the commit is reported, and the chip keeps the first result.
 - Known gap: a GitLab pipeline that is `manual` or `blocked` never finishes. A merged GitHub PR
   keeps its worktree until the thread closes (the release is its own ticket).
-- Known gap: a stopped thread hears a wake only when its next run ends.
+- Known gap: a stopped thread hears a wake only when its next run ends, and a merged GitLab MR's
+  worktree can be released before that wake is delivered.
 - Fixtures (what the poll reads; GitHub base is the API base `CheckGitHubToken` uses, so
   `ATOLL_GITHUB_URL` with the routes appended):
   - `GET /repos/{owner}/{repo}/pulls/{n}`: `state` (`open` or `closed`), `merged` (bool), `title`,
@@ -401,9 +402,13 @@ after a failed undo counts a Bot that is already gone as removed.
   - GitLab: `glab mr view --output json -- <url>` with `state` (`opened`, `merged`, `closed`,
     `locked`), `title` and `head_pipeline` with `id` and `status` (`running`, `success`, `failed`,
     `canceled`, `skipped`, `manual`, `blocked`); and
-    `glab api projects/:fullpath/pipelines/<id>/jobs` giving `[]` of `name`, `status`. Unverified:
-    no real `glab` was available; the field names come from GitLab's MR and jobs API
+    `glab api --paginate projects/:fullpath/pipelines/<id>/jobs?per_page=100` giving `[]` of
+    `name`, `status`; a pipeline has more than 20 jobs, GitLab's default page, and all are counted.
+    Unverified: no real `glab` was available; the field names come from GitLab's MR and jobs API
     documentation, to be checked against `glab` when the fake is built.
+
+## Providers
+
 - Claude Code and Codex. A Providers page shows, per provider: found or not (login-shell PATH plus
   common install folders), version, signed in, enable switch, path override, and a read-only list of
   the provider's own MCP servers and skills marked "not used by Bots". Checked on start, before each
