@@ -36,14 +36,20 @@ func TestCodexAuto_SandboxCoversWorktreeAndNetwork(t *testing.T) {
 					t.Fatalf("session %d began with %q, want %s", i+1, method, want)
 				}
 				if mode == "auto" {
-					wantRoots := resolved(t, f.root, common, gitIn(t, cwd, "rev-parse", "--absolute-git-dir"))
-					if len(wantRoots) != 3 || i == 1 && !strings.HasPrefix(resolved(t, cwd)[0], resolved(t, f.root)[0]+string(filepath.Separator)) {
+					wantRoots := resolved(t, f.root, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"), gitIn(t, cwd, "rev-parse", "--absolute-git-dir"))
+					if len(wantRoots) != 5 || i == 1 && !strings.HasPrefix(resolved(t, cwd)[0], resolved(t, f.root)[0]+string(filepath.Separator)) {
 						t.Fatalf("%s ran in %q, want a linked worktree (with its own git dir), under %q when resumed", method, cwd, f.root)
 					}
 					if !network {
 						t.Errorf("codex on auto, %s: config.sandbox_workspace_write.network_access is not true", method)
 					}
-					if got := resolved(t, roots...); !slices.Equal(got, wantRoots) {
+					got := resolved(t, roots...)
+					for _, bad := range resolved(t, common, filepath.Join(common, "config"), filepath.Join(common, "hooks")) {
+						if slices.Contains(got, bad) {
+							t.Errorf("codex on auto, %s: writable_roots grant %s, which would let the Bot write the repo's config or hooks", method, bad)
+						}
+					}
+					if !slices.Equal(got, wantRoots) {
 						t.Errorf("codex on auto, %s: config.sandbox_workspace_write.writable_roots %q, want %q in any order (cwd %s)", method, got, wantRoots, cwd)
 					}
 				} else if present {
@@ -148,4 +154,17 @@ func TestRepo_ReefGitRunsNoRepoHooks(t *testing.T) {
 	f.s.do(t, "POST", "/api/threads/"+th.ID+"/close", nil, nil, 204)
 	assertRemoved(t, ch, lastRun, worktree, "closed")
 	noHook("closing a thread with unsaved work (save, remove)")
+}
+
+func TestRepo_StartWorkSetsUpstream(t *testing.T) {
+	f := newRepoFixture(t, "codex")
+	path, _ := f.startWorkReply(t, "codex", _unfinishedRepoPrompt)
+	for key, want := range map[string]string{
+		"branch.fix/seeded-bug.remote": "origin",
+		"branch.fix/seeded-bug.merge":  "refs/heads/fix/seeded-bug",
+	} {
+		if got := gitIn(t, path, "config", "--default", "", "--get", key); got != want {
+			t.Errorf("git config %s in the worktree = %q, want %q", key, got, want)
+		}
+	}
 }
