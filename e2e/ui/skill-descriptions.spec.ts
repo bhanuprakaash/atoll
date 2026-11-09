@@ -2,6 +2,7 @@
 // Skills, Bot settings and the New Bot skill list, and editing it writes YAML that reads back the
 // same. Each test runs its own machine and creates the skills through the API.
 import { expect, type Page, test } from "@playwright/test";
+import { parse } from "yaml";
 import { api, type Machine, newBotAPI, sidebarRow, startAtoll } from "./atoll";
 
 let m: Machine;
@@ -84,37 +85,32 @@ test("the New Bot skill list shows the descriptions as text", async ({
   await expectTexts(page.getByRole("dialog", { name: "Add skill" }));
 });
 
-test("editing a description in the editor writes YAML that reads back as the same text", async ({
-  page,
-}) => {
-  const [quoted] = await createSkills();
-  const edited = 'Use for "x": a #1 case, then more';
-  await page.goto(`${m.url}/settings/skills`);
-  await page
-    .getByRole("button", { name: /quoted-skill/ })
-    .click({ position: { x: 24, y: 12 } });
-  const panel = page.getByRole("dialog", { name: "Edit quoted-skill" });
-  const field = panel.getByRole("textbox", { name: "When to use it" });
-  await expect(field).toHaveValue(skills[0].text);
-  await field.fill(edited);
-  await Promise.all([
-    page.waitForResponse(
-      (r) => r.request().method() === "PUT" && r.url().includes("/api/skills/"),
-    ),
-    panel.getByRole("button", { name: /^Save/ }).click(),
-  ]);
-  expect((await api(m, "GET", `/api/skills/${quoted.id}`)).content).toContain(
-    "Body.",
-  );
+for (const index of [0, 3]) {
+  const { name, text } = skills[index];
+  test(`editing the description of ${name} writes YAML that parses back to the same text`, async ({
+    page,
+  }) => {
+    const made = await createSkills();
+    const edited = 'Use for "x": a #1 case, then more';
+    await page.goto(`${m.url}/settings/skills`);
+    await page
+      .getByRole("button", { name: new RegExp(name) })
+      .click({ position: { x: 24, y: 12 } });
+    const panel = page.getByRole("dialog", { name: `Edit ${name}` });
+    const field = panel.getByRole("textbox", { name: "When to use it" });
+    await expect(field).toHaveValue(text);
+    await field.fill(edited);
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.request().method() === "PUT" && r.url().includes("/api/skills/"),
+      ),
+      panel.getByRole("button", { name: /^Save/ }).click(),
+    ]);
 
-  await page.reload();
-  await expect(page.getByText(edited, { exact: true })).toBeVisible();
-  await page
-    .getByRole("button", { name: /quoted-skill/ })
-    .click({ position: { x: 24, y: 12 } });
-  await expect(
-    page
-      .getByRole("dialog", { name: "Edit quoted-skill" })
-      .getByRole("textbox", { name: "When to use it" }),
-  ).toHaveValue(edited);
-});
+    const { content } = await api(m, "GET", `/api/skills/${made[index].id}`);
+    const [, front, body] = content.split(/^---\n/m);
+    expect(parse(front)).toEqual({ name, description: edited });
+    expect(body).toBe("Body.\n");
+  });
+}
