@@ -309,9 +309,10 @@ after a failed undo counts a Bot that is already gone as removed.
   `ATOLL_CODEX_PATH` are the path override when no path override is stored;
   `ATOLL_SECRET_STORE_UNAVAILABLE` (any non-empty value) makes every secret-store read and write fail.
   A failed save of a GitHub or GitLab sign-in answers 500 with a message that names the system
-  keychain, and the connection goes to "Needs sign-in". A failed save or delete of an MCP server
-  secret answers 500 naming the keychain and leaves the server as it was; a failed MCP OAuth token
-  save shows the same message on the callback page and the server stays signed out.
+  keychain, and the connection goes to "Needs sign-in". A failed save of an MCP server
+  secret answers 500 naming the keychain and leaves the server as it was; a failed delete (removing
+  a server or dropping a secret) answers 500 naming the keychain after the row has changed; a failed
+  MCP OAuth token save shows the same message on the callback page and the server stays signed out.
 - Providers get the parent env minus `ANTHROPIC_*`, `CLAUDE*`, `OPENAI_*`, `CODEX_*` and the user's
   GitLab and GitHub tokens (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`,
   `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`) and the settings that carry a login (`OAUTH_TOKEN`,
