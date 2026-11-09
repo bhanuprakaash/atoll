@@ -353,7 +353,7 @@ func git(ctx context.Context, dir string, env []string, args ...string) (string,
 		config.Env = allEnv
 		keys, err := config.Output()
 		var exit *exec.ExitError
-		if err != nil && !(errors.As(err, &exit) && exit.ExitCode() == 1) {
+		if err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1) {
 			return "", fmt.Errorf("list repo filters: %w", err)
 		}
 		count := 0
