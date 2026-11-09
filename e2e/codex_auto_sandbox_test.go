@@ -15,71 +15,61 @@ func TestCodexAuto_SandboxCoversWorktreeAndNetwork(t *testing.T) {
 			f.s.do(t, "POST", "/api/bots", map[string]any{"name": "Codex " + mode, "persona": "Fix carefully.", "provider": "codex", "mode": mode, "repo_access": "all"}, &b, 201)
 			th := f.thread(t, b)
 			ch := f.s.events(t, th)
-			r := f.s.send(t, th, _fixRepoPrompt)
-			es := until(t, ch, r.ID, "run_finished")
-			if done := f.s.run(t, r.ID); done.Status != "done" {
-				t.Fatalf("codex %s run: %+v", mode, done)
+			for _, prompt := range []string{_fixRepoPrompt, _resumeRepoPrompt} {
+				r := f.s.send(t, th, prompt)
+				if done := f.s.finished(t, ch, r.ID); done.Status != "done" {
+					t.Fatalf("codex %s run %q: %+v", mode, prompt, done)
+				}
 			}
-			worktree, _ := repoEvent(t, es, "worktree_created").Data["path"].(string)
 
 			sessions := f.m.sessions(t, "codex")
-			if len(sessions) != 1 {
-				t.Fatalf("codex ran %d sessions, want 1", len(sessions))
+			if len(sessions) != 2 {
+				t.Fatalf("codex ran %d sessions, want 2", len(sessions))
 			}
-			checkMode(t, "codex", mode, sessions[0])
-			roots, network := codexSandbox(t, sessions[0])
-			gitDir := filepath.Join(f.repo.Path, ".git")
-
-			if mode == "auto" {
-				for _, want := range []string{worktree, gitDir} {
-					if !slices.Contains(roots, want) {
-						t.Errorf("codex on auto: writable roots %q lack %q", roots, want)
+			wantRoots := []string{f.root, filepath.Join(f.repo.Path, ".git")}
+			for i, c := range sessions {
+				checkMode(t, "codex", mode, c)
+				method, roots, network := codexWorkspaceWrite(t, c)
+				if want := []string{"thread/start", "thread/resume"}[i]; method != want {
+					t.Fatalf("session %d began with %q, want %s", i+1, method, want)
+				}
+				if mode == "auto" {
+					if !network {
+						t.Errorf("codex on auto, %s: config.sandbox_workspace_write.network_access is not true", method)
 					}
+					if !slices.Equal(roots, wantRoots) {
+						t.Errorf("codex on auto, %s: config.sandbox_workspace_write.writable_roots %q, want %q", method, roots, wantRoots)
+					}
+				} else if network || roots != nil {
+					t.Errorf("codex on %s, %s: sandbox_workspace_write roots %q, network %v; want none", mode, method, roots, network)
 				}
-				if !network {
-					t.Error("codex on auto: workspace-write sandbox has no network access, want it on")
-				}
-				return
-			}
-			if mode == "ask" && (network || slices.Contains(roots, worktree) || slices.Contains(roots, gitDir)) {
-				t.Errorf("codex on ask: writable roots %q, network %v; want neither the worktree, the repo's .git nor network", roots, network)
 			}
 		})
 	}
 }
 
-// codexSandbox is every writable root and whether any network access was asked for in the
-// messages a codex session got, as params or config, under any sandbox key spelling.
-func codexSandbox(t *testing.T, c *call) (roots []string, network bool) {
+// codexWorkspaceWrite is the method of a codex session's thread/start or thread/resume, and the
+// writable_roots and network_access under its config.sandbox_workspace_write, the only place
+// Codex reads them from at that point.
+func codexWorkspaceWrite(t *testing.T, c *call) (method string, roots []string, network bool) {
 	t.Helper()
-	var walk func(v any)
-	walk = func(v any) {
-		switch v := v.(type) {
-		case []any:
-			for _, x := range v {
-				walk(x)
-			}
-		case map[string]any:
-			for k, x := range v {
-				switch k {
-				case "writableRoots", "writable_roots":
-					list, _ := x.([]any)
-					for _, r := range list {
-						s, _ := r.(string)
-						roots = append(roots, s)
-					}
-				case "networkAccess", "network_access":
-					network = network || x == true
-				}
-				walk(x)
-			}
-		}
-	}
 	for _, line := range c.stdin {
-		var m map[string]any
-		if json.Unmarshal([]byte(line), &m) == nil {
-			walk(m)
+		var r struct {
+			Method string `json:"method"`
+			Params struct {
+				Config struct {
+					SandboxWorkspaceWrite struct {
+						WritableRoots []string `json:"writable_roots"`
+						NetworkAccess bool     `json:"network_access"`
+					} `json:"sandbox_workspace_write"`
+				} `json:"config"`
+			} `json:"params"`
+		}
+		if json.Unmarshal([]byte(line), &r) == nil && (r.Method == "thread/start" || r.Method == "thread/resume") {
+			w := r.Params.Config.SandboxWorkspaceWrite
+			return r.Method, w.WritableRoots, w.NetworkAccess
 		}
 	}
-	return roots, network
+	t.Fatal("codex session has no thread/start or thread/resume")
+	return "", nil, false
 }
