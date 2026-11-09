@@ -80,7 +80,7 @@ never a dependency.
   messages, runs and event files. Memory it saved stays, with its source. *Memory outlives the Bot
   that wrote it; a Bot's history does not.*
 
-**Chief.** Created on first launch. It has no repo access at all times: `PUT` and its own
+**Chief.** Created on first launch. It has no repo access at all times (the setting; its shell is a separate matter, see Known gap below): `PUT` and its own
 `edit_bot` refuse to give it repos, its Bot settings and empty thread offer none, and a launch moves
 an older install's Chief to none. It does no code work. It has the "Can manage the platform" switch
 on: tools to create and edit Bots (including model, look, Mode and delegates), skills and repos, and to attach
@@ -97,9 +97,11 @@ Chief still loads under `--tools ""` is not verified. Chief reads a local agent 
 `import_agent(path)` and a skill folder with `import_skill(path)`, both in the server, and both
 limited to the folders in Prompt, so Chief has no reach into a repo through them either.
 Chief prefers Claude. It must run for a user who has only Codex, since onboarding runs through
-Chief, so a Codex model stays allowed for it in `PUT`, `edit_bot` and the picker. A launch moves a
-Chief that is on a Codex model to Claude's default model only when Claude Code is signed in, and
-Chief's next first reply says so in a plain note. A first launch creates Chief on Claude's default
+Chief, so a Codex model stays allowed for it in `PUT`, `edit_bot` and the picker. The move of a
+Chief on a Codex model to Claude's default model is a one-time migration for installs that existed
+before this change, kept by a stored flag so it runs once, and only when Claude Code is signed in
+at that launch; Chief's next first reply says so in a plain note. After it, a deliberate Codex
+choice stays through every launch. A first launch creates Chief on Claude's default
 model when Claude is signed in, else on Codex's. Chief is never refused a run for lack of Claude.
 **Known gap:** no-shell is not proven on Codex, so a Chief on Codex still has its shell and file
 tools. It can run commands and read files the Codex sandbox lets it read, which includes
@@ -109,7 +111,7 @@ access" does not hold for it. The #161 fix closes the gap once a Codex probe sho
 callable and stop shell and file reads; until then this section is not true of a Codex Chief. The
 platform prompt says nothing about Chief's tools, so it stays true either way. Other Bots with the
 platform switch keep their file tools. `import_agent` adds no reach for them: a Bot with a shell
-can already read `~/.claude/agents`, while Chief, with no shell, gets it only through this tool.
+can already read `~/.claude/agents`, while Chief on Claude, with no shell, gets it only through this tool.
 A model must be one the Bot's provider lists while signed in; an unknown model, look or Mode fails with
 the valid ones named, and so does a repo id in a Bot's repo access that no
 registered repo has (REST answers 400 with the same text for repo, delegate and MCP server ids, and
@@ -592,7 +594,7 @@ after a failed undo counts a Bot that is already gone as removed.
   rule for creates and Chief's voice. The ask-first rule overrides the core's "ask only when two
   real readings" and exempts the ask-first message from the 2–3 line reply. The voice lives here,
   not in the persona; only a Bot with the switch has it.
-- Chief has no file tool, so it reads local files only through two server tools. `import_skill(path)`
+- On Claude Chief has no file tool (see Known gap in Bots for Codex), so it reads local files only through two server tools. `import_skill(path)`
   imports a skill folder; `import_agent(path)` reads an agent file. For a Bot from an agent file,
   Chief calls `import_agent`, imports each skill it names, attaches them through `create_bot`, and
   keeps `~/.claude` paths out of the persona. *Reopened "importing a local skill needs no new tool":
@@ -613,7 +615,7 @@ after a failed undo counts a Bot that is already gone as removed.
   `~/.claude/agents` (a dotfiles repo) therefore works, and a symlink inside it that points to
   another folder is refused. It opens the file and checks that same handle is a regular file, so a
   FIFO or device cannot hang the read and a swap after the check changes nothing. Errors are JSON-RPC invalid-params
-  errors, as `import_skill` returns: a refused path names the allowed folder; a missing file says `not found`; a file over
+  errors, as `import_skill` returns: a refused path names the allowed folder; a path that is not a `.md` file says only `.md` files directly in `~/.claude/agents` are read; a missing file says `not found`; a file over
   256 KiB (a guard on what enters the model's context) or not valid UTF-8 says so. It answers
   `{name, path, content}`: `name` is the file name without `.md`, `path` the resolved path, and Chief
   reads the frontmatter itself. There is no
