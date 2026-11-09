@@ -21,11 +21,6 @@ func TestPrompt_ChiefAskFirstCarriesProposal(t *testing.T) {
 					t.Fatalf("Ask first does not name %q in the proposal:\n%s", item, ask)
 				}
 			}
-			for _, word := range []string{"exempt", "2-3"} {
-				if !strings.Contains(ask, word) {
-					t.Fatalf("Ask first does not exempt the message from the short-reply rule (%q missing):\n%s", word, ask)
-				}
-			}
 		})
 	}
 }
