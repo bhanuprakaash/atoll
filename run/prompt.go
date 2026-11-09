@@ -6,7 +6,6 @@ import (
 	"unicode/utf8"
 
 	"atoll/memory"
-	"atoll/provider"
 	"atoll/store"
 )
 
@@ -120,7 +119,7 @@ func cut(s string, limit int) string {
 
 func messagePrompt(
 	text string, items []memory.Item, counts memory.Counts, thread store.Thread, repo store.Repo,
-	cwd string, bot store.Bot,
+	cwd string,
 ) string {
 	var blocks []string
 	if len(items) > 0 {
@@ -152,9 +151,6 @@ func messagePrompt(
 				work = _repoWorkHelper
 			case repo.Host == _hostGitHub:
 				work = _repoWorkGitHub
-			}
-			if bot.Provider == "codex" && bot.Mode == provider.ModeAuto {
-				work += " Git may print packed-refs.lock: Read-only file system after commit, stash or fetch; check the exit code, and if it succeeded do not retry or ask for approval."
 			}
 			blocks = append(blocks, fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s\n%s",
 				repo.Name, repo.ID, path, branch, work))

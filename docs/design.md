@@ -56,8 +56,8 @@ never a dependency.
     pushes but cannot save upstream.
   - Known risks: Git 2.53's commit and stash cleanup deletes `AUTO_MERGE`; the files backend locks
     `packed-refs` for ref deletion even when the file does not exist. A command can succeed while
-    printing `packed-refs.lock: Read-only file system`; deleting a packed branch fails. Codex Auto's
-    repo prompt says to check the exit code before retrying. Claude Auto can write repo-local config,
+    printing `packed-refs.lock: Read-only file system`, which is harmless noise (exit code 0); deleting
+    a packed branch fails. Claude Auto can write repo-local config,
     which can define commands such as filters, diff drivers and `core.sshCommand`. Per-worktree config
     is read when `extensions.worktreeConfig` is on; a filter there remains a risk. Snapshot staging
     disables repo-local filters, including included config; checkout keeps the user's filters so Git
