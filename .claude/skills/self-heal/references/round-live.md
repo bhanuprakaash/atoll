@@ -31,3 +31,8 @@ Then finish and reply with your file path and a 3-line summary.
 - bots: judge every run against its brief, persona and AGENTS.md (test-first, e2e untouched by fixers, smallest diff,
   conventional commits, real Proof, honest replies and finish_run, memory use, clear delegate briefs, no wasted
   turns); compare Claude and Codex; name what in Reef (prompt, tools, missing context) made a Bot fail.
+- llm (cost, context, caching): per Bot and model, tokens in / cache-write / cache-read / out and estimated cost
+  (Claude transcripts carry `usage`; Codex rollouts carry `token_count`); context growth across resumed runs and
+  compaction; prompt-prefix stability and cache survival between runs (5-minute TTL); repeated big reads and pasted
+  logs; waste (no-op runs, boss wake runs, nudges, title sessions, model choice); what Reef records and shows about
+  spend. Each finding: numbers, estimated saving, smallest change in Reef.
