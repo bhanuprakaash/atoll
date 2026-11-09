@@ -388,8 +388,9 @@ after a failed undo counts a Bot that is already gone as removed.
       `/proc/<pid>/environ` of `claude` and of any other process of that user.
       - `claude`'s environment holds `CLAUDE_CONFIG_DIR` (Reef's provider folder, with the login).
       - It holds `ATOLL_MCP_<n>`, one per secret `argv` hides: Reef's MCP URL for the run (it
-        carries the run's token), the GitHub MCP bearer (the same token as `GH_TOKEN`), and every secret,
-        header and env value of the MCP servers attached to that Bot, an OAuth bearer included.
+        carries the run's token), the GitHub MCP bearer (the same token as `GH_TOKEN`), and every
+        secret, header and env value of the MCP servers attached to that Bot, an OAuth bearer
+        included.
       - It holds the extras given to the run on purpose (`GH_TOKEN`, `OAUTH_TOKEN`, `GIT_CONFIG_*`,
         `GH_CONFIG_DIR`, `GLAB_CONFIG_DIR`), which the shell has anyway.
       - Only this Bot's own connections and servers are in there, none that were not attached.
