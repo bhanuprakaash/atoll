@@ -26,6 +26,22 @@ Design: Connections and skills, "Home paths in imported skills", in `docs/design
   imported from: `~/`, `$HOME/`, `${HOME}/` and absolute forms of the entry path rewrite, and so do
   refs through the resolved path (`actual`). Another sibling (`other`) is still refused. The skill
   is recorded under the entry (`source` is the entry path, not its target).
+- Placement quoting: the token is replaced by the copy's path as is when every character is in
+  `[A-Za-z0-9_./-]`; otherwise by the path single-quoted for the shell, a `'` written `'\''`
+  (macOS's `Application Support` has a space), so `{{ATOLL_SKILL_DIR}}/scripts/run.sh` becomes
+  `'/a b/x'/scripts/run.sh`. The command lines a skill writes with the token run through `sh -c`
+  both in SKILL.md and inside a script (`. {{ATOLL_SKILL_DIR}}/lib.sh`).
+- Scanner (refuse, never rewrite): `${HOME` followed by a character that is not a name character,
+  `}` or `/` (`${HOME:-x}`, `${HOME%/}`, `${HOME#..}`, `${HOME^}`) is a home reference;
+  `${HOMEWORK}` and `${HOME_X}` are not. A bare `~` that starts a word (not preceded by a letter,
+  digit, `.`, `_`, `-`, `/` or `~`) followed by the end of the line, whitespace, `/`, `+`, `-`, `:`,
+  `)`, `"`, `'`, a letter or `_` is one (`cd ~`, `~root`, `~+`, `~-`, `$(echo ~)`); `~5`,
+  `~3 minutes` and `a~b` are not. Known gaps of a static scan, pinned neither way: `~` and `/` split
+  by a line break, `HO""ME`.
+- Absolute home paths have boundaries: `<home>x/foo` (the home path followed by a path character)
+  is not a reference, `/mnt<home>/foo` (preceded by one) is neither rewritten nor refused;
+  `<home>` followed by `/`, the end, whitespace or a quote is a reference.
+- The refused answer has exactly the keys `status`, `name`, `reason`, `refs`.
 - A successful answer carries `rewritten` (file and count). The tests pin only that it is present
   and names each rewritten file; the exact shape is not in the design.
 - The folder rule (the skill folder resolves to a direct child of `~/.claude/skills` or
@@ -61,6 +77,11 @@ Design: Connections and skills, "Home paths in imported skills", in `docs/design
 | Other home references refuse with exact refs (another skill, `~/.ssh`, `$HOME`, `${HOME}`, `$HOME/x`, absolute home path, a fenced example, `<folder>-v2`, the other root's folder), ordered by file then line; nothing stored; Chief's reply names skill, file, line, ref | `TestSkillHome_RefusesOtherHomeRefs/{claude,codex}/*` |
 | `https://x/~/a`, `a~/b` and the other preceded forms are not references; `$HOMEWORK` and `$HOME_X` are not either (the design is silent on what may follow `$HOME`: a guard) | `TestSkillHome_NotHomeReferences` |
 | A symlinked entry: entry-path and resolved-path refs rewrite, another sibling is refused, source is the entry | `TestSkillHome_SymlinkedEntryIsTheOwnFolder/{claude,codex}.{.claude,.codex}/{rewrites,refuses-other-sibling}` |
+| Placed command lines run with a path holding a space and a quote (quoted), and with a plain path (unquoted), from SKILL.md and from inside a script | `TestSkillHome_PlacedCommandsRun/{claude,codex}/{plain,space-and-quote}` |
+| `${HOME:-x}`, `${HOME%/}`, `${HOME#..}`, `${HOME^}`, bare `~`, `~user`, `~+`, `~-`, `$(echo ~)` refuse with exact refs | `TestSkillHome_ScannerRefusesTheWholeClass/*` |
+| `${HOMEWORK}`, `${HOME_X}`, `~5`, `~3 minutes`, `a~b` are not references | `TestSkillHome_NotHomeReferences` |
+| Absolute home path boundaries (`<home>x/foo`, `/mnt<home>/foo` pass untouched; `<home>` before `/`, end, space or quote refuses) | `TestSkillHome_AbsoluteHomeBoundaries` |
+| Refused answer is exactly `{status, name, reason, refs}`, from `import_skill` and from reimport | `TestSkillHome_RefusedAnswerHasFourKeys` |
 | Re-import refused (HTTP 200, before `confirm`, with and without `replace`) keeps the stored skill; same answer as `import_skill` | `TestSkillHome_ReimportRefusedKeepsStored/{claude,codex}` |
 | The folder rule wins when both fire | `TestSkillHome_FolderRuleComesFirst` |
 | Chief's prompt says refused | `TestPrompt_ChiefImportRefusal/{claude,codex}` |

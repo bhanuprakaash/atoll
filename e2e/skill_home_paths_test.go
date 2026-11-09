@@ -1,10 +1,13 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -268,7 +271,7 @@ func TestSkillHome_RefusesOtherHomeRefs(t *testing.T) {
 func TestSkillHome_NotHomeReferences(t *testing.T) {
 	m, s := startResolved(t, "claude")
 	root := filepath.Join(m.home, ".claude", "skills", "plain")
-	text := "Docs: https://x/~/a and a~/b, 1~/c, a.~/d, a_~/e, a-~/f, ~~/g, /~/h, $HOMEWORK and $HOME_X.\n"
+	text := "Docs: https://x/~/a and a~/b, 1~/c, a.~/d, a_~/e, a-~/f, ~~/g, /~/h, $HOMEWORK, $HOME_X, ${HOMEWORK}, ${HOME_X}, ~5, ~3 minutes and a~b.\n"
 	writeFixture(t, root, []fixtureFile{
 		{path: "SKILL.md", content: skillMD("plain", text)},
 		{path: "notes.md", content: "A URL https://x/~/a.\n"},
@@ -433,5 +436,174 @@ func TestSkillHome_SymlinkedEntryIsTheOwnFolder(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// shQuote is a path written for the shell: single-quoted, a quote as '\\”.
+func shQuote(path string) string {
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+}
+
+// TestSkillHome_PlacedCommandsRun places a skill into a run folder and runs the command lines the
+// skill writes with the token, as the Bot would: from SKILL.md and from inside a script.
+func TestSkillHome_PlacedCommandsRun(t *testing.T) {
+	for _, p := range _providers {
+		for _, special := range []bool{false, true} {
+			name := p + "/plain"
+			if special {
+				name = p + "/space-and-quote"
+			}
+			t.Run(name, func(t *testing.T) {
+				m := newMachine(t, p)
+				m.home = resolvedHome(t, m)
+				if special {
+					m.data = filepath.Join(m.data, "App's Support")
+				}
+				if err := os.MkdirAll(m.data, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				m.signIn(t, p)
+				s := m.serve(t)
+				root := filepath.Join(m.home, ".claude", "skills", "poteto-mode")
+				writeFixture(t, root, []fixtureFile{
+					{path: "SKILL.md", content: skillMD("poteto-mode", "CMD: sh ~/.claude/skills/poteto-mode/scripts/run.sh\n")},
+					{path: "scripts/check", content: _checkScript, exec: true},
+					{path: "scripts/run.sh", content: "#!/bin/sh\n. ~/.claude/skills/poteto-mode/lib.sh\necho run-ok-$LIBVAR\n", exec: true},
+					{path: "lib.sh", content: "LIBVAR=lib-ok\n"},
+				})
+				if imp := newImporter(t, s).say(t, "Import the skill folder "+root); imp.res.Status != "created" {
+					t.Fatalf("import: %q %+v", imp.summary, imp.res)
+				}
+				var b platformBot
+				s.do(t, "POST", "/api/bots", map[string]any{"name": "Skilled", "persona": "A guide.", "provider": p, "skills": []string{onlySkill(t, s).ID}}, &b, 201)
+				th := s.newThread(t, b.bot)
+				ch := s.events(t, th)
+				r := s.send(t, th, "Wait, then run the poteto-mode script scripts/check.")
+				ready := waitReady(t, m, s, p, r.ID)
+
+				inventory := skillInventories(t, m, p)
+				placed := potetoCopy(t, inventory[len(inventory)-1])
+				dir := filepath.Dir(placed.Path)
+				quoted := dir
+				if special {
+					quoted = shQuote(dir)
+					if !strings.ContainsAny(dir, " '") {
+						t.Fatalf("run folder %s has no space or quote", dir)
+					}
+				}
+				want := "CMD: sh " + quoted + "/scripts/run.sh"
+				if !slices.Contains(strings.Split(placed.Text, "\n"), want) {
+					t.Fatalf("placed SKILL.md %q has no line %q", placed.Text, want)
+				}
+				if !special && strings.Contains(placed.Text, "'") {
+					t.Fatalf("a plain path is not quoted: %q", placed.Text)
+				}
+				cmd := exec.CommandContext(t.Context(), "sh", "-c", strings.TrimPrefix(want, "CMD: "))
+				cmd.Dir = t.TempDir()
+				if out, err := cmd.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "run-ok-lib-ok" {
+					t.Fatalf("%s: %v, output %q, want run-ok-lib-ok", want, err, out)
+				}
+				writeFile(t, ready+".release", "")
+				if got := s.finished(t, ch, r.ID); got.Status != "done" {
+					t.Fatalf("run: %+v", got)
+				}
+			})
+		}
+	}
+}
+
+// Static scan: these forms are home references and refuse. A `~` and `/` split by a line break and
+// `HO""ME` are known gaps and pinned neither way.
+func TestSkillHome_ScannerRefusesTheWholeClass(t *testing.T) {
+	m, s := startResolved(t, "claude")
+	tests := []struct{ name, line, ref string }{
+		{"default", "Use ${HOME:-x}/.ssh/id now.", "${HOME:-x}/.ssh/id"},
+		{"trim", "Use ${HOME%/}/.ssh/id now.", "${HOME%/}/.ssh/id"},
+		{"strip", "Use ${HOME#..}/x now.", "${HOME#..}/x"},
+		{"caret", "Use ${HOME^}/x now.", "${HOME^}/x"},
+		{"bare-tilde", "Then cd ~", "~"},
+		{"user", "Read ~root/.ssh/id now.", "~root/.ssh/id"},
+		{"pwd", "Go ~+/x now.", "~+/x"},
+		{"oldpwd", "Go ~-/x now.", "~-/x"},
+		{"substitution", "Run $(echo ~)/.ssh/id now.", "~)/.ssh/id"},
+	}
+	c := newImporter(t, s)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := filepath.Join(m.home, ".claude", "skills", "scan-"+tt.name)
+			writeFixture(t, root, []fixtureFile{{path: "SKILL.md", content: skillMD("scan-"+tt.name, tt.line+"\n")}})
+			imp := c.say(t, "Import the skill folder "+root)
+			if want := []refusal{{"SKILL.md", 5, tt.ref}}; imp.res.Status != "refused" || !reflect.DeepEqual(imp.res.Refs, want) {
+				t.Fatalf("import of %q: %q %+v, want refused with %+v", tt.line, imp.summary, imp.res, want)
+			}
+		})
+	}
+	if skills := getSkills(t, s); len(skills) != 0 {
+		t.Fatalf("library %+v, want nothing stored", skills)
+	}
+}
+
+// The home path as an absolute path has boundaries: it must not be the front of a longer path
+// (`<home>x/foo`) nor the tail of one (`/mnt<home>/foo`).
+func TestSkillHome_AbsoluteHomeBoundaries(t *testing.T) {
+	m, s := startResolved(t, "claude")
+	home := m.home
+	c := newImporter(t, s)
+
+	own := filepath.Join(home, ".claude", "skills", "abs-ok")
+	text := "Longer: " + home + "x/foo here\nMounted: /mnt" + home + "/foo here\nMounted own: /mnt" + own + "/scripts/run.sh here\n"
+	writeFixture(t, own, []fixtureFile{{path: "SKILL.md", content: skillMD("abs-ok", text)}})
+	if imp := c.say(t, "Import the skill folder "+own); imp.res.Status != "created" {
+		t.Fatalf("import: %q %+v, want created: neither is the home path", imp.summary, imp.res)
+	}
+	if got := onlySkill(t, s); got.Content != skillMD("abs-ok", text) {
+		t.Fatalf("stored %q, want the text byte for byte: nothing rewritten", got.Content)
+	}
+
+	hit := filepath.Join(home, ".claude", "skills", "abs-hit")
+	writeFixture(t, hit, []fixtureFile{{path: "SKILL.md", content: skillMD("abs-hit",
+		"Slash: "+home+"/x\nEnd: "+home+"\nSpace: "+home+" next\nQuote: \""+home+"\"\n")}})
+	imp := c.say(t, "Import the skill folder "+hit)
+	want := []refusal{{"SKILL.md", 5, home + "/x"}, {"SKILL.md", 6, home}, {"SKILL.md", 7, home}, {"SKILL.md", 8, home}}
+	if imp.res.Status != "refused" || !reflect.DeepEqual(imp.res.Refs, want) {
+		t.Fatalf("import: %q %+v, want refused with %+v", imp.summary, imp.res, want)
+	}
+}
+
+// A refusal is exactly {status, name, reason, refs}: no null lists for the fields it does not have.
+func TestSkillHome_RefusedAnswerHasFourKeys(t *testing.T) {
+	m, s := startResolved(t, "claude")
+	keys := func(raw []byte) []string {
+		t.Helper()
+		var got map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatalf("%s: %v", raw, err)
+		}
+		var out []string
+		for k := range got {
+			out = append(out, k)
+		}
+		slices.Sort(out)
+		return out
+	}
+	want := []string{"name", "reason", "refs", "status"}
+
+	bad := filepath.Join(m.home, ".claude", "skills", "bad")
+	writeFixture(t, bad, []fixtureFile{{path: "SKILL.md", content: skillMD("bad", "Use ~/.ssh/config now.\n")}})
+	imp := newImporter(t, s).say(t, "Import the skill folder "+bad)
+	_, line, _ := strings.Cut(imp.run.Reply, "\n")
+	if got := keys([]byte(line)); !slices.Equal(got, want) {
+		t.Fatalf("import_skill answer %s has keys %q, want %q", line, got, want)
+	}
+
+	good := filepath.Join(m.home, ".claude", "skills", "good")
+	writeFixture(t, good, []fixtureFile{{path: "SKILL.md", content: skillMD("good", "Fine.\n")}})
+	c := newImporter(t, s)
+	c.say(t, "Import the skill folder "+good)
+	id := onlySkill(t, s).ID
+	writeFixture(t, good, []fixtureFile{{path: "SKILL.md", content: skillMD("good", "Use ~/.ssh/config now.\n")}})
+	raw := s.rawDo(t, "POST", "/api/skills/"+id+"/reimport", []byte(`{"replace":false}`), 200)
+	if got := keys(raw); !slices.Equal(got, want) {
+		t.Fatalf("reimport answer %s has keys %q, want %q", raw, got, want)
 	}
 }
