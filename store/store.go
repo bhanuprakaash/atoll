@@ -225,6 +225,7 @@ type (
 // TitleSource says how a title reached Reef.
 type TitleSource uint8
 
+// The title sources CleanTitle tells apart.
 const (
 	TitleGenerated TitleSource = iota
 	TitleFirstWords
@@ -1329,7 +1330,7 @@ func cleanStoredTitles(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var titles []struct{ id, old, clean string }
 	for rows.Next() {
 		var title struct{ id, old, clean string }
