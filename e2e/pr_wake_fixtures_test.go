@@ -18,7 +18,11 @@ type prFixture struct {
 	state  string
 	merged bool
 	title  string
+	body   string
 }
+
+// issueFixture is what the fake GitHub says about an issue: open until a test closes it.
+type issueFixture struct{ state, reason string }
 
 // fakeCheck is a check run; an empty conclusion is JSON null, as GitHub has it until completed.
 type fakeCheck struct{ Name, Status, Conclusion string }
@@ -33,6 +37,9 @@ type prWatch struct {
 	runs     map[string][]fakeCheck
 	statuses map[string][]fakeStatus
 	reads    map[int]int
+	issues   map[int]*issueFixture
+	issueGet map[int]int
+	issue304 map[int]int
 }
 
 // headSHA is the head commit of pull request n: the same for as long as no test pushes.
@@ -52,6 +59,76 @@ func (g *fakeGitHub) setPull(n int, state string, merged bool) {
 // setTitle changes the title of pull request n, so the next read is a new reply with a new ETag.
 func (g *fakeGitHub) setTitle(n int, title string) {
 	g.set(func() { g.pr(n).title = title })
+}
+
+// setPullBody changes the description of pull request n.
+func (g *fakeGitHub) setPullBody(n int, body string) {
+	g.set(func() { g.pr(n).body = body })
+}
+
+// setIssue closes or reopens issue n: state is "open" or "closed", reason the state_reason of a
+// closed one ("completed" or "not_planned"). An issue no test touched is open.
+func (g *fakeGitHub) setIssue(n int, state, reason string) {
+	g.set(func() { g.issue(n).state, g.issue(n).reason = state, reason })
+}
+
+// mergeClosing merges pull request pr and closes issue n in one step, as GitHub does for `Closes #n`.
+func (g *fakeGitHub) mergeClosing(pr, n int) {
+	g.set(func() {
+		p := g.pr(pr)
+		p.state, p.merged = "closed", true
+		g.issue(n).state, g.issue(n).reason = "closed", "completed"
+	})
+}
+
+// issueReads is how many times the server read issue n, and how many of those were answered 304.
+func (g *fakeGitHub) issueReads(n int) (reads, notModified int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.watch.issueGet[n], g.watch.issue304[n]
+}
+
+// issue is issue n; the caller holds g.mu.
+func (g *fakeGitHub) issue(n int) *issueFixture {
+	if g.watch.issues == nil {
+		g.watch.issues = map[int]*issueFixture{}
+	}
+	if g.watch.issues[n] == nil {
+		g.watch.issues[n] = &issueFixture{state: "open"}
+	}
+	return g.watch.issues[n]
+}
+
+// getIssue is GET /repos/{owner}/{repo}/issues/{number}: state and state_reason, with an ETag, and
+// 304 for a request whose If-None-Match is that ETag.
+func (g *fakeGitHub) getIssue(w http.ResponseWriter, r *http.Request) {
+	if g.reject(w, r) {
+		return
+	}
+	n, _ := strconv.Atoi(r.PathValue("number"))
+	var reason any
+	var state string
+	g.set(func() {
+		if g.watch.issueGet == nil {
+			g.watch.issueGet, g.watch.issue304 = map[int]int{}, map[int]int{}
+		}
+		g.watch.issueGet[n]++
+		state = g.issue(n).state
+		if g.issue(n).reason != "" {
+			reason = g.issue(n).reason
+		}
+	})
+	body, _ := json.Marshal(map[string]any{"number": n, "state": state, "state_reason": reason})
+	sum := sha256.Sum256(body)
+	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", etag)
+	if r.Header.Get("If-None-Match") == etag {
+		g.set(func() { g.watch.issue304[n]++ })
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	_, _ = w.Write(body)
 }
 
 // setChecks replaces the check runs and statuses of the commit.
@@ -111,7 +188,7 @@ func (g *fakeGitHub) getPull(w http.ResponseWriter, r *http.Request) {
 		g.watch.reads[n]++
 		if pr := g.pr(n); pr != nil {
 			body, _ = json.Marshal(map[string]any{"number": n, "state": pr.state, "merged": pr.merged, "title": pr.title,
-				"head": map[string]string{"sha": headSHA(n)}})
+				"body": pr.body, "head": map[string]string{"sha": headSHA(n)}})
 		}
 	})
 	w.Header().Set("Content-Type", "application/json")
