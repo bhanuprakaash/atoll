@@ -860,6 +860,20 @@ after a failed undo counts a Bot that is already gone as removed.
   keeps the connection.
 - Tokens live in the OS secret store through one cross-platform library. Targets: macOS and desktop
   Linux; headless Linux is out.
+- A secret store that cannot be read (locked, no Secret Service, daemon gone) stops a run before the
+  provider starts, when the Bot needs a secret: a connection's token, or an MCP server's env or
+  header secret. A Bot that needs none runs as usual. The run is `failed` with `error_kind:
+  "secret_store"` and `error` exactly `Reef can't reach its secret store. Restart Reef, or unlock
+  it, then send again.`: no keyring path, no error chain; the cause goes only to the log. Each
+  failed run writes one WARN line to `logs/server.log` with `error_kind` and `run_id` (and the
+  cause as `error`). The connection keeps its status: its token is not known to be bad.
+  - The thread shows that sentence in place of `Run failed: ...`, with no Retry. The user message
+    the run started is `not_read: true` in `GET /api/threads/{id}/messages` and shows "Not read"
+    with a Resend button, which sends the same text and images as a new message. The mark stays
+    on the old message after a resend. A message that was held (inbox) for the failed run starts
+    its own run when delivered; that run fails the same way and marks it, so none is dropped.
+    *No automatic retry: it would start a run the person did not ask for, against a store that
+    is still down.*
 - Skills: one library in standard `SKILL.md` folders, created in the app or imported; each Bot picks
   its skills. A skill is `SKILL.md` (`skills.content`) plus its other text files (`skill_files`:
   relative path, content, executable), and keeps the folder it was imported from. Paths are
