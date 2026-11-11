@@ -92,7 +92,7 @@ export function FinishedNotice({ notice, look }: { notice: EarlierNotice; look?:
 }
 
 export function NotificationList({
-  notifications: { needs, earlier },
+  notifications: { needs, earlier, markAllRead },
   looks,
   onClose,
 }: {
@@ -130,7 +130,16 @@ export function NotificationList({
       )}
       {earlier.length > 0 && (
         <>
-          <h3 className={`${heading} text-label`}>Earlier</h3>
+          <div className="flex items-center justify-between pr-2">
+            <h3 className={`${heading} text-label`}>Earlier</h3>
+            <button
+              type="button"
+              onClick={markAllRead}
+              className="text-xs text-muted hover:text-ink"
+            >
+              Mark all read
+            </button>
+          </div>
           <ul aria-label="Earlier" className="flex flex-col gap-0.5">
             {earlier.map((n) => (
               <li key={n.id}>

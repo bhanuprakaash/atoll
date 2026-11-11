@@ -166,8 +166,9 @@ export function BotPage() {
     );
   const [list, setList] = useState(false);
   const notifications = useOutletContext<Notifications>();
-  const { drop, widened, dismiss } = notifications;
+  const { drop, widened, dismiss, markSeen } = notifications;
   const expanded = list || !!drop;
+  useEffect(() => (list ? markSeen : undefined), [list, markSeen]);
   useEffect(() => {
     if (!expanded) return;
     const shrink = () => {

@@ -327,6 +327,13 @@ func (s *Store) Changes(ctx context.Context, threadID string) ([]Change, error) 
 		scanChange, threadID)
 }
 
+// ChangesSince lists the platform changes made after since, oldest first.
+func (s *Store) ChangesSince(ctx context.Context, since time.Time) ([]Change, error) {
+	return query(ctx, s.db,
+		"SELECT "+_changeColumns+" FROM changes WHERE created > ? ORDER BY rowid",
+		scanChange, since.UnixMicro())
+}
+
 // Change returns one recorded platform change.
 func (s *Store) Change(ctx context.Context, id string) (Change, error) {
 	rows, err := query(ctx, s.db,
