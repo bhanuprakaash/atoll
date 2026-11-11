@@ -1186,9 +1186,14 @@ Voice
   the chat and the composer with one quiet line per helper whose run is going or waiting on an
   approval: creature, Bot name, state
   and `Open`. The state is the live step while it works: the verb and a short target, for a
-  command its program and plain first argument past any `cd` ("Running make build"; Codex shows the program only), never the raw
-  command, "Waiting on a background task" for a command that reads a task's output file, "Looking around"
-  for Chief's `list_*` tools, else "Working"; or "Needs you" with an open approval; the line leaves when the run ends, and the report in the chat
+  command its program and plain first argument ("Running make build"; Codex shows the program only), never the raw
+  command. The program is the first real one: past `cd`, `VAR=value` assignments, a leading
+  `timeout <n>`, and a leading `cat > file` or other redirect; a function definition
+  (`name() {`) and a loop or `if` header (`for`, `while`, `until`, `if`) show the first command
+  inside; a heredoc's text is never a command; a command that only writes a file shows "Running
+  cat" (`e() { gh pr view "$1"; }; e a`, `for n in a b; do gh pr view $n; done` and
+  `timeout 400 gh pr checks 168 --watch` all show "Running gh pr"). Other words: "Waiting on a background task" for a command that reads a task's output file, "Looking around"
+  for Chief's `list_*` tools, "Handing off" (no target) for `delegate` and `continue`, else "Working"; or "Needs you" with an open approval; the line leaves when the run ends, and the report in the chat
   says how it went. A helper's open approval shows under its line in the usual inline form; Allow and Deny
   there answer it, and answering it in either thread removes it from both (`approval_closed`). The
   chat keeps one line where work was handed off, after the message that led to it ("Handed off to
