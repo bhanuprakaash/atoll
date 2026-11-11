@@ -57,6 +57,7 @@ func assertParts(t *testing.T, system string, want ...string) {
 }
 
 func TestPrompt_RepoAccessGetsCodePart(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -77,6 +78,7 @@ func TestPrompt_RepoAccessGetsCodePart(t *testing.T) {
 }
 
 func TestPrompt_NoReposNoCodePart(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -88,6 +90,7 @@ func TestPrompt_NoReposNoCodePart(t *testing.T) {
 }
 
 func TestPrompt_ChiefFreshInstall(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -100,6 +103,7 @@ func TestPrompt_ChiefFreshInstall(t *testing.T) {
 }
 
 func TestPrompt_ChiefLosesRepoAccessOnLaunch(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	s.kill()
 	// The API no longer gives Chief repos, so write the row an older install left: NULL is "all".
@@ -113,6 +117,7 @@ func TestPrompt_ChiefLosesRepoAccessOnLaunch(t *testing.T) {
 }
 
 func TestPrompt_PlatformBotWithRepoAccess(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -127,6 +132,7 @@ func TestPrompt_PlatformBotWithRepoAccess(t *testing.T) {
 }
 
 func TestPrompt_ChiefHeyNoBranchNoWorktree(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)

@@ -12,6 +12,7 @@ import (
 )
 
 func TestKeychainFailure_Connections(t *testing.T) {
+	t.Parallel()
 	requireSecretStore(t)
 	gh := newFakeGitHub(t)
 	gh.set(func() { gh.approved = true })
@@ -53,6 +54,7 @@ func TestKeychainFailure_Connections(t *testing.T) {
 }
 
 func TestKeychainFailure_MCPSecret(t *testing.T) {
+	t.Parallel()
 	requireSecretStore(t)
 	m := newMachine(t)
 	m.env = []string{"ATOLL_SECRET_STORE_UNAVAILABLE=1"}
@@ -100,6 +102,7 @@ func keychainFailure(t *testing.T, s *server, path string, body any, out any) {
 }
 
 func TestKeychainFailure_MCPOAuth(t *testing.T) {
+	t.Parallel()
 	requireSecretStore(t)
 	m := newMachine(t)
 	m.env = []string{"ATOLL_SECRET_STORE_UNAVAILABLE=1"}

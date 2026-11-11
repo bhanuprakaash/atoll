@@ -12,8 +12,10 @@ import (
 )
 
 func TestCodexAuto_SandboxCoversWorktreeAndNetwork(t *testing.T) {
+	t.Parallel()
 	for _, mode := range _modes {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			f := newRepoFixture(t, "codex")
 			var b bot
 			f.s.do(t, "POST", "/api/bots", map[string]any{"name": "Codex " + mode, "persona": "Fix carefully.", "provider": "codex", "mode": mode, "repo_access": "all"}, &b, 201)
@@ -121,6 +123,7 @@ func codexWorkspaceWrite(t *testing.T, c *call) (method, cwd string, present boo
 // matter to it. Each route has a control that runs the same operations with plain git and expects
 // the program to run, so that a route or a marker that stopped working cannot make a leg pass.
 func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
+	t.Parallel()
 	routes := []struct {
 		name string
 		// early plants before the first run, late after the run that leaves unsaved work.
@@ -167,6 +170,7 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 	}
 	for _, route := range routes {
 		t.Run("control/"+route.name, func(t *testing.T) {
+			t.Parallel()
 			repo := t.TempDir()
 			gitIn(t, repo, "init", "-b", "main")
 			writeFile(t, filepath.Join(repo, "answer.txt"), "41\n")
@@ -206,6 +210,7 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 		provider := c.provider
 		for _, route := range routes {
 			t.Run(c.provider+"/"+c.end+"/"+route.name, func(t *testing.T) {
+				t.Parallel()
 				f := newRepoFixture(t, provider)
 				p, marker := newPlanter(t, f.repo.Path)
 				noRun := func(what string) {
@@ -336,6 +341,7 @@ func copyDir(t *testing.T, from, to string) {
 }
 
 func TestRepo_StartWorkSetsUpstream(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "codex")
 	path, _ := f.startWorkReply(t, "codex", _unfinishedRepoPrompt)
 	for key, want := range map[string]string{
@@ -354,6 +360,7 @@ func TestRepo_StartWorkSetsUpstream(t *testing.T) {
 // that git no longer finds the entry pointing back. Git then resolves the symlink when asked to
 // remove the folder and removes the user's worktree. The control runs that removal with plain git.
 func TestRepo_CloseKeepsOtherWorktrees(t *testing.T) {
+	t.Parallel()
 	plant := func(t *testing.T, repo, worktree, user string) {
 		t.Helper()
 		entries, err := filepath.Glob(filepath.Join(repo, ".git", "worktrees", "*", "gitdir"))
@@ -432,6 +439,7 @@ func TestRepo_CloseKeepsOtherWorktrees(t *testing.T) {
 // config defines it as required, the repo's .gitattributes applies it. Atoll's checkouts must still
 // be made; the checkout's smudge may run, it is the user's own filter.
 func TestRepo_UserFilterThatMustRunStillWorks(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "codex")
 	writeFile(t, filepath.Join(f.repo.Path, ".gitattributes"), "*.bin filter=lfs\n")
 	writeFile(t, filepath.Join(f.repo.Path, "big.bin"), "content\n")
