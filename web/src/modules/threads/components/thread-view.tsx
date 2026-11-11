@@ -54,6 +54,7 @@ function RunResult({
       )
     );
   if (run.status === 'running' || run.status === 'waiting') return null;
+  const plain = run.error_kind === 'provider_off' || run.error_kind === 'needs_sign_in';
   const tools = run.tools ?? {};
   const blocked = run.report?.blocked?.trim();
   const parts = [
@@ -108,12 +109,14 @@ function RunResult({
           </div>
         ) : (
           <ErrorNotice
-            title={`${run.reply ? 'Run failed' : "Didn't run"}: ${run.error_kind === 'provider_off' ? run.error : 'something went wrong.'}`}
-            details={run.error_detail || run.error}
+            title={`${run.reply ? 'Run failed' : "Didn't run"}: ${plain ? run.error : 'something went wrong.'}`}
+            details={run.error_detail || (plain ? '' : run.error)}
             actions={[
               ...(run.error_kind === 'provider_off'
                 ? [{ label: 'Open settings', to: '/settings/providers' }]
-                : []),
+                : run.error_kind === 'needs_sign_in'
+                  ? [{ label: 'Open settings', to: '/settings/connections' }]
+                  : []),
               { label: 'Retry', onClick: () => retry(id) },
             ]}
           />

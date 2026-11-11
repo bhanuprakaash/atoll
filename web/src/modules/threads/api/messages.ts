@@ -31,7 +31,7 @@ export type Run = {
   reply: string;
   error: string;
   error_detail: string;
-  error_kind: '' | 'signed_out' | 'provider_off';
+  error_kind: '' | 'signed_out' | 'provider_off' | 'needs_sign_in';
   provider: 'claude' | 'codex';
 };
 

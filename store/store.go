@@ -56,6 +56,10 @@ const (
 // ErrorSignedOut is the error kind of a run that failed because its provider is signed out.
 const ErrorSignedOut = "signed_out"
 
+// ErrorNeedsSignIn is the error kind of a run that failed because a GitHub or GitLab connection
+// needs sign-in; its error is Reef's own plain sentence.
+const ErrorNeedsSignIn = "needs_sign_in"
+
 // ErrorProviderOff is the error kind of a run whose provider is not installed or is turned off.
 const ErrorProviderOff = "provider_off"
 

@@ -51,9 +51,8 @@ function useProviderSignIn(name: Provider['name']) {
   if (!failed) failure = submit.isError ? { error: submit.error } : undefined;
   else if (state.data?.error)
     failure = {
-      title: "Sign-in didn't finish.",
+      title: state.data.error,
       next: 'Try again.',
-      details: state.data.error,
       actions: [{ label: 'Try again', onClick: start }],
     };
   else if (signIn.isError) failure = { error: signIn.error, retry: start };
