@@ -72,11 +72,15 @@ function reds(root: Locator): Promise<string[]> {
       if (e.closest('svg[role="img"]') && !e.matches('.creature-pulse')) continue;
       const cs = getComputedStyle(e);
       const box = e.getBoundingClientRect();
-      if (cs.display === 'none' || cs.visibility === 'hidden' || !box.width || !box.height) continue;
+      if (cs.display === 'none' || cs.visibility === 'hidden' || !box.width || !box.height)
+        continue;
       const hit = (what: string, css: string) =>
         red(css) &&
-        found.push(`${e.tagName.toLowerCase()} ${what} ${css} "${(e.textContent ?? '').trim().slice(0, 40)}"`);
-      if ([...e.childNodes].some((n) => n.nodeType === 3 && n.textContent?.trim())) hit('color', cs.color);
+        found.push(
+          `${e.tagName.toLowerCase()} ${what} ${css} "${(e.textContent ?? '').trim().slice(0, 40)}"`,
+        );
+      if ([...e.childNodes].some((n) => n.nodeType === 3 && n.textContent?.trim()))
+        hit('color', cs.color);
       hit('background', cs.backgroundColor);
       for (const side of ['Top', 'Right', 'Bottom', 'Left'] as const) {
         if (parseFloat(cs[`border${side}Width`]) > 0 && cs[`border${side}Style`] !== 'none') {
@@ -135,9 +139,7 @@ test('the card is quiet: nothing red at rest, Deny red only on hover and keyboar
   await page.mouse.move(0, 0);
   expect(await reds(log)).toEqual([]);
   await expect(page.locator('header')).toContainText('Needs you');
-  await expect(
-    sidebarRow(page, 'Moss').getByRole('img', { name: /, needs you$/ }),
-  ).toBeVisible();
+  await expect(sidebarRow(page, 'Moss').getByRole('img', { name: /, needs you$/ })).toBeVisible();
 
   await allow.hover();
   expect(await redIn(allow)).toBe(false);
@@ -215,7 +217,9 @@ test('writing in the chat answers the card: it collapses to You replied instead 
   await expect(card.locator('code')).toHaveText(tmp);
   await card.getByRole('button', { name: 'Allow', exact: true }).click();
   await expect(card).toHaveCount(0);
-  await expect(log.getByText(new RegExp(`${push}: denied, told: .*${reply}`)).first()).toBeVisible();
+  await expect(
+    log.getByText(new RegExp(`${push}: denied, told: .*${reply}`)).first(),
+  ).toBeVisible();
   await expect(log.getByText(`${tmp}: ran`).first()).toBeVisible();
 
   const [t] = await api(m, 'GET', `/api/bots/${bot.id}/threads`);
@@ -330,7 +334,10 @@ test('a folded group with a Bot that needs you shows no red', async ({ page }) =
   await page.getByRole('menuitem', { name: 'Ops', exact: true }).click();
   await group.getByRole('heading').hover();
   await group.getByRole('button', { name: 'Ops', exact: true }).click();
-  await expect(group.getByRole('button', { name: 'Ops', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  await expect(group.getByRole('button', { name: 'Ops', exact: true })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
 
   const waiting = await openThreadAPI(m, pager.id, prompts.write);
   await waitStatus(waiting.id, 'waiting');
