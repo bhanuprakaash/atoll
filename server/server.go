@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"strings"
 	"sync"
 	"time"
@@ -425,26 +424,10 @@ func (a *api) liveStep(threadID string) string {
 	var in struct {
 		Command string `json:"command"`
 	}
-	if tool.Kind == "command" && json.Unmarshal(tool.Input, &in) == nil && in.Command != "" {
-		target = shortCommand(in.Command)
+	if tool.Name == "Bash" && json.Unmarshal(tool.Input, &in) == nil && in.Command != "" {
+		target = run.CommandTarget(in.Command)
 	}
 	return strings.TrimSpace(tool.Verb + " " + target)
-}
-
-// shortCommand is a command's program and plain first argument, past any leading cd: "make e2e".
-func shortCommand(command string) string {
-	for _, part := range strings.FieldsFunc(command, func(r rune) bool { return r == '&' || r == ';' || r == '|' }) {
-		f := strings.Fields(strings.Trim(strings.TrimSpace(part), "()"))
-		if len(f) == 0 || f[0] == "cd" {
-			continue
-		}
-		f[0] = path.Base(f[0])
-		if len(f) > 1 && !strings.HasPrefix(f[1], "-") && !strings.ContainsAny(f[1], "/=~$'\"") {
-			return f[0] + " " + f[1]
-		}
-		return f[0]
-	}
-	return ""
 }
 
 func (a *api) listThreads(w http.ResponseWriter, r *http.Request) {

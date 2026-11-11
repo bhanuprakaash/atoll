@@ -35,10 +35,12 @@ function duration(run: Run) {
 function RunResult({
   id,
   time,
+  botName,
   retry,
   signedOut,
 }: {
   id: string;
+  botName: string;
   time?: string;
   retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
@@ -81,7 +83,13 @@ function RunResult({
           <span className="line-clamp-2">Blocked: {blocked}</span>
         </p>
       )}
-      {run.status === 'failed' && (
+      {run.status === 'failed' && run.error_kind === 'rate_limited' && (
+        <p className="text-ink/80">
+          {botName} hit its {run.provider === 'codex' ? 'Codex' : 'Claude'} limit;{' '}
+          {run.resets_at ? `back at ${messageTime(run.resets_at)}` : 'try again later'}
+        </p>
+      )}
+      {run.status === 'failed' && run.error_kind !== 'rate_limited' && (
         <div className="flex flex-wrap items-center gap-3">
           <svg
             aria-hidden="true"
@@ -142,7 +150,8 @@ function messageTime(createdAt: string) {
   const time = clockTime(createdAt);
   if (daysAgo === 0) return time;
   if (daysAgo === 1) return `Yesterday ${time}`;
-  if (daysAgo < 7) return `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+  if (daysAgo === -1) return `Tomorrow ${time}`;
+  if (Math.abs(daysAgo) < 7) return `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
   return `${date.getDate()} ${date.toLocaleDateString([], { month: 'short' })} ${time}`;
 }
 
@@ -233,6 +242,13 @@ function MessageLine({
       {messageTime(message.created_at)}
     </time>
   );
+  if (message.kind) {
+    return (
+      <p data-testid="message" className="text-sm text-muted">
+        Reef: {message.text} {time}
+      </p>
+    );
+  }
   if (message.from_bot_id) {
     const report = brief ? { prose: message.text, threadId: '' } : helperReport(message.text);
     const text = (
@@ -724,6 +740,7 @@ export function ThreadView({
                         {afterRun?.(m.run_id)}
                         <RunResult
                           id={m.run_id}
+                          botName={botName}
                           time={m.created_at}
                           retry={retry}
                           signedOut={signedOut}
@@ -749,7 +766,7 @@ export function ThreadView({
               {run.finished && !answered.has(id) && (
                 <>
                   {afterRun?.(id)}
-                  <RunResult id={id} retry={retry} signedOut={signedOut} />
+                  <RunResult id={id} botName={botName} retry={retry} signedOut={signedOut} />
                 </>
               )}
             </div>
@@ -757,7 +774,7 @@ export function ThreadView({
           {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
             <div className="flex flex-col gap-6">
               {afterRun?.(thread.run_id)}
-              <RunResult id={thread.run_id} retry={retry} signedOut={signedOut} />
+              <RunResult id={thread.run_id} botName={botName} retry={retry} signedOut={signedOut} />
             </div>
           )}
           {queued.map((m) => (

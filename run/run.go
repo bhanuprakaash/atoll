@@ -155,6 +155,7 @@ type (
 		calls    map[string]chan struct{} // closed once the tool call with that id is published
 		tool     ToolCall
 		shown    []string // memory ids the run's memory tools returned
+		kind     string   // of the wake the run answers; empty for a message
 	}
 
 	// Event is one event on a thread's stream. Data is one of the types below. ThreadID is the
@@ -302,15 +303,19 @@ func (m *Manager) send(ctx context.Context, items ...store.InboxItem) (store.Mes
 	threadID := items[0].ThreadID
 	texts := make([]string, len(items))
 	var images []provider.Image
+	kind := items[0].Kind
 	for i, it := range items {
 		texts[i] = it.Text
+		if it.Kind != kind {
+			kind = ""
+		}
 		for _, img := range it.Images {
 			images = append(images, provider.Image{Mime: img.Mime, Data: img.Data})
 		}
 	}
 	text := strings.Join(texts, "\n\n")
 	runCtx, cancel := context.WithCancel(m.ctx)
-	a := &active{threadID: threadID, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
+	a := &active{threadID: threadID, kind: kind, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		cancel()
@@ -600,6 +605,8 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 		res = store.RunResult{Status: store.StatusFailed, Error: err.Error()}
 		if m.ctx.Err() != nil {
 			res.Error = _stopReason
+		} else if limit := (*provider.LimitError)(nil); errors.As(err, &limit) {
+			res.ErrorKind, res.ResetsAt = store.ErrorRateLimited, limit.ResetsAt
 		} else if errors.Is(err, provider.ErrSignedOut) {
 			res.ErrorKind = store.ErrorSignedOut
 			if m.cfg.SignedOut != nil {
@@ -756,6 +763,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		return "", fmt.Errorf("launch %s: %w", bot.Provider, err)
 	}
 	skillDir := filepath.Join(cfg.Dir, "runs", a.run.ID)
+	if !skill.Safe(skillDir) {
+		skillDir = safeSkillDir(a.run.ID)
+	}
 	defer func() {
 		if err := os.RemoveAll(skillDir); err != nil {
 			m.cfg.Log.Warn("remove skill dir", "run_id", a.run.ID, "error", err)
@@ -773,9 +783,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		}
 		rp.Host = RepoHost(a.ctx, rp.Path)
 	}
-	if cfg.Cwd, err = m.workdir(thread, rp); err != nil {
+	cwd, stale, err := m.workdir(thread, rp)
+	if err != nil {
 		return "", err
 	}
+	cfg.Cwd = cwd
 	user, err := m.cfg.Store.Setting(a.ctx, "user_name")
 	if err != nil {
 		return "", fmt.Errorf("load user name: %w", err)
@@ -783,6 +795,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	cfg.Model = bot.Model
 	cfg.Mode = bot.Mode
 	cfg.NoShell = bot.ID == "chief" && bot.Provider == "claude"
+	if bot.Provider == "claude" && !cfg.NoShell {
+		if cfg.HiddenPaths, err = m.hiddenPaths(a.ctx, bot); err != nil {
+			return "", err
+		}
+	}
 	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
 		if cfg.WritableRoots, err = m.codexAutoRoots(a.ctx, thread, rp); err != nil {
 			return "", err
@@ -835,7 +852,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			return "", fmt.Errorf("select memory: %w", err)
 		}
 	}
-	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
+	var behind string
+	if rp.ID != "" && thread.Session == "" && thread.Worktree == "" {
+		behind = repo.BehindNote(a.ctx, rp.Path)
+	}
+	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd, behind, stale, a.kind)
 	var githubToken string
 	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {
@@ -919,8 +940,8 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	return reply, nil
 }
 
-// stream reads the turn's events until it ends and returns the reply. With showText false the
-// turn's text is dropped.
+// stream reads the turn's events until it ends and returns the reply: the text after the last tool
+// call. With showText false the turn's text is dropped.
 func (m *Manager) stream(a *active, sess provider.Session, showText bool) (string, error) {
 	var reply strings.Builder
 	var wg sync.WaitGroup
@@ -953,6 +974,7 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 					return "", fmt.Errorf("save session: %w", err)
 				}
 			case provider.KindToolCall:
+				reply.Reset()
 				name := ev.Name
 				if ev.Server != "" {
 					name = "mcp__" + ev.Server + "__" + name
@@ -1014,6 +1036,9 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 			case provider.KindError:
 				if ev.SignedOut {
 					return "", fmt.Errorf("%w: %s", provider.ErrSignedOut, ev.Text)
+				}
+				if ev.Limited {
+					return "", &provider.LimitError{Text: ev.Text, ResetsAt: ev.ResetsAt}
 				}
 				return "", errors.New(ev.Text)
 			}
@@ -1234,6 +1259,8 @@ func ToolVerb(name, kind string) string {
 			return "Remembering"
 		case provider.ToolFinishRun:
 			return "Wrapping up"
+		case provider.ToolDelegate, provider.ToolContinue:
+			return "Handing off"
 		}
 		if kind == "platform" && strings.HasPrefix(strings.TrimPrefix(name, _atollTools), "list_") {
 			return "Looking around"
@@ -1294,7 +1321,7 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		if v.Desc != "" {
 			return "command", v.Desc
 		}
-		return "command", commandTarget(v.Command)
+		return "command", CommandTarget(v.Command)
 	case "fileChange":
 		if len(v.Changes) > 0 {
 			return "edit", filepath.Base(v.Changes[0].Path)
@@ -1323,6 +1350,8 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 			return "memory", v.Topic
 		case provider.ToolStartWork, provider.ToolTrackMR:
 			return "work", ""
+		case provider.ToolDelegate, provider.ToolContinue:
+			return "platform", ""
 		default:
 			return "platform", v.Name
 		}
@@ -1342,26 +1371,95 @@ var (
 	_plainWord        = regexp.MustCompile(`^[A-Za-z][\w-]*$`)
 	_assignment       = regexp.MustCompile(`^\w+=`)
 	_quoted           = regexp.MustCompile(`\$\([^)]*\)|"[^"]*"|'[^']*'`)
+	_heredoc          = regexp.MustCompile(`<<-?\s*['"]?(\w+)`)
+	_shellWrapper     = regexp.MustCompile(`(?s)^(?:\S*/)?(?:ba|z)?sh\s+-\w*c\s+(.*)$`)
+	_writeRedirect    = regexp.MustCompile(`^\d?>`)
+	_timeout          = regexp.MustCompile(`^\d+[smhd]?$`)
+	_leadingWords     = map[string]bool{"if": true, "elif": true, "while": true, "until": true, "then": true, "do": true, "else": true, "{": true, "!": true}
+	_noCommand        = map[string]bool{"for": true, "case": true, "select": true, "}": true, "done": true, "fi": true, "esac": true, "[": true, "[[": true}
 )
 
-func commandWords(command string) []string {
-	command = _quoted.ReplaceAllString(command, "_")
-	for _, part := range strings.FieldsFunc(command, func(r rune) bool { return r == ';' || r == '&' || r == '\n' }) {
-		fields := strings.Fields(part)
-		for len(fields) > 0 && _assignment.MatchString(fields[0]) {
-			fields = fields[1:]
-		}
-		if len(fields) > 0 && fields[0] != "cd" {
-			if fields[0] == "_" {
-				return nil
-			}
-			return fields
+// unwrapShell returns the script of a `bash -lc '...'` wrapper, else command itself.
+func unwrapShell(command string) string {
+	m := _shellWrapper.FindStringSubmatch(strings.TrimSpace(command))
+	if m == nil {
+		return command
+	}
+	script := strings.TrimSpace(m[1])
+	if n := len(script); n >= 2 && (script[0] == '"' || script[0] == '\'') && script[n-1] == script[0] {
+		script = script[1 : n-1]
+		if m[1][0] == '"' {
+			script = strings.ReplaceAll(script, `\"`, `"`)
 		}
 	}
-	return nil
+	return script
 }
 
-func commandTarget(command string) string {
+// stripHeredocs drops the text of heredocs: it is input, never a command.
+func stripHeredocs(command string) string {
+	var out []string
+	end := ""
+	for _, line := range strings.Split(command, "\n") {
+		if end != "" {
+			if strings.TrimSpace(line) == end {
+				end = ""
+			}
+			continue
+		}
+		out = append(out, line)
+		if m := _heredoc.FindStringSubmatch(line); m != nil {
+			end = m[1]
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// commandWords returns the words of the first real command: past cd, assignments, a leading
+// timeout, function definitions, loop headers and a cat that only writes a file (which is the
+// answer only when nothing else runs).
+func commandWords(command string) []string {
+	command = _quoted.ReplaceAllString(stripHeredocs(unwrapShell(command)), "_")
+	var write []string
+	for _, part := range strings.FieldsFunc(command, func(r rune) bool { return r == ';' || r == '&' || r == '|' || r == '\n' }) {
+		fields := strings.Fields(part)
+		for len(fields) > 0 {
+			head := fields[0]
+			switch {
+			case _assignment.MatchString(head), _leadingWords[head]:
+				fields = fields[1:]
+			case len(fields) > 1 && strings.HasPrefix(fields[1], "()"):
+				fields = fields[2:]
+			case strings.HasSuffix(head, "()") || strings.Contains(head, "(){"):
+				fields = fields[1:]
+			case head == "timeout" && len(fields) > 1 && _timeout.MatchString(fields[1]):
+				fields = fields[2:]
+			case strings.HasPrefix(head, "("):
+				fields[0] = strings.TrimLeft(head, "(")
+				if fields[0] == "" {
+					fields = fields[1:]
+				}
+			default:
+				goto first
+			}
+		}
+	first:
+		if len(fields) == 0 || fields[0] == "cd" || _noCommand[fields[0]] {
+			continue
+		}
+		if fields[0] == "cat" && len(fields) > 1 && _writeRedirect.MatchString(fields[1]) {
+			write = fields[:1]
+			continue
+		}
+		if fields[0] == "_" {
+			return nil
+		}
+		return fields
+	}
+	return write
+}
+
+// CommandTarget is a command's program and plain first argument: "make e2e".
+func CommandTarget(command string) string {
 	fields := commandWords(command)
 	if len(fields) == 0 {
 		return ""
@@ -1387,4 +1485,14 @@ func shortMemory(body string) string {
 		return string(runes[:80]) + "…"
 	}
 	return string(runes)
+}
+
+// safeSkillDir is a run's skill folder under the temp folder, for a data dir whose path a shell
+// would split or expand (macOS `Application Support`): skill scripts write the placed path unquoted.
+func safeSkillDir(runID string) string {
+	root := os.TempDir()
+	if !skill.Safe(root) {
+		root = "/tmp"
+	}
+	return filepath.Join(root, "atoll-run-"+runID)
 }

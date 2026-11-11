@@ -12,6 +12,7 @@ export type Message = {
   text: string;
   run_id: string;
   from_bot_id?: string;
+  kind?: string;
   created_at: string;
   queued?: boolean;
   attachments: { id: string; mime: string }[];
@@ -30,7 +31,8 @@ export type Run = {
   tools: Record<string, number>;
   report?: { blocked: string } | null;
   error: string;
-  error_kind: '' | 'signed_out';
+  error_kind: '' | 'signed_out' | 'rate_limited';
+  resets_at: string;
   provider: 'claude' | 'codex';
 };
 

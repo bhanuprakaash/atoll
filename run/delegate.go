@@ -149,6 +149,10 @@ func (m *Manager) abandonHelper(ctx context.Context, rp store.Repo, h Handoff, p
 	if path == "" {
 		return
 	}
+	if err := m.checkWorktree(path, rp.Name); err != nil {
+		m.cfg.Log.Error("remove helper worktree", "path", path, "error", err)
+		return
+	}
 	if err := repo.Remove(ctx, rp.Path, path); err != nil {
 		m.cfg.Log.Error("remove helper worktree", "path", path, "error", err)
 		return

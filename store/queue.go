@@ -17,9 +17,9 @@ func (s *Store) Enqueue(ctx context.Context, it InboxItem) (InboxItem, error) {
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		now := it.CreatedAt.UnixMicro()
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO inbox (id, thread_id, from_bot_id, text, created, queued, from_user)
-			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			it.ID, it.ThreadID, it.FromBotID, it.Text, now, it.Queued, it.FromUser); err != nil {
+			`INSERT INTO inbox (id, thread_id, from_bot_id, text, kind, created, queued, from_user)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			it.ID, it.ThreadID, it.FromBotID, it.Text, it.Kind, now, it.Queued, it.FromUser); err != nil {
 			return fmt.Errorf("enqueue message: %w", err)
 		}
 		for _, img := range images {
@@ -138,10 +138,10 @@ func (s *Store) missingQueued(ctx context.Context, db dbConn, threadID, id strin
 // inbox reads the held messages that match where, with their images.
 func (s *Store) inbox(ctx context.Context, where string, args ...any) ([]InboxItem, error) {
 	items, err := query(ctx, s.db,
-		"SELECT id, thread_id, from_bot_id, text, queued, from_user, created FROM inbox "+where,
+		"SELECT id, thread_id, from_bot_id, text, kind, queued, from_user, created FROM inbox "+where,
 		func(r *sql.Rows) (it InboxItem, err error) {
 			var created int64
-			err = r.Scan(&it.ID, &it.ThreadID, &it.FromBotID, &it.Text, &it.Queued, &it.FromUser, &created)
+			err = r.Scan(&it.ID, &it.ThreadID, &it.FromBotID, &it.Text, &it.Kind, &it.Queued, &it.FromUser, &created)
 			it.CreatedAt = time.UnixMicro(created).UTC()
 			return it, err
 		}, args...)
