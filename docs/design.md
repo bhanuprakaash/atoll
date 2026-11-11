@@ -1342,11 +1342,23 @@ Voice
   no-network sandbox with web search disabled. The session runs in
   `<data>/titles`, given the first message and the reply, each cut to 2,000 characters. The answer's
   first line, at most six words, first letter upper case, no trailing punctuation, replaces the
-  title only if it is still the first-words one. It is not a run, shows no status line and never
+  title only if it is still the first-words one. A title never carries a label or ends mid-phrase:
+  (1) a leading `Title:`, `Conversation title:`, `Thread title:`, `Chat title:` or `Status line:`
+  (any case, with or without `**` around it) is dropped before the cut, so it does not count
+  towards the six words; any other colon stays (`Fix: login loop`). (2) A title that was cut
+  (the answer or the message had more than six words) loses trailing `on of and to in the a an
+  for with at by from or`, one after another, then any trailing `.,;:!?` ("Final review of #122
+  fix on" is "Final review of #122 fix"); a title not cut keeps its last word. (3) A generated
+  title with nothing left is no title: the first-words one stays. The first-words title follows
+  rule 2 and not rule 1: it is the user's own words. On launch Reef cleans the stored titles the
+  same way, once and without a provider call: a label is dropped, and a title of exactly six
+  words ending on one of those words loses them (a title the user set that falls in the same
+  class is cleaned too). It is not a run, shows no status line and never
   touches the thread's provider session; when it fails, the first-words title stays. The user can
   set a title (`PATCH /api/threads/{id}`), and a user title is never replaced. *Six words cut
   mid-thought ("hey we have to bring the"); one cheap call per thread is worth a title that says
-  what the thread is about.*
+  what the thread is about. Titles read as titles: a label is the model describing its job, and
+  a title cut on "of" or "and" reads as broken in the sidebar, popup and island.*
 - The chat has one rule per kind of message. The user's message is the only bubble. The thread's
   own Bot replies in plain text with markdown, no avatar. Any other Bot (a helper's report in the
   boss thread, the boss's brief in a helper thread) gets its creature and name on a line above
