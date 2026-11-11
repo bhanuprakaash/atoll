@@ -54,7 +54,7 @@ function Pin() {
 export function ThreadLabel({ thread }: { thread: SidebarThread }) {
   return (
     <>
-      {thread.state === 'needs_you' ? (
+      {thread.state === 'needs_you' || thread.state === 'waiting' ? (
         <Dot className="bg-danger" />
       ) : thread.state === 'new' ? (
         <Dot className="bg-kind" />
@@ -69,6 +69,9 @@ export function ThreadLabel({ thread }: { thread: SidebarThread }) {
       {thread.state === 'needs_you' && (
         <span className="flex-none text-xs text-needs-ink">Needs you</span>
       )}
+      {thread.state === 'waiting' && (
+        <span className="flex-none text-xs text-needs-ink">Waiting on you</span>
+      )}
       {thread.state === 'new' && <span className="flex-none text-xs text-kind">New</span>}
       {thread.state === 'running' && <Wave label="Running" />}
     </>
@@ -80,6 +83,13 @@ function ThreadMarker({ thread }: { thread: SidebarThread }) {
     return (
       <>
         <span className="flex-none text-xs text-needs-ink">Needs you</span>
+        <Dot className="bg-danger" />
+      </>
+    );
+  if (thread.state === 'waiting')
+    return (
+      <>
+        <span className="flex-none text-xs text-needs-ink">Waiting on you</span>
         <Dot className="bg-danger" />
       </>
     );

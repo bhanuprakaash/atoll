@@ -85,6 +85,11 @@ export function useSendMessage(threadId: string) {
         method: 'POST',
         body: input,
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['messages', threadId] }),
+    onSuccess: () =>
+      Promise.all(
+        [['messages', threadId], ['thread', threadId], ['bots']].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      ),
   });
 }

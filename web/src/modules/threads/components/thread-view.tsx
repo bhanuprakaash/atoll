@@ -19,6 +19,7 @@ import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/thr
 import { Composer } from '@/modules/threads/components/composer';
 import { HelpersRegion } from '@/modules/threads/components/helpers-region';
 import { LiveRun } from '@/modules/threads/components/live-run';
+import { WaitingCard } from '@/modules/threads/components/waiting-card';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 import { clockTime } from '@/utils/time';
@@ -812,6 +813,11 @@ export function ThreadView({
             </div>
           )}
           <HelpersRegion helpers={helpers} bots={bots} />
+          <WaitingCard
+            threadId={threadId}
+            items={thread?.waiting ?? []}
+            onSent={(run) => begin(run.id)}
+          />
           {boss ? (
             <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
               <p className="flex-1">{`${boss} is handling this thread. Talk to ${boss} to change it.`}</p>

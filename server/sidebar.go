@@ -17,9 +17,11 @@ import (
 type sidebarThread struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
-	State  string `json:"state"` // "needs_you", "running", "new" or ""
+	State  string `json:"state"` // "needs_you", "waiting", "running", "new" or ""
 	Pinned bool   `json:"pinned"`
 	Helper bool   `json:"helper,omitempty"`
+	// Waiting is what waits on the person in the thread.
+	Waiting []store.Waiting `json:"waiting,omitempty"`
 }
 
 // notice is one /api/events payload: an event of a thread with the thread's Bot and title.
@@ -33,9 +35,11 @@ type notice struct {
 }
 
 // sidebarThreads keeps the open threads in the order given and marks each: needs_you when its run
-// or a helper's waits on an approval, running when its run or a helper's goes, new when its newest
-// run finished after the user last opened it.
-func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread {
+// or a helper's waits on an approval, waiting when something else waits on the person, running when
+// its run or a helper's goes, new when its newest run finished after the user last opened it.
+func (a *api) sidebarThreads(
+	threads, helpers []store.ThreadRun, waiting map[string][]store.Waiting,
+) []sidebarThread {
 	byBoss := map[string][]store.ThreadRun{}
 	for _, h := range helpers {
 		byBoss[h.ParentThreadID] = append(byBoss[h.ParentThreadID], h)
@@ -45,18 +49,19 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 		if t.Closed {
 			continue
 		}
-		state := a.marker(t, byBoss[t.ThreadID])
+		state := a.marker(t, byBoss[t.ThreadID], len(waiting[t.ThreadID]) > 0)
 		out = append(out, sidebarThread{
 			ID: t.ThreadID, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
+			Waiting: waiting[t.ThreadID],
 		})
 	}
 	return out
 }
 
 // marker is the state of thread t with its helpers.
-func (a *api) marker(t store.ThreadRun, helpers []store.ThreadRun) string {
+func (a *api) marker(t store.ThreadRun, helpers []store.ThreadRun, waits bool) string {
 	state := ""
-	waiting := func(tr store.ThreadRun) bool {
+	needs := func(tr store.ThreadRun) bool {
 		if tr.Status != store.StatusRunning && tr.Status != store.StatusWaiting {
 			return false
 		}
@@ -65,12 +70,15 @@ func (a *api) marker(t store.ThreadRun, helpers []store.ThreadRun) string {
 		return len(approvals) > 0
 	}
 	for _, h := range helpers {
-		if waiting(h) {
+		if needs(h) {
 			return "needs_you"
 		}
 	}
-	if waiting(t) {
+	if needs(t) {
 		return "needs_you"
+	}
+	if waits {
+		return "waiting"
 	}
 	if state == "" && t.Unseen {
 		return "new"

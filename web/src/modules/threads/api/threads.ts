@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import type { ImageInput, Message, Run } from '@/modules/threads/api/messages';
+import type { Waiting } from '@/types/waiting';
 
 export type Thread = {
   id: string;
@@ -34,6 +35,7 @@ export const getThread = (threadId: string) =>
     Thread & {
       active_run: Run | null;
       approvals: { run_id: string; id: string; tool: string; input: unknown }[];
+      waiting: Waiting[];
     }
   >(`/threads/${threadId}`);
 

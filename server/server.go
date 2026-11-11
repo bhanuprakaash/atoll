@@ -245,8 +245,13 @@ func (a *api) listBots(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	waiting, err := a.st.Waiting(r.Context())
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
 	for i, resp := range responses {
-		responses[i].Threads = a.sidebarThreads(threads[resp.ID], helpers[resp.ID])
+		responses[i].Threads = a.sidebarThreads(threads[resp.ID], helpers[resp.ID], waiting)
 	}
 	write(w, http.StatusOK, responses)
 }
@@ -487,11 +492,17 @@ func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	waiting, err := a.st.ThreadWaiting(r.Context(), t.ID)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
 	write(w, http.StatusOK, struct {
 		threadSummary
-		ActiveRun *store.Run     `json:"active_run"`
-		Approvals []run.Approval `json:"approvals"`
-	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals)})
+		ActiveRun *store.Run      `json:"active_run"`
+		Approvals []run.Approval  `json:"approvals"`
+		Waiting   []store.Waiting `json:"waiting"`
+	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals), Waiting: orEmpty(waiting)})
 }
 
 func (a *api) patchThread(w http.ResponseWriter, r *http.Request) {

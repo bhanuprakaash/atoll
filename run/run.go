@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"atoll/connection"
 	"atoll/memory"
@@ -465,7 +466,19 @@ func (m *Manager) Report(ctx context.Context, token string, r store.Report) erro
 			return RefusedError(fmt.Sprintf("ready entry %d: url is empty; nothing saved", i+1))
 		case !_headSHA.MatchString(p.SHA):
 			return RefusedError(fmt.Sprintf("ready entry %d: sha must be the PR's 40-hex head commit; nothing saved", i+1))
+		case !oneLine(p.Note, _noteMax, true):
+			return RefusedError(fmt.Sprintf("ready entry %d: note must be one line of at most %d characters; nothing stored", i+1, _noteMax))
 		}
+	}
+	if msg := askProblem(r.Ask); msg != "" {
+		return RefusedError("ask: " + msg + "; nothing stored")
+	}
+	if r.Ask != nil {
+		ask := store.Ask{Question: strings.TrimSpace(r.Ask.Question)}
+		for _, o := range r.Ask.Options {
+			ask.Options = append(ask.Options, strings.TrimSpace(o))
+		}
+		r.Ask = &ask
 	}
 	if err := m.cfg.Store.SetReport(ctx, a.run.ID, r); err != nil {
 		return fmt.Errorf("report run %s: %w", a.run.ID, err)
@@ -786,6 +799,15 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		}
 	}
 	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd, a.kind)
+	waiting, err := m.cfg.Store.ThreadWaiting(a.ctx, thread.ID)
+	if err != nil {
+		return "", fmt.Errorf("load waiting items: %w", err)
+	}
+	for _, w := range waiting {
+		if w.Kind == store.WaitDecision {
+			prompt += "\n\nOpen question for the person (do not ask it again): " + w.Question
+		}
+	}
 	var githubToken string
 	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {
@@ -1338,4 +1360,39 @@ func shortMemory(body string) string {
 		return string(runes[:80]) + "…"
 	}
 	return string(runes)
+}
+
+const (
+	_questionMax = 300
+	_optionMax   = 60
+	_noteMax     = 120
+)
+
+// oneLine says whether s is one line of at most max characters, and not empty unless empty is set.
+func oneLine(s string, max int, empty bool) bool {
+	s = strings.TrimSpace(s)
+	return (s != "" || empty) && utf8.RuneCountInString(s) <= max && !strings.ContainsAny(s, "\r\n")
+}
+
+// askProblem is what is wrong with a decision, or "" when it is fine or absent.
+func askProblem(a *store.Ask) string {
+	switch {
+	case a == nil:
+		return ""
+	case !oneLine(a.Question, _questionMax, false):
+		return fmt.Sprintf("question must be one non-empty line of at most %d characters", _questionMax)
+	case len(a.Options) < 2 || len(a.Options) > 4:
+		return fmt.Sprintf("needs 2 to 4 options, got %d", len(a.Options))
+	}
+	seen := map[string]bool{}
+	for _, o := range a.Options {
+		if !oneLine(o, _optionMax, false) {
+			return fmt.Sprintf("each option must be a non-empty line of at most %d characters", _optionMax)
+		}
+		if seen[strings.TrimSpace(o)] {
+			return "options must differ"
+		}
+		seen[strings.TrimSpace(o)] = true
+	}
+	return ""
 }

@@ -240,6 +240,13 @@ type (
 		Blocked string    `json:"blocked"`
 		Next    string    `json:"next"`
 		Ready   []ReadyPR `json:"ready,omitempty"`
+		Ask     *Ask      `json:"ask,omitempty"`
+	}
+
+	// Ask is a decision only the person can make: a question and 2 to 4 options.
+	Ask struct {
+		Question string   `json:"question"`
+		Options  []string `json:"options"`
 	}
 
 	// ReadyPR is a PR the Bot called ready, at the head commit it saw. Changed is set on read: a
@@ -247,6 +254,7 @@ type (
 	ReadyPR struct {
 		URL     string `json:"url"`
 		SHA     string `json:"sha"`
+		Note    string `json:"note,omitempty"`
 		Changed bool   `json:"changed"`
 	}
 )
