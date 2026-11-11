@@ -29,19 +29,37 @@ const (
 	SkippedOther  = "not a file"
 )
 
+const (
+	_tail      = "[^\\s`'\")\\]]*"
+	_nameChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+	_pathChars = _nameChars + "/~"
+)
+
 var (
-	_unsafe = regexp.MustCompile(`[^a-z0-9_-]+`)
+	_unsafe   = regexp.MustCompile(`[^a-z0-9_-]+`)
+	_safePath = regexp.MustCompile(`^[A-Za-z0-9_./:@%+=,-]+$`)
+	// _homeRef finds `${HOME` followed by an operator, `$HOME`, and `~` with an optional user name,
+	// `+` or `-`. Whether a `~` really starts a word is checked on the match.
+	_homeRef = regexp.MustCompile(`\$\{HOME(?:\}|[^A-Za-z0-9_}\s])` + _tail +
+		`|\$HOME\b(?:/` + _tail + `)?|~(?:[A-Za-z_][A-Za-z0-9_-]*|[+-])?(?:/` + _tail + `)?`)
 )
 
 // Import is a skill read from a local folder, with skipped files, refused references and rewrites.
 type Import struct {
 	Skill     store.Skill
 	Skipped   []Skipped
-	Refs      []homeRef
-	Rewritten map[string]int
+	Refs      []HomeRef
+	Rewritten []Rewrite
 }
 
-type homeRef struct {
+// Rewrite counts the own-folder references rewritten in one file of a skill.
+type Rewrite struct {
+	File  string `json:"file"`
+	Count int    `json:"count"`
+}
+
+// HomeRef is a reference to the owner's home folder that a Bot cannot use.
+type HomeRef struct {
 	File string `json:"file"`
 	Line int    `json:"line"`
 	Ref  string `json:"ref"`
@@ -149,7 +167,38 @@ func Read(dir string, source ...string) (Import, error) {
 	if imp.Skill.Name == "" {
 		imp.Skill.Name = filepath.Base(entry)
 	}
-	err = filepath.WalkDir(dir, func(file string, d fs.DirEntry, err error) error {
+	if err := readFolder(dir, &imp); err != nil {
+		return Import{}, fmt.Errorf("read skill folder: %w", err)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return Import{}, err
+	}
+	forms := ownForms(entry, dir)
+	scan := func(file string, content *string) {
+		count := 0
+		for _, form := range forms {
+			var n int
+			*content, n = replaceForm(*content, form)
+			count += n
+		}
+		if count > 0 {
+			imp.Rewritten = append(imp.Rewritten, Rewrite{File: file, Count: count})
+		}
+		imp.Refs = append(imp.Refs, homeRefs(file, *content, home)...)
+	}
+	scan("SKILL.md", &imp.Skill.Content)
+	for i := range imp.Skill.Files {
+		scan(imp.Skill.Files[i].Path, &imp.Skill.Files[i].Content)
+	}
+	slices.SortStableFunc(imp.Refs, func(a, b HomeRef) int { return strings.Compare(a.File, b.File) })
+	slices.SortFunc(imp.Rewritten, func(a, b Rewrite) int { return strings.Compare(a.File, b.File) })
+	return imp, nil
+}
+
+// readFolder adds the text files of dir to imp and lists what it leaves out.
+func readFolder(dir string, imp *Import) error {
+	err := filepath.WalkDir(dir, func(file string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -189,17 +238,15 @@ func Read(dir string, source ...string) (Import, error) {
 		})
 		return nil
 	})
-	if err != nil {
-		return Import{}, fmt.Errorf("read skill folder: %w", err)
-	}
 	slices.SortFunc(imp.Skill.Files, func(a, b store.SkillFile) int {
 		return strings.Compare(a.Path, b.Path)
 	})
+	return err
+}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return Import{}, err
-	}
+// ownForms are the spellings of a skill's own folder: the entry it was imported from and the
+// resolved folder, as absolute paths and as `~/`, `$HOME/` and `${HOME}/` paths under their root.
+func ownForms(entry, dir string) []string {
 	forms := []string{entry, dir}
 	root := filepath.ToSlash(filepath.Join(filepath.Base(filepath.Dir(filepath.Dir(entry))), "skills")) + "/"
 	for _, name := range []string{filepath.Base(entry), filepath.Base(dir)} {
@@ -207,40 +254,100 @@ func Read(dir string, source ...string) (Import, error) {
 			forms = append(forms, prefix+root+name)
 		}
 	}
-	imp.Rewritten = make(map[string]int)
-	scan := func(file string, content *string) {
-		for _, form := range forms {
-			re := regexp.MustCompile(regexp.QuoteMeta(form) + `($|[^a-zA-Z0-9._-])`)
-			matches := re.FindAllStringSubmatchIndex(*content, -1)
-			for i := len(matches) - 1; i >= 0; i-- {
-				start, end := matches[i][0], matches[i][2]
-				if strings.HasPrefix(form, "~/") && start > 0 && strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/~", rune((*content)[start-1])) {
-					continue
-				}
-				*content = (*content)[:start] + "{{ATOLL_SKILL_DIR}}" + (*content)[end:]
-				imp.Rewritten[file]++
+	return forms
+}
+
+// replaceForm replaces each whole-name occurrence of form in s with {{ATOLL_SKILL_DIR}}. A `~/` or
+// absolute form does not count when a path character comes before it (`a~/x`, `/mnt/home/...`).
+func replaceForm(s, form string) (string, int) {
+	var out strings.Builder
+	count, pos := 0, 0
+	for {
+		i := strings.Index(s[pos:], form)
+		if i < 0 {
+			break
+		}
+		start := pos + i
+		end := start + len(form)
+		own := (form[0] != '~' && form[0] != '/' || startsWord(s, start)) &&
+			(end == len(s) || !strings.ContainsRune(_nameChars, rune(s[end])))
+		out.WriteString(s[pos:start])
+		if own {
+			out.WriteString("{{ATOLL_SKILL_DIR}}")
+			count++
+		} else {
+			out.WriteString(form)
+		}
+		pos = end
+	}
+	if count == 0 {
+		return s, 0
+	}
+	out.WriteString(s[pos:])
+	return out.String(), count
+}
+
+// startsWord reports whether no path character comes before s[i].
+func startsWord(s string, i int) bool {
+	return i == 0 || strings.IndexByte(_pathChars, s[i-1]) < 0
+}
+
+// homeRefs lists the home references left in content, in order of line, then position.
+func homeRefs(file, content, home string) []HomeRef {
+	var refs []HomeRef
+	for n, line := range strings.Split(content, "\n") {
+		var spans [][]int
+		for _, loc := range _homeRef.FindAllStringIndex(line, -1) {
+			if line[loc[0]] != '~' || startsWord(line, loc[0]) && tildeEnds(line, loc) {
+				spans = append(spans, loc)
 			}
 		}
-		re := regexp.MustCompile("~/[^\\s`'\"\\)\\]]*|\\$HOME(?:/[^\\s`'\"\\)\\]]*)?|\\$\\{HOME\\}(?:/[^\\s`'\"\\)\\]]*)?|" + regexp.QuoteMeta(home) + "(?:/[^\\s`'\"\\)\\]]*)?")
-		for lineNo, line := range strings.Split(*content, "\n") {
-			for _, loc := range re.FindAllStringIndex(line, -1) {
-				ref := line[loc[0]:loc[1]]
-				if strings.HasPrefix(ref, "~/") && loc[0] > 0 && strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/~", rune(line[loc[0]-1])) {
-					continue
-				}
-				if ref == "$HOME" && loc[1] < len(line) && ((line[loc[1]] >= 'A' && line[loc[1]] <= 'Z') || (line[loc[1]] >= 'a' && line[loc[1]] <= 'z') || line[loc[1]] == '_' || (line[loc[1]] >= '0' && line[loc[1]] <= '9')) {
-					continue
-				}
-				imp.Refs = append(imp.Refs, homeRef{File: file, Line: lineNo + 1, Ref: ref})
+		spans = append(spans, absoluteRefs(line, home)...)
+		slices.SortFunc(spans, func(a, b []int) int { return a[0] - b[0] })
+		last := 0
+		for _, sp := range spans {
+			if sp[0] >= last {
+				refs = append(refs, HomeRef{File: file, Line: n + 1, Ref: line[sp[0]:sp[1]]})
+				last = sp[1]
 			}
 		}
 	}
-	scan("SKILL.md", &imp.Skill.Content)
-	for i := range imp.Skill.Files {
-		scan(imp.Skill.Files[i].Path, &imp.Skill.Files[i].Content)
+	return refs
+}
+
+// tildeEnds reports whether a `~` match is more than a bare `~` or ends the word: `~5` and `~~` are not.
+func tildeEnds(line string, loc []int) bool {
+	return loc[1]-loc[0] > 1 || loc[1] == len(line) || strings.ContainsRune(" \t\r\f:)\"'", rune(line[loc[1]]))
+}
+
+// absoluteRefs finds home as a whole path: no path character before it, and `/`, the end,
+// whitespace or a quote after it.
+func absoluteRefs(line, home string) [][]int {
+	var spans [][]int
+	for pos := 0; ; {
+		i := strings.Index(line[pos:], home)
+		if i < 0 {
+			return spans
+		}
+		start := pos + i
+		end := start + len(home)
+		pos = end
+		if !startsWord(line, start) || end < len(line) && !strings.ContainsRune("/ \t\r\f\"'`", rune(line[end])) {
+			continue
+		}
+		if end < len(line) && line[end] == '/' {
+			for end < len(line) && !strings.ContainsRune(" \t\r\f`'\")]", rune(line[end])) {
+				end++
+			}
+		}
+		spans = append(spans, []int{start, end})
 	}
-	slices.SortStableFunc(imp.Refs, func(a, b homeRef) int { return strings.Compare(a.File, b.File) })
-	return imp, nil
+}
+
+// Safe reports whether a shell leaves path alone: no space, quote, `$`, backtick or other
+// character it splits or expands.
+func Safe(path string) bool {
+	return _safePath.MatchString(path)
 }
 
 func readFile(path string) ([]byte, fs.FileInfo, error) {

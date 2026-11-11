@@ -697,6 +697,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		return "", fmt.Errorf("launch %s: %w", bot.Provider, err)
 	}
 	skillDir := filepath.Join(cfg.Dir, "runs", a.run.ID)
+	if !skill.Safe(skillDir) {
+		skillDir = safeSkillDir(a.run.ID)
+	}
 	defer func() {
 		if err := os.RemoveAll(skillDir); err != nil {
 			m.cfg.Log.Warn("remove skill dir", "run_id", a.run.ID, "error", err)
@@ -1328,4 +1331,14 @@ func shortMemory(body string) string {
 		return string(runes[:80]) + "…"
 	}
 	return string(runes)
+}
+
+// safeSkillDir is a run's skill folder under the temp folder, for a data dir whose path a shell
+// would split or expand (macOS `Application Support`): skill scripts write the placed path unquoted.
+func safeSkillDir(runID string) string {
+	root := os.TempDir()
+	if !skill.Safe(root) {
+		root = "/tmp"
+	}
+	return filepath.Join(root, "atoll-run-"+runID)
 }

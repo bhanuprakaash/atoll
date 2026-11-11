@@ -732,8 +732,8 @@ after a failed undo counts a Bot that is already gone as removed.
     - Dynamic forms (`$(echo ~)`, `HO""ME`, a `~` and `/` split by a line break) are out of scope:
       the scan guards honest mistakes, not a boundary.
     - An absolute home path has boundaries: it counts only when the next character is `/`, the end,
-      whitespace or a quote (`/home/agent2/x` is not `/home/agent`), and only when no path
-      character comes before it (`/mnt/home/agent/.claude/skills/s/x` is neither refused nor
+      whitespace, a quote or a backtick (`/home/agent2/x` is not `/home/agent`), and only when no
+      path character comes before it (`/mnt/home/agent/.claude/skills/s/x` is neither refused nor
       rewritten).
   - Rewritable: the skill's import entry path and resolved folder path, and nothing more.
     - `import_skill` takes only a direct child of the resolved `~/.claude/skills` or
@@ -764,7 +764,9 @@ after a failed undo counts a Bot that is already gone as removed.
       Reef's data dir has a space (`~/Library/Application Support/Atoll`). When the copy's folder
       has a character a shell splits or expands (space, quote, `$`, backtick, `;`, `&`, `(`, `*`,
       and the like), placement replaces the token with a path that has none. A folder without one
-      is written as is.
+      is written as is. The run's copies then live in `<temp folder>/atoll-run-<run id>` (`/tmp`
+      when the temp folder has such a character too) in place of `runs/<run id>`; it is removed
+      when the run ends and both providers read it as before (`--add-dir`, `skills/extraRoots/set`).
     - The token also works in skills written in Reef. A skill that already contains the literal
       `{{ATOLL_SKILL_DIR}}` gets it replaced like any other; it cannot be written literally.
   - The answer of `import_skill` and of reimport has a status `refused` (beside `created`,

@@ -365,6 +365,10 @@ func (a *api) reimportSkill(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if refused := refusal(imp); refused != nil {
+		write(w, http.StatusOK, refused)
+		return
+	}
 	res, _, _, err := a.importSkill(r.Context(), a.st, imp, in.Replace)
 	if err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
@@ -659,8 +663,11 @@ func (a *api) platformCall(
 	case provider.ToolImportSkill:
 		var res importResult
 		var prev, sk store.Skill
+		if refused := refusal(imp); refused != nil {
+			return a.jsonText(refused)
+		}
 		res, prev, sk, err = a.importSkill(ctx, st, imp, importArgs.Replace)
-		if err == nil && (res.Status == _importUnchanged || res.Status == _importConfirm || res.Status == "refused") {
+		if err == nil && (res.Status == _importUnchanged || res.Status == _importConfirm) {
 			return a.jsonText(res)
 		}
 		reply, after, entity, id = res, sk, store.EntitySkill, sk.ID
@@ -880,6 +887,7 @@ const (
 	_importReplaced  = "replaced"
 	_importUnchanged = "unchanged"
 	_importConfirm   = "confirm"
+	_importRefused   = "refused"
 )
 
 // importResult is what import_skill answers: the paths it added, changed and removed against the
@@ -891,16 +899,16 @@ type importResult struct {
 	Changed   []string        `json:"changed"`
 	Removed   []string        `json:"removed"`
 	Skipped   []skill.Skipped `json:"skipped"`
-	Name      string          `json:"name,omitempty"`
-	Reason    string          `json:"reason,omitempty"`
-	Refs      any             `json:"refs,omitempty"`
 	Warning   string          `json:"warning,omitempty"`
-	Rewritten []rewrittenFile `json:"rewritten"`
+	Rewritten []skill.Rewrite `json:"rewritten"`
 }
 
-type rewrittenFile struct {
-	File  string `json:"file"`
-	Count int    `json:"count"`
+// refusedImport is what import_skill answers when the skill refers to the owner's home: nothing is stored.
+type refusedImport struct {
+	Status string          `json:"status"`
+	Name   string          `json:"name"`
+	Reason string          `json:"reason"`
+	Refs   []skill.HomeRef `json:"refs"`
 }
 
 type importedSkill struct {
@@ -1003,31 +1011,34 @@ func readAgent(path string) (any, error) {
 	}, nil
 }
 
+// refusal answers an import whose files refer to the owner's home folder, or nil.
+func refusal(imp skill.Import) *refusedImport {
+	if len(imp.Refs) == 0 {
+		return nil
+	}
+	list := make([]string, len(imp.Refs))
+	for i, ref := range imp.Refs {
+		list[i] = fmt.Sprintf("%s:%d %s", ref.File, ref.Line, ref.Ref)
+	}
+	return &refusedImport{
+		Status: _importRefused, Name: imp.Skill.Name, Refs: imp.Refs,
+		Reason: fmt.Sprintf("skill %q refers to files in your home folder that a Bot cannot use: %s",
+			imp.Skill.Name, strings.Join(list, ", ")),
+	}
+}
+
 // importSkill puts the skill folder read by readImport into the library. It updates the skill
 // imported from the same folder, or a skill of the same name made in Reef, and asks for replace
 // before it overwrites edits made in Reef. It returns the stored skill before and after.
 func (a *api) importSkill(
 	ctx context.Context, st *store.Store, imp skill.Import, replace bool,
 ) (res importResult, prev, next store.Skill, err error) {
-
-	if len(imp.Refs) > 0 {
-		reason := fmt.Sprintf("Import refused for skill %q:", imp.Skill.Name)
-		for _, ref := range imp.Refs {
-			reason += fmt.Sprintf(" %s:%d %s;", ref.File, ref.Line, ref.Ref)
-		}
-		reason += " Edit the skill or copy the referenced files into its folder."
-		return importResult{Status: "refused", Name: imp.Skill.Name, Reason: reason, Refs: imp.Refs}, prev, next, nil
-	}
 	next = imp.Skill
 	next.Imported = skill.Hash(next)
 	res = importResult{
 		Status: _importCreated, Added: []string{}, Changed: []string{}, Removed: []string{},
-		Skipped: orEmpty(imp.Skipped), Rewritten: []rewrittenFile{},
+		Skipped: orEmpty(imp.Skipped), Rewritten: orEmpty(imp.Rewritten),
 	}
-	for file, count := range imp.Rewritten {
-		res.Rewritten = append(res.Rewritten, rewrittenFile{File: file, Count: count})
-	}
-	slices.SortFunc(res.Rewritten, func(a, b rewrittenFile) int { return strings.Compare(a.File, b.File) })
 	skills, err := st.Skills(ctx)
 	if err != nil {
 		return res, prev, next, err
