@@ -466,6 +466,7 @@ func sessionCount(t *testing.T, m *machine, p string) int {
 // TestMCPOAuthFixtures_Fake drives the fake by hand, as a client of the MCP authorization flow
 // would, so the fake is proven before the product has any sign-in.
 func TestMCPOAuthFixtures_Fake(t *testing.T) {
+	t.Parallel()
 	o := newOAuthMCP(t)
 	post := func(target string, header http.Header, body string) *http.Response {
 		req, _ := http.NewRequest(http.MethodPost, target, strings.NewReader(body))

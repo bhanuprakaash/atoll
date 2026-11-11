@@ -184,23 +184,30 @@ func seedPotetoBot(t *testing.T, s *server, p string, files []skillFile) (platfo
 	return b, skill
 }
 
-// skillInventories is every skill listing the fake logged, in order: each run's discovery, and
-// a held run's second look once released.
+// skillInventories is every skill listing the fake logged for a session, in order: each run's
+// discovery, and a held run's second look once released. A title session's listing is not one.
 func skillInventories(t *testing.T, m *machine, p string) [][]fake.SkillCopy {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(m.bin, p+".log.skills"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	pids := map[int]bool{}
+	for _, c := range m.sessions(t, p) {
+		pids[c.pid] = true
+	}
 	var all [][]fake.SkillCopy
 	for line := range strings.Lines(string(data)) {
 		var entry struct {
+			PID    int              `json:"pid"`
 			Skills []fake.SkillCopy `json:"skills"`
 		}
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			t.Fatal(err)
 		}
-		all = append(all, entry.Skills)
+		if pids[entry.PID] {
+			all = append(all, entry.Skills)
+		}
 	}
 	return all
 }
@@ -296,6 +303,7 @@ func waitReady(t *testing.T, m *machine, s *server, p, runID string) string {
 // TestSkillFilesFixtures_ProviderScenarios drives the two new scenarios of both fakes with no
 // product: a folder placed by hand, and an MCP endpoint that answers import_skill.
 func TestSkillFilesFixtures_ProviderScenarios(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p+"/run", func(t *testing.T) {
 			for _, prompt := range []string{"Run the poteto-mode script scripts/check.", "Wait, then run the poteto-mode script scripts/check."} {

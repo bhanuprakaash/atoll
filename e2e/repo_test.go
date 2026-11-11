@@ -180,6 +180,7 @@ func assertRemoved(t *testing.T, ch <-chan event, runID, path, reason string) ev
 }
 
 func TestRepo_FixPushMRAndMerge(t *testing.T) {
+	t.Parallel()
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
 			f := newRepoFixture(t, provider)
@@ -263,6 +264,7 @@ func TestRepo_FixPushMRAndMerge(t *testing.T) {
 }
 
 func TestRepo_QuestionCreatesNoWorktree(t *testing.T) {
+	t.Parallel()
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
 			f := newRepoFixture(t, provider)
@@ -297,6 +299,7 @@ func TestRepo_QuestionCreatesNoWorktree(t *testing.T) {
 }
 
 func TestRepo_CloseSavesUncommittedWork(t *testing.T) {
+	t.Parallel()
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
 			f := newRepoFixture(t, provider)
@@ -322,6 +325,7 @@ func TestRepo_CloseSavesUncommittedWork(t *testing.T) {
 }
 
 func TestRepo_BranchCollision(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "claude")
 	b := f.bot(t, "claude", "all", nil)
 	first, path1, ch1, run1 := f.work(t, b, _unfinishedRepoPrompt, "fix/seeded-bug")
@@ -343,6 +347,7 @@ func TestRepo_BranchCollision(t *testing.T) {
 }
 
 func TestRepo_OnlyTheseDeniesOtherRepo(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "claude")
 	b := f.bot(t, "claude", []string{f.repo.ID}, nil)
 	f.thread(t, b)
