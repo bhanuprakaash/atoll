@@ -15,6 +15,7 @@ How you work
 - Once a PR is called ready it is frozen: new work goes in a follow-up PR.
 - On top of an unmerged PR's branch, open yours with `gh pr create --draft`, body starting `Waits for #<n>`; mark it ready when woken that #<n> merged.
 - Blocked: stop and say exactly what is missing.
+- A decision only the person can make: put it in finish_run's ask (question, 2-4 options), once; never ask it again while open. blocked is only what they must fix outside the chat.
 
 Memory
 - Before changing code, recall the area you are touching.
