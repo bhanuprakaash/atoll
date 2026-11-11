@@ -13,6 +13,7 @@ import (
 var _modes = []string{"auto", "ask", "full"}
 
 func TestBotMode_APIRoundTrip(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	var plain botInfo
 	s.do(t, "POST", "/api/bots", map[string]string{"name": "Plain", "persona": "x", "provider": "claude"}, &plain, http.StatusCreated)
@@ -52,6 +53,7 @@ func TestBotMode_APIRoundTrip(t *testing.T) {
 }
 
 func TestBotMode_LaunchMovesOldBotsToAutoOnce(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t, "claude", "codex")
 	m.signIn(t, "claude")
 	m.signIn(t, "codex")
@@ -86,6 +88,7 @@ func TestBotMode_LaunchMovesOldBotsToAutoOnce(t *testing.T) {
 }
 
 func TestBotMode_ReachesProvider(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -104,6 +107,7 @@ func TestBotMode_ReachesProvider(t *testing.T) {
 }
 
 func TestBotMode_Chief(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -148,6 +152,7 @@ func TestBotMode_Chief(t *testing.T) {
 }
 
 func TestBotMode_ChangeMidRunAppliesFromNextRun(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)

@@ -15,9 +15,11 @@ import (
 
 // Proves the scripts and exact prompt logging independently of the missing memory APIs.
 func TestMemoryFixtures_ProviderScenarios(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		for _, mode := range []string{"save", "save-user", "recall", "check", "resume", "retire"} {
 			t.Run(p+"/"+mode, func(t *testing.T) {
+				t.Parallel()
 				m := newMachine(t, p)
 				item := memoryItem{ID: "memory-fixture", Kind: "decision", Body: fake.DecisionBody, Why: "The fixture's own dynamic reason.", Scope: "repo", Status: "accepted"}
 				var mu sync.Mutex

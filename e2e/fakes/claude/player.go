@@ -24,6 +24,7 @@ type (
 		denied      map[string]string    // denial message, by tool_use id
 		uses        map[string]toolUse   // tool calls printed so far, by id
 		userMessage string
+		args        []string
 		session     string // from the init line
 		started     bool
 	}
@@ -60,7 +61,7 @@ type (
 
 func newPlayer(args []string) (*player, error) {
 	p := &player{servers: map[string]*fake.MCP{}, denied: map[string]string{}, uses: map[string]toolUse{}, prompt: flag(args, "--permission-prompt-tool"),
-		partial: slices.Contains(args, "--include-partial-messages")}
+		partial: slices.Contains(args, "--include-partial-messages"), args: args}
 	for _, name := range []string{"--allowedTools", "--allowed-tools"} {
 		for _, v := range values(args, name) {
 			p.allowed = append(p.allowed, strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })...)
@@ -140,6 +141,12 @@ func (p *player) play(lines []string) error {
 		case "mcp-use":
 			var err error
 			if repoReply, err = p.mcpUse(); err != nil {
+				return err
+			}
+			continue
+		case "fs-read":
+			var err error
+			if repoReply, err = p.fsRead(p.args); err != nil {
 				return err
 			}
 			continue
@@ -274,6 +281,10 @@ func (p *player) mcpUse() (string, error) {
 		c := p.servers[call.Server]
 		if c == nil || !c.Tools[call.Tool] {
 			lines = append(lines, fake.MCPLine(call, "unavailable"))
+			continue
+		}
+		if bad := call.Undeclared(c); bad != "" {
+			lines = append(lines, fake.MCPLine(call, bad))
 			continue
 		}
 		use := toolUse{Type: "tool_use", ID: fmt.Sprintf("toolu_mcp_use_%d", i+1), Name: "mcp__" + call.Server + "__" + call.Tool, Input: call.Args}

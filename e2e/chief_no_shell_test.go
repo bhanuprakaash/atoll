@@ -65,6 +65,7 @@ func noPlatformChange(t *testing.T, s *server, c chiefRun) {
 }
 
 func TestChiefNoShell_ClaudeRunsWithoutTools(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	chiefBot := chief(t, s).bot
 	var keeper, plain bot
@@ -105,6 +106,7 @@ func TestChiefNoShell_ClaudeRunsWithoutTools(t *testing.T) {
 }
 
 func TestChiefNoShell_CodexChiefStillRuns(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "codex")
 	b := chief(t, s)
 	if b.Provider != "codex" {
@@ -114,6 +116,7 @@ func TestChiefNoShell_CodexChiefStillRuns(t *testing.T) {
 }
 
 func TestChiefNoShell_ImportAgent(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	agents := filepath.Join(m.home, ".claude", "agents")
 	file := filepath.Join(agents, "lagoon.md")
@@ -181,6 +184,7 @@ func TestChiefNoShell_ImportAgent(t *testing.T) {
 }
 
 func TestChiefNoShell_ImportAgentThroughSymlinkedFolder(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	dotfiles := filepath.Join(t.TempDir(), "dotfiles-agents")
 	writeFile(t, filepath.Join(dotfiles, "lagoon.md"), "---\nname: lagoon\n---\nHi.\n")
@@ -198,6 +202,7 @@ func TestChiefNoShell_ImportAgentThroughSymlinkedFolder(t *testing.T) {
 }
 
 func TestChiefNoShell_ImportAgentOnlyForPlatformBots(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	writeFile(t, filepath.Join(m.home, ".claude", "agents", "lagoon.md"), "---\nname: lagoon\n---\nHi.\n")
 	if _, _, failed := chiefTool(t, s, "import_agent", map[string]any{"path": "~/.claude/agents/lagoon.md"}); failed {
@@ -212,6 +217,7 @@ func TestChiefNoShell_ImportAgentOnlyForPlatformBots(t *testing.T) {
 }
 
 func TestChiefNoShell_ImportSkillOnlyFromSkillFolders(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	skill := func(dir, name string) string {
 		path := filepath.Join(dir, name)
@@ -270,6 +276,7 @@ func TestChiefNoShell_ImportSkillOnlyFromSkillFolders(t *testing.T) {
 }
 
 func TestChiefNoShell_PromptNamesImportAgent(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -290,6 +297,7 @@ func TestChiefNoShell_PromptNamesImportAgent(t *testing.T) {
 }
 
 func TestChiefNoShell_ChiefStillDoesItsJob(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	repoPath := t.TempDir()
 	gitIn(t, repoPath, "init", "-b", "main")
@@ -327,6 +335,7 @@ func TestChiefNoShell_ChiefStillDoesItsJob(t *testing.T) {
 }
 
 func TestChiefNoShell_ImportAgentForAnyPlatformBot(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	writeFile(t, filepath.Join(m.home, ".claude", "agents", "lagoon.md"), "---\nname: lagoon\n---\nHi.\n")
 	var keeper bot
@@ -344,6 +353,7 @@ func TestChiefNoShell_ImportAgentForAnyPlatformBot(t *testing.T) {
 }
 
 func TestChiefNoShell_ReimportRefusedOutsideSkillFolders(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	root := filepath.Join(m.home, ".claude", "skills", "greet")
 	writeFile(t, filepath.Join(root, "SKILL.md"), "---\nname: greet\ndescription: Greets.\n---\nHello.\n")
@@ -379,6 +389,7 @@ func TestChiefNoShell_ReimportRefusedOutsideSkillFolders(t *testing.T) {
 }
 
 func TestChiefNoShell_ChiefProvider(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t, "claude", "codex")
 	m.signIn(t, "claude")
 	m.signIn(t, "codex")

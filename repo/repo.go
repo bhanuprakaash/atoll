@@ -3,6 +3,7 @@
 package repo
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -16,21 +17,16 @@ import (
 
 const _maxSlug = 40
 
-var (
-	// ErrType means the branch type is not one of feat, fix, chore or docs.
-	ErrType = errors.New("type must be feat, fix, chore or docs")
-
-	_nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
-)
+var _nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Branch normalises a branch name: ("fix", "Seeded BUG") -> "fix/seeded-bug". The slug is
 // lowercased, every run of characters outside [a-z0-9] becomes "-", the ends are trimmed of "-"
 // and the slug is cut to 40 characters.
 func Branch(typ, slug string) (string, error) {
 	switch typ {
-	case "feat", "fix", "chore", "docs":
+	case "feat", "fix", "chore", "docs", "test":
 	default:
-		return "", fmt.Errorf("branch type %q: %w", typ, ErrType)
+		return "", fmt.Errorf("branch type %q: type must be feat, fix, chore, docs or test", typ)
 	}
 	s := Slug(slug)
 	if s == "" {
@@ -99,20 +95,34 @@ func WithWorktree(ctx context.Context, common, id string) context.Context {
 
 // Create makes a new worktree of repoPath on a new branch at <root>/<repoName>/<folder>, where
 // folder is the branch with "/" replaced by "-". When the branch or the folder exists it tries
-// <branch>-2, <branch>-3 and so on. The branch starts at origin/HEAD when that resolves, else at
-// HEAD. It returns the absolute path, the branch used and the base. No fetch, no network.
+// <branch>-2, <branch>-3 and so on. A requested base names a branch on origin. Without one,
+// the branch starts at origin/HEAD when that resolves, else HEAD. It returns the absolute path,
+// the branch used and the base. No fetch, no network.
 func Create(
-	ctx context.Context, repoPath, root, repoName, branch string,
+	ctx context.Context, repoPath, root, repoName, branch, requestedBase string,
 ) (path, used string, base Base, err error) {
 	start := "HEAD"
-	if _, err := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", "origin/HEAD^{commit}"); err == nil {
+	if requestedBase != "" {
+		ref := "refs/remotes/origin/" + requestedBase
+		_, validErr := git(ctx, repoPath, nil, "check-ref-format", "--branch", requestedBase)
+		_, refErr := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+		if validErr != nil || refErr != nil || requestedBase == branch || requestedBase == "HEAD" ||
+			strings.HasPrefix(requestedBase, "origin/") || strings.HasPrefix(requestedBase, "refs/") {
+			return "", "", Base{}, errors.New("base must be a plain branch on origin, e.g. test/x")
+		}
+		start = ref
+	} else if _, err := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", "origin/HEAD^{commit}"); err == nil {
 		start = "origin/HEAD"
 	}
 	commit, err := git(ctx, repoPath, nil, "rev-parse", "--short=7", start)
 	if err != nil {
 		return "", "", Base{}, fmt.Errorf("read base: %w", err)
 	}
-	base = Base{Name: start + " " + commit}
+	baseName := start
+	if requestedBase != "" {
+		baseName = "origin/" + requestedBase
+	}
+	base = Base{Name: baseName + " " + commit}
 	if start == "origin/HEAD" {
 		base.Note = aheadNote(ctx, repoPath)
 	}
@@ -349,12 +359,15 @@ func git(ctx context.Context, dir string, env []string, args ...string) (string,
 	}
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	cmd.Env = allEnv
-	out, err := cmd.CombinedOutput()
-	text := strings.TrimSpace(string(out))
+	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, text)
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			err = fmt.Errorf("%w: %s", err, bytes.TrimSpace(exit.Stderr))
+		}
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
-	return text, nil
+	return strings.TrimSpace(string(out)), nil
 }
 
 // pinFilters returns command-scope config that sets every filter key defined in repo-local,

@@ -101,6 +101,7 @@ func firstUserMessage(t *testing.T, s *server, threadID string) string {
 // that worktree, the message that wakes the boss names the branch to merge, and the boss's
 // git merge brings the helper's commit in.
 func TestHelperWork_BranchesOffTheBoss(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newRepoFixture(t, p)
@@ -171,6 +172,7 @@ func TestHelperWork_BranchesOffTheBoss(t *testing.T) {
 // with no worktree) is refused as today, and delegate notes that up front. A helper with the
 // connection gets no such note.
 func TestHelperWork_GitHubConnectionOnlyOwnBranch(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newGitHubRepoFixture(t, p)
@@ -223,6 +225,7 @@ func TestHelperWork_GitHubConnectionOnlyOwnBranch(t *testing.T) {
 // thread with no repo that names one (as Chief does), hand off with no branch: the helper's
 // start_work makes its own <type>/<slug> branch from origin/HEAD, and it pushes and tracks its MR.
 func TestHelperWork_NoBossBranch(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newRepoFixture(t, p)
@@ -287,6 +290,7 @@ func TestHelperWork_NoBossBranch(t *testing.T) {
 // TestHelperWork_CloseOrMergeRemovesHelpers: closing the boss's thread, and the boss's MR merging,
 // remove its helper's worktree after saving its unfinished work.
 func TestHelperWork_CloseOrMergeRemovesHelpers(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newRepoFixture(t, p)
