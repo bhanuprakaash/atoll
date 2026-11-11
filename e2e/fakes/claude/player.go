@@ -201,6 +201,17 @@ func (p *player) play(lines []string) error {
 				return err
 			}
 			continue
+		case "procs-hold", "procs-scan":
+			var err error
+			if directive == "procs-hold" {
+				repoReply, err = fake.ProcsHold(p.servers)
+			} else {
+				repoReply, err = fake.ProcsScan(p.userMessage)
+			}
+			if err != nil {
+				return err
+			}
+			continue
 		case "ask":
 			if skip {
 				continue
