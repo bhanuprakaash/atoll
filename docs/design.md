@@ -301,6 +301,8 @@ after a failed undo counts a Bot that is already gone as removed.
     `Done:`, `Tried:`, `Blocked:`, `Next:` lines;
   - failed: `{Helper}'s run failed: {error}`; a helper run going at a restart fails with the usual
     reason and wakes its boss on start;
+  - stopped by a provider usage limit (`rate_limited`, see App and UI): `{Helper} is out until
+    {time}.` and `Do not send it work until then.`, never the provider's text;
   - stopped by the user: `The user stopped {Helper}`;
   - Bot deleted mid-run: `{Helper} was deleted`.
   A helper's question is its reply; the boss answers with `continue`.
@@ -1306,7 +1308,8 @@ Voice
   (Done/Tried/Blocked/Next stay in the helper thread) and `Open thread` links to the helper
   thread. Everything else is one quiet line with its action inline: approvals (Allow, Deny; the
   line leaves once answered; a long command or path wraps), Chief's changes, the branch starting,
-  the worktree cleaned up, a failed run (Retry), blocked, a refused message and reconnecting. Inline
+  the worktree cleaned up, a failed run (Retry; a usage limit is calm and has none, below),
+  blocked, a refused message and reconnecting. Inline
   actions (Undo, Undo all, Open, Retire, Details, Show more) are one quiet text-button style.
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `·
   Stopped by you after 4s`). Inside the run, above the footer: Chief's changes, then saved memory,
@@ -1463,6 +1466,28 @@ Voice
   still look signed in locally), until a sign-in of that provider finishes or Refresh runs. The
   thread shows "Claude sign-in expired" (or Codex) for the run's provider, with Sign in again, which
   runs the provider's sign-in from the thread; Retry then sends the same message.
+- A run that stops because its provider's usage limit is reached (a plan's session, weekly or
+  per-model limit, or a spend cap; not a passing 429 or an overloaded server) is stored `failed`
+  with `error_kind: "rate_limited"`, the run's `provider` and `resets_at` (RFC 3339, like
+  `started_at`; empty when the provider gave no time). `error` keeps the provider's own text for
+  Details; it is shown nowhere else. The provider stays signed in. Where the limit and its time
+  come from: Claude, the stream's synthetic assistant message with `error: "rate_limit"`,
+  `api_error: "usage_limit_reached"` and `api_error_params.rate_limit_info.resetsAt` (epoch
+  seconds); Codex, the turn's error with `codexErrorInfo: "usageLimitExceeded"` and the
+  `account/rateLimits/updated` snapshot sent just before it, whose window at 100% (the one named
+  by `rateLimitReachedType`) gives `resetsAt`. Neither CLI's text is parsed for a time. *Read from
+  claude 2.1.322's own schema and codex-cli 0.167's app-server schema; a real limit was not
+  reproduced.*
+  - The thread shows one calm line for the run's provider: `{Bot} hit its {Claude|Codex} limit;
+    back at {time}`, with no danger colour, no Retry and none of the provider's text. The time is
+    in the viewer's zone, written as a message time is: the clock today (`3:42 PM`), `Tomorrow
+    3:42 PM`, the weekday within a week, else the date. With no `resets_at` it reads `...limit; try
+    again later`. The line comes from the run, so it is there again when the thread is reopened.
+  - Reef does not block the Bot: a message at any time starts a run. Before `resets_at` the
+    provider refuses it and it ends `rate_limited` again; after it the run goes as any other.
+  - The helper's wake (Delegation) says `{Helper} is out until {time}.`, then `Do not send it
+    work until then.`; `{time}` is `resets_at` in UTC, `2026-11-11T15:42:00Z`, or `its {provider}
+    limit resets` with no `resets_at`. A `continue` to that helper is not refused.
 - Chief's `list_models` and the model check of `create_bot` and `edit_bot` read the same cached
   provider state as `GET /api/providers`; they start no provider process.
 - Names: the UI says Reef. Repo, Go module, binary and bundle ID (`dev.atoll.desktop`) say
