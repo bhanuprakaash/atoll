@@ -281,9 +281,12 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if err := json.Unmarshal(call.Arguments, &in); err != nil || in.Thread == "" || in.Message == "" {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		err := a.runs.Continue(r.Context(), token, in.Thread, in.Message)
+		queuedFor, err := a.runs.Continue(r.Context(), token, in.Thread, in.Message)
 		if res, rpcErr := a.refusal(err); res != nil || rpcErr != nil {
 			return res, rpcErr
+		}
+		if queuedFor != "" {
+			return text("Queued: " + queuedFor + " is working; it gets this when its run ends."), nil
 		}
 		return text("Sent."), nil
 	case provider.ToolApprove:
