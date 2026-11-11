@@ -194,6 +194,7 @@ export const prompts = {
   keep: 'Remember this fact: the codeword is kestrel. Reply with just: ok',
   write: 'Use the Write tool to create hello.txt containing the word hi.',
   hang: 'Wait for the build to finish.',
+  handOff: 'Hand the work off to a helper.',
   chatPolishHang: 'Continue waiting for the build to finish.',
   working: 'Fix the wizard repo select and run its tests.',
   freshFix: 'Fix the seeded bug in answer.txt and open an MR.',
