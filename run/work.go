@@ -364,7 +364,7 @@ func (m *Manager) stopQuietly(ctx context.Context, threadID string) (bool, error
 // release saves the unfinished work of the thread's worktree, removes the worktree and tells the
 // thread's subscribers. When the save fails nothing is removed.
 func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, reason string) error {
-	if err := m.checkWorktree(t.Worktree); err != nil {
+	if err := m.checkWorktree(t.Worktree, rp.Name); err != nil {
 		return err
 	}
 	runID, err := m.cfg.Store.LatestRun(ctx, t.ID)
@@ -392,7 +392,7 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	if !saved {
 		ref = ""
 	}
-	if err := m.checkWorktree(t.Worktree); err != nil {
+	if err := m.checkWorktree(t.Worktree, rp.Name); err != nil {
 		return err
 	}
 	if err := repo.Remove(ctx, rp.Path, t.Worktree); err != nil {
@@ -406,7 +406,7 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	return nil
 }
 
-func (m *Manager) checkWorktree(path string) error {
+func (m *Manager) checkWorktree(path, repoName string) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("inspect worktree: %w", err)
@@ -418,7 +418,11 @@ func (m *Manager) checkWorktree(path string) error {
 	if err != nil {
 		return err
 	}
-	root := filepath.Dir(filepath.Dir(path))
+	suffix := filepath.Join(repoName, filepath.Base(path))
+	root, ok := strings.CutSuffix(path, suffix)
+	if !ok || filepath.Join(root, suffix) != path {
+		return errors.New("refuse worktree outside its repo folder")
+	}
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
 		return err
