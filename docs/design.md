@@ -284,7 +284,8 @@ after a failed undo counts a Bot that is already gone as removed.
   `worktree_removed` reason `merged`; a helper on its own branch keeps its worktree and its own MR.
   While any of those helpers' runs is going nothing is removed, and the watcher tries again. A
   `delegate` that fails part way removes the helper worktree, branch and thread it made.
-- Helpers show in the boss's thread (App and UI).
+- Helpers show in the boss's thread (App and UI). What the person need not act on folds into a
+  ledger there (App and UI, the lead's ledger).
 
 ## Repos and worktrees
 
@@ -1194,7 +1195,8 @@ Voice
   chat keeps one line where work was handed off, after the message that led to it ("Handed off to
   Tester and Reviewer", `Tester ×2` for two helpers of one Bot), each name linking to its helper
   thread; a helper's report is a message from the helper Bot, an article named after it with its
-  creature, not the user's bubble. The island shows one small creature per such helper
+  creature, not the user's bubble, when the person must act on it, else a line of the lead's ledger
+  (below). The island shows one small creature per such helper
   after the boss's name (`Tester: working`, `needs you` with a red dot),
   the red count includes helper approvals, and the boss's sidebar row says "Needs you" while a
   helper waits. A helper thread is listed under its Bot in the sidebar tree, with no close; the
@@ -1205,6 +1207,36 @@ Voice
   `step` and `approval`) and, on a helper thread, `parent_bot_id`; the thread query polls every
   2 s, as the sidebar does. The handoff line is found from the helper threads' creation time, so it
   survives a reload.*
+- The lead's ledger. In a boss thread, what the person need not act on folds into one block
+  between two of the person's messages; what needs them stays a message. *Round 2: 21 minutes of
+  lead work made 73 messages and 38 screens; helper reports were 72% of the text, 36 of 37 lead
+  replies were status and 1 was a decision.*
+  - Folded: a helper's report (a failed or stopped helper too) whose `blocked` is empty or
+    none-like, as the Blocked line decides; a boss reply to a wake (its run began with helper
+    messages, not the person's) with no real `blocked` and no question, a question being a reply
+    whose last line ends with `?`. *Reef does not guess intent: a status reply that ends in `?`
+    stays visible, the safe error.* A handoff line and a Reef wake line between folded events
+    join the block as lines.
+  - Not folded: the person's messages; a boss reply to a message of the person's (they asked); a
+    boss reply with a real `blocked` or a question; a helper's report with a real `blocked` (that
+    is for the person to fix); approvals; a failed run of the boss itself. Each ends the block, and
+    the next folded event starts a new one below it, so the thread keeps its order and a decision
+    stands right after what led to it. A decision also shows as the "Waiting on you" card (#147,
+    which lands with that ticket); this rule only keeps it a message.
+  - A block is one quiet card: a hairline border, no fill colour, rows of 30 px like Chief's
+    changes. A row is the time (the message's time), the creature and name of the helper (of the
+    boss for its own reply), one line, the helper thread's PR as the composer's chip (reference
+    with state dot, a link that is not part of the toggle) and the state at the right edge: `Done`,
+    `Failed` or `Stopped`, muted. The one line is the run's `finish_run.done`, else the first line
+    of its reply, for a failure its error; it is cut with "…" and never wraps. Colour stays
+    muted; only `Failed` carries the red dot.
+  - Clicking a row opens the full report below it, in place: what the message showed before (its
+    prose, and `Open thread` to the helper thread for a helper); clicking again folds it. Rows are
+    not remembered across loads and the page does not move.
+  - Size: the thread of 30 helper reports and 1 decision fits in 3 screens, a screen being the
+    chat's height in an 800 px tall window. *The ledger replaces the helper messages and status
+    replies and does not touch #190, which stops the boss from replying at all: a boss that stays
+    quiet leaves no line to fold.*
 - Bot settings open as a docked right panel beside the usable thread and save as you change them,
   applying from the next run: creature, name, model, persona, skills, repos, connections, memory (its own lessons and
   what it saved) and the platform switch. Skills, repos and connections are lists with icons, a
