@@ -725,16 +725,6 @@ after a failed undo counts a Bot that is already gone as removed.
     `/`), and the server's own home directory as an absolute path (`/Users/<name>`, `/home/<name>`).
     - `$HOME` and `${HOME}` count only as whole variable names: `$HOMEWORK` and `$HOME_X` are other
       variables and are not refused (the character after `$HOME` is not a letter, digit or `_`).
-    - The whole `$HOME` / `~` class counts, not only those forms: `${HOME` followed by any operator
-      (`${HOME:-x}`, `${HOME%/}`, `${HOME#x}`, `${HOME/a/b}`), a bare `~` that starts a word (`cd ~`,
-      a line ending in `~`), `~user/...`, `~+` and `~-`. The same preceded-character exemptions apply
-      (`https://x/~/a`, `a~/b`, `a~` are not references). `~5` and `~3 minutes` are not either.
-    - Dynamic forms (`$(echo ~)`, `HO""ME`, a `~` and `/` split by a line break) are out of scope:
-      the scan guards honest mistakes, not a boundary.
-    - An absolute home path has boundaries: it counts only when the next character is `/`, the end,
-      whitespace or a quote (`/home/agent2/x` is not `/home/agent`), and only when no path
-      character comes before it (`/mnt/home/agent/.claude/skills/s/x` is neither refused nor
-      rewritten).
   - Rewritable: a home reference to the skill's own folder, and nothing more.
     - `import_skill` takes only a direct child of the resolved `~/.claude/skills` or
       `~/.codex/skills` (see Prompt). `<folder>` is the entry's name there, not its symlink target.
@@ -759,12 +749,6 @@ after a failed undo counts a Bot that is already gone as removed.
     (`<name>` is the folder name `Place` already chooses).
     - The stored text keeps a token because the path is unknown at import.
     - The scripts then run from the placed copy and the owner's files stay out of it.
-    - The placed path never breaks a shell. A line a skill writes as `bash {{ATOLL_SKILL_DIR}}/run.sh`
-      (unquoted, as the owner's skills write `bash ~/.claude/skills/x/run.sh`) still runs when
-      Reef's data dir has a space (`~/Library/Application Support/Atoll`). When the copy's folder
-      has a character a shell splits or expands (space, quote, `$`, backtick, `;`, `&`, `(`, `*`,
-      and the like), placement replaces the token with a path that has none. A folder without one
-      is written as is.
     - The token also works in skills written in Reef. A skill that already contains the literal
       `{{ATOLL_SKILL_DIR}}` gets it replaced like any other; it cannot be written literally.
   - The answer of `import_skill` and of reimport has a status `refused` (beside `created`,
@@ -776,7 +760,6 @@ after a failed undo counts a Bot that is already gone as removed.
                  <file>:<line> <ref>, …",
        "refs":[{"file":"scripts/run.sh","line":12,"ref":"~/.ssh/config"}]}
       ```
-    - The answer holds exactly these four keys: no other key, no `null`.
     - `file` is the path inside the skill as it would be stored (`SKILL.md`, `scripts/run.sh`);
       `line` is 1-based in that file; `ref` is the matched text up to the next space or quote
       (`~/.ssh/config`, `$HOME`, `/home/<name>/x`). One entry per occurrence, ordered by file, then
