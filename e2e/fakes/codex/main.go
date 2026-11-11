@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"atoll/e2e/fakes/fake"
 )
@@ -196,6 +197,10 @@ func serve(log *fake.Log, args []string) error {
 				signedOut(m.ID, p.ThreadID)
 				continue
 			}
+			if at, ok := fake.Limited(fake.ConfigDir("CODEX_HOME", ".codex"), "auth.json"); ok {
+				limited(m.ID, p.ThreadID, at)
+				continue
+			}
 			var rec *recording
 			for i, r := range recs {
 				if r.prompt != "" && strings.Contains(prompt, r.prompt) && thread != nil && r.thread == thread.thread &&
@@ -237,6 +242,39 @@ func signedOut(id json.RawMessage, thread string) {
 	reply(id, b, "")
 	for _, n := range []map[string]any{
 		{"method": "turn/started", "params": map[string]any{"threadId": thread, "turn": started}},
+		{"method": "error", "params": map[string]any{"error": e, "willRetry": false, "threadId": thread, "turnId": turn}},
+		{"method": "turn/completed", "params": map[string]any{"threadId": thread,
+			"turn": map[string]any{"id": turn, "items": []any{}, "status": "failed", "error": e}}},
+	} {
+		b, _ := json.Marshal(n)
+		fmt.Println(string(b))
+	}
+}
+
+// limited fails the turn the way the app-server does when the ChatGPT plan's usage limit is
+// reached: the turn starts, an account/rateLimits/updated snapshot says which window is full and
+// when it resets, then an error notification and a failed turn/completed, both marked
+// usageLimitExceeded. The message holds no time, as the app-server's does when the backend sent
+// none; the weekly window, further from full, resets later. The app-server keeps running.
+func limited(id json.RawMessage, thread string, at time.Time) {
+	const turn = "01a1a5d2-7c4e-7b19-9f30-8b3c4d6e2f51"
+	e := map[string]any{
+		"message":           "You've hit your usage limit. Upgrade to Plus to continue using Codex (https://chatgpt.com/explore/plus), or try again later.",
+		"codexErrorInfo":    "usageLimitExceeded",
+		"additionalDetails": nil,
+	}
+	limits := map[string]any{
+		"limitId": "codex", "limitName": nil, "planType": "plus", "rateLimitReachedType": "rate_limit_reached",
+		"primary":   map[string]any{"usedPercent": 100, "windowDurationMins": 300, "resetsAt": at.Unix()},
+		"secondary": map[string]any{"usedPercent": 41, "windowDurationMins": 10080, "resetsAt": at.Add(6 * 24 * time.Hour).Unix()},
+		"credits":   nil,
+	}
+	started := map[string]any{"id": turn, "items": []any{}, "status": "inProgress", "error": nil}
+	b, _ := json.Marshal(map[string]any{"turn": started})
+	reply(id, b, "")
+	for _, n := range []map[string]any{
+		{"method": "turn/started", "params": map[string]any{"threadId": thread, "turn": started}},
+		{"method": "account/rateLimits/updated", "params": map[string]any{"rateLimits": limits}},
 		{"method": "error", "params": map[string]any{"error": e, "willRetry": false, "threadId": thread, "turnId": turn}},
 		{"method": "turn/completed", "params": map[string]any{"threadId": thread,
 			"turn": map[string]any{"id": turn, "items": []any{}, "status": "failed", "error": e}}},

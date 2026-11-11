@@ -46,6 +46,9 @@ export type Machine = {
   // the real CLI's auth error, and every later one until a sign-in replaces the file, while its
   // status check still says signed in.
   revoke: (fake: 'claude' | 'codex') => void;
+  // limit makes a provider's server refuse every turn until the given time with its usage limit,
+  // as a reached plan limit does; the login stays valid, so its status check still says signed in.
+  limit: (fake: 'claude' | 'codex', resetsAt: Date) => void;
   calls: (fake: Fake) => { pid: number; argv?: string[] }[];
 };
 
@@ -184,6 +187,11 @@ export async function startAtoll(opts: Options = {}): Promise<Machine> {
     release: (fake) => writeFileSync(join(bin, `${fake}.login.release`), ''),
     revoke: (fake) =>
       writeFileSync(join(data, 'providers', fake, credentials[fake]), '{"fake":"revoked"}'),
+    limit: (fake, resetsAt) =>
+      writeFileSync(
+        join(data, 'providers', fake, credentials[fake]),
+        JSON.stringify({ fake: 'limited', resets_at: Math.floor(resetsAt.getTime() / 1000) }),
+      ),
     stop: () => {
       kill();
       // A fake provider is not killed with the server; its log names every process it ran.
@@ -239,6 +247,7 @@ export const prompts = {
   keep: 'Remember this fact: the codeword is kestrel. Reply with just: ok',
   write: 'Use the Write tool to create hello.txt containing the word hi.',
   hang: 'Wait for the build to finish.',
+  handOff: 'Hand the work off to a helper.',
   chatPolishHang: 'Continue waiting for the build to finish.',
   working: 'Fix the wizard repo select and run its tests.',
   freshFix: 'Fix the seeded bug in answer.txt and open an MR.',

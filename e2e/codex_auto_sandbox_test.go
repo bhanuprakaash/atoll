@@ -167,6 +167,13 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 			gitIn(t, p.repo, "config", "extensions.worktreeConfig", "true")
 			gitIn(t, p.repo, "config", "-f", filepath.Join(p.gitDir(t, worktree), "config.worktree"), "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
 		}},
+		{name: "worktree-config-filter", snapshotOnly: true, late: func(t *testing.T, p planter, worktree string) {
+			gitIn(t, p.repo, "config", "extensions.worktreeConfig", "true")
+			config := filepath.Join(p.gitDir(t, worktree), "config.worktree")
+			gitIn(t, p.repo, "config", "-f", config, "filter.x.clean", p.script(t, "clean", p.record+"cat\n"))
+			gitIn(t, p.repo, "config", "-f", config, "filter.x.smudge", "cat")
+			writeFile(t, filepath.Join(p.common, "info", "attributes"), "* filter=x\n")
+		}},
 	}
 	for _, route := range routes {
 		t.Run("control/"+route.name, func(t *testing.T) {
@@ -270,10 +277,9 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 				if resp.StatusCode != 204 && !route.anyClose {
 					t.Errorf("%s: status %d, want 204", want, resp.StatusCode)
 				}
-				if ref := "refs/atoll/unfinished/" + th.ID; c.end == "close" {
-					if err := exec.CommandContext(t.Context(), "git", "-C", f.repo.Path, "rev-parse", "--verify", "--quiet", ref+"^{commit}").Run(); err != nil {
-						t.Errorf("%s: the repo has no %s; Atoll's git did not work on the repo's own git dir", want, ref)
-					}
+				ref := "refs/atoll/unfinished/" + th.ID
+				if err := exec.CommandContext(t.Context(), "git", "-C", f.repo.Path, "rev-parse", "--verify", "--quiet", ref+"^{commit}").Run(); err != nil {
+					t.Errorf("%s: the repo has no %s; Atoll's git did not work on the repo's own git dir", want, ref)
 				}
 			})
 		}
