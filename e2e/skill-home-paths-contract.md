@@ -83,7 +83,7 @@ Design: Connections and skills, "Home paths in imported skills", in `docs/design
 | A Bot runs a skill script that calls `bash ~/.claude/skills/x/run.sh` and `. ~/.claude/skills/x/lib.sh` unquoted, from a data dir named plain, with a space, a quote, `$`, shell metacharacters, a double quote and backtick: the placed line has only safe characters and runs the run's copy | `TestSkillHome_PlacedCommandsRun/{claude,codex}/{plain,space,quote,dollar,meta,double-quote-and-backtick}` |
 | `${HOME` with any operator (`:-`, `%`, `#`, `^`, `/`, `:0:3`, `@Q`), bare `~` (`cd ~`, `cd ~ && ls`, alone), `~user`, `~+`, `~-` refuse with exact refs | `TestSkillHome_ScannerRefusesTheWholeClass/*` |
 | `${HOMEWORK}`, `${HOME_X}`, `~5`, `~3 minutes`, `a~b`, `a~`, `1~`, `x.~`, `a_~`, `a-~`, `/~`, `~~strike~~` are not references | `TestSkillHome_NotHomeReferences` |
-| Absolute home path boundaries (`<home>x/foo`, `/mnt<home>/foo` pass untouched; `<home>` before `/`, end, space or quote refuses) | `TestSkillHome_AbsoluteHomeBoundaries` |
+| Absolute home path boundaries (`<home>x/foo`, `/mnt<home>/foo` pass untouched; `<home>` before `/`, end, space or quote refuses) | `TestSkillHome_AbsoluteHomeBoundaries/{longer-name,mounted,mounted-own-folder,references}` |
 | Refused answer is exactly `{status, name, reason, refs}`, from `import_skill` and from reimport | `TestSkillHome_RefusedAnswerHasFourKeys` |
 | Re-import refused (HTTP 200, before `confirm`, with and without `replace`) keeps the stored skill; same answer as `import_skill` | `TestSkillHome_ReimportRefusedKeepsStored/{claude,codex}` |
 | The folder rule wins when both fire | `TestSkillHome_FolderRuleComesFirst` |

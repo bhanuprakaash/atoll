@@ -552,25 +552,41 @@ func TestSkillHome_AbsoluteHomeBoundaries(t *testing.T) {
 	m, s := startResolved(t, "claude")
 	home := m.home
 	c := newImporter(t, s)
+	skills := filepath.Join(home, ".claude", "skills")
 
-	own := filepath.Join(home, ".claude", "skills", "abs-ok")
-	text := "Longer: " + home + "x/foo here\nMounted: /mnt" + home + "/foo here\nMounted own: /mnt" + own + "/scripts/run.sh here\n"
-	writeFixture(t, own, []fixtureFile{{path: "SKILL.md", content: skillMD("abs-ok", text)}})
-	if imp := c.say(t, "Import the skill folder "+own); imp.res.Status != "created" {
-		t.Fatalf("import: %q %+v, want created: neither is the home path", imp.summary, imp.res)
-	}
-	if got := onlySkill(t, s); got.Content != skillMD("abs-ok", text) {
-		t.Fatalf("stored %q, want the text byte for byte: nothing rewritten", got.Content)
+	for _, tt := range []struct{ name, text string }{
+		{"longer-name", "Longer: " + home + "x/foo here\n"},
+		{"mounted", "Mounted: /mnt" + home + "/foo here\n"},
+		{"mounted-own-folder", "Mounted own: /mnt" + skills + "/mounted-own-folder/scripts/run.sh here\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := filepath.Join(skills, tt.name)
+			writeFixture(t, root, []fixtureFile{{path: "SKILL.md", content: skillMD(tt.name, tt.text)}})
+			if imp := c.say(t, "Import the skill folder "+root); imp.res.Status != "created" {
+				t.Fatalf("import: %q %+v, want created: the home path is not the whole path", imp.summary, imp.res)
+			}
+			var stored fileSkill
+			for _, sk := range getSkills(t, s) {
+				if sk.Name == tt.name {
+					stored = sk
+				}
+			}
+			if stored.Content != skillMD(tt.name, tt.text) {
+				t.Fatalf("stored %q, want the text byte for byte: nothing rewritten", stored.Content)
+			}
+		})
 	}
 
-	hit := filepath.Join(home, ".claude", "skills", "abs-hit")
-	writeFixture(t, hit, []fixtureFile{{path: "SKILL.md", content: skillMD("abs-hit",
-		"Slash: "+home+"/x\nEnd: "+home+"\nSpace: "+home+" next\nQuote: \""+home+"\"\n")}})
-	imp := c.say(t, "Import the skill folder "+hit)
-	want := []refusal{{"SKILL.md", 5, home + "/x"}, {"SKILL.md", 6, home}, {"SKILL.md", 7, home}, {"SKILL.md", 8, home}}
-	if imp.res.Status != "refused" || !reflect.DeepEqual(imp.res.Refs, want) {
-		t.Fatalf("import: %q %+v, want refused with %+v", imp.summary, imp.res, want)
-	}
+	t.Run("references", func(t *testing.T) {
+		hit := filepath.Join(skills, "abs-hit")
+		writeFixture(t, hit, []fixtureFile{{path: "SKILL.md", content: skillMD("abs-hit",
+			"Slash: "+home+"/x\nEnd: "+home+"\nSpace: "+home+" next\nQuote: \""+home+"\"\n")}})
+		imp := c.say(t, "Import the skill folder "+hit)
+		want := []refusal{{"SKILL.md", 5, home + "/x"}, {"SKILL.md", 6, home}, {"SKILL.md", 7, home}, {"SKILL.md", 8, home}}
+		if imp.res.Status != "refused" || !reflect.DeepEqual(imp.res.Refs, want) {
+			t.Fatalf("import: %q %+v, want refused with %+v", imp.summary, imp.res, want)
+		}
+	})
 }
 
 // A refusal is exactly {status, name, reason, refs}: no null lists for the fields it does not have.
