@@ -190,6 +190,35 @@ after a failed undo counts a Bot that is already gone as removed.
   the rest, so a client drops every approval that has one and the open ones are exactly the cards
   left. `POST /api/approvals/{id}` on a closed approval answers `404`, and the card then leaves
   without an error.
+- Allow in this thread: a command approval (Codex `commandExecution`, Claude `Bash`) can be
+  answered `{approve: true, in_thread: true}`. The card offers it as a third, quiet choice when
+  `allow_in_thread` is true on the `approval` event and on `GET /api/threads/{id}`. Reef keeps the
+  thread's allowed commands and answers a matching ask itself on the provider's own channel
+  (Codex `accept`, Claude `allow`), with no `approval` event and no card; any other command asks as
+  before. Both providers behave alike. *Codex's execpolicy amendment is a prefix rule, wider than
+  the one command the user saw; Claude's allow rules are fixed when a run starts and also match
+  patterns. Reef holding the set is the only way to keep "the same command" exact.* The set lives
+  with the thread: it spans the thread's runs and a restart, never reaches the Bot's other threads
+  and ends with the thread. `in_thread` on an approval that does not offer it, or with
+  `approve: false`, answers `400` and leaves the approval open; a closed approval still answers `404`.
+  - The same command: the command text, trimmed of surrounding whitespace, equal byte for byte.
+    The text is Claude's `command`, or Codex's `command` without its `bash|sh|zsh -c|-lc` wrapper.
+    Case, inner spaces, quoting and argument order count, so `a && b` equals only `a && b`.
+  - Not offered, when any one holds (the card is then Allow and Deny alone, same size and weight):
+    the text contains `push` or `delete`, in any case; it has an `rm`-style flag word holding both
+    `r` and `f` (`-rf`, `-fr`, `-Rf`) or both `--recursive` and `--force`, and any other word of
+    the command is not an absolute path inside the thread's worktree or a tmp root (`/tmp`,
+    `/var/tmp`, `$TMPDIR`; a relative path, `~`, `$`, a glob or `..` counts as outside); or it runs
+    `gh` as a write. A `gh` write is a `gh` word whose subcommand is not a read: reads are
+    `view`, `list`, `status`, `diff`, `checks`, `search`, `browse`, `watch`, `download` and
+    `gh api` with neither `-X`/`--method` other than `GET` nor `-f`/`-F`/`--field`/`--raw-field`/
+    `--input`; every other verb, `create`, `edit`, `merge`, `close`, `comment`, `review`, `run`,
+    `delete`, `set`, `add` and the rest, is a write. *An unknown verb must fail safe.* A file edit
+    and an MCP tool call are never offered.
+  - Choosing it adds one change to the thread (`GET /api/threads/{id}/changes`): `entity: "allow"`,
+    `action: "create"`, `before: null`, `after: {command}` (the command text) and the run,
+    thread and Bot as the source. The thread shows it as one quiet line, `Allowed `<command>` for
+    this thread`, with no Undo; later silent passes add nothing.
 - Claude cancels an MCP tool call after 60 s unless `MCP_TOOL_TIMEOUT` says otherwise, and the
   permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes). *The
   variable covers every MCP server of the run, not only Reef's: Claude Code has no per-server
@@ -1132,8 +1161,9 @@ Voice
   boss thread, the boss's brief in a helper thread) gets its creature and name on a line above
   plain text, starting at the same edge as the replies. A helper's report shows its prose only
   (Done/Tried/Blocked/Next stay in the helper thread) and `Open thread` links to the helper
-  thread. Everything else is one quiet line with its action inline: approvals (Allow, Deny; the
-  line leaves once answered; a long command or path wraps), Chief's changes, the branch starting,
+  thread. Everything else is one quiet line with its action inline: approvals (Allow, Deny, and
+  Allow in this thread for a command that may repeat; the line leaves once answered; a long command
+  or path wraps), the allowed-for-this-thread line, Chief's changes, the branch starting,
   the worktree cleaned up, a failed run (Retry), blocked, a refused message and reconnecting. Inline
   actions (Undo, Undo all, Open, Retire, Details, Show more) are one quiet text-button style.
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `·
