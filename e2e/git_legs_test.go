@@ -11,8 +11,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-var startWorkCall = fake.MCPCall{Server: "atoll", Tool: "start_work", Args: json.RawMessage(`{"type":"fix","slug":"Seeded BUG"}`)}
-
 // gitLegRoutes are the routes by which git runs a program the repo names that the git calls below
 // can reach: hooks, and core.fsmonitor in the repo's config.
 var gitLegRoutes = []struct {
@@ -113,7 +111,7 @@ func TestRepo_ReefGitCleanupRunsNoRepoCode(t *testing.T) {
 				route.plant(t, p)
 				failSetWorktree(t, f.m)
 
-				if got := failedRun(t, f.s, th, ev, startWorkCall); !strings.Contains(got, "start_work: set worktree: constraint failed: planted") {
+				if got := failedRun(t, f.s, th, ev, startWorkCall(`{"type":"fix","slug":"Seeded BUG"}`, false)); !strings.Contains(got, "start_work: set worktree: constraint failed: planted") {
 					t.Fatalf("run error %q, want start_work to fail in set worktree, after the worktree was made", got)
 				}
 				if ran, err := os.ReadFile(marker); err == nil {
@@ -191,7 +189,7 @@ func TestRepo_ReefReadOnlyGitRunsNoRepoCode(t *testing.T) {
 			f.s.do(t, "POST", "/api/repos", map[string]string{"name": "again", "path": f.repo.Path}, &again, 201)
 			th := f.thread(t, f.bot(t, "codex", "all", nil))
 			ev := f.s.events(t, th)
-			if line := useAtoll(t, f.s, th, ev, startWorkCall)[0]; !strings.Contains(line, `"path"`) {
+			if line := useAtoll(t, f.s, th, ev, startWorkCall(`{"type":"fix","slug":"Seeded BUG"}`, false))[0]; !strings.Contains(line, `"path"`) {
 				t.Fatalf("start_work %q, want a worktree", line)
 			}
 			if ran, err := os.ReadFile(marker); err == nil {
