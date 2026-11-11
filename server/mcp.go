@@ -25,7 +25,7 @@ const _tools = `{"tools":[
 {"name":"finish_run",
 "description":"Report how this run went. Call it once in every run, when the work is done and before your final reply.",
 "inputSchema":{"type":"object",
-"properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string","description":"What stopped the work that only the user can fix: a missing sign-in or token, no access, a denied approval, a failing service. Empty string if nothing. A question you asked in your reply is not blocked."},"next":{"type":"string"}},
+"properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string","description":"What stopped the work that only the user can fix: a missing sign-in or token, no access, a denied approval, a failing service. Empty string if nothing. A question you asked in your reply is not blocked."},"next":{"type":"string"},"ready":{"type":"array","description":"The pull requests you call ready to merge, each with its head commit as you saw it.","items":{"type":"object","properties":{"url":{"type":"string"},"sha":{"type":"string","description":"The 40-hex head commit of the PR."}},"required":["url","sha"]}}},
 "required":["done","tried","blocked","next"]}},
 {"name":"start_work",
 "description":"Repo threads start in a clean read-only checkout. Call before your first edit in a repo thread. Makes this thread's worktree on a new branch type/slug and returns its path and branch as JSON. Change into that path for your edits. Calling it again returns the same worktree.",
@@ -170,7 +170,7 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
 		if err := a.runs.Report(r.Context(), token, rep); err != nil {
-			return nil, a.toolError(err)
+			return a.refusal(err)
 		}
 		return text("Report saved."), nil
 	case provider.ToolStartWork:
@@ -334,7 +334,8 @@ func (a *api) delegateTools(ctx context.Context, bot store.Bot) ([]json.RawMessa
 		"description": "Hand work to a Bot on your delegate list (" + strings.Join(names, ", ") +
 			"). Returns at once with {\"thread_id\"}; the helper works in a thread of its own and " +
 			"its replies come back to you. The brief must hold everything the helper needs. " +
-			"The helper works in this thread's repo; with no repo here, repo names a registered repo.",
+			"The helper works in this thread's repo; with no repo here, repo names a registered repo. " +
+			"End every brief with: " + run.FreezeSentence,
 		"inputSchema": map[string]any{
 			"type":       "object",
 			"properties": map[string]any{"bot": str, "brief": str, "repo": str},

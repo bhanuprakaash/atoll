@@ -459,6 +459,14 @@ func (m *Manager) Report(ctx context.Context, token string, r store.Report) erro
 	if err != nil {
 		return err
 	}
+	for i, p := range r.Ready {
+		switch {
+		case p.URL == "":
+			return RefusedError(fmt.Sprintf("ready entry %d: url is empty; nothing saved", i+1))
+		case !_headSHA.MatchString(p.SHA):
+			return RefusedError(fmt.Sprintf("ready entry %d: sha must be the PR's 40-hex head commit; nothing saved", i+1))
+		}
+	}
 	if err := m.cfg.Store.SetReport(ctx, a.run.ID, r); err != nil {
 		return fmt.Errorf("report run %s: %w", a.run.ID, err)
 	}
@@ -1283,6 +1291,7 @@ var (
 	_backgroundOutput = regexp.MustCompile(`/tasks/[^\s;&|"']*\.output\b`)
 	_plainWord        = regexp.MustCompile(`^[A-Za-z][\w-]*$`)
 	_assignment       = regexp.MustCompile(`^\w+=`)
+	_headSHA          = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	_quoted           = regexp.MustCompile(`\$\([^)]*\)|"[^"]*"|'[^']*'`)
 )
 

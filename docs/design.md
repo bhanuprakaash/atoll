@@ -432,15 +432,18 @@ after a failed undo counts a Bot that is already gone as removed.
 - The merged sentence says where it went and what: the base branch as the API names it (cut at 60
   characters) and the first 7 characters of the head commit at the merge. When this thread's latest
   `finish_run` listed the PR in `ready` with another sha, it ends ` (ready was 1234567)`. When the
-  base is not the repo's default branch (what `origin/HEAD` names) the merge is a quiet line only:
+  base is not the repo's default branch (what `origin/HEAD` names, else the branch the repo has
+  checked out) the merge is a quiet line only:
   the message is stored, kind `merged`, and shown; no run starts and no inbox row is held. *A fix
   merged into its test's branch is no news for the lead.*
 - A stacked fix is one whose base is another open PR's branch. Its PR is made with `gh pr create
   --draft --base <that branch>` and a body that starts `Waits for #<n>` (n the base PR), so GitHub
   keeps its merge button off. The watcher also keeps `draft`, `body` and `base.ref` of a read. When
-  it reads PR n merged while the thread's tracked PR is a draft whose body starts `Waits for #<n>`,
-  the thread's Bot is woken once (a fourth event), kind `base`, with `PR #<n> merged; PR #<m> was waiting for it`
-  (held and delivered like any wake; once-only through a new thread column `mr_base_woke`). The Bot
+  it reads PR n merged while the thread's tracked PR is a draft whose body starts `Waits for #<n>`
+  (the poll of that thread also reads PR n until then), the thread's Bot is woken once (a fourth
+  event), kind `base`, with `PR #<n> merged; PR #<m> was waiting for it` (held and delivered like
+  any wake; once-only through a new thread column `mr_base_woke`; `mr_head` holds the head of the
+  last read, for `changed`). The Bot
   runs `gh pr edit --base <default branch>` when its PR's base is still the merged branch, then
   `gh pr ready`. *#202 merged before its test #174, and test-guard flagged #174 for carrying code.*
 - Known gap: webhooks; a wake comes within a poll interval plus a settle read, or later after
