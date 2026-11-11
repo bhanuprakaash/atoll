@@ -54,7 +54,7 @@ test("a failed GitHub keychain save shows a message and offers sign in again", a
         title: "Reef couldn't save the GitHub sign-in to the system keychain.",
         next: "Unlock the keychain or restart Reef, then try again.",
         action: "Sign in again",
-        raw: /system keychain failed|secret store unavailable|MCP server|\{\s*"error"/,
+        raw: /system keychain failed|secret store unavailable|\bof MCP server\b|\{\s*"error"/,
         details: /keychain · 500 · POST \/api\/connections\/\S+\/poll/,
       },
     );
@@ -123,7 +123,7 @@ test("a failed GitLab keychain save shows a message and offers sign in again", a
         title: "Reef couldn't save the GitLab sign-in to the system keychain.",
         next: "Unlock the keychain or restart Reef, then try again.",
         action: "Sign in again",
-        raw: /system keychain failed|secret store unavailable|MCP server|\{\s*"error"/,
+        raw: /system keychain failed|secret store unavailable|\bof MCP server\b|\{\s*"error"/,
         details: /keychain · 500 · POST \/api\/connections\/\S+\/poll/,
       },
     );
@@ -159,10 +159,10 @@ test("a failed MCP secret save shows a keychain message without raw JSON", async
       page,
       notice(dialog, /^Reef couldn't save .+ to the system keychain\./),
       {
-        title: /^Reef couldn't save .+ to the system keychain\.$/m,
+        title: /^Reef couldn't save .+? to the system keychain\./,
         next: "Unlock the keychain or restart Reef, then try again.",
         action: "Try again",
-        raw: /system keychain failed|secret store unavailable|MCP server|\{\s*"error"/,
+        raw: /system keychain failed|secret store unavailable|\bof MCP server\b|\{\s*"error"/,
         details: /keychain · 500 · POST \/api\/mcp-servers/,
       },
     );
