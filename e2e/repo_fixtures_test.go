@@ -15,6 +15,7 @@ import (
 
 // These checks prove the new fake scenarios can execute past the still-missing product APIs.
 func TestRepoFixtures_ProviderScenarios(t *testing.T) {
+	t.Parallel()
 	for _, provider := range []string{"claude", "codex"} {
 		for _, scenario := range []struct{ mode, prompt, want string }{
 			{"fix", _fixRepoPrompt, "Fixed the seeded bug."},
@@ -23,6 +24,7 @@ func TestRepoFixtures_ProviderScenarios(t *testing.T) {
 			{"resume", _resumeRepoPrompt, ": 42"},
 		} {
 			t.Run(provider+"/"+scenario.mode, func(t *testing.T) {
+				t.Parallel()
 				m := newMachine(t, provider, "glab")
 				repoPath := t.TempDir()
 				origin := filepath.Join(t.TempDir(), "origin.git")

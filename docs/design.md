@@ -900,7 +900,34 @@ after a failed undo counts a Bot that is already gone as removed.
 - Scopes: user (everywhere, any provider), repo, bot (its own lessons). Bots write all three without
   approval. Every save shows in the thread with its source (Bot, thread, run) and a Retire button.
   Nothing is deleted.
-- Tools: `remember`, `recall`, `read_memory`, `retire_memory`.
+- Tools: `remember` (optional `ticket`), `recall`, `read_memory`, `retire_memory`.
+- Ticket: a repo item may carry `ticket`, `#N`, the issue it is about (any other scope, or a value
+  that is not `#` and digits without a leading zero, is `400`). `remember` and `POST /api/memory`
+  take it; every item shows it, empty when none. *A decision or queue note about a ticket steers
+  Bots wrongly once the ticket is done; in dogfood round 2 one such item was injected 14 times
+  after its tickets merged.*
+- Retire on close: Reef retires an accepted item whose issue is closed (`completed` or
+  `not_planned`), with `retired_reason` `issue closed`; a retire by a Bot, the user or a
+  replacement leaves `retired_reason` empty. A retired item is not injected or recalled (as
+  before); Settings > Memory shows it as `Retired · issue closed`. Nothing is deleted.
+- Reef learns an issue closed by reading the issue, not the PR that mentions it: a PR's
+  `Closes #N` closes nothing when the PR is stacked on another branch or merged by hand, and an
+  issue closed by hand has no PR. The read is `GET /repos/{owner}/{repo}/issues/{N}` once per
+  distinct ticket that has an accepted item, with `If-None-Match` (a `304` costs no rate limit),
+  on every tick of the PR poll after its PR reads, whether or not a thread tracks a PR. It uses
+  the repo's GitHub origin and the first signed-in GitHub connection, Reef's own read: no Bot
+  sees it. A repo not on GitHub is not read. Failures, back-off, the per-connection pause and a
+  `401` follow the PR reads (Repos); a failed read retires nothing. A ticket with no accepted item
+  is not read again.
+- The wake of a merged GitHub PR names the memory items about the tickets it closes: the numbers
+  after `close(s|d)`, `fix(es|ed)` or `resolve(s|d)` in the PR body (case-insensitive, `#N` only;
+  nothing else of the body is used), over the thread's repo, accepted items only. Sentence:
+  `PR #7 merged. Memory about #12 to replace or retire: 3f9a1c, b07e22.` (several tickets: one
+  `Memory about #N ...` clause each; up to 5 ids, then `and 2 more`; no clause for a ticket with
+  no item). Ids only, so no Bot-written text joins the sentence; the Bot reads each with
+  `read_memory`. In a tick the PR read comes before the issue read, so an item whose issue GitHub
+  closed with the merge is named first and retired right after: the Bot then saves what still
+  holds as a new item instead of `replaces`.
 - Storage: the `memory` package keeps its own tables and migrations in `atoll.db`; ids are random hex.
   The run fills the source (Bot, thread, run) and the repo/Bot scope id; tools see only the run's
   shelf (user, its repo, its Bot). Embeddings stay off: no embedder is wired.

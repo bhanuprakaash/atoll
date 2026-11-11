@@ -12,6 +12,7 @@ import (
 // Contract: mcp-oauth-contract.md.
 
 func TestMCPOAuth_CatalogListsHostedServers(t *testing.T) {
+	t.Parallel()
 	f := newMCPFixture(t, "claude")
 	var list []mcpServer
 	f.s.do(t, "GET", "/api/mcp-servers", nil, &list, http.StatusOK)
@@ -22,6 +23,7 @@ func TestMCPOAuth_CatalogListsHostedServers(t *testing.T) {
 }
 
 func TestMCPOAuth_ConnectStoresTokensInTheOSStore(t *testing.T) {
+	t.Parallel()
 	f := newOAuthFixture(t, "claude")
 	s := f.add(t, "docs-oauth", f.o)
 	if s.Kind != "remote" || s.URL != f.o.url() || s.Status != "not_connected" || len(s.HeaderNames) != 0 {
@@ -87,6 +89,7 @@ func TestMCPOAuth_ConnectStoresTokensInTheOSStore(t *testing.T) {
 }
 
 func TestMCPOAuth_RunGetsBearerToken(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newOAuthFixture(t, p)
@@ -114,6 +117,7 @@ func TestMCPOAuth_RunGetsBearerToken(t *testing.T) {
 }
 
 func TestMCPOAuth_ExpiringTokenIsRefreshedBeforeTheRun(t *testing.T) {
+	t.Parallel()
 	f := newOAuthFixture(t, "claude")
 	f.o.set(func() { f.o.ttl = 300 })
 	s := f.add(t, "docs-oauth", f.o)
@@ -151,6 +155,7 @@ func TestMCPOAuth_ExpiringTokenIsRefreshedBeforeTheRun(t *testing.T) {
 }
 
 func TestMCPOAuth_RejectedRefreshNeedsSignIn(t *testing.T) {
+	t.Parallel()
 	f := newOAuthFixture(t, "claude")
 	f.o.set(func() { f.o.ttl = 300 })
 	s := f.add(t, "docs-oauth", f.o)
@@ -205,6 +210,7 @@ func TestMCPOAuth_RejectedRefreshNeedsSignIn(t *testing.T) {
 }
 
 func TestMCPOAuth_RegistrationRefused(t *testing.T) {
+	t.Parallel()
 	f := newOAuthFixture(t, "claude")
 	o := newOAuthMCP(t)
 	o.set(func() { o.refuse = true })
@@ -230,6 +236,7 @@ func TestMCPOAuth_RegistrationRefused(t *testing.T) {
 }
 
 func TestMCPOAuth_AddByURL(t *testing.T) {
+	t.Parallel()
 	f := newOAuthFixture(t, "claude")
 
 	needs := f.add(t, "docs-needs", f.o)
@@ -275,6 +282,7 @@ func TestMCPOAuth_AddByURL(t *testing.T) {
 }
 
 func TestMCPOAuth_RemoveSignsOut(t *testing.T) {
+	t.Parallel()
 	f := newOAuthFixture(t, "claude")
 	s := f.add(t, "docs-oauth", f.o)
 	f.signIn(t, s.ID)

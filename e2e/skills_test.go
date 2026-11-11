@@ -43,6 +43,7 @@ func chief(t *testing.T, s *server) platformBot {
 }
 
 func TestSkills_ChiefFirstLaunch(t *testing.T) {
+	t.Parallel()
 	for _, p := range []string{"claude", "codex", "both", "none"} {
 		t.Run(p, func(t *testing.T) {
 			providers := []string{}
@@ -77,6 +78,7 @@ func TestSkills_ChiefFirstLaunch(t *testing.T) {
 }
 
 func TestSkills_ChiefCreatesAndUndo(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m := newMachine(t, p)
@@ -194,6 +196,7 @@ func platformChange(t *testing.T, events []event, botID, threadID, runID, kind, 
 }
 
 func TestSkills_EditUndoAndNoPlatformTools(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m := newMachine(t, p)
@@ -246,24 +249,15 @@ func seedSkillBot(t *testing.T, s *server, p, content string) (platformBot, libr
 
 func skillInventory(t *testing.T, m *machine, p string) []fake.SkillCopy {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(m.bin, p+".log.skills"))
-	if err != nil {
-		t.Fatal(err)
+	all := skillInventories(t, m, p)
+	if len(all) == 0 {
+		return nil
 	}
-	var result []fake.SkillCopy
-	for line := range strings.Lines(string(data)) {
-		var entry struct {
-			Skills []fake.SkillCopy `json:"skills"`
-		}
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			t.Fatal(err)
-		}
-		result = entry.Skills
-	}
-	return result
+	return all[len(all)-1]
 }
 
 func TestSkills_RepoAndBotSkills(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m := newMachine(t, p)
@@ -325,6 +319,7 @@ func TestSkills_RepoAndBotSkills(t *testing.T) {
 }
 
 func TestSkills_PlacedCopyDropsDisableModelInvocation(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m := newMachine(t, p)
@@ -361,6 +356,7 @@ func TestSkills_PlacedCopyDropsDisableModelInvocation(t *testing.T) {
 }
 
 func TestSkills_ConcurrentRunsAndNextRun(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m := newMachine(t, p)
@@ -425,6 +421,7 @@ func TestSkills_ConcurrentRunsAndNextRun(t *testing.T) {
 }
 
 func TestSkills_ChiefConfiguresAndUndoes(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newRepoFixture(t, p)

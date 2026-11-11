@@ -91,6 +91,7 @@ func assertNoTokens(t *testing.T, who string, env map[string]string) {
 }
 
 func TestRun_UsesOnlyLoginsReefGives(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name, provider string
 		xdg            bool

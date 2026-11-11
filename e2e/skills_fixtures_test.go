@@ -54,9 +54,11 @@ func runSkillFake(t *testing.T, m *machine, p, cwd, extra, prompt, url string, d
 }
 
 func TestSkillsFixtures_ProviderScenarios(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		for _, mode := range []string{"create", "create-codex", "configure", "edit", "denied", "read", "bots", "use", "prompt-only", "disabled", "worktree", "hold"} {
 			t.Run(p+"/"+mode, func(t *testing.T) {
+				t.Parallel()
 				m := newMachine(t, p)
 				cwd := t.TempDir()
 				extra := t.TempDir()

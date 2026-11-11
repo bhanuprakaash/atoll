@@ -9,6 +9,8 @@ import (
 )
 
 // Contract: slack-mcp-contract.md.
+//
+// These tests stay serial: they share the fixed secret store entries mcp:slack:*.
 
 func TestSlackMCP_SetupSavesTheClientIDInTheOSStore(t *testing.T) {
 	f := newSlackFixture(t, "claude")
