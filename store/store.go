@@ -1622,11 +1622,16 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		names = append(names, f.Name())
 	}
 	sort.Strings(names)
+	last := 0
 	for _, name := range names {
 		n, err := strconv.Atoi(strings.SplitN(name, "_", 2)[0])
 		if err != nil {
 			return fmt.Errorf("migration %s: bad number: %w", name, err)
 		}
+		if n == last {
+			return fmt.Errorf("migration %s: number %d is used twice", name, n)
+		}
+		last = n
 		body, err := _migrations.ReadFile("migrations/" + name)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", name, err)
