@@ -1,4 +1,4 @@
-import type { ComponentProps, InputHTMLAttributes } from 'react';
+import type { ComponentProps } from 'react';
 
 const base = 'text-ink outline-none placeholder:text-muted';
 const sizes = {
@@ -18,10 +18,7 @@ export function TextField({
   width = 'w-full',
   className = '',
   ...props
-}: { size?: keyof typeof sizes; width?: string } & Omit<
-  InputHTMLAttributes<HTMLInputElement>,
-  'size'
->) {
+}: { size?: keyof typeof sizes; width?: string } & Omit<ComponentProps<'input'>, 'size'>) {
   return <input className={`${base} ${width} ${sizes[size]} ${className}`} {...props} />;
 }
 

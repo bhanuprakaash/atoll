@@ -121,7 +121,7 @@ export function Composer({
       aria-label={`Message ${botName}${runId ? ', run in progress' : ''}`}
       placeholder={
         runId
-          ? `${botName} is working…`
+          ? 'Working…'
           : onFirstSend
             ? `Ask ${botName} anything, or paste an issue or MR link`
             : `Message ${botName}`
