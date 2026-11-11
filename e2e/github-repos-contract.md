@@ -47,10 +47,10 @@ tool is the one GitLab uses: it records the URL and title on the thread with sta
 `mr_updated` `{url, state: "opened", title}`; `GET /api/threads/{id}` has `branch`, `mr_url`,
 `mr_state` and `mr_title`.
 
-PR state is not polled (reviews, CI and merging are out of scope): `mr_state` stays `opened`, a
-merged PR does not remove the worktree, and the worktree goes with `POST /api/threads/{id}/close`
-as before. The server never runs `glab` for a thread of a GitHub repo, `glab mr view` included. (The
-polling loop and `track_mr` run `glab mr view` for GitLab repos only.)
+A tracked PR's state, merge and CI are read by the watcher, and wake the Bot: see
+[pr-wake-contract.md](pr-wake-contract.md). Merging does not remove the worktree; it goes with
+`POST /api/threads/{id}/close` as before. The server never runs `glab` for a thread of a GitHub repo,
+`glab mr view` included. (The polling loop and `track_mr` run `glab mr view` for GitLab repos only.)
 
 ## UI
 
@@ -97,5 +97,5 @@ Roles and texts Playwright selects on.
 Not covered: the real github.com line (only the user can check it); the `docs/design.md` line (a
 doc); the tests-land-first line (`test-guard`). The `git@github.com:` and `ssh://` origin forms are
 not tested (under the test seam the GitHub host is `127.0.0.1:<port>`, and the credential helper
-only serves HTTPS). PR state polling, merge cleanup, reviews, CI, GitHub Enterprise and a Bot with
+only serves HTTPS). Merge cleanup, reviews, GitHub Enterprise and a Bot with
 both a GitLab and a GitHub connection are out of scope.

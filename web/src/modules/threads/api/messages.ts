@@ -12,6 +12,7 @@ export type Message = {
   text: string;
   run_id: string;
   from_bot_id?: string;
+  kind?: string;
   created_at: string;
   attachments: { id: string; mime: string }[];
 };

@@ -36,6 +36,14 @@ func GitHubURL() string {
 	return GitHubInstance
 }
 
+// GitHubAPI is the base of GitHub's REST API: ATOLL_GITHUB_URL, else api.github.com.
+func GitHubAPI() string {
+	if os.Getenv("ATOLL_GITHUB_URL") != "" {
+		return GitHubURL()
+	}
+	return _githubAPI
+}
+
 // OnGitHub reports whether a git remote URL, in any form git takes, is on the host of GitHubURL.
 func OnGitHub(remote string) bool {
 	base, err := url.Parse(GitHubURL())
@@ -106,11 +114,7 @@ func PollGitHubToken(ctx context.Context, c *http.Client, deviceCode string) (st
 
 // CheckGitHubToken returns ErrGitHubNeedsSignIn when GitHub rejects the token.
 func CheckGitHubToken(ctx context.Context, c *http.Client, token string) error {
-	api := _githubAPI
-	if u := os.Getenv("ATOLL_GITHUB_URL"); u != "" {
-		api = GitHubURL()
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, api+"/user", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, GitHubAPI()+"/user", nil)
 	if err != nil {
 		return fmt.Errorf("create GitHub request: %w", err)
 	}

@@ -36,6 +36,7 @@ func pick(m map[string]any, keys ...string) map[string]any {
 }
 
 func TestChiefRead_Tools(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			// Both providers installed, only p signed in: list_models must leave the other out.
@@ -153,6 +154,7 @@ func isStatus(c *call) bool {
 }
 
 func TestChiefRead_ListModelsStartsNoProcess(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t, "claude", "codex")
 	m.signIn(t, "claude")
 	m.signIn(t, "codex")
@@ -198,6 +200,7 @@ func TestChiefRead_ListModelsStartsNoProcess(t *testing.T) {
 
 // Codex names an MCP tool without its server, so list_bots arrives bare.
 func TestChiefRead_CodexReadToolIsPlatform(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "codex")
 	th := s.newThread(t, chief(t, s).bot)
 	ch := s.events(t, th)
@@ -214,6 +217,7 @@ func TestChiefRead_CodexReadToolIsPlatform(t *testing.T) {
 }
 
 func TestChiefRead_WhichBots(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)

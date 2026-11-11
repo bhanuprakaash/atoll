@@ -48,6 +48,7 @@ func dbCount(t *testing.T, m *machine, query string) int {
 }
 
 func TestChief_RepoAccessRefused(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -89,6 +90,7 @@ func TestChief_RepoAccessRefused(t *testing.T) {
 }
 
 func TestChief_LaunchWritesNothingWhenNoRepos(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	s.kill()
 	dbExec(t, m,
