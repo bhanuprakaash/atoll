@@ -7,8 +7,8 @@ import { useSettings } from '@/modules/settings/api/settings';
 import { useNotifications } from '@/modules/threads/hooks/use-notifications';
 import { TextField } from '@/components/text-field';
 import { useCloseThread, useRenameThread } from '@/modules/threads/api/threads';
-
-const inDesktopApp = '__TAURI_INTERNALS__' in window;
+import { inDesktopApp, useAppUpdate } from '@/lib/app-update';
+import { Tag } from '@/components/settings-ui';
 
 const SIDEBAR_DEFAULT = 340;
 const SIDEBAR_MIN = 260;
@@ -80,6 +80,7 @@ export function Shell() {
   }, [botId, navigate]);
   const { data: settings } = useSettings();
   const userName = settings?.user_name || 'User';
+  const updateAvailable = Boolean(useAppUpdate().data?.available);
   return (
     <div className="flex h-screen">
       {inDesktopApp && <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-10 h-3" />}
@@ -167,6 +168,11 @@ export function Shell() {
           </span>
           <span className="truncate">{userName}</span>
           <span className="sr-only">Settings</span>
+          {updateAvailable && (
+            <span className="ml-auto flex-none">
+              <Tag tone="ok">Update available</Tag>
+            </span>
+          )}
           <svg
             aria-hidden="true"
             width="17"
@@ -176,7 +182,7 @@ export function Shell() {
             stroke="currentColor"
             strokeWidth="1.7"
             strokeLinecap="round"
-            className="ml-auto flex-none text-muted"
+            className={`flex-none text-muted ${updateAvailable ? '' : 'ml-auto'}`}
           >
             <circle cx="12" cy="12" r="3" />
             <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" />

@@ -15,12 +15,54 @@ use std::{
 };
 use tauri::{
     webview::{Color, NewWindowResponse},
-    LogicalPosition, Manager, Theme, TitleBarStyle, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, LogicalPosition, Manager, Theme, TitleBarStyle, WebviewUrl, WebviewWindowBuilder,
 };
+use tauri_plugin_updater::UpdaterExt;
 
 struct Supervisor {
     quitting: Arc<AtomicBool>,
     thread: Mutex<Option<JoinHandle<()>>>,
+}
+
+#[tauri::command]
+async fn check_update(app: AppHandle) -> Result<serde_json::Value, String> {
+    let update = app
+        .updater()
+        .map_err(|err| err.to_string())?
+        .check()
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok(serde_json::json!({
+        "current": app.package_info().version.to_string(),
+        "available": update.map(|update| update.version),
+    }))
+}
+
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    let update = app
+        .updater()
+        .map_err(|err| err.to_string())?
+        .check()
+        .await
+        .map_err(|err| err.to_string())?
+        .ok_or("Reef is up to date")?;
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|err| err.to_string())?;
+    stop_sidecar(&app);
+    app.restart()
+}
+
+// The new app's sidecar cannot listen on 4317 while the old one still holds it.
+fn stop_sidecar(app: &AppHandle) {
+    let supervisor = app.state::<Supervisor>();
+    supervisor.quitting.store(true, Ordering::SeqCst);
+    let thread = supervisor.thread.lock().unwrap().take();
+    if let Some(thread) = thread {
+        let _ = thread.join();
+    }
 }
 
 fn main() {
@@ -32,6 +74,8 @@ fn main() {
 
     tauri::Builder::default()
         .manage(supervisor)
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![check_update, install_update])
         .setup(move |app| {
             let mut signals = Signals::new([SIGTERM, SIGINT, SIGHUP])?;
             let exit = app.handle().clone();
@@ -192,12 +236,7 @@ fn main() {
         .expect("build Reef")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
-                let supervisor = app.state::<Supervisor>();
-                supervisor.quitting.store(true, Ordering::SeqCst);
-                let thread = supervisor.thread.lock().unwrap().take();
-                if let Some(thread) = thread {
-                    let _ = thread.join();
-                }
+                stop_sidecar(app);
             }
         });
 }
