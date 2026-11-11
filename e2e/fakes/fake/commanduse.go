@@ -27,6 +27,16 @@ func CommandLine(cmd, text string) string {
 	return strings.TrimSpace(cmd) + ": " + text
 }
 
+// DeniedText is what a command the user refused adds to its line: "denied", and when the user wrote
+// a reason, ", told: <reason>". The reason is what the provider was given: Claude's deny message,
+// Codex's steer text. Reef's stock message for a plain Deny is no reason.
+func DeniedText(reason string) string {
+	if reason == "" || reason == "The user rejected this step." {
+		return "denied"
+	}
+	return "denied, told: " + reason
+}
+
 // ShellWrap is how Codex reports a command: the shell it ran it in, with the text quoted.
 func ShellWrap(cmd string) string {
 	if strings.ContainsAny(cmd, "\"$`\\") {
