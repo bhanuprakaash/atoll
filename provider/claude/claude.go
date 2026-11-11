@@ -95,16 +95,27 @@ type (
 				Input json.RawMessage `json:"input"`
 			} `json:"content"`
 		} `json:"message"`
-		IsError bool     `json:"is_error"`
-		Result  string   `json:"result"`
-		Errors  []string `json:"errors"`
-		Error   string   `json:"error"`
+		IsError        bool     `json:"is_error"`
+		Result         string   `json:"result"`
+		Errors         []string `json:"errors"`
+		Error          string   `json:"error"`
+		APIError       string   `json:"api_error"`
+		APIErrorParams struct {
+			RateLimitInfo rateLimitInfo `json:"rate_limit_info"`
+		} `json:"api_error_params"`
+		RateLimitInfo rateLimitInfo `json:"rate_limit_info"`
+	}
+
+	rateLimitInfo struct {
+		Status   string `json:"status"`
+		ResetsAt int64  `json:"resetsAt"`
 	}
 
 	// state is what parse keeps between lines. A message that starts after text in the same turn
 	// has its first text delta begin a new paragraph.
 	state struct {
-		wrote, breakNext, signedOut bool
+		wrote, breakNext, signedOut, limited bool
+		resetsAt                             time.Time
 	}
 
 	// tail keeps the last 4 KB written to it, for claude's stderr.
@@ -545,6 +556,10 @@ func parse(line []byte, st *state) []provider.Event {
 		}
 	case "assistant":
 		st.signedOut = st.signedOut || l.Error == "authentication_failed"
+		if l.Error == "rate_limit" && l.APIError == "usage_limit_reached" {
+			st.limited = true
+			st.setReset(l.APIErrorParams.RateLimitInfo)
+		}
 		var evs []provider.Event
 		for _, c := range l.Message.Content {
 			if c.Type == "tool_use" {
@@ -554,6 +569,10 @@ func parse(line []byte, st *state) []provider.Event {
 			}
 		}
 		return evs
+	case "rate_limit_event":
+		if l.RateLimitInfo.Status == "rejected" {
+			st.setReset(l.RateLimitInfo)
+		}
 	case "stream_event":
 		if l.Event.Type == "message_start" {
 			st.breakNext = st.wrote
@@ -567,11 +586,14 @@ func parse(line []byte, st *state) []provider.Event {
 			return []provider.Event{{Kind: provider.KindText, Text: text}}
 		}
 	case "result":
-		wrote, signedOut := st.wrote, st.signedOut
+		wrote, prev := st.wrote, *st
 		*st = state{}
 		if l.IsError {
 			text := strings.Join(append([]string{l.Result}, l.Errors...), "\n")
-			return []provider.Event{{Kind: provider.KindError, Text: strings.TrimSpace(text), SignedOut: signedOut}}
+			return []provider.Event{{
+				Kind: provider.KindError, Text: strings.TrimSpace(text),
+				SignedOut: prev.signedOut, Limited: prev.limited, ResetsAt: prev.resetsAt,
+			}}
 		}
 		if !wrote && l.Result != "" {
 			return []provider.Event{{Kind: provider.KindText, Text: l.Result}, {Kind: provider.KindTurnEnd}}
@@ -579,6 +601,12 @@ func parse(line []byte, st *state) []provider.Event {
 		return []provider.Event{{Kind: provider.KindTurnEnd}}
 	}
 	return nil
+}
+
+func (st *state) setReset(info rateLimitInfo) {
+	if info.ResetsAt > 0 {
+		st.resetsAt = time.Unix(info.ResetsAt, 0).UTC()
+	}
 }
 
 // Write appends p and drops the oldest bytes beyond 4 KB.
