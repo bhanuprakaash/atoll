@@ -20,6 +20,7 @@ const (
 )
 
 func TestPrompt_ChiefImportRule(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -35,6 +36,7 @@ func TestPrompt_ChiefImportRule(t *testing.T) {
 }
 
 func TestSkills_ChiefImportsLocalSkill(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)

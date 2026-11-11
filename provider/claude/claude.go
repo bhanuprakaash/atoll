@@ -353,7 +353,7 @@ const _mcpConfigPath = "/dev/fd/3"
 // shows in the process list or the environment.
 func argv(cfg provider.Config, extra ...string) ([]string, []byte, error) {
 	var mcpConfig []byte
-	isolation, err := IsolationArgs(cfg.Cwd, cfg.NoTools || cfg.NoShell)
+	isolation, err := IsolationArgs(cfg.Cwd, cfg.NoTools || cfg.NoShell, cfg.HiddenPaths)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -409,20 +409,21 @@ func argv(cfg provider.Config, extra ...string) ([]string, []byte, error) {
 }
 
 // IsolationArgs excludes ancestor instructions, so cwd must be the repo root to keep its CLAUDE.md.
-func IsolationArgs(cwd string, noTools bool) ([]string, error) {
+// With tools on, hidden paths are refused to the file tools and, through a sandbox that only hides
+// reads, to Bash.
+func IsolationArgs(cwd string, noTools bool, hidden []string) ([]string, error) {
 	excludes := []string{}
 	seen := map[string]bool{}
 	paths := []string{cwd}
 	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
 		paths = append(paths, resolved)
 	}
-	replacer := strings.NewReplacer(`\`, "?", "*", "?", "?", "?", "[", "?", "]", "?", "{", "?", "}", "?", "(", "?", ")", "?")
 	for _, path := range paths {
 		if path == "" {
 			continue
 		}
 		for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
-			for _, pattern := range []string{filepath.Join(replacer.Replace(dir), "*.md"), filepath.Join(replacer.Replace(dir), ".claude", "**")} {
+			for _, pattern := range []string{filepath.Join(_globChars.Replace(dir), "*.md"), filepath.Join(_globChars.Replace(dir), ".claude", "**")} {
 				if !seen[pattern] {
 					excludes = append(excludes, pattern)
 					seen[pattern] = true
@@ -433,11 +434,26 @@ func IsolationArgs(cwd string, noTools bool) ([]string, error) {
 			}
 		}
 	}
-	settings, err := json.Marshal(map[string]any{
+	base := map[string]any{
 		"disableAllHooks": true, "disableBundledSkills": true,
 		"skillOverrides":    map[string]string{"design": "off", "doctor": "off", "plugin-authoring": "off"},
 		"autoMemoryEnabled": false, "claudeMdExcludes": excludes,
-	})
+	}
+	if len(hidden) > 0 && !noTools {
+		var deny []string
+		for _, path := range hidden {
+			rule := "(/" + _globChars.Replace(path) + "/**)"
+			deny = append(deny, "Read"+rule, "Edit"+rule)
+		}
+		base["permissions"] = map[string]any{"deny": deny}
+		base["sandbox"] = map[string]any{
+			"enabled": true, "failIfUnavailable": true,
+			"allowUnsandboxedCommands": false, "autoAllowBashIfSandboxed": false,
+			"network":    map[string]any{"allowedDomains": []string{"*"}},
+			"filesystem": map[string]any{"allowWrite": []string{"/"}, "denyRead": hidden},
+		}
+	}
+	settings, err := json.Marshal(base)
 	if err != nil {
 		return nil, err
 	}
@@ -447,6 +463,8 @@ func IsolationArgs(cwd string, noTools bool) ([]string, error) {
 	}
 	return []string{"--setting-sources", "project", "--settings", string(settings), "--tools", tools}, nil
 }
+
+var _globChars = strings.NewReplacer(`\`, "?", "*", "?", "?", "?", "[", "?", "]", "?", "{", "?", "}", "?", "(", "?", ")", "?")
 
 func userServer(m provider.UserMCPServer) map[string]any {
 	e := map[string]any{"type": "stdio", "command": m.Command}
@@ -489,10 +507,12 @@ func (s *Session) read(stdout io.Reader) {
 	if err == nil || last == provider.KindError {
 		return
 	}
-	s.emit(provider.Event{
-		Kind: provider.KindError,
-		Text: fmt.Sprintf("claude exited: %v: %s", err, bytes.TrimSpace(s.stderr.b)),
-	})
+	text := fmt.Sprintf("claude exited: %v: %s", err, bytes.TrimSpace(s.stderr.b))
+	if bytes.Contains(s.stderr.b, []byte("sandbox required but unavailable")) {
+		text = "This Bot cannot run: it needs bubblewrap and socat to keep the repos it lacks out of its shell. " +
+			"Install them (on Debian or Ubuntu: sudo apt install bubblewrap socat) and ask again."
+	}
+	s.emit(provider.Event{Kind: provider.KindError, Text: text})
 }
 
 // emit reports whether ev was delivered. Once Interrupt has run it delivers nothing.

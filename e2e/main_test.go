@@ -89,6 +89,7 @@ func newKeychain(home string) error {
 }
 
 func TestAtoll_PrintsName(t *testing.T) {
+	t.Parallel()
 	cmd := exec.Command(_atoll)
 	cmd.Dir = t.TempDir()
 	out, err := cmd.CombinedOutput()

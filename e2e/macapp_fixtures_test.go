@@ -38,6 +38,7 @@ func fakeCmd(t *testing.T, m *machine, p string, args ...string) *exec.Cmd {
 }
 
 func TestMacAppFixtures_Models(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m := newMachine(t, p)
@@ -63,6 +64,7 @@ func TestMacAppFixtures_Models(t *testing.T) {
 }
 
 func TestMacAppFixtures_Login(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m := newMachine(t, p)
@@ -133,6 +135,7 @@ func stubMCP(t *testing.T) string {
 }
 
 func TestMacAppFixtures_Working(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m := newMachine(t, p)

@@ -10,6 +10,7 @@ import (
 )
 
 func TestBots_Delete(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	b := s.newBot(t, "Dory", "claude")
 	threads := []thread{s.newThread(t, b), s.newThread(t, b)}
@@ -37,6 +38,7 @@ func TestBots_Delete(t *testing.T) {
 }
 
 func TestBots_DeleteRemovesWorktree(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "claude")
 	b := f.bot(t, "claude", "all", nil)
 	_, path, _, _ := f.work(t, b, _unfinishedRepoPrompt, "fix/seeded-bug")
@@ -52,6 +54,7 @@ func TestBots_DeleteRemovesWorktree(t *testing.T) {
 }
 
 func TestBots_DeleteKeepsMemory(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "claude")
 	b := f.bot(t, "claude", "all", nil)
 	th := f.thread(t, b)
@@ -81,6 +84,7 @@ func TestBots_DeleteKeepsMemory(t *testing.T) {
 }
 
 func TestBots_DeleteChief(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	before := s.bot(t, "chief")
 	var reply struct {
@@ -101,6 +105,7 @@ func TestBots_DeleteChief(t *testing.T) {
 }
 
 func TestBots_DeleteStopsRunningRun(t *testing.T) {
+	t.Parallel()
 	for _, provider := range _providers {
 		t.Run(provider, func(t *testing.T) {
 			m, s := start(t, provider)

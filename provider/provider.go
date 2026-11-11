@@ -109,6 +109,8 @@ type Config struct {
 	NoTools bool
 	// NoShell disables Claude's built-in tools while retaining MCP tools.
 	NoShell bool
+	// HiddenPaths are absolute paths Claude's file tools and shell must not reach.
+	HiddenPaths []string
 }
 
 // UserMCPServer is local with Command, Args and Env, or remote with URL and Headers.

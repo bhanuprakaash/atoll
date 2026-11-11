@@ -12,8 +12,10 @@ import (
 )
 
 func TestCodexAuto_SandboxCoversWorktreeAndNetwork(t *testing.T) {
+	t.Parallel()
 	for _, mode := range _modes {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			f := newRepoFixture(t, "codex")
 			var b bot
 			f.s.do(t, "POST", "/api/bots", map[string]any{"name": "Codex " + mode, "persona": "Fix carefully.", "provider": "codex", "mode": mode, "repo_access": "all"}, &b, 201)
@@ -121,6 +123,7 @@ func codexWorkspaceWrite(t *testing.T, c *call) (method, cwd string, present boo
 // matter to it. Each route has a control that runs the same operations with plain git and expects
 // the program to run, so that a route or a marker that stopped working cannot make a leg pass.
 func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
+	t.Parallel()
 	routes := []struct {
 		name string
 		// early plants before the first run, late after the run that leaves unsaved work.
@@ -164,9 +167,17 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 			gitIn(t, p.repo, "config", "extensions.worktreeConfig", "true")
 			gitIn(t, p.repo, "config", "-f", filepath.Join(p.gitDir(t, worktree), "config.worktree"), "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
 		}},
+		{name: "worktree-config-filter", snapshotOnly: true, late: func(t *testing.T, p planter, worktree string) {
+			gitIn(t, p.repo, "config", "extensions.worktreeConfig", "true")
+			config := filepath.Join(p.gitDir(t, worktree), "config.worktree")
+			gitIn(t, p.repo, "config", "-f", config, "filter.x.clean", p.script(t, "clean", p.record+"cat\n"))
+			gitIn(t, p.repo, "config", "-f", config, "filter.x.smudge", "cat")
+			writeFile(t, filepath.Join(p.common, "info", "attributes"), "* filter=x\n")
+		}},
 	}
 	for _, route := range routes {
 		t.Run("control/"+route.name, func(t *testing.T) {
+			t.Parallel()
 			repo := t.TempDir()
 			gitIn(t, repo, "init", "-b", "main")
 			writeFile(t, filepath.Join(repo, "answer.txt"), "41\n")
@@ -206,6 +217,7 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 		provider := c.provider
 		for _, route := range routes {
 			t.Run(c.provider+"/"+c.end+"/"+route.name, func(t *testing.T) {
+				t.Parallel()
 				f := newRepoFixture(t, provider)
 				p, marker := newPlanter(t, f.repo.Path)
 				noRun := func(what string) {
@@ -265,10 +277,9 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 				if resp.StatusCode != 204 && !route.anyClose {
 					t.Errorf("%s: status %d, want 204", want, resp.StatusCode)
 				}
-				if ref := "refs/atoll/unfinished/" + th.ID; c.end == "close" {
-					if err := exec.CommandContext(t.Context(), "git", "-C", f.repo.Path, "rev-parse", "--verify", "--quiet", ref+"^{commit}").Run(); err != nil {
-						t.Errorf("%s: the repo has no %s; Atoll's git did not work on the repo's own git dir", want, ref)
-					}
+				ref := "refs/atoll/unfinished/" + th.ID
+				if err := exec.CommandContext(t.Context(), "git", "-C", f.repo.Path, "rev-parse", "--verify", "--quiet", ref+"^{commit}").Run(); err != nil {
+					t.Errorf("%s: the repo has no %s; Atoll's git did not work on the repo's own git dir", want, ref)
 				}
 			})
 		}
@@ -336,6 +347,7 @@ func copyDir(t *testing.T, from, to string) {
 }
 
 func TestRepo_StartWorkSetsUpstream(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "codex")
 	path, _ := f.startWorkReply(t, "codex", _unfinishedRepoPrompt)
 	for key, want := range map[string]string{
@@ -354,6 +366,7 @@ func TestRepo_StartWorkSetsUpstream(t *testing.T) {
 // that git no longer finds the entry pointing back. Git then resolves the symlink when asked to
 // remove the folder and removes the user's worktree. The control runs that removal with plain git.
 func TestRepo_CloseKeepsOtherWorktrees(t *testing.T) {
+	t.Parallel()
 	plant := func(t *testing.T, repo, worktree, user string) {
 		t.Helper()
 		entries, err := filepath.Glob(filepath.Join(repo, ".git", "worktrees", "*", "gitdir"))
@@ -432,6 +445,7 @@ func TestRepo_CloseKeepsOtherWorktrees(t *testing.T) {
 // config defines it as required, the repo's .gitattributes applies it. Atoll's checkouts must still
 // be made; the checkout's smudge may run, it is the user's own filter.
 func TestRepo_UserFilterThatMustRunStillWorks(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "codex")
 	writeFile(t, filepath.Join(f.repo.Path, ".gitattributes"), "*.bin filter=lfs\n")
 	writeFile(t, filepath.Join(f.repo.Path, "big.bin"), "content\n")

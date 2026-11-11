@@ -23,19 +23,18 @@ import (
 
 const (
 	_potetoDir  = "~/.claude/skills/poteto-mode"
-	_potetoHome = "~/.claude/skills/poteto-mode/"
+	_potetoHome = "~/.claude/skills/poteto-mode"
+	_skillDir   = "{{ATOLL_SKILL_DIR}}"
 	_potetoMD   = "---\nname: poteto-mode\ndescription: Work the poteto way.\n---\n" +
 		"Scripts: `S=~/.claude/skills/poteto-mode/scripts`. Always call scripts by that full path.\n" +
-		"Proof goes in ~/.reef-verify/<id> when a run ends, and notes in ~/.poteto/state while it runs.\n" +
-		"Read playbooks/ship.md before shipping. Proof is still in ~/.reef-verify/<id> every time.\n"
+		"Proof goes in .reef-verify/<id> when a run ends, and notes in .poteto/state while it runs.\n" +
+		"Read playbooks/ship.md before shipping. Proof is still in .reef-verify/<id> every time.\n"
 	_checkScript = "#!/bin/sh\necho check-ok\n"
 )
 
 var (
 	_potetoScripts   = []string{"build", "check", "cleanup", "lint", "report", "snapshot", "status", "sync", "test", "verify"}
 	_potetoPlaybooks = []string{"audit", "debug", "design", "explore", "fix", "improve", "interrogate", "plan", "review", "ship", "verify"}
-	// _potetoHomePaths are the `~/` paths left in SKILL.md once the skill's own folder is rewritten.
-	_potetoHomePaths = []string{"~/.reef-verify/<id>", "~/.poteto/state"}
 )
 
 type (
@@ -77,9 +76,14 @@ func potetoFixture() []fixtureFile {
 	return append(files, fixtureFile{path: "references/improve-report.md", content: "# Improve report\nHow to write one.\n"})
 }
 
-// potetoPlaced is SKILL.md as Reef stores it: its own folder's `~/` prefix removed.
+// stored is text as Reef stores it: the skill's own folder as the placement token.
+func stored(text string) string {
+	return strings.ReplaceAll(text, _potetoHome, _skillDir)
+}
+
+// potetoPlaced is SKILL.md as Reef stores it.
 func potetoPlaced() string {
-	return strings.ReplaceAll(_potetoMD, _potetoHome, "")
+	return stored(_potetoMD)
 }
 
 func writeFixture(t *testing.T, root string, files []fixtureFile) {
@@ -97,12 +101,13 @@ func writeFixture(t *testing.T, root string, files []fixtureFile) {
 	}
 }
 
-// libraryFiles is what the library should hold of a fixture: everything but SKILL.md, by path.
+// libraryFiles is what the library should hold of a fixture: everything but SKILL.md, by path,
+// with the skill's own folder as the placement token.
 func libraryFiles(files []fixtureFile) []skillFile {
 	var out []skillFile
 	for _, f := range files {
 		if f.path != "SKILL.md" {
-			out = append(out, skillFile{Path: f.path, Content: f.content, Executable: f.exec})
+			out = append(out, skillFile{Path: f.path, Content: stored(f.content), Executable: f.exec})
 		}
 	}
 	slices.SortFunc(out, func(a, b skillFile) int { return strings.Compare(a.Path, b.Path) })
@@ -184,23 +189,30 @@ func seedPotetoBot(t *testing.T, s *server, p string, files []skillFile) (platfo
 	return b, skill
 }
 
-// skillInventories is every skill listing the fake logged, in order: each run's discovery, and
-// a held run's second look once released.
+// skillInventories is every skill listing the fake logged for a session, in order: each run's
+// discovery, and a held run's second look once released. A title session's listing is not one.
 func skillInventories(t *testing.T, m *machine, p string) [][]fake.SkillCopy {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(m.bin, p+".log.skills"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	pids := map[int]bool{}
+	for _, c := range m.sessions(t, p) {
+		pids[c.pid] = true
+	}
 	var all [][]fake.SkillCopy
 	for line := range strings.Lines(string(data)) {
 		var entry struct {
+			PID    int              `json:"pid"`
 			Skills []fake.SkillCopy `json:"skills"`
 		}
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			t.Fatal(err)
 		}
-		all = append(all, entry.Skills)
+		if pids[entry.PID] {
+			all = append(all, entry.Skills)
+		}
 	}
 	return all
 }
@@ -227,17 +239,18 @@ func placedDir(m *machine, p, runID string) string {
 	return filepath.Join(dir, "poteto-mode")
 }
 
-// checkPlaced compares a placed folder with SKILL.md and files: every file is there with its
-// bytes, scripts marked executable 0555 and the rest, SKILL.md included, 0444.
-func checkPlaced(t *testing.T, got []fake.SkillFile, files []skillFile) {
+// checkPlaced compares a placed folder at dir with SKILL.md and files: every file is there with its
+// bytes, the placement token replaced by dir, scripts marked executable 0555 and the rest,
+// SKILL.md included, 0444.
+func checkPlaced(t *testing.T, got []fake.SkillFile, dir string, files []skillFile) {
 	t.Helper()
-	want := []fake.SkillFile{{Path: "SKILL.md", Mode: 0o444, Text: potetoPlaced()}}
+	want := []fake.SkillFile{{Path: "SKILL.md", Mode: 0o444, Text: strings.ReplaceAll(potetoPlaced(), _skillDir, dir)}}
 	for _, f := range files {
 		mode := uint32(0o444)
 		if f.Executable {
 			mode = 0o555
 		}
-		want = append(want, fake.SkillFile{Path: f.Path, Mode: mode, Text: f.Content})
+		want = append(want, fake.SkillFile{Path: f.Path, Mode: mode, Text: strings.ReplaceAll(f.Content, _skillDir, dir)})
 	}
 	got = slices.Clone(got)
 	for _, list := range [][]fake.SkillFile{got, want} {
@@ -296,6 +309,7 @@ func waitReady(t *testing.T, m *machine, s *server, p, runID string) string {
 // TestSkillFilesFixtures_ProviderScenarios drives the two new scenarios of both fakes with no
 // product: a folder placed by hand, and an MCP endpoint that answers import_skill.
 func TestSkillFilesFixtures_ProviderScenarios(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p+"/run", func(t *testing.T) {
 			for _, prompt := range []string{"Run the poteto-mode script scripts/check.", "Wait, then run the poteto-mode script scripts/check."} {

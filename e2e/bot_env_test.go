@@ -71,9 +71,11 @@ func (s *server) botIn(t *testing.T, provider, mode string) bot {
 }
 
 func TestBotEnv_NoSecretServiceInAnyMode(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		for _, mode := range _modes {
 			t.Run(p+"/"+mode, func(t *testing.T) {
+				t.Parallel()
 				m := newMachine(t, p)
 				m.signIn(t, p)
 				xdg := map[string]string{
@@ -107,9 +109,11 @@ func TestBotEnv_NoSecretServiceInAnyMode(t *testing.T) {
 }
 
 func TestBotEnv_NoSecretServiceOnARepoThread(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		for _, mode := range _modes {
 			t.Run(p+"/"+mode, func(t *testing.T) {
+				t.Parallel()
 				f := newRepoFixture(t, p)
 				th := f.thread(t, f.s.botIn(t, p, mode))
 				ev := f.s.events(t, th)
@@ -125,6 +129,7 @@ func TestBotEnv_NoSecretServiceOnARepoThread(t *testing.T) {
 }
 
 func TestBotEnv_NoSecretServiceForChiefAndHelpers(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m := newMachine(t, p)
@@ -146,6 +151,7 @@ func TestBotEnv_NoSecretServiceForChiefAndHelpers(t *testing.T) {
 }
 
 func TestBotEnv_ToolsRunWithoutSecretService(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m := newLoginsMachine(t, p, false)
@@ -164,6 +170,7 @@ func TestBotEnv_ToolsRunWithoutSecretService(t *testing.T) {
 }
 
 func TestBotEnv_ReefStillReadsItsGitHubToken(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newGitHubFixture(t, p)
@@ -184,6 +191,7 @@ func TestBotEnv_ReefStillReadsItsGitHubToken(t *testing.T) {
 }
 
 func TestBotEnv_ReefStillReadsItsGitLabToken(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newRepoFixture(t, p)

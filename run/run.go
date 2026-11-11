@@ -155,6 +155,7 @@ type (
 		calls    map[string]chan struct{} // closed once the tool call with that id is published
 		tool     ToolCall
 		shown    []string // memory ids the run's memory tools returned
+		kind     string   // of the wake the run answers; empty for a message
 	}
 
 	// Event is one event on a thread's stream. Data is one of the types below. ThreadID is the
@@ -247,7 +248,7 @@ func (m *Manager) Send(
 func (m *Manager) send(ctx context.Context, it store.InboxItem) (store.Message, store.Run, error) {
 	threadID, text := it.ThreadID, it.Text
 	runCtx, cancel := context.WithCancel(m.ctx)
-	a := &active{threadID: threadID, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
+	a := &active{threadID: threadID, kind: it.Kind, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		cancel()
@@ -697,6 +698,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		return "", fmt.Errorf("launch %s: %w", bot.Provider, err)
 	}
 	skillDir := filepath.Join(cfg.Dir, "runs", a.run.ID)
+	if !skill.Safe(skillDir) {
+		skillDir = safeSkillDir(a.run.ID)
+	}
 	defer func() {
 		if err := os.RemoveAll(skillDir); err != nil {
 			m.cfg.Log.Warn("remove skill dir", "run_id", a.run.ID, "error", err)
@@ -714,9 +718,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		}
 		rp.Host = RepoHost(a.ctx, rp.Path)
 	}
-	if cfg.Cwd, err = m.workdir(thread, rp); err != nil {
+	cwd, stale, err := m.workdir(thread, rp)
+	if err != nil {
 		return "", err
 	}
+	cfg.Cwd = cwd
 	user, err := m.cfg.Store.Setting(a.ctx, "user_name")
 	if err != nil {
 		return "", fmt.Errorf("load user name: %w", err)
@@ -724,6 +730,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	cfg.Model = bot.Model
 	cfg.Mode = bot.Mode
 	cfg.NoShell = bot.ID == "chief" && bot.Provider == "claude"
+	if bot.Provider == "claude" && !cfg.NoShell {
+		if cfg.HiddenPaths, err = m.hiddenPaths(a.ctx, bot); err != nil {
+			return "", err
+		}
+	}
 	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
 		if cfg.WritableRoots, err = m.codexAutoRoots(a.ctx, thread, rp); err != nil {
 			return "", err
@@ -776,7 +787,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			return "", fmt.Errorf("select memory: %w", err)
 		}
 	}
-	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
+	var behind string
+	if rp.ID != "" && thread.Session == "" && thread.Worktree == "" {
+		behind = repo.BehindNote(a.ctx, rp.Path)
+	}
+	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd, behind, stale, a.kind)
 	var githubToken string
 	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {
@@ -1328,4 +1343,14 @@ func shortMemory(body string) string {
 		return string(runes[:80]) + "…"
 	}
 	return string(runes)
+}
+
+// safeSkillDir is a run's skill folder under the temp folder, for a data dir whose path a shell
+// would split or expand (macOS `Application Support`): skill scripts write the placed path unquoted.
+func safeSkillDir(runID string) string {
+	root := os.TempDir()
+	if !skill.Safe(root) {
+		root = "/tmp"
+	}
+	return filepath.Join(root, "atoll-run-"+runID)
 }
