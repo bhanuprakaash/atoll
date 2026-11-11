@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"unicode"
 
 	"atoll/memory"
 	"atoll/provider"
@@ -168,6 +169,15 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		var rep store.Report
 		if err := json.Unmarshal(call.Arguments, &rep); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
+		}
+		if strings.TrimSpace(rep.Done) == "" {
+			return failure("done is required."), nil
+		}
+		blocked := strings.TrimSpace(rep.Blocked)
+		blocked = strings.TrimSpace(strings.TrimRightFunc(blocked, unicode.IsPunct))
+		switch strings.ToLower(blocked) {
+		case "nothing blocking", "none", "nothing", "n/a":
+			rep.Blocked = ""
 		}
 		if err := a.runs.Report(r.Context(), token, rep); err != nil {
 			return nil, a.toolError(err)
