@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -252,12 +253,12 @@ func TestWake_BusyThreadsDeliverLater(t *testing.T) {
 			holdsAll(t, "second message from Tester", msg.Text, helper, _reportReply)
 
 			first, second := "Yes, update it. "+_reportPrompt, "Then tag a release. "+_reportPrompt
-			useAtoll(t, s, boss, ev, continueCall(helper, first))
-			going := asking(t, s, helper)
-			lines := useAtoll(t, s, boss, ev, continueCall(helper, second))
-			if len(lines) != 1 || lines[0] == "atoll/continue: unavailable" {
-				t.Fatalf("continue while the helper's run goes: reply %q, want it accepted", lines)
+			// Both in one boss run: a message to the boss while the helper's approval is open would answer it.
+			lines := useAtoll(t, s, boss, ev, continueCall(helper, first), continueCall(helper, second))
+			if len(lines) != 2 || slices.Contains(lines, "atoll/continue: unavailable") {
+				t.Fatalf("two continues in a row: replies %q, want both accepted", lines)
 			}
+			going := asking(t, s, helper)
 			time.Sleep(4 * _pace)
 			if th := s.thread(t, helper); th.RunID != going.RunID || th.RunStatus != "waiting" {
 				t.Errorf("helper's latest run %s is %q after a second continue, want %s still waiting", th.RunID, th.RunStatus, going.RunID)
