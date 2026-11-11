@@ -228,7 +228,8 @@ after a failed undo counts a Bot that is already gone as removed.
   transaction and removed with it (`ON DELETE CASCADE`, so deleting a Bot removes them). A message
   lists `attachments: [{id, mime}]`, never the bytes; `GET /api/attachments/{id}` returns them with
   the stored `Content-Type`, `404` if unknown. *SQLite keeps one file to back up and no path to
-  guard; the 5 MB cap bounds the size.*
+  guard; the 5 MB cap bounds the size.* A queued message's images wait in `inbox_images`, served by
+  the same route, and move to `attachments` with the same ids when it is delivered.
 - The run hands the images to the provider with the prompt of the turn that delivers the message;
   the finish_run nudge sends none. Claude gets stream-json content blocks: the text block first
   (when there is text), then one `{"type":"image","source":{"type":"base64",...}}` per image. Codex

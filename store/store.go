@@ -34,6 +34,10 @@ var (
 	ErrInUse = errors.New("in use")
 	// ErrPinLimit is returned when a Bot already has the most pinned threads.
 	ErrPinLimit = errors.New("3 threads of this Bot are pinned")
+	// ErrSent is returned when a queued message has already been delivered.
+	ErrSent = errors.New("already sent")
+	// ErrEmpty is returned when a message would have neither text nor an image.
+	ErrEmpty = errors.New("text or an image is required")
 )
 
 //go:embed migrations/*.sql
@@ -178,6 +182,8 @@ type (
 		RunID     string    `json:"run_id"`
 		FromBotID string    `json:"from_bot_id,omitempty"`
 		CreatedAt time.Time `json:"created_at"`
+		// Queued is set on a message that waits for the thread's run to end.
+		Queued bool `json:"queued,omitempty"`
 		// Attachments are the message's images. Data is set only on a message just stored.
 		Attachments []Attachment `json:"attachments"`
 	}
@@ -189,12 +195,16 @@ type (
 		Data []byte `json:"-"`
 	}
 
-	// InboxItem is a held message. Images ride along only when the item is sent straight away.
+	// InboxItem is a held message. Queued ones are listed in the thread's queue: a person's
+	// (FromUser) and a boss's continue.
 	InboxItem struct {
 		ID        string
 		ThreadID  string
 		FromBotID string
 		Text      string
+		Queued    bool
+		FromUser  bool
+		CreatedAt time.Time
 		Images    []Attachment
 	}
 
@@ -869,20 +879,26 @@ func (s *Store) SetSession(ctx context.Context, threadID, session, provider stri
 	return found(res, "thread", threadID)
 }
 
-// StartRunFrom stores the message and a running run, removing the inbox item when it has an ID,
-// in one transaction.
-func (s *Store) StartRunFrom(ctx context.Context, it InboxItem) (Message, Run, error) {
-	return s.startRun(ctx, it.ThreadID, it.FromBotID, it.Text, it.ID, it.Images)
-}
-
-func (s *Store) startRun(
-	ctx context.Context, threadID, fromBotID, text, inboxID string, images []Attachment,
-) (Message, Run, error) {
+// StartRunFrom stores the items as messages of one running run, removing each held item that has
+// an ID, in one transaction. A held item's message keeps its ID and its images. It returns the
+// first message.
+func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) (Message, Run, error) {
+	threadID := items[0].ThreadID
 	r := Run{ID: newID(), ThreadID: threadID, Status: StatusRunning, StartedAt: time.Now().UTC(), Tools: map[string]int{}}
-	m := Message{ID: newID(), ThreadID: threadID, Role: RoleUser, Text: text, RunID: r.ID, FromBotID: fromBotID}
-	m.Attachments = []Attachment{}
-	for _, img := range images {
-		m.Attachments = append(m.Attachments, Attachment{ID: newID(), Mime: img.Mime, Data: img.Data})
+	msgs := make([]Message, len(items))
+	for i, it := range items {
+		id := it.ID
+		if id == "" {
+			id = newID()
+		}
+		msgs[i] = Message{ID: id, ThreadID: threadID, Role: RoleUser, Text: it.Text, RunID: r.ID,
+			FromBotID: it.FromBotID, Attachments: []Attachment{}}
+		for _, img := range it.Images {
+			if img.ID == "" {
+				img.ID = newID()
+			}
+			msgs[i].Attachments = append(msgs[i].Attachments, img)
+		}
 	}
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx,
@@ -896,34 +912,30 @@ func (s *Store) startRun(
 		}
 		if _, err := tx.ExecContext(ctx,
 			"UPDATE threads SET last_activity = ?, title = CASE WHEN title = '' THEN ? ELSE title END WHERE id = ?",
-			time.Now().UTC().UnixMicro(), FirstWords(text), threadID); err != nil {
+			time.Now().UTC().UnixMicro(), FirstWords(items[0].Text), threadID); err != nil {
 			return err
 		}
-		if inboxID != "" {
-			if _, err := tx.ExecContext(ctx, "DELETE FROM inbox WHERE id = ?", inboxID); err != nil {
-				return fmt.Errorf("delete inbox item: %w", err)
+		for i, it := range items {
+			if it.ID != "" {
+				if _, err := tx.ExecContext(ctx, "DELETE FROM inbox WHERE id = ?", it.ID); err != nil {
+					return fmt.Errorf("delete inbox item: %w", err)
+				}
+			}
+			if err := insertMessage(ctx, tx, msgs[i]); err != nil {
+				return err
 			}
 		}
-		return insertMessage(ctx, tx, m)
+		return nil
 	})
 	if err != nil {
 		return Message{}, Run{}, err
 	}
-	return m, r, nil
-}
-
-// Enqueue holds text for the thread until a run can start.
-func (s *Store) Enqueue(ctx context.Context, threadID, fromBotID, text string) error {
-	return insertInbox(ctx, s.db, threadID, fromBotID, text)
+	return msgs[0], r, nil
 }
 
 // OldestInbox returns the oldest held message; ok is false when none.
 func (s *Store) OldestInbox(ctx context.Context, threadID string) (it InboxItem, ok bool, err error) {
-	items, err := query(ctx, s.db,
-		"SELECT id, thread_id, from_bot_id, text FROM inbox WHERE thread_id = ? ORDER BY rowid LIMIT 1",
-		func(r *sql.Rows) (it InboxItem, err error) {
-			return it, r.Scan(&it.ID, &it.ThreadID, &it.FromBotID, &it.Text)
-		}, threadID)
+	items, err := s.inbox(ctx, "WHERE thread_id = ? ORDER BY rowid LIMIT 1", threadID)
 	if err != nil || len(items) == 0 {
 		return InboxItem{}, false, err
 	}
@@ -1212,7 +1224,9 @@ func (s *Store) messages(ctx context.Context, querySQL string, args ...any) ([]M
 // Attachment returns the image with id. It wraps ErrNotFound for an unknown id.
 func (s *Store) Attachment(ctx context.Context, id string) (Attachment, error) {
 	a := Attachment{ID: id}
-	err := s.db.QueryRowContext(ctx, "SELECT mime, data FROM attachments WHERE id = ?", id).
+	err := s.db.QueryRowContext(ctx,
+		`SELECT mime, data FROM attachments WHERE id = ?
+		 UNION ALL SELECT mime, data FROM inbox_images WHERE id = ?`, id, id).
 		Scan(&a.Mime, &a.Data)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Attachment{}, fmt.Errorf("attachment %s: %w", id, ErrNotFound)
