@@ -1299,6 +1299,14 @@ Voice
 - New thread: `+` on Bot row hover, the Bot's right-click menu (New thread, Pin to sidebar, Move
   to group, Bot settings), or `⌘N` for the open Bot. A thread row shows `×` on hover (Close thread,
   saving unfinished work as before); right-click has Rename and Close.
+- A missing Bot or thread: a URL that names a Bot or thread that does not exist (deleted,
+  mistyped) shows one calm line in the main area, answer first, and one link, with the sidebar as
+  always. A missing Bot reads `This Bot is gone` with `Go home` (to `/`); a thread under a missing
+  Bot reads the same. A missing thread of a Bot that exists reads `This thread is gone` with
+  `Open the newest thread` (the Bot's newest open thread, or New thread when it has none). The
+  address stays as typed (no redirect), no other Bot's or thread's content shows, and
+  `Reconnecting` is for a lost server only, never for a `404`. *A blank page, or a stuck
+  Reconnecting under another Bot's greeting, tells the person nothing and gives no way on.*
 - Threads popup (from `N more`): a dialog with the Bot's creature and name, "N open threads · N
   closed", New thread and close; a search over title, branch and MR (`!7`); the rows the tree shows
   ("In the sidebar"), Other open threads, and Closed folded. Row hover has Pin to sidebar or Unpin
