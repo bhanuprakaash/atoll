@@ -1257,7 +1257,8 @@ Voice
   open page reconnect to a restarted sidecar.*
 - The dmg is ad-hoc signed (`signingIdentity: "-"`), not notarized, as old Reef was: free, and a
   web download opens after System Settings → Privacy & Security → Open Anyway once. CI's `dmg` job
-  builds it on a GitHub macOS runner for every push to `main` and every `v*` tag. *Developer ID and
+  builds it on a GitHub macOS runner for every push to `main`, and on a `v*` tag runs
+  `scripts/release`, which publishes the release with the dmg. *Developer ID and
   notarization need the paid Apple Developer Program; add them when outside users need a clean
   first open.*
 - Reef updates itself from GitHub Releases through the Tauri updater: the shell's `check_update`
@@ -1266,11 +1267,13 @@ Voice
   only; a newer version shows as Update available on the sidebar's Settings link and in Settings >
   General > Software update, whose Update and restart installs it. `install_update` downloads and
   verifies the update, stops the sidecar as quit does, then restarts, so the new app finds port
-  4317 free. `scripts/release <version>` builds, signs with the key in `~/.tauri/reef.key`, and
-  publishes `Reef.app.tar.gz`, its `.sig` and `latest.json` as release `v<version>`; the app reads
-  `releases/latest/download/latest.json`. The version lives in `tauri.conf.json` only. *Only the
-  shell can replace the running app, so the web calls it for these two commands and nothing else;
-  a CI release workflow and a progress bar can come later.*
+  4317 free. Pushing tag `v<version>` releases: CI runs `scripts/release <version>`, which stamps
+  the version into `tauri.conf.json` for the build only, signs with the `TAURI_SIGNING_PRIVATE_KEY`
+  secret (locally, the key in `~/.tauri/reef.key`), and publishes `Reef.app.tar.gz`, its `.sig`,
+  `latest.json` and the dmg as release `v<version>`; the app reads
+  `releases/latest/download/latest.json`. The tag is the version; the committed one is not bumped.
+  *Only the shell can replace the running app, so the web calls it for these two commands and
+  nothing else; a progress bar can come later.*
 - Provider sign-in state is cached: checked on start, before each run, on Refresh and when a
   sign-in finishes, never on the sidebar's poll.
 - A run that fails because its provider refused the sign-in (Claude `authentication_failed`, Codex

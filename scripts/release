@@ -17,6 +17,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 export TAURI_SIGNING_PRIVATE_KEY=${TAURI_SIGNING_PRIVATE_KEY:-$(cat ~/.tauri/reef.key)}
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${TAURI_SIGNING_PRIVATE_KEY_PASSWORD-}
 make app
+git checkout -- "$conf"
 
 jq -n \
 	--arg version "$version" \
@@ -27,6 +28,7 @@ jq -n \
 	  platforms: {"darwin-aarch64": {signature: $signature, url: $url}}}' >"$bundle/latest.json"
 
 gh release create "v$version" --repo "$repo" --title "Reef $version" --notes "Reef $version" \
-	"$bundle/Reef.app.tar.gz" "$bundle/Reef.app.tar.gz.sig" "$bundle/latest.json"
+	"$bundle/Reef.app.tar.gz" "$bundle/Reef.app.tar.gz.sig" "$bundle/latest.json" \
+	"desktop/src-tauri/target/release/bundle/dmg/Reef_${version}_aarch64.dmg"
 
-echo "Published v$version. $conf now says $version: commit it."
+echo "Published v$version."
