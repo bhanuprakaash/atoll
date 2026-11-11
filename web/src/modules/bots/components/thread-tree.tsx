@@ -8,7 +8,7 @@ import { threadTree } from '@/modules/bots/utils/thread-tree';
 const marker = (t: SidebarThread) =>
   t.state ? t.state.replace('_', '-') : t.pinned ? 'pinned' : undefined;
 
-const rowStyle = 'flex h-8 items-center gap-2.5 rounded-lg px-2 text-[13px]';
+const rowStyle = 'flex h-8 items-center gap-2.5 rounded-lg px-2 text-sm';
 
 function Dot({ className = '' }: { className?: string }) {
   return <span aria-hidden="true" className={`size-1.5 flex-none rounded-full ${className}`} />;
@@ -139,7 +139,7 @@ export function ThreadTree({
     <>
       <ul
         aria-label={`${bot.name} threads`}
-        className={`relative mb-1.5 pr-1 pl-10.5 before:absolute before:top-0 before:bottom-4 before:left-[27.25px] before:w-2.5 before:rounded-bl-[9px] before:border-b-[1.5px] before:border-l-[1.5px] before:border-composer-line ${selected ? 'mt-1' : ''}`}
+        className={`relative mb-1.5 flex flex-col gap-0.5 pr-1 pl-10.5 before:absolute before:top-0 before:bottom-4 before:left-[27.25px] before:w-2.5 before:rounded-bl-[9px] before:border-b-[1.5px] before:border-l-[1.5px] before:border-composer-line ${selected ? 'mt-1' : ''}`}
       >
         {rows.map((thread) => (
           <li
@@ -164,7 +164,7 @@ export function ThreadTree({
                 <NavLink
                   to={`/bots/${bot.id}/threads/${thread.id}`}
                   className={({ isActive }) =>
-                    `${rowStyle} ${isActive ? 'bg-selected' : 'hover:bg-field'}`
+                    `${rowStyle} ${thread.helper ? '' : 'group-hover:pr-9'} ${isActive ? 'bg-selected' : 'hover:bg-field'}`
                   }
                 >
                   <span
@@ -207,7 +207,7 @@ export function ThreadTree({
               onClick={() =>
                 more.kind === 'more' ? onMore(bot.id) : onUnfold(more.kind === 'running')
               }
-              className={`${rowStyle} w-full text-left text-[12.5px] text-label hover:bg-field`}
+              className={`${rowStyle} w-full text-left text-[13px] text-label hover:bg-field`}
             >
               <span className="min-w-0 flex-1 truncate">
                 {more.kind === 'less' ? 'Show less' : `${more.count} more`}
