@@ -12,6 +12,7 @@ import (
 var _credentials = map[string]string{"claude": ".credentials.json", "codex": "auth.json"}
 
 func TestSignIn_RefusedStaysSignedOutUntilRefresh(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)

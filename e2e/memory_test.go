@@ -103,6 +103,7 @@ func lastPrompt(t *testing.T, m *machine, p, kind string) string {
 }
 
 func TestMemory_CrossThreadRecall(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f, b := memorySetup(t, p)
@@ -191,6 +192,7 @@ func golden(t *testing.T, name, got string) {
 }
 
 func TestMemory_PromptGoldenAndBudget(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f, b := memorySetup(t, p)
@@ -215,6 +217,7 @@ func TestMemory_PromptGoldenAndBudget(t *testing.T) {
 }
 
 func TestMemory_ResumeOnlyUnseen(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f, b := memorySetup(t, p)
@@ -250,6 +253,7 @@ func TestMemory_ResumeOnlyUnseen(t *testing.T) {
 }
 
 func TestMemory_RetireKeepsHistory(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			for _, via := range []string{"mcp", "rest"} {
@@ -289,6 +293,7 @@ func TestMemory_RetireKeepsHistory(t *testing.T) {
 }
 
 func TestMemory_SelectionAndBudget(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f, b := memorySetup(t, p)

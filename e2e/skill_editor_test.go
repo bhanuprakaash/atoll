@@ -20,6 +20,7 @@ func reimport(t *testing.T, s *server, id string, replace bool) importResult {
 }
 
 func TestSkillEditor_ReimportEndpoint(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -116,6 +117,7 @@ func TestSkillEditor_ReimportEndpoint(t *testing.T) {
 }
 
 func TestSkillEditor_ReimportReportsSkipped(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	root := filepath.Join(m.home, ".claude", "skills", "reef-snaps")
 	writeFixture(t, root, []fixtureFile{
@@ -132,6 +134,7 @@ func TestSkillEditor_ReimportReportsSkipped(t *testing.T) {
 }
 
 func TestSkillEditor_ReimportRefusals(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	var skill fileSkill
 	s.do(t, "POST", "/api/skills", map[string]any{"name": "poteto-mode", "content": potetoPlaced(), "files": libraryFiles(potetoFixture())}, &skill, 201)
@@ -148,6 +151,7 @@ func TestSkillEditor_ReimportRefusals(t *testing.T) {
 
 // A script the editor adds is placed executable and runs.
 func TestSkillEditor_BotRunsAddedScript(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)

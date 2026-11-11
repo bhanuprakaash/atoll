@@ -18,6 +18,7 @@ func repoBlock(message, repoID string) bool {
 }
 
 func TestRepo_LostAccessRunsWithoutRepo(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newRepoFixture(t, p)

@@ -183,6 +183,7 @@ func ownerSetupMachine(t *testing.T) *machine {
 }
 
 func TestClaudeIsolation_EveryModeFreshAndResumed(t *testing.T) {
+	t.Parallel()
 	m := ownerSetupMachine(t)
 	s := m.serve(t)
 	for _, mode := range _modes {
@@ -207,6 +208,7 @@ func TestClaudeIsolation_EveryModeFreshAndResumed(t *testing.T) {
 }
 
 func TestClaudeIsolation_RepoWorktreeWithGlobAndSpace(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "claude")
 	connection, _ := f.connect(t)
 	base := t.TempDir()
@@ -246,6 +248,7 @@ func TestClaudeIsolation_RepoWorktreeWithGlobAndSpace(t *testing.T) {
 }
 
 func TestClaudeIsolation_ShellPrefixScript(t *testing.T) {
+	t.Parallel()
 	m := ownerSetupMachine(t)
 	s := m.serve(t)
 	prefix := filepath.Join(m.data, "bin", "claude-shell-prefix")
@@ -311,6 +314,7 @@ func readScript(t *testing.T, path string) string {
 }
 
 func TestClaudeIsolation_ShellPrefixSurvivesStaleTemp(t *testing.T) {
+	t.Parallel()
 	m := ownerSetupMachine(t)
 	bin := filepath.Join(m.data, "bin")
 	stale := filepath.Join(bin, ".claude-shell-prefix.tmp")
@@ -335,6 +339,7 @@ func TestClaudeIsolation_ShellPrefixSurvivesStaleTemp(t *testing.T) {
 }
 
 func TestClaudeIsolation_ShellPrefixReplacedWholeOnRestart(t *testing.T) {
+	t.Parallel()
 	m := ownerSetupMachine(t)
 	prefix := filepath.Join(m.data, "bin", "claude-shell-prefix")
 	const old = "#!/bin/bash\n# an older script\nexec bash -c \"$*\""
@@ -374,6 +379,7 @@ func TestClaudeIsolation_ShellPrefixReplacedWholeOnRestart(t *testing.T) {
 }
 
 func TestClaudeIsolation_ShellPrefixIsAbsoluteForRelativeDataDir(t *testing.T) {
+	t.Parallel()
 	m := ownerSetupMachine(t)
 	// The server starts in a new temp folder next to the data dir's parent, so this reaches m.data.
 	rel := filepath.Join("..", filepath.Base(filepath.Dir(filepath.Dir(m.data))), "Application Support", "Atoll")
@@ -393,6 +399,7 @@ func TestClaudeIsolation_ShellPrefixIsAbsoluteForRelativeDataDir(t *testing.T) {
 }
 
 func TestClaudeIsolation_ToolsByKindOfRun(t *testing.T) {
+	t.Parallel()
 	m := ownerSetupMachine(t)
 	s := m.serve(t)
 	var keeper bot
@@ -430,6 +437,7 @@ func TestClaudeIsolation_ToolsByKindOfRun(t *testing.T) {
 }
 
 func TestClaudeIsolation_ModelDiscoveryHasTheAllowlist(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	var providers []map[string]any
 	s.do(t, "POST", "/api/providers/refresh", nil, &providers, http.StatusOK)

@@ -213,6 +213,7 @@ func isTurn(line string) bool {
 }
 
 func TestProviderStatus_ListsBoth(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t, "claude", "codex")
 	m.signIn(t, "claude")
 	// The user's own Codex is signed in; Atoll's Codex folder is not.
@@ -228,6 +229,7 @@ func TestProviderStatus_ListsBoth(t *testing.T) {
 }
 
 func TestProviderStatus_NotInstalled(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t, "claude")
 	// A codex on PATH and in an install folder, but not on ATOLL_PROVIDER_PATH, is not found.
 	other := t.TempDir()
@@ -245,6 +247,7 @@ func TestProviderStatus_NotInstalled(t *testing.T) {
 }
 
 func TestProviderRun_ClaudeIsolated(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t, "claude")
 	m.signIn(t, "claude")
 
@@ -267,6 +270,7 @@ func TestProviderRun_ClaudeIsolated(t *testing.T) {
 }
 
 func TestProviderRun_ClaudeResumes(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t, "claude")
 	m.signIn(t, "claude")
 
@@ -290,6 +294,7 @@ func TestProviderRun_ClaudeResumes(t *testing.T) {
 }
 
 func TestProviderRun_CodexIsolated(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t, "codex")
 	m.signIn(t, "codex")
 
@@ -309,6 +314,7 @@ func TestProviderRun_CodexIsolated(t *testing.T) {
 }
 
 func TestProviderRun_CodexResumes(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t, "codex")
 	m.signIn(t, "codex")
 

@@ -59,6 +59,7 @@ func chiefVoice(t *testing.T, s *server, p string) (string, []string) {
 }
 
 func TestPrompt_ChiefPlatformBlock(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -88,6 +89,7 @@ func TestPrompt_ChiefPlatformBlock(t *testing.T) {
 }
 
 func TestPrompt_NoSwitchNoPlatformTextNoVoice(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)

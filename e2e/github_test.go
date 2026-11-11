@@ -15,6 +15,7 @@ import (
 // Contract: github-connection-contract.md.
 
 func TestGitHub_ConnectKeepsTheTokenInTheSecretStore(t *testing.T) {
+	t.Parallel()
 	f := newGitHubFixture(t, "claude")
 	var start struct {
 		ID              string `json:"id"`
@@ -95,6 +96,7 @@ func TestGitHub_ConnectKeepsTheTokenInTheSecretStore(t *testing.T) {
 // later poll sooner than that gets slow_down again. Polled as the UI does, at the advertised
 // interval, the sign-in still connects, and no poll after the slow_down is early.
 func TestGitHub_SignInConnectsAfterSlowDown(t *testing.T) {
+	t.Parallel()
 	f := newGitHubFixture(t, "claude")
 	var start struct {
 		ID string `json:"id"`
@@ -124,6 +126,7 @@ func TestGitHub_SignInConnectsAfterSlowDown(t *testing.T) {
 }
 
 func TestGitHub_RunGetsTheConnection(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newGitHubFixture(t, p)
@@ -215,6 +218,7 @@ func TestGitHub_RunGetsTheConnection(t *testing.T) {
 }
 
 func TestGitHub_BotWithoutTheConnectionGetsNothing(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newGitHubFixture(t, p)
@@ -263,6 +267,7 @@ func TestGitHub_BotWithoutTheConnectionGetsNothing(t *testing.T) {
 }
 
 func TestGitHub_RejectedTokenNeedsSignIn(t *testing.T) {
+	t.Parallel()
 	f := newGitHubFixture(t, "claude")
 	id := f.connect(t)
 	first := f.gh.currentToken()
@@ -327,6 +332,7 @@ func TestGitHub_RejectedTokenNeedsSignIn(t *testing.T) {
 }
 
 func TestGitHub_ChiefHandlesTheConnection(t *testing.T) {
+	t.Parallel()
 	f := newGitHubFixture(t, "claude")
 	id := f.connect(t)
 
@@ -377,6 +383,7 @@ func TestGitHub_ChiefHandlesTheConnection(t *testing.T) {
 // GitHub work without the product: the fake provider is started by hand with the env and MCP
 // config the contract describes for a run of a Bot with GitHub.
 func TestGitHubFixtures_ProviderScenario(t *testing.T) {
+	t.Parallel()
 	for _, provider := range _providers {
 		t.Run(provider, func(t *testing.T) {
 			m := newMachine(t, provider, "gh")
