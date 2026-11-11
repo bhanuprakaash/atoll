@@ -197,6 +197,105 @@ after a failed undo counts a Bot that is already gone as removed.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
   into a pane the user can take over (v2).
 
+### Long threads: bounded provider context (spike #194)
+
+A boss thread resumes one provider session for hours and nothing trims it. Measured on the real
+round-2 boss thread (Claude Sonnet 5.5, 4.3 h, 213 wakes, the session transcript read-only). The
+prices are the ones the run's own cost totals fit: input $2, cache read $0.10, cache write $4,
+output $10 per million tokens; they reproduce the session's $30.22 to the cent.
+
+- 695 API calls, 3.3 per wake. Context grew from 34k to 659k tokens, +2.9k per wake, and was never
+  compacted: the model's window is 1M, so Claude Code's auto-compact never fired.
+- Cost per wake: $0.057 (wakes 1–10), $0.139 (61–120), $0.203 (154–213). The last 60 wakes cost
+  $12.17 in 71 minutes ($10/h, $15/h over the last 10). Cache reads are 79% of the total, output
+  13%, cache writes 8%: the cost is re-reading the history, so it grows with it.
+- By transcript characters the history is 30% helper wakes (2.0 KB each), 44% the boss's own tool
+  inputs (`delegate` briefs, `continue` messages, `finish_run` reports), 12% tool results, 13% the
+  boss's text.
+- Wakes came every 1.2 minutes, so the one-hour cache stayed warm. A wake after an idle hour
+  writes the whole context again: 659k tokens is $2.6 (computed, not seen).
+
+Replay of the same 695 calls under each option. Each call keeps its own new tokens and output; the
+replay subtracts what the option would have dropped from the call's cache read. A boss that acts
+differently with less context is not modelled.
+
+| Option | Resets | Last 60 wakes | All 213 | Tokens read per wake, last 60 |
+| --- | --- | --- | --- | --- |
+| c. Nothing | 0 | $12.17 | $30.22 | 1.7M |
+| a. Fresh session every 20 wakes, 8k hand-off | 10 | $3.18 | $12.03 | 0.2M |
+| a. Fresh session at 100k context, 8k hand-off | 10 | $3.21 | $12.02 | 0.2M |
+| a. Fresh session at 150k / 200k | 5 / 3 | $3.46 / $3.93 | $13.34 / $14.82 | |
+| b. `/compact` at 100k, 3k summary, cache warm | 8 | $3.01 | $11.37 | |
+| b. `/compact` at 100k, cache cold | 8 | $3.39 | $12.92 | |
+| d. Smaller wakes, history grows 15% slower | 0 | $10.69 | $26.99 | |
+
+Rotation every 10 to 30 wakes costs the same within 10% ($3.17 to $3.35); the 8k hand-off is a
+guess, and 3k to 10k moves the last 60 wakes by $0.2. A reset costs one write of the hand-off, about
+$0.08. Smaller wakes only slow the slope: the mean wake is 0.5k of the 2.9k tokens added per wake.
+
+Compaction, run on the real 660k-token transcript with `claude` 2.1.322:
+
+- `/compact` sent as a stream-json user turn on `--resume` works in `-p`: a `compacting` status, a
+  `compact_boundary` (`trigger`, `pre_tokens`, `post_tokens`) and a `result`. It took 62 s and cost
+  $1.25, all as uncached input, because the transcript's cache was two hours old. A warm-cache cost
+  and the time at 100k are not measured.
+- Auto-compaction does run in `-p --resume`: `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=1` on a small Haiku
+  session made it fire (`trigger: auto`) before the turn. The `autoCompactWindow` setting (100k to
+  1M) is in the binary and was not run, since it needs more than 100k of context.
+- The summary was 9.4 KB (3.6k tokens). It kept the owner's rules, the in-flight PRs with their
+  commits and the stopped threads. Of the 14 ticket numbers the boss used again in its last 60 wakes
+  that were last mentioned more than 20 wakes before, it kept 10; of the 64 helper thread ids, 4.
+- A compaction turn's `result.usage` is all zero; its tokens are only in `modelUsage` and
+  `total_cost_usd`. The per-run usage of #193 would show 0 for it; the cost by difference stays
+  right.
+- Codex has `thread/compact/start` and `model_auto_compact_token_limit` (codex-cli 0.167 schema).
+  Reef calls neither. Not run: the sandbox is not signed in to Codex.
+
+What the boss loses by a reset. Of 731 references (ticket or PR numbers, helper thread ids) the
+boss made to earlier items in its last 60 wakes, 76% were last mentioned in the previous wake and
+96% within 20 wakes. The 28 older ones were 14 helper thread ids, all known to Reef, and 14 ticket
+numbers, 13 of them not a helper's MR (the queue and the plan). The owner's standing rules
+live in the owner's 34 messages: 14.9 KB, about 4k tokens, cheap to carry whole.
+
+Decision (proposed):
+
+- Rotate the session, with a hand-off Reef builds. When the last run's context passed 100k tokens,
+  the thread's next run starts a fresh session (the path of a provider change: `thread.Session` is
+  cleared and the thread says so) and its first message carries the hand-off before the wake. This
+  needs no provider feature, so it works for Claude and Codex alike. *The cost matches `/compact`;
+  the difference is control: Reef decides what survives, the summary kept 4 of 64 helper ids, and
+  a compaction stalls a run (62 s at 660k).*
+- The hand-off, newest first within a cap of about 30 KB (8k tokens): the owner's messages; the
+  boss's last `finish_run` report; one line per helper thread (id, Bot, title, state, MR, the
+  `done` line cut at 160 characters; 64 helpers are 11.6 KB); memory comes with the first message as
+  today. The boss has no tool to read a helper's earlier report; it `continue`s the helper to ask.
+- The context of a run is (input + cache read + cache write tokens) / calls of its stored usage
+  (#193), within one call's growth. The 100k limit is one constant, not a setting: the cost is flat
+  between 10 and 30 wakes.
+- Not chosen: nothing (the table), `/compact` or auto-compact as the main fix (above), smaller wakes
+  alone (13% less), a Reef tool for old helper reports (until a trial shows the boss needs it).
+
+Not measured: whether a boss with the hand-off decides as well as with the full history (the first
+follow-up runs that trial), warm-cache compaction cost, Codex on resume.
+
+Follow-ups, not filed:
+
+1. `feat: start a fresh session with a hand-off when a thread's context passes 100k`
+   - A thread whose last run's context (from the stored usage) is 100k or more starts its next run
+     on a fresh session, with the notice `Context was long; starting a fresh session.`; the
+     thread's messages and the pending wake are unchanged. Proved with scripted providers for
+     Claude and Codex.
+   - The first message holds `Hand-off:` with the owner's messages, the boss's last report and
+     the helper lines, within 30 KB; a helper over the cap drops its `done` line before its id.
+   - Real `claude`, a recorded boss thread of 60 wakes: after a reset the boss `continue`s an
+     older helper by an id from the hand-off, and the context of the next run is under 60k.
+   - Depends on #193's stored usage.
+2. `chore: let Claude compact a long thread that is not a boss thread`
+   - A Claude run sets `autoCompactWindow` in `--settings` (value from the trial); a resumed run
+     over it shows `compact_boundary` with `trigger: auto` and still ends with `finish_run`.
+   - The run's cost counts the compaction (`total_cost_usd` difference), and its zero `usage` is
+     not shown as 0 tokens.
+
 ## Attachments
 
 - A user message can carry images: `POST` of a message or a new thread takes `images: [{mime, data}]`
