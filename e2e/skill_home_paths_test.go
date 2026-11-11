@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -271,7 +271,8 @@ func TestSkillHome_RefusesOtherHomeRefs(t *testing.T) {
 func TestSkillHome_NotHomeReferences(t *testing.T) {
 	m, s := startResolved(t, "claude")
 	root := filepath.Join(m.home, ".claude", "skills", "plain")
-	text := "Docs: https://x/~/a and a~/b, 1~/c, a.~/d, a_~/e, a-~/f, ~~/g, /~/h, $HOMEWORK, $HOME_X, ${HOMEWORK}, ${HOME_X}, ~5, ~3 minutes and a~b.\n"
+	text := "Docs: https://x/~/a and a~/b, 1~/c, a.~/d, a_~/e, a-~/f, ~~/g, /~/h, $HOMEWORK, $HOME_X, ${HOMEWORK}, ${HOME_X}, ~5, ~3 minutes and a~b.\n" +
+		"Ends: a~\n1~\nx.~\na_~\na-~\n/~\n~~strike~~ done\n"
 	writeFixture(t, root, []fixtureFile{
 		{path: "SKILL.md", content: skillMD("plain", text)},
 		{path: "notes.md", content: "A URL https://x/~/a.\n"},
@@ -439,26 +440,26 @@ func TestSkillHome_SymlinkedEntryIsTheOwnFolder(t *testing.T) {
 	}
 }
 
-// shQuote is a path written for the shell: single-quoted, a quote as '\\”.
-func shQuote(path string) string {
-	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
-}
-
-// TestSkillHome_PlacedCommandsRun places a skill into a run folder and runs the command lines the
-// skill writes with the token, as the Bot would: from SKILL.md and from inside a script.
+// TestSkillHome_PlacedCommandsRun runs a Bot whose skill script calls its own folder the way the
+// owner writes it, unquoted (`bash ~/.claude/skills/x/run.sh`, `. ~/.claude/skills/x/lib.sh`), from
+// Reef's data dir under a name a shell would split or expand. The rule is the outcome, not the
+// mechanism: the placed line is made of characters a shell leaves alone, and it runs the run's copy.
 func TestSkillHome_PlacedCommandsRun(t *testing.T) {
+	const safeLine = `^bash (/[A-Za-z0-9_./:@%+=,-]+)/scripts/run\.sh$`
+	tests := []struct{ name, data string }{
+		{"plain", "Atoll"},
+		{"space", "Application Support"},
+		{"quote", "App's Support"},
+		{"dollar", "Cash$HOME x"},
+		{"meta", "a;b&c(d)*e"},
+		{"double-quote-and-backtick", "dq\"bt`x"},
+	}
 	for _, p := range _providers {
-		for _, special := range []bool{false, true} {
-			name := p + "/plain"
-			if special {
-				name = p + "/space-and-quote"
-			}
-			t.Run(name, func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(p+"/"+tt.name, func(t *testing.T) {
 				m := newMachine(t, p)
 				m.home = resolvedHome(t, m)
-				if special {
-					m.data = filepath.Join(m.data, "App's Support")
-				}
+				m.data = filepath.Join(m.data, tt.data)
 				if err := os.MkdirAll(m.data, 0o755); err != nil {
 					t.Fatal(err)
 				}
@@ -466,9 +467,9 @@ func TestSkillHome_PlacedCommandsRun(t *testing.T) {
 				s := m.serve(t)
 				root := filepath.Join(m.home, ".claude", "skills", "poteto-mode")
 				writeFixture(t, root, []fixtureFile{
-					{path: "SKILL.md", content: skillMD("poteto-mode", "CMD: sh ~/.claude/skills/poteto-mode/scripts/run.sh\n")},
-					{path: "scripts/check", content: _checkScript, exec: true},
-					{path: "scripts/run.sh", content: "#!/bin/sh\n. ~/.claude/skills/poteto-mode/lib.sh\necho run-ok-$LIBVAR\n", exec: true},
+					{path: "SKILL.md", content: skillMD("poteto-mode", "Run: bash ~/.claude/skills/poteto-mode/scripts/run.sh\n")},
+					{path: "scripts/check", content: "#!/bin/sh\nbash ~/.claude/skills/poteto-mode/scripts/run.sh\n", exec: true},
+					{path: "scripts/run.sh", content: "#!/bin/sh\n. ~/.claude/skills/poteto-mode/lib.sh\necho \"run-ok-$LIBVAR in $(cd \"$(dirname \"$0\")\" && pwd -P)\"\n", exec: true},
 					{path: "lib.sh", content: "LIBVAR=lib-ok\n"},
 				})
 				if imp := newImporter(t, s).say(t, "Import the skill folder "+root); imp.res.Status != "created" {
@@ -478,42 +479,39 @@ func TestSkillHome_PlacedCommandsRun(t *testing.T) {
 				s.do(t, "POST", "/api/bots", map[string]any{"name": "Skilled", "persona": "A guide.", "provider": p, "skills": []string{onlySkill(t, s).ID}}, &b, 201)
 				th := s.newThread(t, b.bot)
 				ch := s.events(t, th)
-				r := s.send(t, th, "Wait, then run the poteto-mode script scripts/check.")
-				ready := waitReady(t, m, s, p, r.ID)
+				r := s.send(t, th, "Run the poteto-mode script scripts/check.")
+				got := s.finished(t, ch, r.ID)
 
 				inventory := skillInventories(t, m, p)
 				placed := potetoCopy(t, inventory[len(inventory)-1])
-				dir := filepath.Dir(placed.Path)
-				quoted := dir
-				if special {
-					quoted = shQuote(dir)
-					if !strings.ContainsAny(dir, " '") {
-						t.Fatalf("run folder %s has no space or quote", dir)
+				var check string
+				for _, f := range placed.Files {
+					if f.Path == "scripts/check" {
+						check = f.Text
 					}
 				}
-				want := "CMD: sh " + quoted + "/scripts/run.sh"
-				if !slices.Contains(strings.Split(placed.Text, "\n"), want) {
-					t.Fatalf("placed SKILL.md %q has no line %q", placed.Text, want)
+				line := strings.TrimSpace(strings.TrimPrefix(check, "#!/bin/sh\n"))
+				if !regexp.MustCompile(safeLine).MatchString(line) {
+					t.Fatalf("placed script line %q (data dir %q), want bash <path made of safe characters>/scripts/run.sh", line, tt.data)
 				}
-				if !special && strings.Contains(placed.Text, "'") {
-					t.Fatalf("a plain path is not quoted: %q", placed.Text)
+				if tt.name == "plain" && !strings.HasPrefix(line, "bash "+placedDir(m, p, r.ID)+"/") {
+					t.Fatalf("placed script line %q, want the run copy's own path %s", line, placedDir(m, p, r.ID))
 				}
-				cmd := exec.CommandContext(t.Context(), "sh", "-c", strings.TrimPrefix(want, "CMD: "))
-				cmd.Dir = t.TempDir()
-				if out, err := cmd.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "run-ok-lib-ok" {
-					t.Fatalf("%s: %v, output %q, want run-ok-lib-ok", want, err, out)
+				_, out, _ := strings.Cut(got.Reply, ": ")
+				ran, ok := strings.CutPrefix(out, "run-ok-lib-ok in ")
+				if got.Status != "done" || !ok {
+					t.Fatalf("run: %+v, want done with the script's output run-ok-lib-ok in <folder>", got)
 				}
-				writeFile(t, ready+".release", "")
-				if got := s.finished(t, ch, r.ID); got.Status != "done" {
-					t.Fatalf("run: %+v", got)
+				if ran == "" || strings.HasPrefix(ran, m.home) {
+					t.Fatalf("the script ran from %q, want the run's copy, not the owner's home %s", ran, m.home)
 				}
 			})
 		}
 	}
 }
 
-// Static scan: these forms are home references and refuse. A `~` and `/` split by a line break and
-// `HO""ME` are known gaps and pinned neither way.
+// Static scan: these forms are home references and refuse. The dynamic forms (`$(echo ~)`, `HO""ME`,
+// a `~` and `/` split by a line break) are out of scope and pinned neither way.
 func TestSkillHome_ScannerRefusesTheWholeClass(t *testing.T) {
 	m, s := startResolved(t, "claude")
 	tests := []struct{ name, line, ref string }{
@@ -525,7 +523,12 @@ func TestSkillHome_ScannerRefusesTheWholeClass(t *testing.T) {
 		{"user", "Read ~root/.ssh/id now.", "~root/.ssh/id"},
 		{"pwd", "Go ~+/x now.", "~+/x"},
 		{"oldpwd", "Go ~-/x now.", "~-/x"},
-		{"substitution", "Run $(echo ~)/.ssh/id now.", "~)/.ssh/id"},
+		{"replace", "Use ${HOME/a/b}/x now.", "${HOME/a/b}/x"},
+		{"offset", "Use ${HOME:0:3} now.", "${HOME:0:3}"},
+		{"transform", "Use ${HOME@Q} now.", "${HOME@Q}"},
+		{"bare-then-more", "Run cd ~ && ls", "~"},
+		{"bare-alone", "~", "~"},
+		{"bare-user", "Run cd ~root now.", "~root"},
 	}
 	c := newImporter(t, s)
 	for _, tt := range tests {

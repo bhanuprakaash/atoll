@@ -26,18 +26,21 @@ Design: Connections and skills, "Home paths in imported skills", in `docs/design
   imported from: `~/`, `$HOME/`, `${HOME}/` and absolute forms of the entry path rewrite, and so do
   refs through the resolved path (`actual`). Another sibling (`other`) is still refused. The skill
   is recorded under the entry (`source` is the entry path, not its target).
-- Placement quoting: the token is replaced by the copy's path as is when every character is in
-  `[A-Za-z0-9_./-]`; otherwise by the path single-quoted for the shell, a `'` written `'\''`
-  (macOS's `Application Support` has a space), so `{{ATOLL_SKILL_DIR}}/scripts/run.sh` becomes
-  `'/a b/x'/scripts/run.sh`. The command lines a skill writes with the token run through `sh -c`
-  both in SKILL.md and inside a script (`. {{ATOLL_SKILL_DIR}}/lib.sh`).
-- Scanner (refuse, never rewrite): `${HOME` followed by a character that is not a name character,
-  `}` or `/` (`${HOME:-x}`, `${HOME%/}`, `${HOME#..}`, `${HOME^}`) is a home reference;
+- The placed path never breaks a shell: a line a skill script writes unquoted, `bash {{ATOLL_SKILL_DIR}}/scripts/run.sh`
+  (and `. {{ATOLL_SKILL_DIR}}/lib.sh` inside it), still runs when Reef's data dir has a character a
+  shell splits or expands (a space, as in macOS's `Application Support`, a quote, `$`, `;`, `&`,
+  `(`, `*`, a double quote, a backtick). The rule is the outcome, not the mechanism: the placed
+  line holds only `[A-Za-z0-9_./:@%+=,-]` in the path, and it runs the run's own copy. A folder with
+  no such character is written as its own path.
+- Scanner (refuse, never rewrite): `${HOME` followed by any operator (`${HOME:-x}`, `${HOME%/}`,
+  `${HOME#..}`, `${HOME^}`, `${HOME/a/b}`, `${HOME:0:3}`, `${HOME@Q}`) is a home reference;
   `${HOMEWORK}` and `${HOME_X}` are not. A bare `~` that starts a word (not preceded by a letter,
   digit, `.`, `_`, `-`, `/` or `~`) followed by the end of the line, whitespace, `/`, `+`, `-`, `:`,
-  `)`, `"`, `'`, a letter or `_` is one (`cd ~`, `~root`, `~+`, `~-`, `$(echo ~)`); `~5`,
-  `~3 minutes` and `a~b` are not. Known gaps of a static scan, pinned neither way: `~` and `/` split
-  by a line break, `HO""ME`.
+  `)`, `"`, `'`, a letter or `_` is one (`cd ~`, `cd ~ && ls`, a line that is only `~`, `~root`,
+  `~+`, `~-`); `~5`, `~3 minutes`, `a~b`, a line ending in `a~`, `1~`, `x.~`, `a_~`, `a-~`, `/~` and
+  `~~strike~~` are not. The dynamic forms (`$(echo ~)`, `HO""ME`, `~` and `/` split by a line
+  break) are out of scope: the scanner guards honest mistakes, not a boundary, and they are pinned
+  neither way.
 - Absolute home paths have boundaries: `<home>x/foo` (the home path followed by a path character)
   is not a reference, `/mnt<home>/foo` (preceded by one) is neither rewritten nor refused;
   `<home>` followed by `/`, the end, whitespace or a quote is a reference.
@@ -77,9 +80,9 @@ Design: Connections and skills, "Home paths in imported skills", in `docs/design
 | Other home references refuse with exact refs (another skill, `~/.ssh`, `$HOME`, `${HOME}`, `$HOME/x`, absolute home path, a fenced example, `<folder>-v2`, the other root's folder), ordered by file then line; nothing stored; Chief's reply names skill, file, line, ref | `TestSkillHome_RefusesOtherHomeRefs/{claude,codex}/*` |
 | `https://x/~/a`, `a~/b` and the other preceded forms are not references; `$HOMEWORK` and `$HOME_X` are not either (the design is silent on what may follow `$HOME`: a guard) | `TestSkillHome_NotHomeReferences` |
 | A symlinked entry: entry-path and resolved-path refs rewrite, another sibling is refused, source is the entry | `TestSkillHome_SymlinkedEntryIsTheOwnFolder/{claude,codex}.{.claude,.codex}/{rewrites,refuses-other-sibling}` |
-| Placed command lines run with a path holding a space and a quote (quoted), and with a plain path (unquoted), from SKILL.md and from inside a script | `TestSkillHome_PlacedCommandsRun/{claude,codex}/{plain,space-and-quote}` |
-| `${HOME:-x}`, `${HOME%/}`, `${HOME#..}`, `${HOME^}`, bare `~`, `~user`, `~+`, `~-`, `$(echo ~)` refuse with exact refs | `TestSkillHome_ScannerRefusesTheWholeClass/*` |
-| `${HOMEWORK}`, `${HOME_X}`, `~5`, `~3 minutes`, `a~b` are not references | `TestSkillHome_NotHomeReferences` |
+| A Bot runs a skill script that calls `bash ~/.claude/skills/x/run.sh` and `. ~/.claude/skills/x/lib.sh` unquoted, from a data dir named plain, with a space, a quote, `$`, shell metacharacters, a double quote and backtick: the placed line has only safe characters and runs the run's copy | `TestSkillHome_PlacedCommandsRun/{claude,codex}/{plain,space,quote,dollar,meta,double-quote-and-backtick}` |
+| `${HOME` with any operator (`:-`, `%`, `#`, `^`, `/`, `:0:3`, `@Q`), bare `~` (`cd ~`, `cd ~ && ls`, alone), `~user`, `~+`, `~-` refuse with exact refs | `TestSkillHome_ScannerRefusesTheWholeClass/*` |
+| `${HOMEWORK}`, `${HOME_X}`, `~5`, `~3 minutes`, `a~b`, `a~`, `1~`, `x.~`, `a_~`, `a-~`, `/~`, `~~strike~~` are not references | `TestSkillHome_NotHomeReferences` |
 | Absolute home path boundaries (`<home>x/foo`, `/mnt<home>/foo` pass untouched; `<home>` before `/`, end, space or quote refuses) | `TestSkillHome_AbsoluteHomeBoundaries` |
 | Refused answer is exactly `{status, name, reason, refs}`, from `import_skill` and from reimport | `TestSkillHome_RefusedAnswerHasFourKeys` |
 | Re-import refused (HTTP 200, before `confirm`, with and without `replace`) keeps the stored skill; same answer as `import_skill` | `TestSkillHome_ReimportRefusedKeepsStored/{claude,codex}` |
