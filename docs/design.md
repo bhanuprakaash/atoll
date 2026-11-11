@@ -1141,8 +1141,8 @@ Voice
   wrong.`), never the provider's raw error, which sits behind Details. The line stays in its thread
   in order after later runs start and after a reload. Retry shows only when that run is the
   thread's newest; an older failed run keeps the line without Retry. A sign-in failure keeps its
-  own line (see Providers). *A run that failed while a newer one went on made the message look
-  ignored.*
+  own line (Claude sign-in expired). *A failure that vanished once a newer run started made the
+  message look ignored.*
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `·
   Stopped by you after 4s`). Inside the run, above the footer: Chief's changes, then saved memory,
   then a Blocked line (from `finish_run`'s `blocked`) whose dot hangs in the margin so its text
