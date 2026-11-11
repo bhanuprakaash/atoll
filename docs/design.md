@@ -32,6 +32,23 @@ never a dependency.
 - Model is one field, e.g. `Claude Code · Opus 5.5`, `Codex · GPT-5`, listing only enabled, ready
   providers. The models come from asking each provider.
 - Repo access: All (default) or Only these. *A block list would silently grant new repos.*
+  - Reach: a Bot sees only the repos it has. A repo it lacks, for a Bot with no repo access, or with
+    some, on each provider (Claude Code 2.1.322 and Codex 0.167, real runs and sandbox probes on Linux):
+
+    | A repo the Bot lacks | Claude Code | Codex |
+    | --- | --- | --- |
+    | Read with file tools (Read, Glob, Grep) | refused | none: it reads through its shell |
+    | Read with the shell (`head`, `python`) | no file there (Reef's sandbox hides it) | open: its sandbox restricts writes, not reads (`workspace-write` and `read-only` both read any file) |
+    | Write | refused; a shell write lands in a throwaway copy | Auto: refused outside its roots; Ask: asks; Full access: open |
+    | Another thread's read-only checkout of it | as the repo | open |
+
+  - Known gap: Codex. A Codex Bot reads every registered repo, so "no repo access" is a prompt
+    rule there, not a boundary. Closing it: a `permissions.<name>.filesystem` profile with the repo
+    `"none"` and `":root"` `"read"` hid the repo from `codex sandbox` (Codex 0.167, `default_permissions`),
+    but Reef starts Codex through `app-server` with a `sandbox` mode, and whether a profile
+    applies there is unverified. A ticket of its own once the app-server path is probed.
+  - Not hidden on Claude either: anything outside the registered repos and their worktrees and
+    checkouts, such as the rest of the user's home and Reef's own data folder. Out of scope here.
 - Mode: Auto (default), Ask or Full access, set per Bot. Every Bot starts on Auto, and a launch
   moved the Bots of an older install to it once. Approval requests from any run, children
   included, come to the user in the thread. *The provider already decides what needs approval.* No
@@ -499,6 +516,49 @@ after a failed undo counts a Bot that is already gone as removed.
     `--setting-sources project` (user and local settings off; hides the skills synced from the user's claude.ai account),
     `disableAllHooks`, `disableBundledSkills` and `skillOverrides` turning off `design`, `doctor`,
     `plugin-authoring` (the bundled skills that survive `disableBundledSkills`).
+  - Claude Code hides the repos a Bot lacks from its tools (#169; Claude Code 2.1.322, Linux with
+    bubblewrap; the same `--settings` object as below). A run of a Bot with at least one registered
+    repo it lacks (All lacks none; Chief and the title runs have no built-in tools) gets, for each
+    hidden path, a `sandbox.filesystem.denyRead` entry and the permission rules `Read(//<path>/**)`
+    and `Edit(//<path>/**)`. The hidden paths are, for each registered repo the Bot lacks: the repo's
+    path, `<worktree root>/<repo name>`, and `<data dir>/threads/<id>` for every thread on it (its
+    read-only checkout); each as Reef knows it and with symlinks resolved when that differs, glob
+    characters in a path replaced by `?` in the rules as in `claudeMdExcludes`. The settings are
+    computed at run start from the registered repos and their threads.
+    - Both parts are needed, each shown by a real run. The rules alone refuse Read, Glob, Grep, Write
+      and Bash `head` or `cat` of a hidden path, but not `python3 -c "print(open(p).readline())"` or
+      a `bash` read loop: a Bash read is no boundary. The sandbox alone hides the path from every
+      Bash command (`head`, `python`, `cat`, a symlink to it all fail with no such file; the folder
+      reads empty) but not from Read, Glob or Grep.
+    - The sandbox is `{"enabled": true, "failIfUnavailable": true, "allowUnsandboxedCommands": false,
+      "autoAllowBashIfSandboxed": false, "network": {"allowedDomains": ["*"]}, "filesystem":
+      {"allowWrite": ["/"], "denyRead": [...]}}`. It only hides reads:
+      - `allowWrite: ["/"]` keeps writes where they were. The default sandbox writes only under the
+        cwd, which would stop `git` writing the repo's `.git/worktrees` and every build cache.
+      - `network.allowedDomains: ["*"]` keeps the network as open as before.
+      - `autoAllowBashIfSandboxed: false`: by default a sandboxed command needs no approval, which
+        would end Ask for Bash (`python3 -c 'print(1)'` ran with no card). With it off, Ask asks and
+        Auto and Full access behave as before.
+      - `allowUnsandboxedCommands: false`: a Bash call with `dangerouslyDisableSandbox: true` runs
+        sandboxed all the same.
+      - `failIfUnavailable: true`: with no working sandbox `claude` exits 1 ("sandbox required but
+        unavailable: bubblewrap (bwrap) not installed, socat not installed"). That is a failed run,
+        not an unprotected one. A Mac needs nothing; Linux needs `bubblewrap` and `socat`, and the
+        run's error says so in plain words with that as the next step.
+    - `<data dir>/threads` as a whole is not hidden: a permission rule has no way to leave the Bot's
+      own folder out of a hidden parent, and `Read(//<data dir>/threads/**)` refused `cat` of the
+      Bot's own file; a sandbox `allowRead` for the own folder together with `allowWrite: ["/"]`
+      made `bwrap` fail ("Can't create file … .gitconfig: Read-only file system"). Hiding each
+      thread folder of a lacking repo avoids both.
+    - Every Mode gets the same settings. Real `claude` refused in Auto and Full access
+      (`TestNoRepoShell_RealClaudeCannotReadRegisteredRepo`); Ask was run in default mode. Auto's
+      classifier may block a command before the sandbox sees it; that is a refusal too.
+    - Reef's own MCP tools, a Bot's MCP servers and its skills do not run in Bash, so the sandbox
+      does not touch them. Bash in the sandbox cannot reach Unix sockets (Docker, an ssh agent).
+    - Known gaps: a repo registered, or a thread created on a lacking repo by another Bot, after
+      the run started stays visible until the next run. Inline in `--settings` the list is cut off
+      by Linux's 128 KiB limit for one argument at roughly 400 hidden threads. macOS (seatbelt) is
+      not spiked: the same settings are used and unverified.
   - Claude Code also keeps the owner's own setup out of a Bot's session (Claude Code 2.1.319):
     - Ancestor `CLAUDE.md` files. `--setting-sources project` still loads the `CLAUDE.md`,
       `CLAUDE.local.md`, `.claude/CLAUDE.md` and `.claude/rules` of every directory above the cwd,
