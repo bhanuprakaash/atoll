@@ -2,6 +2,8 @@ package e2e
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -105,6 +107,10 @@ func TestQueue_UserMessageWhileRunGoes(t *testing.T) {
 			th := s.newThread(t, s.newBot(t, "Ada", p))
 			ev := s.events(t, th)
 			first := s.send(t, th, _slowPrompt)
+			eventually(t, 10*time.Second, "the provider got the first prompt", func() bool {
+				_, err := os.Stat(filepath.Join(m.bin, p+".log.prompts"))
+				return err == nil && len(userPrompts(t, m, p, _slowPrompt)) > 0
+			})
 
 			q := queue(t, s, th, _askPrompt)
 			if got := queuedTexts(t, s, th.ID); len(got) != 1 || got[0] != _askPrompt {

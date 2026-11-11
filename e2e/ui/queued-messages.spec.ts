@@ -35,7 +35,7 @@ async function open(
 
 async function send(page: import("@playwright/test").Page, text: string) {
   await page.getByRole("textbox", { name: "Message" }).fill(text);
-  await page.getByRole("button", { name: "Send" }).click({ timeout: 3000 });
+  await page.getByRole("button", { name: "Send", exact: true }).click({ timeout: 3000 });
 }
 
 test("a message sent during a run is a Queued bubble with no refusal, then goes out when the run ends", async ({
