@@ -656,9 +656,11 @@ func (s *Store) LatestRun(ctx context.Context, threadID string) (string, error) 
 	return id, nil
 }
 
-// ThreadRun is a thread with the status and the reply of its newest run; Status is empty for a
-// thread with no run. Reply is only its first 300 characters: enough for a one-line preview.
-// Unseen is set when the newest run ended after the user last opened the thread.
+// ThreadRun is a thread with the status and the reply of its newest run. Status is empty for a
+// thread with no run, and, in a poll, for a thread that has no live run and is not its Bot's
+// newest with a run; Reply is only its first 300 characters: enough for a one-line preview.
+// Unseen is set when the thread had activity after the user last opened it, has had a run and has
+// no live run: every run that finishes, and a start of one, sets the thread's last activity.
 type ThreadRun struct {
 	BotID          string
 	ThreadID       string
@@ -675,31 +677,46 @@ type ThreadRun struct {
 // ThreadRuns lists every thread with its newest run, newest activity first. botID limits it to
 // one Bot; empty means every Bot.
 func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, error) {
-	return s.threadRuns(ctx, "? = '' OR t.bot_id = ?", botID, botID)
+	return s.threadRuns(ctx,
+		`polled AS MATERIALIZED (
+		   SELECT t.id AS thread_id, r.status, substr(r.reply, 1, 300) AS reply FROM threads t
+		   JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = t.id))`,
+		"? = '' OR t.bot_id = ?", botID, botID)
 }
 
 // PollThreadRuns is ThreadRuns for every Bot without the closed threads nobody reads: it keeps
 // the open ones, the closed ones with a live run, the parents of those (a helper finds its
-// boss through its parent), and the newest thread with a run of each Bot.
+// boss through its parent), and the newest thread with a run of each Bot. Only the threads with
+// a live run and each Bot's newest thread with a run are read with their run; the rest have no
+// Status.
 func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
-	const live = "SELECT thread_id FROM runs WHERE status IN ('running', 'waiting')"
-	return s.threadRuns(ctx, `t.closed = 0
-		 OR t.id IN (`+live+`)
+	return s.threadRuns(ctx,
+		`live AS MATERIALIZED (SELECT thread_id FROM runs WHERE status IN ('running', 'waiting')),
+		 polled AS MATERIALIZED (
+		   SELECT n.thread_id, r.status, substr(r.reply, 1, 300) AS reply
+		   FROM (SELECT thread_id FROM live
+		         UNION SELECT (SELECT t2.id FROM threads t2
+		                       WHERE t2.bot_id = b.id AND EXISTS (SELECT 1 FROM runs WHERE thread_id = t2.id)
+		                       ORDER BY t2.last_activity DESC, t2.rowid DESC LIMIT 1) FROM bots b) n
+		   JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = n.thread_id))`,
+		`t.closed = 0
+		 OR p.thread_id IS NOT NULL
 		 OR t.id IN (SELECT parent_thread_id FROM threads
-		             WHERE parent_thread_id != '' AND (closed = 0 OR id IN (`+live+`)))
-		 OR t.rowid IN (SELECT (
-		        SELECT t2.rowid FROM threads t2
-		        WHERE t2.bot_id = b.id AND EXISTS (SELECT 1 FROM runs WHERE thread_id = t2.id)
-		        ORDER BY t2.last_activity DESC, t2.rowid DESC LIMIT 1) FROM bots b)`)
+		             WHERE parent_thread_id != '' AND (closed = 0 OR id IN live))`)
 }
 
-func (s *Store) threadRuns(ctx context.Context, where string, args ...any) ([]ThreadRun, error) {
+// threadRuns reads the threads matching where, newest activity first. with defines the CTEs it
+// needs, among them polled(thread_id, status, reply): the threads whose newest run is read.
+func (s *Store) threadRuns(ctx context.Context, with, where string, args ...any) ([]ThreadRun, error) {
 	return query(ctx, s.db,
-		`SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.closed, t.pinned_at IS NOT NULL,
-		        t.last_activity, coalesce(r.finished_at, 0) > t.last_opened_at,
-		        coalesce(r.status, ''), substr(coalesce(r.reply, ''), 1, 300)
+		`WITH `+with+`
+		 SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.closed, t.pinned_at IS NOT NULL,
+		        t.last_activity,
+		        t.last_activity > t.last_opened_at AND t.last_activity > t.created
+		          AND coalesce(p.status, '') NOT IN ('running', 'waiting'),
+		        coalesce(p.status, ''), coalesce(p.reply, '')
 		 FROM threads t
-		 LEFT JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = t.id)
+		 LEFT JOIN polled p ON p.thread_id = t.id
 		 WHERE `+where+`
 		 ORDER BY t.last_activity DESC, t.rowid DESC`,
 		func(r *sql.Rows) (tr ThreadRun, err error) {
@@ -1088,6 +1105,11 @@ func (s *Store) FailUnfinished(
 			return err
 		}
 		for _, id := range ids {
+			if _, err := tx.ExecContext(ctx,
+				"UPDATE threads SET last_activity = ? WHERE id = (SELECT thread_id FROM runs WHERE id = ?)",
+				time.Now().UTC().UnixMicro(), id); err != nil {
+				return fmt.Errorf("touch thread of run %s: %w", id, err)
+			}
 			if err := enqueueWake(ctx, tx, id, wake); err != nil {
 				return err
 			}
