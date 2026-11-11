@@ -222,6 +222,15 @@ type (
 	}
 )
 
+// TitleSource says how a title reached Reef.
+type TitleSource uint8
+
+const (
+	TitleGenerated TitleSource = iota
+	TitleFirstWords
+	TitleStored
+)
+
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
@@ -276,6 +285,10 @@ func OpenWrapped(dir string, wrap func(driver.Connector) driver.Connector) (*Sto
 	if _, err := db.Exec(_retireLooks); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("retire looks: %w", err)
+	}
+	if err := cleanStoredTitles(context.Background(), db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("clean titles: %w", err)
 	}
 	return &Store{db: db, root: db}, nil
 }
@@ -1262,15 +1275,84 @@ func (t *Tx) Commit() error {
 // Rollback drops the writes made through t.Store.
 func (t *Tx) Rollback() { _ = t.tx.Rollback() }
 
-// FirstWords is the title a thread's first message gives it: the first six words, without the
-// punctuation that ends the last one.
+// FirstWords is the title a thread's first message gives it.
 func FirstWords(text string) string {
+	return CleanTitle(text, TitleFirstWords)
+}
+
+// CleanTitle applies the title rules for source without changing storage or calling a provider.
+func CleanTitle(text string, source TitleSource) string {
+	text = strings.TrimSpace(text)
+	if source != TitleFirstWords {
+		text = dropTitleLabel(text)
+	}
 	words := strings.Fields(text)
-	words = words[:min(6, len(words))]
+	cut := len(words) > 6
+	if source == TitleStored {
+		cut = len(words) == 6
+	} else if cut {
+		words = words[:6]
+	}
+	if cut {
+		for len(words) > 0 && isTitleStopWord(words[len(words)-1]) {
+			words = words[:len(words)-1]
+		}
+	}
 	if len(words) > 0 {
 		words[len(words)-1] = strings.TrimRight(words[len(words)-1], ".,;:!?")
 	}
-	return strings.Join(words, " ")
+	return strings.TrimSpace(strings.Join(words, " "))
+}
+
+func dropTitleLabel(text string) string {
+	for _, label := range []string{"Title:", "Conversation title:", "Thread title:", "Chat title:", "Status line:"} {
+		bare := strings.TrimSuffix(label, ":")
+		for _, prefix := range []string{label, "**" + label + "**", "**" + bare + "**:"} {
+			if len(text) >= len(prefix) && strings.EqualFold(text[:len(prefix)], prefix) {
+				return strings.TrimSpace(text[len(prefix):])
+			}
+		}
+	}
+	return text
+}
+
+func isTitleStopWord(word string) bool {
+	switch strings.ToLower(word) {
+	case "on", "of", "and", "to", "in", "the", "a", "an", "for", "with", "at", "by", "from", "or":
+		return true
+	}
+	return false
+}
+
+func cleanStoredTitles(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "SELECT id, title FROM threads")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var titles []struct{ id, old, clean string }
+	for rows.Next() {
+		var title struct{ id, old, clean string }
+		if err := rows.Scan(&title.id, &title.old); err != nil {
+			return err
+		}
+		title.clean = CleanTitle(title.old, TitleStored)
+		if title.clean != title.old {
+			titles = append(titles, title)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, title := range titles {
+		if _, err := db.ExecContext(ctx, "UPDATE threads SET title = ? WHERE id = ?", title.clean, title.id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func insertInbox(ctx context.Context, db execer, threadID, fromBotID, text string) error {
