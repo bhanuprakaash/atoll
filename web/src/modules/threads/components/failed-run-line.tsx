@@ -5,8 +5,10 @@ import type { Run } from '@/modules/threads/api/messages';
 import { useRun } from '@/modules/threads/api/runs';
 
 const signedOutError = /sign.?in|authenticat|not logged in|login/i;
+const connectionSignIn = /needs sign-in/i;
 
 function reason(error: string) {
+  if (connectionSignIn.test(error)) return `${error.replace(/\.$/, '')}.`;
   if (/keyring|keychain/i.test(error)) return "Reef couldn't reach the system keychain.";
   if (signedOutError.test(error)) return "the provider isn't signed in.";
   return 'something went wrong.';
@@ -49,7 +51,7 @@ export function FailedLine({
           {replied
             ? `Run failed${run.error ? `: ${run.error}` : '.'}`
             : `Didn't run: ${reason(run.error)}`}
-          {signedOutError.test(run.error) && (
+          {signedOutError.test(run.error) && !connectionSignIn.test(run.error) && (
             <>
               {' '}
               <Link
@@ -60,7 +62,7 @@ export function FailedLine({
               </Link>
             </>
           )}
-          {!replied && run.error && (
+          {!replied && run.error && !connectionSignIn.test(run.error) && (
             <>
               {' '}
               <button
