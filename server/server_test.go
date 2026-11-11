@@ -310,6 +310,8 @@ func TestShortCommand(t *testing.T) {
 		{name: "path argument", give: "ls ~/.claude/agents", want: "ls"},
 		{name: "subshell", give: "cd x && (e2e/with-secret-store go test ./e2e)", want: "with-secret-store go"},
 		{name: "only cd", give: "cd /tmp", want: ""},
+		{name: "for loop", give: "for n in 1 2 3; do gh pr view $n; done", want: "gh pr"},
+		{name: "while loop", give: "while read x; do make build; done", want: "make build"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

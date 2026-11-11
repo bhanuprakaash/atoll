@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -360,6 +361,7 @@ type threadSummary struct {
 	Step        string          `json:"step"`
 	ParentBotID string          `json:"parent_bot_id"`
 	Helpers     []threadSummary `json:"helpers"`
+	MRCI        json.RawMessage `json:"mr_ci"`
 }
 
 func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, error) {
@@ -368,6 +370,9 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 		return threadSummary{}, err
 	}
 	out := threadSummary{Thread: t, UpdatedAt: t.LastActivity}
+	if t.MRCI != "" {
+		out.MRCI = json.RawMessage(t.MRCI)
+	}
 	if t.ParentThreadID != "" {
 		boss, err := a.st.Thread(r.Context(), t.ParentThreadID)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -428,11 +433,15 @@ func (a *api) liveStep(threadID string) string {
 	return strings.TrimSpace(tool.Verb + " " + target)
 }
 
-// shortCommand is a command's program and plain first argument, past any leading cd: "make e2e".
+// shortCommand is a command's program and plain first argument, past any leading cd and the head
+// of a loop or condition: "make e2e"; for a loop, its first command.
 func shortCommand(command string) string {
 	for _, part := range strings.FieldsFunc(command, func(r rune) bool { return r == '&' || r == ';' || r == '|' }) {
 		f := strings.Fields(strings.Trim(strings.TrimSpace(part), "()"))
-		if len(f) == 0 || f[0] == "cd" {
+		if len(f) > 0 && (f[0] == "do" || f[0] == "then" || f[0] == "else") {
+			f = f[1:]
+		}
+		if len(f) == 0 || f[0] == "cd" || slices.Contains([]string{"for", "while", "until", "if", "done", "fi"}, f[0]) {
 			continue
 		}
 		f[0] = path.Base(f[0])

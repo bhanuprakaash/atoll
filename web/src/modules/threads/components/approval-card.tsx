@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ApiError } from '@/lib/api-client';
 import { useAnswerApproval } from '@/modules/threads/api/approvals';
 
@@ -17,7 +17,17 @@ export function approvalVerb(tool: string) {
   return /bash|command/i.test(tool) ? 'Wants to run' : `Wants to use ${tool}`;
 }
 
-export function ApprovalCard({ id, tool, input }: { id: string; tool: string; input: unknown }) {
+export function ApprovalCard({
+  id,
+  tool,
+  input,
+  by,
+}: {
+  id: string;
+  tool: string;
+  input: unknown;
+  by?: ReactNode;
+}) {
   const [answered, setAnswered] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const answer = useAnswerApproval(id);
@@ -56,7 +66,13 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
     <div className="flex flex-col gap-2 text-sm">
       <div className="flex flex-wrap items-center gap-3">
         <span className="min-w-60 flex-1 text-ink/80">
-          {approvalVerb(tool)}{' '}
+          {by ? (
+            <>
+              {by} {approvalVerb(tool).toLowerCase()}
+            </>
+          ) : (
+            approvalVerb(tool)
+          )}{' '}
           <span className="font-mono text-[0.88em] text-ink [overflow-wrap:anywhere]">
             {target}
           </span>

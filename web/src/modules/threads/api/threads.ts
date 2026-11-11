@@ -14,6 +14,7 @@ export type Thread = {
   mr_url: string;
   mr_state: string;
   mr_title: string;
+  mr_ci: { passed: number; failed: number; pending: number } | null;
   worktree_removed: boolean;
   snapshot_ref: string;
   closed_at: string | null;

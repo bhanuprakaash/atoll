@@ -40,6 +40,7 @@ export function Composer({
   onSent,
   context,
   onFirstSend,
+  tray,
 }: {
   threadId: string;
   botName: string;
@@ -48,6 +49,7 @@ export function Composer({
   onSent: (run: Run) => void;
   context?: ReactNode;
   onFirstSend?: (text: string, images: ImageInput[]) => void;
+  tray?: ReactNode;
 }) {
   const [text, setText] = useState('');
   const [images, setImages] = useState<Attachment[]>([]);
@@ -196,12 +198,13 @@ export function Composer({
         onSubmit={submit}
         className={
           context
-            ? 'flex flex-col gap-1.5 rounded-[26px] border border-composer-line bg-composer pt-1.5 pr-2.5 pb-2.5 pl-4.5'
+            ? 'relative flex flex-col gap-1.5 rounded-[26px] border border-composer-line bg-composer pt-1.5 pr-2.5 pb-2.5 pl-4.5'
             : `flex items-end gap-2.5 rounded-[28px] border border-composer-line bg-composer py-2 pr-2 pl-4.5 ${onFirstSend ? 'min-h-15' : 'min-h-14'}`
         }
       >
         {context ? (
           <>
+            {tray}
             <div className="pr-2">{input}</div>
             <div className="flex items-center gap-1.5">
               <div
