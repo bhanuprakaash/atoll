@@ -340,30 +340,12 @@ func git(ctx context.Context, dir string, env []string, args ...string) (string,
 		allEnv = append(allEnv, "GIT_DIR="+trusted.dir, "GIT_COMMON_DIR="+trusted.common)
 	}
 	allEnv = append(allEnv, env...)
-	if enabled, _ := ctx.Value(snapshotKey{}).(bool); enabled {
-		config := exec.CommandContext(ctx, "git", append(base, "config", "--local", "--includes", "--null", "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process|required)$`)...)
-		config.Env = allEnv
-		keys, err := config.Output()
-		var exit *exec.ExitError
-		if err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1) {
-			return "", fmt.Errorf("list repo filters: %w", err)
+	if enabled, _ := ctx.Value(snapshotKey{}).(bool); enabled || (args[0] == "worktree" && len(args) > 1 && args[1] == "add") {
+		pins, err := pinFilters(ctx, base, allEnv)
+		if err != nil {
+			return "", err
 		}
-		count := 0
-		seen := map[string]bool{}
-		for _, key := range strings.Split(string(keys), "\x00") {
-			if key != "" {
-				name := key[:strings.LastIndexByte(key, '.')]
-				if seen[name] {
-					continue
-				}
-				seen[name] = true
-				for _, setting := range [][2]string{{"clean", ""}, {"smudge", ""}, {"process", ""}, {"required", "false"}} {
-					allEnv = append(allEnv, "GIT_CONFIG_KEY_"+strconv.Itoa(count)+"="+name+"."+setting[0], "GIT_CONFIG_VALUE_"+strconv.Itoa(count)+"="+setting[1])
-					count++
-				}
-			}
-		}
-		allEnv = append(allEnv, "GIT_CONFIG_COUNT="+strconv.Itoa(count))
+		allEnv = append(allEnv, pins...)
 	}
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	cmd.Env = allEnv
@@ -373,4 +355,38 @@ func git(ctx context.Context, dir string, env []string, args ...string) (string,
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, text)
 	}
 	return text, nil
+}
+
+// pinFilters returns command-scope config that sets every filter key defined in repo-local,
+// included or per-worktree config to its global or system value, or to empty (false for
+// required) when there is none. A filter a Bot planted does not run; the user's own does.
+func pinFilters(ctx context.Context, base, env []string) ([]string, error) {
+	list := exec.CommandContext(ctx, "git", append(base, "config", "--show-scope", "--null", "--get-regexp", `^filter\..*\.(clean|smudge|process|required)$`)...)
+	list.Env = env
+	out, err := list.Output()
+	var exit *exec.ExitError
+	if err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1) {
+		return nil, fmt.Errorf("list filters: %w", err)
+	}
+	global := map[string]string{}
+	var repoKeys []string
+	fields := strings.Split(string(out), "\x00")
+	for i := 0; i+1 < len(fields); i += 2 {
+		key, val, _ := strings.Cut(fields[i+1], "\n")
+		switch fields[i] {
+		case "global", "system":
+			global[key] = val
+		case "local", "worktree":
+			repoKeys = append(repoKeys, key)
+		}
+	}
+	var pins []string
+	for i, key := range repoKeys {
+		val, ok := global[key]
+		if !ok && strings.HasSuffix(key, ".required") {
+			val = "false"
+		}
+		pins = append(pins, "GIT_CONFIG_KEY_"+strconv.Itoa(i)+"="+key, "GIT_CONFIG_VALUE_"+strconv.Itoa(i)+"="+val)
+	}
+	return append(pins, "GIT_CONFIG_COUNT="+strconv.Itoa(len(repoKeys))), nil
 }
