@@ -194,6 +194,22 @@ after a failed undo counts a Bot that is already gone as removed.
   permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes). *The
   variable covers every MCP server of the run, not only Reef's: Claude Code has no per-server
   timeout, so a hung user tool also waits up to 30 minutes.*
+- Replying to an approval. A person's message to a thread with open approvals answers them, as the
+  composer's own reply rather than a refusal or a queued message. `POST /api/threads/{id}/messages`
+  stores the text as the user's message and denies every approval open in that thread, a helper's
+  shown there included, with the text as the reason; the run continues with that guidance. The
+  words are never read as Allow or Deny: a reply is always "do this instead", and Allow stays a
+  button. *A guess from "yes" or "ok" would run a command nobody allowed; the Bot can ask again.*
+  Claude: the permission prompt tool answers `deny` with the message `The user did not allow this
+  and wrote: <text>`. Codex: `turn/steer` with the text on the turn, then `decline` for each
+  open approval. The answer is `202 {message, run, answered}`: `run` is the thread's going run
+  (null when only a helper's approval was answered), `answered` the approval ids, and the message
+  holds `answered_approvals` (`[{id, tool, input}]`), so the chat shows one muted line under the
+  bubble per approval, `You replied instead`, after a reload too. Each approval closes
+  (`approval_closed`) and a later `POST /api/approvals/{id}` answers `404`. The text starts no run
+  and is not queued; a helper's approval gets it, not also the boss. A Bot's `continue`, and a
+  message with images, do not answer an approval: they follow the busy-thread rule. Without an open
+  approval a message to a busy thread follows that rule as before.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
   into a pane the user can take over (v2).
 
@@ -1030,7 +1046,17 @@ Voice
   (https://claude.ai/artifact/Grf7TUVqfAsv4oHU96rWrU); this section is the contract.
 - Look: Geist, regular weight. Main `#171717`, sidebar `#1A1A1A`, composer `#222222`, hairlines
   `#262626`, text `#ECECEC`, muted `#9B9B9B`. The light pill (`#ECECEC` on `#161616`) is the primary
-  action and the user's own message. Red `#E5484D` means needs you; amber means blocked.
+  action and the user's own message. Colour carries meaning (Colour, below).
+- Colour: calm by default. Red `#E5484D` means real danger, and only these: a failure the person
+  must deal with (a failed run's icon, the error text under a control whose action failed, a failed
+  CI mark) and a control that destroys or refuses (Delete Bot, Delete file, and Deny, on hover or
+  keyboard focus only). Nothing is red at rest because it waits. Needs you (a thread's marker, the
+  sidebar's second line, the island's count and rows, a helper's line, the creature's pulse) is
+  the light accent `#ECECEC`: a light dot, text in the main ink, neutral surfaces, never a red
+  fill or border. Amber means blocked and the blue dot means New. An MR chip's dot is never red
+  (merged blue, open green, closed grey), and a diff's counts are muted. Brand and creature colours
+  are identity, not state. *Red on every waiting item taught the user to skim past red; the owner
+  wants it left for the moments that are really bad (#146).*
 - Bot looks: 12, each the same soft pebble with one small sea trait at its edge, its own flat
   colour, two thin tick eyes and a slight tilt: jellyfish (Chief, as the logo; tentacles), whale
   (spout), shark (fin), penguin (belly), anglerfish (lure), pufferfish (spikes), octopus (arms),
@@ -1042,7 +1068,7 @@ Voice
   starfish, clownfish to scallop; sand dollar, island, sailboat, otter to seal; sponge to shark;
   kelp, turtle to narwhal; shell to octopus; wave to manta; sun, seahorse to pufferfish. Octopus
   and manta are looks again and keep their Bots. *Replaces the 14 looks in three groups: the user
-  picked pebble + one trait on the canvas.* Idle blinks; needs you is a pulsing red dot; asleep is
+  picked pebble + one trait on the canvas.* Idle blinks; needs you is a pulsing light dot; asleep is
   grey; failed has slanted eyes; reduced motion stops every animation.
 - Working shows by tool kind in the creature's eyes and body: no tool yet, the eyes circle up;
   reading, searching or recalling, the eyes scan; editing, writing, remembering or changing the
@@ -1072,7 +1098,7 @@ Voice
   the creature's centre (28 px from the row's left edge; rows start 14 px right of it, at 42 px).
   The rail starts at the bottom of the Bot row and ends in a rounded hook at the middle of the last row, the overflow line included; it never touches a row. A Bot with
   nothing to show is its plain row. A row is the title and one marker at its right end: "Needs
-  you" and a red dot; a blue dot and a bold title for New; three wave dots while running; a pin
+  you" and a light dot; a blue dot and a bold title for New; three wave dots while running; a pin
   when pinned and nothing else applies (a pinned thread that needs you, is New or runs shows that
   instead). Only the open thread and the hovered row have a box. *The tick tree started inside the
   Bot row and collided with the row boxes; the user picked one rail with a hook.* Slots go to needs you (never
@@ -1096,7 +1122,7 @@ Voice
   Move a Bot with right-click › Move to group (the groups, No group, New group…) or by dragging it
   onto a heading. A heading's hover shows a fold arrow and ⋯ (Rename, New Bot in this group, Move
   up, Move down, Delete group); deleting moves its Bots to Ungrouped. Name, order and fold state
-  are stored (`/api/groups`). A folded group shows a red dot only when a Bot in it needs the user;
+  are stored (`/api/groups`). A folded group shows a light dot only when a Bot in it needs the user;
   no counts.
 - Bot header: a solid band in the main background, 72 px tall, with a 24 px fade below it; the
   centred island sits on it. Messages scroll under the band and fade out; no text shows above its
@@ -1110,7 +1136,7 @@ Voice
   screen, the same Bot's other threads included (`GET /api/events`). An approval drops the island
   open: the Bot, the thread, the exact command or path, Open thread, Deny and Allow; Allow lets
   that run go on without leaving the thread on screen. It stays until answered; Esc or a click
-  away shrinks it to a red count on the pill. A finished run widens the island for about 4 s
+  away shrinks it to a count on the pill. A finished run widens the island for about 4 s
   ("reviewer finished Review !42", View), with no buttons, then it returns to rest. Clicking the
   island opens the notification list: Needs you (Allow and Deny inline), then Earlier (finished
   runs, MRs opened, Chief's changes). Hover does not open it.
@@ -1170,6 +1196,16 @@ Voice
   repo-step.tsx") and the time; never raw tool calls. Approvals show a short form per tool: a
   command shows the command, an edit shows the file with its diff behind a toggle, anything else
   shows the tool and its target.
+- Approval card: one quiet row in a group named Approval, with no fill or border of its own. A
+  one-line command is `Wants to run` (muted) and the command in a code line (`code`), then Allow
+  and Deny on that same row, at most 72 px tall at 1280x800. A tool that is not a command shows its
+  tool and target in the same code line; an edit shows its file there and keeps its Show diff /
+  Hide diff toggle. A command or path longer than 2 lines is clamped to 2 inside the code line
+  with Show all / Show less in the card, and the toggle never changes what Allow answers. Allow
+  is the light pill, Deny an outline pill that turns red on hover and keyboard focus only (the
+  island and its list too). The
+  waiting state is the thread's own Needs you marker: the card adds no banner, badge or red.
+  *An approval is usually one click; it should not compete with the reply.*
 - Composer: the message, then the thread's repo, branch and MR as chips on one row, and Send or
   Stop. A long branch name ends in "…" with the full name on hover. The MR chip shows only its
   reference (`#92`, `!12`) with a state dot (open, merged, closed); hovering shows its title. While
@@ -1195,8 +1231,8 @@ Voice
   Tester and Reviewer", `Tester ×2` for two helpers of one Bot), each name linking to its helper
   thread; a helper's report is a message from the helper Bot, an article named after it with its
   creature, not the user's bubble. The island shows one small creature per such helper
-  after the boss's name (`Tester: working`, `needs you` with a red dot),
-  the red count includes helper approvals, and the boss's sidebar row says "Needs you" while a
+  after the boss's name (`Tester: working`, `needs you` with a light dot),
+  the count includes helper approvals, and the boss's sidebar row says "Needs you" while a
   helper waits. A helper thread is listed under its Bot in the sidebar tree, with no close; the
   composer is replaced by "{Boss} is handling this thread. Talk to {Boss} to change it.", `Open
   {Boss}'s thread` and, while its run goes, `Stop`. *The boss thread's stream carries only the
