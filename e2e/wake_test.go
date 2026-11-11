@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -214,13 +215,16 @@ func TestWake_BusyThreadsDeliverLater(t *testing.T) {
 			boss := s.newThread(t, poteto)
 			ev := s.events(t, boss)
 
-			helper := delegated(t, useAtoll(t, s, boss, ev, delegateCall("Tester", _reportPrompt, ""))[0])
+			// A message to a thread while a helper's approval is open answers that approval, so the
+			// helper that ends during the boss's run is one with no approval: a going run the user stops.
+			stopped := delegated(t, useAtoll(t, s, boss, ev, delegateCall("Tester", _hangPrompt, ""))[0])
+			running := helperRunning(t, s, stopped)
 			busy := s.send(t, boss, _writePrompt)
 			es := until(t, ev, busy.ID, "approval")
 			bossAsk := asString(es[len(es)-1].Data["id"])
-			allow(t, s, helper)
-			if h := settled(t, s, helper); h.Status != "done" {
-				t.Fatalf("helper run: status %q, error %q; want done", h.Status, h.Error)
+			s.do(t, "POST", "/api/runs/"+running+"/stop", nil, nil, http.StatusNoContent)
+			if h := settled(t, s, stopped); h.ID != running || h.Status != "stopped" {
+				t.Fatalf("helper run %s after stop: %s %q; want stopped", running, h.ID, h.Status)
 			}
 			time.Sleep(4 * _pace)
 			if got := fromBot(t, s, boss.ID, tester.ID); len(got) != 0 {
@@ -235,18 +239,26 @@ func TestWake_BusyThreadsDeliverLater(t *testing.T) {
 				t.Fatalf("boss's run %s: status %q, error %q; want done", busy.ID, got.Status, got.Error)
 			}
 			msg, _, wake := woken(t, m, s, p, boss.ID, tester.ID, 1)
-			holdsAll(t, "message from Tester after the boss's run ended", msg.Text, helper, _reportReply)
+			holdsAll(t, "message from Tester after the boss's run ended", msg.Text, stopped, "The user stopped Tester")
 			if wake.Status != "done" {
 				t.Errorf("boss run Tester's message started: status %q, error %q; want done", wake.Status, wake.Error)
 			}
 
-			first, second := "Yes, update it. "+_reportPrompt, "Then tag a release. "+_reportPrompt
-			useAtoll(t, s, boss, ev, continueCall(helper, first))
-			going := asking(t, s, helper)
-			lines := useAtoll(t, s, boss, ev, continueCall(helper, second))
-			if len(lines) != 1 || lines[0] == "atoll/continue: unavailable" {
-				t.Fatalf("continue while the helper's run goes: reply %q, want it accepted", lines)
+			helper := delegated(t, useAtoll(t, s, boss, ev, delegateCall("Tester", _reportPrompt, ""))[0])
+			allow(t, s, helper)
+			if h := settled(t, s, helper); h.Status != "done" {
+				t.Fatalf("helper run: status %q, error %q; want done", h.Status, h.Error)
 			}
+			msg, _, _ = woken(t, m, s, p, boss.ID, tester.ID, 2)
+			holdsAll(t, "second message from Tester", msg.Text, helper, _reportReply)
+
+			first, second := "Yes, update it. "+_reportPrompt, "Then tag a release. "+_reportPrompt
+			// Both in one boss run: a message to the boss while the helper's approval is open would answer it.
+			lines := useAtoll(t, s, boss, ev, continueCall(helper, first), continueCall(helper, second))
+			if len(lines) != 2 || slices.Contains(lines, "atoll/continue: unavailable") {
+				t.Fatalf("two continues in a row: replies %q, want both accepted", lines)
+			}
+			going := asking(t, s, helper)
 			time.Sleep(4 * _pace)
 			if th := s.thread(t, helper); th.RunID != going.RunID || th.RunStatus != "waiting" {
 				t.Errorf("helper's latest run %s is %q after a second continue, want %s still waiting", th.RunID, th.RunStatus, going.RunID)
@@ -269,10 +281,10 @@ func TestWake_BusyThreadsDeliverLater(t *testing.T) {
 			}
 			settled(t, s, helper)
 
-			msg, _, wake = woken(t, m, s, p, boss.ID, tester.ID, 3)
-			holdsAll(t, "third message from Tester", msg.Text, helper, _reportReply)
+			msg, _, wake = woken(t, m, s, p, boss.ID, tester.ID, 4)
+			holdsAll(t, "fourth message from Tester", msg.Text, helper, _reportReply)
 			if wake.Status != "done" {
-				t.Errorf("boss's latest run after three messages from Tester: status %q, error %q; want done", wake.Status, wake.Error)
+				t.Errorf("boss's latest run after four messages from Tester: status %q, error %q; want done", wake.Status, wake.Error)
 			}
 		})
 	}
@@ -333,12 +345,15 @@ func TestWake_SurvivesRestart(t *testing.T) {
 			boss := s.newThread(t, poteto)
 			ev := s.events(t, boss)
 
-			helper := delegated(t, useAtoll(t, s, boss, ev, delegateCall("Tester", _reportPrompt, ""))[0])
+			// A message to a thread while a helper's approval is open answers that approval, so the
+			// helper that ends during the boss's run is one with no approval: a going run the user stops.
+			stopped := delegated(t, useAtoll(t, s, boss, ev, delegateCall("Tester", _hangPrompt, ""))[0])
+			running := helperRunning(t, s, stopped)
 			busy := s.send(t, boss, _writePrompt)
 			until(t, ev, busy.ID, "approval")
-			allow(t, s, helper)
-			if h := settled(t, s, helper); h.Status != "done" {
-				t.Fatalf("helper run: status %q, error %q; want done", h.Status, h.Error)
+			s.do(t, "POST", "/api/runs/"+running+"/stop", nil, nil, http.StatusNoContent)
+			if h := settled(t, s, stopped); h.ID != running || h.Status != "stopped" {
+				t.Fatalf("helper run %s after stop: %s %q; want stopped", running, h.ID, h.Status)
 			}
 			time.Sleep(4 * _pace)
 			if got := fromBot(t, s, boss.ID, tester.ID); len(got) != 0 {
@@ -352,7 +367,7 @@ func TestWake_SurvivesRestart(t *testing.T) {
 				t.Errorf("boss's waiting run after a restart: status %q, want failed", got.Status)
 			}
 			msg, c, wake := woken(t, m, s, p, boss.ID, tester.ID, 1)
-			holdsAll(t, "message from Tester after a restart", msg.Text, helper, _reportReply)
+			holdsAll(t, "message from Tester after a restart", msg.Text, stopped, "The user stopped Tester")
 			if got := resumed(c, p); got != bossSessionID(p) {
 				t.Errorf("boss run with Tester's message resumed %q, want %q", got, bossSessionID(p))
 			}
