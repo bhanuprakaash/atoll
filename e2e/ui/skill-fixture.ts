@@ -19,8 +19,8 @@ const home = '~/.claude/skills/poteto-mode/';
 const skillMD =
   '---\nname: poteto-mode\ndescription: Work the poteto way.\n---\n' +
   `Scripts: \`S=${home}scripts\`. Always call scripts by that full path.\n` +
-  'Proof goes in ~/.reef-verify/<id> when a run ends, and notes in ~/.poteto/state while it runs.\n' +
-  'Read playbooks/ship.md before shipping. Proof is still in ~/.reef-verify/<id> every time.\n';
+  'Proof goes in .reef-verify/<id> when a run ends, and notes in .poteto/state while it runs.\n' +
+  'Read playbooks/ship.md before shipping. Proof is still in .reef-verify/<id> every time.\n';
 
 const scripts = [
   'build',
@@ -84,11 +84,15 @@ export function withoutFile(files: FixtureFile[], path: string): FixtureFile[] {
   return files.filter((f) => f.path !== path);
 }
 
+// stored is text as Reef stores it: the skill's own folder as the placement token.
+export const stored = (text: string) =>
+  text.replaceAll('~/.claude/skills/poteto-mode', '{{ATOLL_SKILL_DIR}}');
+
 // libraryFiles is what the library holds of a folder: everything but SKILL.md, by path.
 export function libraryFiles(files: FixtureFile[]): SkillFile[] {
   return files
     .filter((f) => f.path !== 'SKILL.md')
-    .map((f) => ({ path: f.path, content: f.content, executable: f.exec }))
+    .map((f) => ({ path: f.path, content: stored(f.content), executable: f.exec }))
     .sort((a, b) => (a.path < b.path ? -1 : 1));
 }
 

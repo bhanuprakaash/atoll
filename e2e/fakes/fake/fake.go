@@ -14,15 +14,16 @@ import (
 // that atoll might not pass on.
 var _testdata string
 
-// Record is one line of the call log: the first of a process has its cwd, argv and env, each later
-// one a line it read on stdin.
+// Record is one line of the call log: the first of a process has its cwd, argv and env; later
+// records hold data the fake loaded or a line it read on stdin.
 type Record struct {
-	PID   int            `json:"pid"`
-	Cwd   string         `json:"cwd,omitempty"`
-	Argv  []string       `json:"argv,omitempty"`
-	Env   []string       `json:"env,omitempty"`
-	Dirs  map[string]Dir `json:"dirs,omitempty"`
-	Stdin string         `json:"stdin,omitempty"`
+	PID       int             `json:"pid"`
+	Cwd       string          `json:"cwd,omitempty"`
+	Argv      []string        `json:"argv,omitempty"`
+	Env       []string        `json:"env,omitempty"`
+	Dirs      map[string]Dir  `json:"dirs,omitempty"`
+	MCPConfig json.RawMessage `json:"mcpConfig,omitempty"`
+	Stdin     string          `json:"stdin,omitempty"`
 }
 
 // Dir is what a folder named by an env var looked like when the process started: the nearest
@@ -81,6 +82,15 @@ func Start() (*Log, error) {
 // Stdin records one line read on stdin.
 func (l *Log) Stdin(line string) error {
 	return l.write(Record{Stdin: line})
+}
+
+// MCPConfig records the config a fake provider loaded after resolving it.
+func (l *Log) MCPConfig(config any) error {
+	b, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	return l.write(Record{MCPConfig: b})
 }
 
 func (l *Log) write(r Record) error {

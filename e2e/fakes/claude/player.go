@@ -23,20 +23,24 @@ type (
 		partial     bool                 // --include-partial-messages: print stream_event lines
 		denied      map[string]string    // denial message, by tool_use id
 		uses        map[string]toolUse   // tool calls printed so far, by id
+		mcpConfig   mcpConfig            // loaded --mcp-config values, after environment expansion
 		userMessage string
+		args        []string
 		session     string // from the init line
 		started     bool
 	}
 
 	mcpConfig struct {
-		MCPServers map[string]struct {
-			Type    string            `json:"type"`
-			URL     string            `json:"url"`
-			Headers map[string]string `json:"headers"`
-			Command string            `json:"command"`
-			Args    []string          `json:"args"`
-			Env     map[string]string `json:"env"`
-		} `json:"mcpServers"`
+		MCPServers map[string]mcpServer `json:"mcpServers"`
+	}
+
+	mcpServer struct {
+		Type    string            `json:"type"`
+		URL     string            `json:"url"`
+		Headers map[string]string `json:"headers"`
+		Command string            `json:"command"`
+		Args    []string          `json:"args"`
+		Env     map[string]string `json:"env"`
 	}
 
 	toolUse struct {
@@ -59,8 +63,8 @@ type (
 )
 
 func newPlayer(args []string) (*player, error) {
-	p := &player{servers: map[string]*fake.MCP{}, denied: map[string]string{}, uses: map[string]toolUse{}, prompt: flag(args, "--permission-prompt-tool"),
-		partial: slices.Contains(args, "--include-partial-messages")}
+	p := &player{servers: map[string]*fake.MCP{}, denied: map[string]string{}, uses: map[string]toolUse{}, mcpConfig: mcpConfig{MCPServers: map[string]mcpServer{}}, prompt: flag(args, "--permission-prompt-tool"),
+		partial: slices.Contains(args, "--include-partial-messages"), args: args}
 	for _, name := range []string{"--allowedTools", "--allowed-tools"} {
 		for _, v := range values(args, name) {
 			p.allowed = append(p.allowed, strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })...)
@@ -87,6 +91,7 @@ func newPlayer(args []string) (*player, error) {
 			for k, v := range s.Env {
 				s.Env[k] = fake.ExpandEnv(v, os.Getenv)
 			}
+			p.mcpConfig.MCPServers[name] = s
 			var c *fake.MCP
 			var err error
 			switch {
@@ -140,6 +145,12 @@ func (p *player) play(lines []string) error {
 		case "mcp-use":
 			var err error
 			if repoReply, err = p.mcpUse(); err != nil {
+				return err
+			}
+			continue
+		case "fs-read":
+			var err error
+			if repoReply, err = p.fsRead(p.args); err != nil {
 				return err
 			}
 			continue
@@ -198,6 +209,17 @@ func (p *player) play(lines []string) error {
 		case "github-probe":
 			var err error
 			if repoReply, err = fake.GitHubProbe(p.servers["github"]); err != nil {
+				return err
+			}
+			continue
+		case "procs-hold", "procs-scan":
+			var err error
+			if directive == "procs-hold" {
+				repoReply, err = fake.ProcsHold(p.servers)
+			} else {
+				repoReply, err = fake.ProcsScan(p.userMessage)
+			}
+			if err != nil {
 				return err
 			}
 			continue
@@ -274,6 +296,10 @@ func (p *player) mcpUse() (string, error) {
 		c := p.servers[call.Server]
 		if c == nil || !c.Tools[call.Tool] {
 			lines = append(lines, fake.MCPLine(call, "unavailable"))
+			continue
+		}
+		if bad := call.Undeclared(c); bad != "" {
+			lines = append(lines, fake.MCPLine(call, bad))
 			continue
 		}
 		use := toolUse{Type: "tool_use", ID: fmt.Sprintf("toolu_mcp_use_%d", i+1), Name: "mcp__" + call.Server + "__" + call.Tool, Input: call.Args}
