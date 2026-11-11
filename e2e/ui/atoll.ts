@@ -84,9 +84,45 @@ export async function startAtoll(opts: Options = {}): Promise<Machine> {
 
   let server: ChildProcess | undefined;
   let addr = '127.0.0.1:0';
+  // On Linux with-secret-store makes a fresh keyring for every command it wraps, so a restarted
+  // server would lose the secrets it saved. One wrapped holder per machine keeps the keyring, and
+  // every serve joins its session.
+  let session: ChildProcess | undefined;
+  let sessionEnv: Record<string, string> | undefined;
+  const startSession = async () => {
+    const holder = spawn(
+      join(e2e, 'with-secret-store'),
+      [
+        'sh',
+        '-c',
+        'printf "session %s %s %s\\n" "$DBUS_SESSION_BUS_ADDRESS" "$XDG_DATA_HOME" "$XDG_RUNTIME_DIR"; exec sleep 86400',
+      ],
+      {
+        detached: true,
+        env: { HOME: home, PATH: `${bin}:/usr/bin:/bin` },
+        stdio: ['ignore', 'pipe', 'inherit'],
+      },
+    );
+    session = holder;
+    sessionEnv = await new Promise<Record<string, string>>((ok, fail) => {
+      const timer = setTimeout(() => fail(new Error('secret store session not ready in 30s')), 30_000);
+      createInterface({ input: holder.stdout! }).on('line', (l) => {
+        const [tag, bus, dataHome, runtimeDir] = l.split(' ');
+        if (tag !== 'session') return;
+        clearTimeout(timer);
+        ok({
+          DBUS_SESSION_BUS_ADDRESS: bus,
+          XDG_DATA_HOME: dataHome,
+          XDG_RUNTIME_DIR: runtimeDir,
+          ATOLL_E2E_SECRET_SESSION: '1',
+        });
+      });
+      holder.once('exit', (code) => fail(new Error(`secret store session exited with ${code}`)));
+    });
+  };
   const serve = async () => {
     const cmd = [join(out, 'atoll'), 'serve', '--addr', addr];
-    if (opts.secretStore) cmd.unshift(join(e2e, 'with-secret-store'));
+    if (opts.secretStore && !sessionEnv) cmd.unshift(join(e2e, 'with-secret-store'));
     server = spawn(cmd[0], cmd.slice(1), {
       cwd: dir,
       detached: true,
@@ -95,6 +131,7 @@ export async function startAtoll(opts: Options = {}): Promise<Machine> {
         PATH: `${bin}:/usr/bin:/bin`,
         ATOLL_DATA_DIR: data,
         ATOLL_PROVIDER_PATH: bin,
+        ...sessionEnv,
         ...env,
       },
       stdio: ['ignore', 'pipe', 'inherit'],
@@ -159,10 +196,18 @@ export async function startAtoll(opts: Options = {}): Promise<Machine> {
           }
         }
       }
+      if (session) {
+        try {
+          process.kill(-session.pid!, 'SIGTERM');
+        } catch {
+          // already gone
+        }
+      }
       rmSync(dir, { recursive: true, force: true });
     },
   };
   try {
+    if (opts.secretStore && process.platform === 'linux') await startSession();
     await serve();
     if (userName !== null) {
       await api(machine, 'PUT', '/api/settings', {
