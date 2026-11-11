@@ -233,22 +233,89 @@ func New(cfg Config) *Manager {
 	}
 }
 
-// Send stores text and images as the user's message and starts a run for it. It returns ErrBusy
-// when the thread has a run going and wraps store.ErrNotFound for an unknown thread.
+// Send stores text and images as the user's message and starts a run for it. When the thread's
+// run is going it queues the message instead (the message has Queued set, the run is zero) and
+// logs it. It wraps store.ErrNotFound for an unknown thread.
 func (m *Manager) Send(
 	ctx context.Context, threadID, text string, images []store.Attachment,
 ) (store.Message, store.Run, error) {
 	msg, run, err := m.send(ctx, store.InboxItem{ThreadID: threadID, Text: text, Images: images})
-	if err != nil && !errors.Is(err, ErrBusy) {
-		m.flushLog(threadID)
+	if !errors.Is(err, ErrBusy) {
+		if err != nil {
+			m.flushLog(threadID)
+		}
+		return msg, run, err
 	}
-	return msg, run, err
+	it, err := m.cfg.Store.Enqueue(ctx, store.InboxItem{
+		ThreadID: threadID, Text: text, Images: images, Queued: true, FromUser: true,
+	})
+	if err != nil {
+		return store.Message{}, store.Run{}, err
+	}
+	m.cfg.Log.Info("queued", "thread_id", threadID, "message_id", it.ID)
+	// The run may have ended after send saw it going and before the message was stored.
+	m.flushLog(threadID)
+	return store.Message{
+		ID: it.ID, ThreadID: threadID, Role: store.RoleUser, Text: text, CreatedAt: it.CreatedAt,
+		Queued: true, Attachments: it.Images,
+	}, store.Run{}, nil
 }
 
-func (m *Manager) send(ctx context.Context, it store.InboxItem) (store.Message, store.Run, error) {
-	threadID, text := it.ThreadID, it.Text
+// EditQueued sets the text of the thread's queued message id; see store.EditQueued for the errors.
+func (m *Manager) EditQueued(ctx context.Context, threadID, id, text string) (store.InboxItem, error) {
+	m.inboxMu.Lock()
+	defer m.inboxMu.Unlock()
+	return m.cfg.Store.EditQueued(ctx, threadID, id, text)
+}
+
+// RemoveQueued removes the thread's queued message id.
+func (m *Manager) RemoveQueued(ctx context.Context, threadID, id string) error {
+	m.inboxMu.Lock()
+	defer m.inboxMu.Unlock()
+	return m.cfg.Store.DeleteQueued(ctx, threadID, id)
+}
+
+// SendNow stops the thread's run, if one is going, and starts the one run of the person's queued
+// messages. It returns store.ErrSent when message id is no longer queued.
+func (m *Manager) SendNow(ctx context.Context, threadID, id string) (store.Run, error) {
+	if err := m.cfg.Store.CheckQueued(ctx, threadID, id); err != nil {
+		return store.Run{}, err
+	}
+	if runID, _, ok := m.Active(threadID); ok {
+		if err := m.Stop(ctx, runID); err != nil && !errors.Is(err, ErrBusy) {
+			return store.Run{}, err
+		}
+	}
+	m.inboxMu.Lock()
+	defer m.inboxMu.Unlock()
+	items, err := m.cfg.Store.UserInbox(ctx, threadID)
+	if err != nil {
+		return store.Run{}, err
+	}
+	if !slices.ContainsFunc(items, func(it store.InboxItem) bool { return it.ID == id }) {
+		return store.Run{}, store.ErrSent
+	}
+	_, run, err := m.sendHeld(ctx, items...)
+	return run, err
+}
+
+func (m *Manager) send(ctx context.Context, items ...store.InboxItem) (store.Message, store.Run, error) {
+	threadID := items[0].ThreadID
+	texts := make([]string, len(items))
+	var images []provider.Image
+	kind := items[0].Kind
+	for i, it := range items {
+		texts[i] = it.Text
+		if it.Kind != kind {
+			kind = ""
+		}
+		for _, img := range it.Images {
+			images = append(images, provider.Image{Mime: img.Mime, Data: img.Data})
+		}
+	}
+	text := strings.Join(texts, "\n\n")
 	runCtx, cancel := context.WithCancel(m.ctx)
-	a := &active{threadID: threadID, kind: it.Kind, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
+	a := &active{threadID: threadID, kind: kind, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		cancel()
@@ -264,7 +331,7 @@ func (m *Manager) send(ctx context.Context, it store.InboxItem) (store.Message, 
 	m.wg.Add(1)
 	m.mu.Unlock()
 
-	msg, run, err := m.start(ctx, it)
+	msg, run, err := m.start(ctx, items)
 	if err != nil {
 		m.drop(a)
 		cancel()
@@ -275,24 +342,20 @@ func (m *Manager) send(ctx context.Context, it store.InboxItem) (store.Message, 
 	a.run = run
 	m.tokens[a.token] = a
 	m.mu.Unlock()
-	images := make([]provider.Image, len(msg.Attachments))
-	for i, att := range msg.Attachments {
-		images[i] = provider.Image{Mime: att.Mime, Data: att.Data}
-	}
 	go m.execute(a, text, images)
 	return msg, run, nil
 }
 
-// start refuses a closed thread, then stores the message and its run.
-func (m *Manager) start(ctx context.Context, it store.InboxItem) (store.Message, store.Run, error) {
-	t, err := m.cfg.Store.Thread(ctx, it.ThreadID)
+// start refuses a closed thread, then stores the messages and their run.
+func (m *Manager) start(ctx context.Context, items []store.InboxItem) (store.Message, store.Run, error) {
+	t, err := m.cfg.Store.Thread(ctx, items[0].ThreadID)
 	if err != nil {
 		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
 	}
 	if t.Closed {
 		return store.Message{}, store.Run{}, ErrClosed
 	}
-	msg, run, err := m.cfg.Store.StartRunFrom(ctx, it)
+	msg, run, err := m.cfg.Store.StartRunFrom(ctx, items...)
 	if err != nil {
 		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
 	}

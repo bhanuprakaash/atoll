@@ -33,6 +33,7 @@ export const getThread = (threadId: string) =>
   api<
     Thread & {
       active_run: Run | null;
+      queued: Message[];
       approvals: { run_id: string; id: string; tool: string; input: unknown }[];
     }
   >(`/threads/${threadId}`);

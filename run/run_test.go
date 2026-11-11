@@ -519,8 +519,12 @@ func TestRun_Approval(t *testing.T) {
 			if got, _ := e.st.Run(t.Context(), run.ID); got.Status != store.StatusWaiting {
 				t.Errorf("status %q when the approval was published, want waiting", got.Status)
 			}
-			if _, _, err := e.m.Send(t.Context(), e.thread.ID, "again", nil); !errors.Is(err, ErrBusy) {
-				t.Errorf("Send during a run: %v, want ErrBusy", err)
+			queued, _, err := e.m.Send(t.Context(), e.thread.ID, "again", nil)
+			if err != nil || !queued.Queued {
+				t.Errorf("Send during a run: %+v, %v, want a queued message", queued, err)
+			}
+			if err := e.m.RemoveQueued(t.Context(), e.thread.ID, queued.ID); err != nil {
+				t.Fatal(err)
 			}
 			if err := e.m.Answer(t.Context(), ap.ID, tt.allow); err != nil {
 				t.Fatal(err)

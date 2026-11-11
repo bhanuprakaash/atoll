@@ -14,6 +14,7 @@ export type Message = {
   from_bot_id?: string;
   kind?: string;
   created_at: string;
+  queued?: boolean;
   attachments: { id: string; mime: string }[];
 };
 
@@ -82,10 +83,38 @@ export function useSendMessage(threadId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { text: string; images?: ImageInput[] }) =>
-      api<{ message: Message; run: Run }>(`/threads/${threadId}/messages`, {
+      api<{ message: Message; run: Run | null }>(`/threads/${threadId}/messages`, {
         method: 'POST',
         body: input,
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['messages', threadId] }),
+    onSuccess: () =>
+      Promise.all(
+        [
+          ['messages', threadId],
+          ['thread', threadId],
+        ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+      ),
+  });
+}
+
+type QueuedChange = { id: string; text?: string; send?: boolean };
+
+// useChangeQueued edits, removes or sends now a message that waits for the thread's run to end.
+export function useChangeQueued(threadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, text, send }: QueuedChange) => {
+      const path = `/threads/${threadId}/messages/${id}`;
+      if (send) await api(`${path}/send`, { method: 'POST' });
+      else if (text !== undefined) await api(path, { method: 'PATCH', body: { text } });
+      else await api(path, { method: 'DELETE' });
+    },
+    onSettled: () =>
+      Promise.all(
+        [
+          ['messages', threadId],
+          ['thread', threadId],
+        ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+      ),
   });
 }

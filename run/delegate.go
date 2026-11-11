@@ -162,26 +162,35 @@ func (m *Manager) abandonHelper(ctx context.Context, rp store.Repo, h Handoff, p
 	}
 }
 
-// Continue sends message to a helper thread of the boss run with token.
-func (m *Manager) Continue(ctx context.Context, token, threadID, message string) error {
+// Continue sends message to a helper thread of the boss run with token. When the helper's run is
+// going the message is queued and Continue returns the helper's name.
+func (m *Manager) Continue(ctx context.Context, token, threadID, message string) (queuedFor string, err error) {
 	a, err := m.byToken(token)
 	if err != nil {
-		return err
+		return "", err
 	}
 	t, err := m.cfg.Store.Thread(ctx, threadID)
 	if errors.Is(err, store.ErrNotFound) {
-		return RefusedError("no thread " + threadID)
+		return "", RefusedError("no thread " + threadID)
 	}
 	if err != nil {
-		return fmt.Errorf("load thread: %w", err)
+		return "", fmt.Errorf("load thread: %w", err)
 	}
 	if t.ParentThreadID != a.threadID {
-		return RefusedError("thread " + threadID + " is not a helper thread of this thread")
+		return "", RefusedError("thread " + threadID + " is not a helper thread of this thread")
 	}
 	if t.Closed {
-		return ErrClosed
+		return "", ErrClosed
 	}
-	return m.post(ctx, threadID, "", message)
+	busy, err := m.post(ctx, threadID, message)
+	if err != nil || !busy {
+		return "", err
+	}
+	helper, err := m.cfg.Store.Bot(ctx, t.BotID)
+	if err != nil {
+		return "", fmt.Errorf("load helper: %w", err)
+	}
+	return helper.Name, nil
 }
 
 // hasGitHub reports whether b has a connected GitHub connection.

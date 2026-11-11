@@ -794,3 +794,73 @@ func TestStore_Groups(t *testing.T) {
 		t.Errorf("groups %q after delete, want B,C", got)
 	}
 }
+
+func TestStore_Queued(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	png := store.Attachment{Mime: "image/png", Data: []byte("png")}
+	one, err := st.Enqueue(ctx, store.InboxItem{ThreadID: th.ID, Text: "one", Queued: true, FromUser: true, Images: []store.Attachment{png}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Enqueue(ctx, store.InboxItem{ThreadID: th.ID, Text: "wake", FromBotID: bot.ID}); err != nil {
+		t.Fatal(err)
+	}
+	two, err := st.Enqueue(ctx, store.InboxItem{ThreadID: th.ID, Text: "two", Queued: true, FromUser: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Attachment(ctx, one.Images[0].ID); err != nil {
+		t.Errorf("queued image not served: %v", err)
+	}
+
+	queued, err := st.Queued(ctx, th.ID)
+	if err != nil || len(queued) != 2 || queued[0].ID != one.ID || queued[1].ID != two.ID || queued[0].Images[0].Data != nil {
+		t.Fatalf("Queued = %+v, %v; want one, two without the wake or image bytes", queued, err)
+	}
+	if _, err := st.EditQueued(ctx, th.ID, two.ID, ""); !errors.Is(err, store.ErrEmpty) {
+		t.Errorf("empty edit: %v, want ErrEmpty", err)
+	}
+	if got, err := st.EditQueued(ctx, th.ID, one.ID, ""); err != nil || got.Text != "" {
+		t.Errorf("edit to no text with an image: %+v, %v", got, err)
+	}
+	if err := st.DeleteQueued(ctx, th.ID, "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("delete unknown: %v, want ErrNotFound", err)
+	}
+
+	items, err := st.UserInbox(ctx, th.ID)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("UserInbox = %+v, %v; want 2", items, err)
+	}
+	msg, _, err := st.StartRunFrom(ctx, items...)
+	if err != nil || msg.ID != one.ID {
+		t.Fatalf("StartRunFrom = %+v, %v; want first message with id %s", msg, err, one.ID)
+	}
+	for _, err := range []error{
+		st.DeleteQueued(ctx, th.ID, two.ID),
+		st.CheckQueued(ctx, th.ID, one.ID),
+		func() error { _, err := st.EditQueued(ctx, th.ID, one.ID, "late"); return err }(),
+	} {
+		if !errors.Is(err, store.ErrSent) {
+			t.Errorf("after delivery: %v, want ErrSent", err)
+		}
+	}
+	if _, err := st.Attachment(ctx, one.Images[0].ID); err != nil {
+		t.Errorf("image lost on delivery: %v", err)
+	}
+	if rest, err := st.Queued(ctx, th.ID); err != nil || len(rest) != 0 {
+		t.Errorf("Queued after delivery = %+v, %v; want none", rest, err)
+	}
+}

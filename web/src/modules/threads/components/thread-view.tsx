@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
 import { quiet } from '@/components/button';
@@ -17,6 +18,7 @@ import {
 import { useRun, useStopRun } from '@/modules/threads/api/runs';
 import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
+import { QueuedMessage } from '@/modules/threads/components/queued-message';
 import { HelpersRegion } from '@/modules/threads/components/helpers-region';
 import { LiveRun } from '@/modules/threads/components/live-run';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
@@ -495,6 +497,11 @@ export function ThreadView({
   const messages = messageQuery.data?.pages.flat() ?? [];
   const { fetchNextPage, hasNextPage, isFetching } = messageQuery;
   const { data: thread } = useThread(threadId);
+  const queryClient = useQueryClient();
+  const queued = thread?.queued ?? [];
+  useEffect(() => {
+    void queryClient.invalidateQueries({ queryKey: ['messages', threadId] });
+  }, [queryClient, threadId, thread?.run_id, queued.length]);
   const create = useCreateThreadWithMessage(botId);
   const send = useSendMessage(threadId);
   const stop = useStopRun();
@@ -557,7 +564,7 @@ export function ThreadView({
         return { mime: a.mime, data: url.slice(url.indexOf(',') + 1) };
       }),
     );
-    send.mutate({ text: message.text, images }, { onSuccess: ({ run }) => begin(run.id) });
+    send.mutate({ text: message.text, images }, { onSuccess: ({ run }) => run && begin(run.id) });
   };
   const sendFirst = (text: string, images?: ImageInput[]) => {
     if (repoId && !thread?.repo_id)
@@ -568,7 +575,7 @@ export function ThreadView({
             navigate(`/bots/${botId}/threads/${result.thread?.id ?? result.id}`),
         },
       );
-    else send.mutate({ text, images }, { onSuccess: ({ run }) => begin(run.id) });
+    else send.mutate({ text, images }, { onSuccess: ({ run }) => run && begin(run.id) });
   };
   const mrUrl = mr?.url ?? thread?.mr_url;
   const mrState = mr?.state ?? thread?.mr_state;
@@ -770,6 +777,15 @@ export function ThreadView({
               <RunResult id={thread.run_id} botName={botName} retry={retry} signedOut={signedOut} />
             </div>
           )}
+          {queued.map((m) => (
+            <QueuedMessage
+              key={m.id}
+              message={m}
+              threadId={threadId}
+              running={!!activeId}
+              editable={!thread?.parent_thread_id}
+            />
+          ))}
           {lostRepo && (
             <p className="text-sm text-muted">
               {botName} no longer has access to {lostRepo}
