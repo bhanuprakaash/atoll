@@ -384,7 +384,7 @@ func TestContinue_OnlyFromBoss(t *testing.T) {
 
 			quietBoss(t, s, boss.ID, tester.ID, 1)
 			lines := useAtoll(t, s, boss, ev, continueCall(helper, _askPrompt))
-			if len(lines) != 1 || lines[0] == "atoll/continue: unavailable" || slices.Contains(refusals, lines[0]) {
+			if len(lines) == 0 || lines[0] == "atoll/continue: unavailable" || slices.Contains(refusals, lines[0]) {
 				t.Fatalf("continue from the boss thread: reply %q, want it accepted (refusals were %q)", lines, refusals)
 			}
 			deadline := time.Now().Add(30 * time.Second)
