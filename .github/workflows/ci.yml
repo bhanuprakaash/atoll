@@ -70,6 +70,12 @@ jobs:
     if: github.event_name == 'push'
     runs-on: macos-latest
     # The app is ad-hoc signed, not notarized, so first open needs System Settings → Open Anyway.
+    permissions:
+      contents: write
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -81,7 +87,11 @@ jobs:
           node-version: 22.22.1
       - run: npm i -g "$(node -p "require('./web/package.json').packageManager")"
       - run: rustup toolchain install stable --profile minimal
-      - run: make app
+      - if: github.ref_type != 'tag'
+        run: make app
+      # A v* tag publishes the release the app's updater reads; the version comes from the tag.
+      - if: github.ref_type == 'tag'
+        run: scripts/release "${GITHUB_REF_NAME#v}"
       - uses: actions/upload-artifact@v4
         with:
           name: Reef
