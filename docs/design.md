@@ -39,7 +39,7 @@ never a dependency.
 
   | Mode | Claude Code | Codex |
   | --- | --- | --- |
-  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; the worktree root (including every worktree under it), the repo's git objects, refs, logs and worktrees directories, and the session's own git directory are writable; `approvalPolicy: on-request` |
+  | Auto | `--permission-mode auto` + Reef's permission prompt tool | `workspace-write` sandbox with network access; the worktree root (including every worktree under it), the repo's git objects, refs, logs and worktrees directories, the session's own git directory and the Bot's cache root are writable; `approvalPolicy: on-request` |
   | Ask | default mode + Reef's permission prompt tool | `approvalPolicy: untrusted` |
   | Full access | `--permission-mode bypassPermissions` | `danger-full-access` sandbox, `approvalPolicy: never` |
 
@@ -48,6 +48,15 @@ never a dependency.
     `extensions.worktreeConfig` is enabled, neither git worktrees root is granted because they hold
     writable per-worktree config. The worktree root is not granted if it contains the repo or its
     git common directory.
+    With a linked worktree, there are five or six roots plus the cache root; the worktree root may
+    be withheld. With `extensions.worktreeConfig` enabled, three or four roots plus the cache root
+    remain. For repo threads, Reef creates `<data>/cache/<bot id>/` per Bot. A Bot's threads on
+    any repo share its cache; Bots never share caches. Codex Ask and Full access and Claude get none.
+    It sets `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `GOCACHE`,
+    `GOLANGCI_LINT_CACHE`, `pnpm_config_store_dir` and `PNPM_HOME` to folders under that root.
+    Deleting the Bot removes its cache; Reef logs a removal failure after deleting the Bot.
+  - Known gap: `GOMODCACHE` and `GOPATH` are not moved. A first build needing a module absent
+    from `~/go` can fail on the read-only module cache. A real run can determine a follow-up.
   - Read-only: the repo's `.git/config` and `.git/hooks`; either could escape the sandbox when
     Reef next runs git. The common directory is excluded to protect them; single-file roots crash
     Codex's sandbox. Reef's git disables hooks and fsmonitor and uses `GIT_DIR` and `GIT_COMMON_DIR`
@@ -1001,7 +1010,7 @@ Reef guide
 - Sign-ins are the user's, in Settings > Connections. Never attach an unsigned connection; say where to sign in.
 
 Ask first
-- To create a Bot or skill, ask in ONE message for every missing item, each with a proposed default. Include the full proposal for each Bot: model, skills, repo access, connections. Create nothing in that run. "ok" means use the defaults. This overrides "ask only when two real readings".
+- To create a Bot or skill, ask in ONE message for every missing item, each with a proposed default. Include the full proposal for each Bot: model, skills, repo access, connections. Write it in the reply; the user sees nothing else. Create nothing in that run. "ok" means use the defaults. This overrides "ask only when two real readings".
 - Small edits (rename, persona tweak, look) need no question.
 
 Import a local skill
@@ -1208,11 +1217,12 @@ Voice
 - New Bot is a full page with a centred form grouped into Basics, Brain and Access, and a link
   to ask Chief instead. Wide windows show a live card and sidebar row preview on the right. Create
   opens the new Bot's empty thread.
-- Settings: General (name, worktree folder), Providers, Connections, Skills, Repos, Memory, one
+- Settings: General (name, worktree folder, and in the desktop app the Software update group), Providers, Connections, Skills, Repos, Memory, one
   list each. Content to the right of the section navigation is centred, with a maximum width of
   720px. Add repo opens a dialog (name, path, Choose… for the native folder picker, which the Go
-  sidecar opens with `osascript`, so the UI still talks to Go over HTTP only); with no repos yet the
-  same form shows inline. New skill opens an empty editor and creates the skill only on Create.
+  sidecar opens with `osascript` on macOS and `zenity` on Linux, so the UI still talks to Go over
+  HTTP only; with no `zenity` it answers `501` and the dialog says to type the path); with no
+  repos yet the same form shows inline. New skill opens an empty editor and creates the skill only on Create.
   A skill opens in a wide right panel: name, its files (`SKILL.md` first, then by path, scripts
   marked), the selected file in one editor (when to use it and the `SKILL.md` text, or a file's text
   with a Script checkbox that follows a leading `#!` until toggled, and Delete file), and the Bots
@@ -1228,7 +1238,7 @@ Voice
   in; Meet Chief with example asks, each opening Chief's thread with that message sent.
 - The Go server serves the UI at `/` and the API under `/api/`, one address. Vite builds `web/`
   into `server/ui`, which the binary embeds (`make ui`).
-- The desktop shell uses an overlay title bar; the Bot header’s empty space is a window drag region.
+- On macOS the desktop shell uses an overlay title bar; the Bot header’s empty space is a window drag region.
 - The Tauri shell (`desktop/`, `make app`) starts `atoll serve --addr 127.0.0.1:4317
   --exit-on-stdin-close`, keeps its stdin pipe open as the sidecar's lifeline, loads the URL it
   prints and restarts it when it exits (every 2 s while it keeps failing). On quit or SIGTERM it
@@ -1241,16 +1251,38 @@ Voice
   the cookie (401 otherwise); MCP URLs with a valid per-run token also work without the cookie.
   Local host and same-origin checks still apply. With `ATOLL_TOKEN` unset, `make run` and e2e
   keep their existing access without a cookie.
-  A page's `window.open` (provider sign-in) opens in the default browser (`on_new_window`), and so
+  A page's `window.open` (provider sign-in) opens in the default browser (`open` on macOS,
+  `xdg-open` on Linux; `on_new_window`), and so
   does any navigation of the window to a URL that is not Reef's own server (`on_navigation`), which
   is cancelled in the app. Only `http`, `https` and `mailto` URLs are handed to the browser; any
   other scheme is cancelled. Links in chat replies carry `target="_blank"`. *A fixed address lets the
   open page reconnect to a restarted sidecar.*
 - The dmg is ad-hoc signed (`signingIdentity: "-"`), not notarized, as old Reef was: free, and a
   web download opens after System Settings → Privacy & Security → Open Anyway once. CI's `dmg` job
-  builds it on a GitHub macOS runner for every push to `main` and every `v*` tag. *Developer ID and
+  builds it on a GitHub macOS runner for every push to `main`, and on a `v*` tag runs
+  `scripts/release`, which publishes the release with the dmg. *Developer ID and
   notarization need the paid Apple Developer Program; add them when outside users need a clean
   first open.*
+- Reef runs on Linux x86_64 (Ubuntu/Debian) as an AppImage, which the Tauri updater supports and a
+  `.deb` does not; arm64, Windows and `.deb`/`.rpm` are out. `make app` bundles `appimage` on
+  Linux and `app,dmg` on macOS. CI's `linux` job builds the AppImage on every PR and push to
+  `main`, after `dmg` so that on a `v*` tag the release exists, and on a tag runs
+  `scripts/release` to add to it. The AppImage is signed only with the updater key.
+- Reef updates itself from GitHub Releases through the Tauri updater: the shell's `check_update`
+  and `install_update` commands are the only ones the page (loaded from `http://127.0.0.1:4317`)
+  may call, granted by the `update` capability. The page checks once on load, in the desktop app
+  only; a newer version shows as Update available on the sidebar's Settings link and in Settings >
+  General > Software update, whose Update and restart installs it. `install_update` downloads and
+  verifies the update, stops the sidecar as quit does, then restarts, so the new app finds port
+  4317 free. Pushing tag `v<version>` releases: CI runs `scripts/release <version>`, which stamps
+  the version into `tauri.conf.json` for the build only, signs with the `TAURI_SIGNING_PRIVATE_KEY`
+  secret (locally, the key in `~/.tauri/reef.key`), and publishes `Reef.app.tar.gz`, its `.sig`,
+  `latest.json` and the dmg as release `v<version>`; on Linux it adds
+  `Reef_<version>_amd64.AppImage` (itself the update file), its `.sig` and a `linux-x86_64` entry
+  in `latest.json` beside `darwin-aarch64` to that release. The app reads
+  `releases/latest/download/latest.json`. The tag is the version; the committed one is not bumped.
+  *Only the shell can replace the running app, so the web calls it for these two commands and
+  nothing else; a progress bar can come later.*
 - Provider sign-in state is cached: checked on start, before each run, on Refresh and when a
   sign-in finishes, never on the sidebar's poll.
 - A run that fails because its provider refused the sign-in (Claude `authentication_failed`, Codex
@@ -1297,7 +1329,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 
 A Slack Marketplace listing (one-click Slack for every
 workspace, no per-workspace app), browser pane, background processes pane, the platform
-switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up
+switch for Bots other than Chief, a skill's binary files, mobile, memory pins (up
 to about 5 items always in the prompt), routines (scheduled, repeating runs), more provider
 adapters.
 

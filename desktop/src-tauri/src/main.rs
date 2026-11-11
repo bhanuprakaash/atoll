@@ -15,12 +15,54 @@ use std::{
 };
 use tauri::{
     webview::{Color, NewWindowResponse},
-    LogicalPosition, Manager, Theme, TitleBarStyle, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Manager, Theme, WebviewUrl, WebviewWindowBuilder,
 };
+use tauri_plugin_updater::UpdaterExt;
 
 struct Supervisor {
     quitting: Arc<AtomicBool>,
     thread: Mutex<Option<JoinHandle<()>>>,
+}
+
+#[tauri::command]
+async fn check_update(app: AppHandle) -> Result<serde_json::Value, String> {
+    let update = app
+        .updater()
+        .map_err(|err| err.to_string())?
+        .check()
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok(serde_json::json!({
+        "current": app.package_info().version.to_string(),
+        "available": update.map(|update| update.version),
+    }))
+}
+
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    let update = app
+        .updater()
+        .map_err(|err| err.to_string())?
+        .check()
+        .await
+        .map_err(|err| err.to_string())?
+        .ok_or("Reef is up to date")?;
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|err| err.to_string())?;
+    stop_sidecar(&app);
+    app.restart()
+}
+
+// The new app's sidecar cannot listen on 4317 while the old one still holds it.
+fn stop_sidecar(app: &AppHandle) {
+    let supervisor = app.state::<Supervisor>();
+    supervisor.quitting.store(true, Ordering::SeqCst);
+    let thread = supervisor.thread.lock().unwrap().take();
+    if let Some(thread) = thread {
+        let _ = thread.join();
+    }
 }
 
 fn main() {
@@ -32,6 +74,8 @@ fn main() {
 
     tauri::Builder::default()
         .manage(supervisor)
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![check_update, install_update])
         .setup(move |app| {
             let mut signals = Signals::new([SIGTERM, SIGINT, SIGHUP])?;
             let exit = app.handle().clone();
@@ -42,42 +86,41 @@ fn main() {
             });
             // The sidecar's URL is known only once it listens; provider sign-in pages open in
             // the default browser, not in a webview window.
-            let window = WebviewWindowBuilder::new(
+            let builder = WebviewWindowBuilder::new(
                 app,
                 "main",
                 WebviewUrl::External("about:blank".parse().expect("valid URL")),
             )
-            .title("Reef")
-            .title_bar_style(TitleBarStyle::Overlay)
-            .hidden_title(true)
-            .traffic_light_position(LogicalPosition::new(18.0, 33.0))
-            .theme(Some(Theme::Dark))
-            .background_color(Color(19, 19, 19, 255))
-            .inner_size(1200.0, 800.0)
-            .min_inner_size(700.0, 500.0)
-            .disable_drag_drop_handler()
-            .on_new_window(|url, _| {
-                if matches!(url.scheme(), "http" | "https" | "mailto") {
-                    if let Err(err) = Command::new("open").arg(url.as_str()).spawn() {
-                        eprintln!("open {url}: {err}");
+            .title("Reef");
+            #[cfg(target_os = "macos")]
+            let builder = builder
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true)
+                .traffic_light_position(tauri::LogicalPosition::new(18.0, 33.0));
+            let window = builder
+                .theme(Some(Theme::Dark))
+                .background_color(Color(19, 19, 19, 255))
+                .inner_size(1200.0, 800.0)
+                .min_inner_size(700.0, 500.0)
+                .disable_drag_drop_handler()
+                .on_new_window(|url, _| {
+                    if matches!(url.scheme(), "http" | "https" | "mailto") {
+                        open_url(url.as_str());
                     }
-                }
-                NewWindowResponse::Deny
-            })
-            .on_navigation(|url| {
-                if url.scheme() == "about"
-                    || (url.host_str() == Some("127.0.0.1") && url.port() == Some(4317))
-                {
-                    return true;
-                }
-                if matches!(url.scheme(), "http" | "https" | "mailto") {
-                    if let Err(err) = Command::new("open").arg(url.as_str()).spawn() {
-                        eprintln!("open {url}: {err}");
+                    NewWindowResponse::Deny
+                })
+                .on_navigation(|url| {
+                    if url.scheme() == "about"
+                        || (url.host_str() == Some("127.0.0.1") && url.port() == Some(4317))
+                    {
+                        return true;
                     }
-                }
-                false
-            })
-            .build()?;
+                    if matches!(url.scheme(), "http" | "https" | "mailto") {
+                        open_url(url.as_str());
+                    }
+                    false
+                })
+                .build()?;
             let binary = std::env::current_exe()?.with_file_name("atoll");
             let mut token = [0u8; 32];
             File::open("/dev/urandom")?.read_exact(&mut token)?;
@@ -192,14 +235,20 @@ fn main() {
         .expect("build Reef")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
-                let supervisor = app.state::<Supervisor>();
-                supervisor.quitting.store(true, Ordering::SeqCst);
-                let thread = supervisor.thread.lock().unwrap().take();
-                if let Some(thread) = thread {
-                    let _ = thread.join();
-                }
+                stop_sidecar(app);
             }
         });
+}
+
+fn open_url(url: &str) {
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    if let Err(err) = Command::new(opener).arg(url).spawn() {
+        eprintln!("{opener} {url}: {err}");
+    }
 }
 
 fn show_port_error(window: &tauri::WebviewWindow) {
