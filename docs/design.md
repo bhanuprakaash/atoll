@@ -1048,7 +1048,7 @@ Voice
   reading, searching or recalling, the eyes scan; editing, writing, remembering or changing the
   platform, it bounces; running a command, it breathes. No spinner rings or bubbles anywhere, on a
   creature or a thread; a running thread shows three small wave dots.
-- Sidebar: a search field on top filters Bots by name, `+` beside it; no logo (the user found it
+- Sidebar: a search field on top filters Bots by name and open threads by title (see Keyboard), `+` beside it; no logo (the user found it
   redundant). Mockups: the "Reef thread tracking" canvas
   (https://claude.ai/artifact/McPffSMXRCir3g17QQJTGQ).
   One row per Bot (36 px creature, name, time; 9 px 10 px padding, 4 px between rows): Chief
@@ -1087,6 +1087,29 @@ Voice
 - New thread: `+` on Bot row hover, the Bot's right-click menu (New thread, Pin to sidebar, Move
   to group, Bot settings), or `⌘N` for the open Bot. A thread row shows `×` on hover (Close thread,
   saving unfinished work as before); right-click has Rename and Close.
+- Keyboard: Reef works like a chat app. Opening a thread or the New thread screen, by any route
+  (sidebar, island, switcher, `⌘N`, a link), puts focus in its composer; a thread with no composer
+  (a helper thread) takes none. A printable key pressed with nothing focused, and no `⌘`, `Ctrl` or
+  `Alt` held, goes into the composer; with a dialog or menu open it goes nowhere. *Typing right
+  after a thread opened was lost: focus stayed on the link or the body.* The switcher is `⌘K`
+  (`Ctrl+K` off macOS), from anywhere including the composer: a dialog named `Go to` with a search
+  field and a list of the Bots and the open threads of every Bot. A Bot row is its creature and name;
+  Enter opens its latest thread, or its New thread screen when it has none. A thread row is its
+  Bot's creature, the title, the Bot's name and, on a second line, its branch and MR reference
+  (`#92`, `!7`) when it has them. Closed threads are not listed (the threads popup has them). A
+  query is split into words; each must be contained, ignoring case, in the Bot name, thread title,
+  branch or MR reference. With no query the order is threads that need you, threads by last
+  activity, then Bots in the sidebar's order. With a query: Bots whose name matches; threads whose
+  title holds every word; threads that needed the branch or MR too; threads that needed their Bot's
+  name too; inside each group, needs you first, then last activity. The first row is selected and
+  stays the first as the query changes; Up and Down move (they stop at the ends), Enter opens the
+  selected row and closes the switcher, Esc closes it and focus returns to where it was. No match
+  shows "No threads or Bots match". The Bots poll (`GET /api/bots`) gives each open thread its
+  `branch`, `mr_url` and `last_activity`, so the switcher needs no request of its own. *With 80+
+  threads a person finds "the thread about #161" by what they remember, not by whose it is.* The
+  sidebar search matches Bot names and open thread titles: a Bot shows when its name or a title
+  matches; while a title matches, its tree is the matching threads, all of them with no `N more`;
+  a Bot matched by name only keeps its usual tree.
 - Threads popup (from `N more`): a dialog with the Bot's creature and name, "N open threads · N
   closed", New thread and close; a search over title, branch and MR (`!7`); the rows the tree shows
   ("In the sidebar"), Other open threads, and Closed folded. Row hover has Pin to sidebar or Unpin
