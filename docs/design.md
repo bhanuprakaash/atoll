@@ -1141,6 +1141,47 @@ Voice
   then a Blocked line (from `finish_run`'s `blocked`) whose dot hangs in the margin so its text
   starts at the reply's edge. Spacing: 18 px between messages, 24 px between the blocks of one reply
   (prose, changes, memories, Blocked line, footer), 14 px between paragraphs and list items.
+- Errors are designed, never raw. One component, `ErrorNotice` (`web/src/components/error-notice.tsx`),
+  shows every failure a person can cause: a `role="alert"` block with a title in plain words, one
+  line of what to do next, an action button when there is one, and a collapsed `Details` button
+  (`aria-expanded`) whose text is for a bug report. It sits inline where the action failed (the
+  form, card, dialog or setting), replaces itself on the next attempt and never toasts. Calm:
+  only its icon is red; the words are ink and muted. No screen renders `error.message`, a JSON
+  body, an HTTP status text or a Go error chain; `.message` of an error is read only inside
+  `ErrorNotice`, which only `Details` shows. A chat run line is the same component in its
+  one-line form: the title is the line (`Didn't run: <reason>`, or `Run failed: <reason>` after a
+  reply), Retry or Resend is the action and stands in for the next-step line, and `Details` holds
+  the provider's raw error. The callback pages (`/oauth/callback`) take the same shape as static
+  HTML: the title, the next-step line and a closed `<details>` with the summary `Details`. *37 of
+  44 red texts rendered a server string, `internal error` or a raw HTML 502 page.*
+- The server answers a failed request `{"error": "<plain sentence>", "code": "<id>"}`. `error` is
+  the title as is; the UI adds the next step and action from `code`. A cause it knows gets its
+  code and sentence; any other failure is `internal` with the generic sentence, and its Go error
+  chain goes to the log (`request failed`, with method, path and `err`), never to the client. A
+  response that is not this JSON (a proxy's HTML page, an empty body) reads as `internal`. The
+  codes:
+
+  | code | status | `error` | next step | action |
+  | --- | --- | --- | --- | --- |
+  | `keychain` | 500 | `Reef couldn't save <what> to the system keychain.` | Unlock the keychain or restart Reef, then try again. | Sign in again (a connection) or Try again |
+  | `signed_out` | 401 | `That sign-in expired or was refused.` | Sign in again. | Sign in again |
+  | `provider_off` | 409 | `<Provider> isn't installed or isn't signed in.` | Open Settings > Providers. | Open settings |
+  | `busy` | 409 | `A run is going in this thread.` | Wait for it to finish, or stop it. | |
+  | `closed` | 409 | `This thread is closed.` | Start a new thread to keep going. | New thread |
+  | `not_found` | 404 | `That no longer exists.` | It was deleted or moved. Go back and pick another. | |
+  | `exists` | 409 | `Something with that name already exists.` | Pick another name. | |
+  | `invalid` | 400 | the input rule in a plain sentence (`A name is required.`) | Fix it and try again. | |
+  | `unreachable` | 502 | `Reef couldn't reach <host>.` | Check the address and your connection, then try again. | Try again |
+  | `internal` | 500 | `Something went wrong on our side.` | Try again. If it keeps happening, copy the details into a bug report. | Try again |
+
+  `Details` of a failed request reads `<code> · <status> · <METHOD> <path>`, nothing from the
+  chain. `provider_off` is also a run's `error_kind` (the CLI missing, or not signed in at
+  start); with `signed_out` and `secret_store` it picks the reason of the run line. An unknown
+  route or method is `not_found`. Losing the server is not an error of any request: the app shows
+  one `Reconnecting` notice (`role="status"`), on every page, until the server answers again, and
+  the requests that failed meanwhile show nothing of their own. *One notice per failed request
+  looked like ten bugs for one cause.* The gone pages (a deleted Bot or thread) are the full-page
+  form of `not_found`: a sentence and one link, no Details, since nothing failed.
 - Chat type: Bot replies, the user's bubble and briefs are 16 px, line height 1.65, letter spacing
   0; the rest of the app keeps 14 px. *Replies read as a wall next to Claude's app; the user wanted
   more air.*
