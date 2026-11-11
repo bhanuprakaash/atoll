@@ -184,8 +184,9 @@ after a failed undo counts a Bot that is already gone as removed.
   tool.
 - Each run's event stream is saved to `<data>/runs/<id>.jsonl`. A run left `running` or `waiting`
   when the server starts is marked `failed` with a reason. A thread's SSE stream first replays the
-  going run's latest events (text deltas left out), so a page that opens late or reconnects shows
-  the current tool and approvals. An approval that is answered, or dropped because its run or the
+  going run's latest events, each run of consecutive text deltas joined into one `text` event, so
+  a page that opens late or reconnects shows the text so far, the current tool and approvals. A
+  reconnecting page drops the stream it drew and draws the replay. An approval that is answered, or dropped because its run or the
   provider's request ended, publishes `approval_closed {run_id, id}`; it is saved and replayed like
   the rest, so a client drops every approval that has one and the open ones are exactly the cards
   left. `POST /api/approvals/{id}` on a closed approval answers `404`, and the card then leaves
@@ -1167,7 +1168,17 @@ Voice
   without shifting what the user was reading; a round jump control returns to the latest message
   when the user has scrolled away.
 - While a run works, one status line shows the Bot, a verb and its target ("Reading
-  repo-step.tsx") and the time; never raw tool calls. Approvals show a short form per tool: a
+  repo-step.tsx") and the time; never raw tool calls. Under it the Bot's text shows as it
+  arrives (Claude and Codex alike), in the reply's own type with no card: one block per stretch of
+  text between tool calls, and between the blocks one quiet line per finished tool step in the
+  status line's words ("Running make check"). The step that is running is the status line, not a
+  line as well, and `finish_run` is no step. When the run ends the stream is replaced by the reply
+  (the text after the last tool call, see Threads and runs): the closing block becomes the reply
+  where it stands, never drawn twice and never leaving a gap; the earlier blocks and the steps
+  leave the thread, so a reload shows the same thread. *The user wants to read what a Bot says
+  while it works; keeping the working notes would repeat the reply.* A reader scrolled up is not
+  moved by it. The sidebar row and the island keep the short verb and never show the text.
+  Approvals show a short form per tool: a
   command shows the command, an edit shows the file with its diff behind a toggle, anything else
   shows the tool and its target.
 - Composer: the message, then the thread's repo, branch and MR as chips on one row, and Send or
