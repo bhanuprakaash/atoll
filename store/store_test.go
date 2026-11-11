@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -431,6 +432,8 @@ func wakeFixture(t *testing.T) (*store.Store, store.Thread, store.Bot) {
 
 func wakeText(w store.Wake) string { return w.Run.Status + ": " + w.Run.Reply + w.Run.Error }
 
+func restartText(ws []store.Wake) string { return wakeText(ws[0]) }
+
 func checkWake(t *testing.T, st *store.Store, bossThreadID string, bot store.Bot, want string) {
 	t.Helper()
 	it, ok, err := st.OldestInbox(context.Background(), bossThreadID)
@@ -467,10 +470,32 @@ func TestStore_HelperRunWake_FailedAtRestart(t *testing.T) {
 	if _, _, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.FailUnfinished(ctx, "restart", wakeText); err != nil {
+	if _, err := st.FailUnfinished(ctx, "restart", restartText); err != nil {
 		t.Fatal(err)
 	}
 	checkWake(t, st, bt.ID, bot, "failed: restart")
+}
+
+func TestStore_FailUnfinished_OneWakePerBoss(t *testing.T) {
+	ctx := context.Background()
+	st, bt, bot := wakeFixture(t)
+	for range 2 {
+		th, err := st.CreateHelperThread(ctx, bt.ID, bot.ID, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	count := func(ws []store.Wake) string { return fmt.Sprint(len(ws)) }
+	if _, err := st.FailUnfinished(ctx, "restart", count); err != nil {
+		t.Fatal(err)
+	}
+	held, err := st.Held(ctx, bt.ID)
+	if err != nil || len(held) != 1 || held[0].Text != "2" || held[0].FromBotID != "" {
+		t.Fatalf("held = %+v, %v; want one message of 2 runs from Reef", held, err)
+	}
 }
 
 func TestStore_HelperRunWake_NoBoss(t *testing.T) {
@@ -642,6 +667,16 @@ func TestStore_ThreadRuns_New(t *testing.T) {
 	}
 	if status, finished := state(); status != "done" || finished {
 		t.Errorf("opened: status %q, finished after opened %v; want done, false", status, finished)
+	}
+	_, quiet, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishRun(ctx, quiet.ID, store.RunResult{Status: store.StatusDone}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if status, finished := state(); status != "done" || finished {
+		t.Errorf("done with no reply: status %q, finished after opened %v; want done, false", status, finished)
 	}
 }
 

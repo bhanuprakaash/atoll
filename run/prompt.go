@@ -44,6 +44,13 @@ Memory
 Finish
 - End every run with finish_run: done, tried and failed, blocked on, next. The reply carries the answer itself, never only in finish_run or thinking. Use 2-3 lines for status, not for an answer the person asked for.`
 
+const _helperReportsPrompt = `
+
+Helper reports
+- A helper's message to you is a report: progress, a result or a question. Several may arrive in one message: read them all and answer once.
+- Reply only when {user} must act: a PR ready, a decision, something failed that you cannot fix.
+- Otherwise act on it if needed, end with finish_run and write no reply.`
+
 const _platformBlock = `
 
 Managing Reef
@@ -87,6 +94,9 @@ func systemPrompt(bot store.Bot, user string, onBossBranch bool) string {
 		prompt += code
 	}
 	prompt += _memoryPrompt
+	if len(bot.Delegates) > 0 {
+		prompt += _helperReportsPrompt
+	}
 	if bot.CanManagePlatform {
 		prompt += _platformBlock
 	}

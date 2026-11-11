@@ -668,7 +668,8 @@ func (s *Store) LatestRun(ctx context.Context, threadID string) (string, error) 
 
 // ThreadRun is a thread with the status and the reply of its newest run; Status is empty for a
 // thread with no run. Reply is only its first 300 characters: enough for a one-line preview.
-// Unseen is set when the newest run ended after the user last opened the thread.
+// Unseen is set when a run ended after the user last opened the thread with a reply, a failure or
+// a stop; a run that ended done with no reply does not count.
 type ThreadRun struct {
 	BotID          string
 	ThreadID       string
@@ -706,7 +707,9 @@ func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
 func (s *Store) threadRuns(ctx context.Context, where string, args ...any) ([]ThreadRun, error) {
 	return query(ctx, s.db,
 		`SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.closed, t.pinned_at IS NOT NULL,
-		        t.last_activity, coalesce(r.finished_at, 0) > t.last_opened_at,
+		        t.last_activity,
+		        EXISTS (SELECT 1 FROM runs n WHERE n.thread_id = t.id AND n.finished_at > t.last_opened_at
+		                AND NOT (n.status = 'done' AND n.reply = '')),
 		        coalesce(r.status, ''), substr(coalesce(r.reply, ''), 1, 300)
 		 FROM threads t
 		 LEFT JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = t.id)
@@ -1084,23 +1087,56 @@ func (s *Store) FinishRun(
 }
 
 // FailUnfinished marks every running or waiting run failed with reason and returns their ids. When
-// wake is not nil, a failed helper run also holds the message wake returns for its boss thread, in
-// the same transaction. Called once at start: no run outlives the process that ran it.
+// wake is not nil, the failed helper runs of one boss thread hold one message for it, which wake
+// builds from them in the order the runs began; it is from the helper Bot when one run failed, else
+// from Reef. All in the same transaction. Called once at start: no run outlives the process that
+// ran it.
 func (s *Store) FailUnfinished(
-	ctx context.Context, reason string, wake func(Wake) string,
+	ctx context.Context, reason string, wake func([]Wake) string,
 ) ([]string, error) {
 	var ids []string
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		var err error
-		ids, err = query(ctx, tx,
-			"UPDATE runs SET status = ?, error = ?, finished_at = ? WHERE status IN (?, ?) RETURNING id",
+		ids, err = query(ctx, tx, "SELECT id FROM runs WHERE status IN (?, ?) ORDER BY rowid",
 			func(r *sql.Rows) (id string, err error) { return id, r.Scan(&id) },
-			StatusFailed, reason, time.Now().UTC().UnixMicro(), StatusRunning, StatusWaiting)
+			StatusRunning, StatusWaiting)
 		if err != nil {
 			return err
 		}
+		if _, err := tx.ExecContext(ctx,
+			"UPDATE runs SET status = ?, error = ?, finished_at = ? WHERE status IN (?, ?)",
+			StatusFailed, reason, time.Now().UTC().UnixMicro(), StatusRunning, StatusWaiting); err != nil {
+			return err
+		}
+		if wake == nil {
+			return nil
+		}
+		var bosses []string
+		byBoss := map[string][]heldWake{}
 		for _, id := range ids {
-			if err := enqueueWake(ctx, tx, id, wake); err != nil {
+			w, ok, err := readWake(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				continue
+			}
+			if _, seen := byBoss[w.bossID]; !seen {
+				bosses = append(bosses, w.bossID)
+			}
+			byBoss[w.bossID] = append(byBoss[w.bossID], w)
+		}
+		for _, bossID := range bosses {
+			held := byBoss[bossID]
+			wakes := make([]Wake, len(held))
+			for i, w := range held {
+				wakes[i] = w.Wake
+			}
+			from := ""
+			if len(held) == 1 {
+				from = held[0].botID
+			}
+			if err := insertInbox(ctx, tx, bossID, from, wake(wakes)); err != nil {
 				return err
 			}
 		}
@@ -1112,33 +1148,46 @@ func (s *Store) FailUnfinished(
 	return ids, nil
 }
 
+type heldWake struct {
+	Wake
+	botID, bossID string
+}
+
 func enqueueWake(ctx context.Context, tx *sql.Tx, runID string, wake func(Wake) string) error {
 	if wake == nil {
 		return nil
 	}
-	w := Wake{Run: Run{ID: runID}}
-	var botID, bossID string
+	w, ok, err := readWake(ctx, tx, runID)
+	if err != nil || !ok {
+		return err
+	}
+	return insertInbox(ctx, tx, w.bossID, w.botID, wake(w.Wake))
+}
+
+// readWake reads the wake of a helper run; ok is false for a run that is not a helper's.
+func readWake(ctx context.Context, tx *sql.Tx, runID string) (w heldWake, ok bool, err error) {
+	w.Run.ID = runID
 	var report sql.NullString
-	err := tx.QueryRowContext(ctx,
+	err = tx.QueryRowContext(ctx,
 		`SELECT b.id, b.name, t.id, t.branch, p.id, p.branch, r.status, r.reply, r.error, r.report
 		 FROM runs r JOIN threads t ON t.id = r.thread_id
 		 JOIN bots b ON b.id = t.bot_id AND b.removed = 0
 		 JOIN threads p ON p.id = t.parent_thread_id
 		 WHERE r.id = ?`, runID).
-		Scan(&botID, &w.Helper, &w.ThreadID, &w.Branch, &bossID, &w.BossBranch,
+		Scan(&w.botID, &w.Helper, &w.ThreadID, &w.Branch, &w.bossID, &w.BossBranch,
 			&w.Run.Status, &w.Run.Reply, &w.Run.Error, &report)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+		return w, false, nil
 	}
 	if err != nil {
-		return fmt.Errorf("read helper run %s: %w", runID, err)
+		return w, false, fmt.Errorf("read helper run %s: %w", runID, err)
 	}
 	if report.Valid {
 		if err := json.Unmarshal([]byte(report.String), &w.Run.Report); err != nil {
-			return fmt.Errorf("decode report of run %s: %w", runID, err)
+			return w, false, fmt.Errorf("decode report of run %s: %w", runID, err)
 		}
 	}
-	return insertInbox(ctx, tx, bossID, botID, wake(w))
+	return w, true, nil
 }
 
 // Messages lists every message in the thread, oldest first.

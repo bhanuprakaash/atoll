@@ -107,7 +107,10 @@ type (
 		WorktreeRoot string
 		// PollInterval is how often Start's watcher checks the MRs.
 		PollInterval time.Duration
-		Log          *slog.Logger
+		// WakeWindow is how long held helper messages alone wait for company before a run starts;
+		// zero starts one at once.
+		WakeWindow time.Duration
+		Log        *slog.Logger
 	}
 
 	// Manager runs messages and fans their events out to the thread's subscribers.
@@ -121,6 +124,7 @@ type (
 		// mu; delegateMu is taken under inboxMu, never the reverse.
 		inboxMu    sync.Mutex
 		delegateMu sync.Mutex
+		windows    map[string]*time.Timer // wake windows open, by thread id; inboxMu guards it
 
 		mu        sync.Mutex
 		runs      map[string]*active                 // by thread id
@@ -224,6 +228,7 @@ func New(cfg Config) *Manager {
 		cfg:       cfg,
 		ctx:       ctx,
 		cancel:    cancel,
+		windows:   map[string]*time.Timer{},
 		runs:      map[string]*active{},
 		tokens:    map[string]*active{},
 		approvals: map[string]open{},
@@ -238,7 +243,7 @@ func New(cfg Config) *Manager {
 func (m *Manager) Send(
 	ctx context.Context, threadID, text string, images []store.Attachment,
 ) (store.Message, store.Run, error) {
-	msg, run, err := m.send(ctx, store.InboxItem{ThreadID: threadID, Text: text, Images: images})
+	msg, run, err := m.sendWithHeld(ctx, store.InboxItem{ThreadID: threadID, Text: text, Images: images})
 	if !errors.Is(err, ErrBusy) {
 		if err != nil {
 			m.flushLog(threadID)
@@ -288,6 +293,9 @@ func (m *Manager) SendNow(ctx context.Context, threadID, id string) (store.Run, 
 	m.inboxMu.Lock()
 	defer m.inboxMu.Unlock()
 	items, err := m.cfg.Store.UserInbox(ctx, threadID)
+	if err == nil {
+		items, err = m.takeAll(ctx, threadID, items)
+	}
 	if err != nil {
 		return store.Run{}, err
 	}
@@ -565,6 +573,12 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	m.cancel()
 	m.mu.Unlock()
+	m.inboxMu.Lock()
+	for id, tm := range m.windows {
+		tm.Stop()
+		delete(m.windows, id)
+	}
+	m.inboxMu.Unlock()
 	m.wg.Wait()
 	m.mu.Lock()
 	defer m.mu.Unlock()

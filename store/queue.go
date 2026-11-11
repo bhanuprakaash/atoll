@@ -56,6 +56,12 @@ func (s *Store) UserInbox(ctx context.Context, threadID string) ([]InboxItem, er
 	return s.inbox(ctx, "WHERE thread_id = ? AND from_user = 1 ORDER BY rowid", threadID)
 }
 
+// Held lists every message held for the thread in the order one run takes them: the person's
+// first, then the rest as they arrived. Images come with their data.
+func (s *Store) Held(ctx context.Context, threadID string) ([]InboxItem, error) {
+	return s.inbox(ctx, "WHERE thread_id = ? ORDER BY from_user DESC, rowid", threadID)
+}
+
 // EditQueued sets the text of a queued message. It wraps ErrNotFound for an id the thread has
 // never had queued, returns ErrSent once the message is delivered and ErrEmpty when the result
 // would have neither text nor an image.
