@@ -137,8 +137,9 @@ not tested.
   reply and is still there after a reload.
 - **Lines**: an approval shows its target, `button`s "Allow" and "Deny", and "Show diff" for an
   edit; once answered (Allow or Deny) the line leaves the log. `blocked` from `finish_run` shows
-  `Blocked: <blocked>`. A stopped run shows `Stopped by you after <n>s`. A failed run shows
-  `Run failed…` with a `button` "Retry". A dropped connection shows "Reconnecting".
+  `Blocked: <blocked>`. A stopped run shows `Stopped by you after <n>s`. A failed run with no reply
+  shows `Didn't run: …` with a `button` "Retry" while it is the newest run. A dropped
+  connection shows "Reconnecting".
 - **Chips**: the MR is a `link` named with `!<iid>`, `href` the MR URL, showing its state
   ("Open"). A `group` "Thread context" in the composer shows repo, branch and MR. The composer
   shows `button` "Stop" instead of "Send" while a run goes. The memory chip keeps Slice 4's

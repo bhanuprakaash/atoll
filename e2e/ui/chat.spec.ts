@@ -72,7 +72,9 @@ test('one working line by tool kind, a summary above the reply, the user message
   await expect(log.getByText(/ · Worked \d+(m \d+)?s · /)).toContainText('edited 1');
 });
 
-test('an approval shows Allow and Deny, leaves once answered; Deny ends in a blocked line', async ({ page }) => {
+test('an approval shows Allow and Deny, leaves once answered; Deny ends in a blocked line', async ({
+  page,
+}) => {
   await emptyThread(page, 'Ash');
   const log = page.getByRole('log', { name: 'Messages' });
 
@@ -120,7 +122,7 @@ test('a failed run shows a line with Retry', async ({ page }) => {
   await emptyThread(page, 'Moss');
   const log = page.getByRole('log', { name: 'Messages' });
   await send(page, prompts.none);
-  await expect(log.getByText(/^Run failed: .*no recording for prompt/)).toBeVisible();
+  await expect(log.getByText(/^Didn't run: \S/)).toBeVisible();
   await expect(log.getByRole('button', { name: 'Retry' })).toBeVisible();
   await expect(log.getByRole('button', { name: 'Sign in again' })).toHaveCount(0);
   await expect(sidebarRow(page, 'Moss').getByRole('img', { name: /, failed$/ })).toBeVisible();
