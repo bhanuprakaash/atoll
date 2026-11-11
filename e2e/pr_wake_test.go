@@ -14,7 +14,7 @@ func TestPRWake_MergedWakesTheBot(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			th := f.openPR(t, 1)
 			first := f.s.thread(t, th.ID).RunID
-			f.quiet(t, time.Second, "an open pull request", th, 0)
+			f.quiet(t, time.Second, "an open pull request", th, 0, 0)
 
 			f.gh.setPull(1, "closed", true)
 			w := f.waitWake(t, th, 1)
@@ -60,7 +60,7 @@ func TestPRWake_CIFinishedWakesOnce(t *testing.T) {
 			f.gh.setChecks(sha,
 				[]fakeCheck{{"build", "completed", "success"}, {"lint", "completed", "skipped"}, {"unit", "in_progress", ""}},
 				[]fakeStatus{{"deploy/preview", "pending"}})
-			f.quiet(t, 2*time.Second, "CI with checks still pending", th, 0)
+			f.quiet(t, 2*time.Second, "CI with checks still pending", th, 0, 0)
 
 			f.gh.setChecks(sha,
 				[]fakeCheck{{"build", "completed", "success"}, {"lint", "completed", "skipped"}, {"unit", "completed", "failure"}},
@@ -83,7 +83,7 @@ func TestPRWake_CIFinishedWakesOnce(t *testing.T) {
 				t.Errorf("thread mr_state %q after CI finished, want opened", got)
 			}
 
-			f.quiet(t, 2*time.Second, "CI already reported", th, 1)
+			f.quiet(t, 2*time.Second, "CI already reported", th, 1, 1)
 			if got := len(f.wakes(t, th)); got != 1 {
 				t.Errorf("thread has %d wakes after the same CI result was read again, want 1", got)
 			}
@@ -108,7 +108,7 @@ func TestPRWake_ClosedThreadIsNotWoken(t *testing.T) {
 				t.Fatalf("open thread's wake: %+v, want merged PR #2", w)
 			}
 
-			f.quiet(t, 2*time.Second, "closed thread", closed, 1)
+			f.quiet(t, 2*time.Second, "closed thread", closed, 0, 1)
 			if got := f.reefPrompts(t); len(got) != 1 || !strings.HasSuffix(got[0], "PR #2 merged") {
 				t.Errorf("Reef prompts %q, want one, for PR #2", got)
 			}
@@ -129,12 +129,12 @@ func TestPRWake_OneWakePerEvent(t *testing.T) {
 			reads := f.gh.pullReads(1)
 			f.gh.setTitle(1, "fix: renamed after the merge")
 			eventually(t, 30*time.Second, "the server reads the pull request again", func() bool { return f.gh.pullReads(1) >= reads+3 })
-			f.quiet(t, time.Second, "the same event read again", th, 1)
+			f.quiet(t, time.Second, "the same event read again", th, 1, 1)
 
 			f.s.kill()
 			f.m.killFakes()
 			f.s = f.m.serve(t)
-			f.quiet(t, 2*time.Second, "after a restart", th, 1)
+			f.quiet(t, 2*time.Second, "after a restart", th, 1, 1)
 
 			if got := len(f.m.sessions(t, p)); got != 2 {
 				t.Errorf("%s ran %d times, want 2: the run that opened the pull request and one for the wake", p, got)
