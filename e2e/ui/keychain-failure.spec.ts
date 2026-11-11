@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { expect, test } from "@playwright/test";
 import { type Machine, startAtoll } from "./atoll";
+import { expectDesigned, notice } from "./designed";
 
 test("a failed GitHub keychain save shows a message and offers sign in again", async ({
   page,
@@ -46,17 +47,17 @@ test("a failed GitHub keychain save shows a message and offers sign in again", a
     await page.getByRole("link", { name: "Connections" }).click();
     await page.getByRole("button", { name: "Connect GitHub" }).click();
     await expect(page.getByText("REEF-1234")).toBeVisible();
-    const error = page.locator(".text-danger");
-    await expect(error).toBeVisible();
-    expect
-      .soft(await page.locator("body").innerText())
-      .not.toMatch(/\{\s*"error"\s*:/);
-    await expect
-      .soft(error)
-      .toContainText(
-        "Reef couldn't save the GitHub sign-in to the system keychain:",
-        { timeout: 2000 },
-      );
+    await expectDesigned(
+      page,
+      notice(page, "Reef couldn't save the GitHub sign-in to the system keychain."),
+      {
+        title: "Reef couldn't save the GitHub sign-in to the system keychain.",
+        next: "Unlock the keychain or restart Reef, then try again.",
+        action: "Sign in again",
+        raw: /system keychain failed|secret store unavailable|MCP server|\{\s*"error"/,
+        details: /keychain · 500 · POST \/api\/connections\/\S+\/poll/,
+      },
+    );
     await expect
       .soft(page.getByText("Pending", { exact: true }))
       .toHaveCount(0, { timeout: 2000 });
@@ -115,17 +116,17 @@ test("a failed GitLab keychain save shows a message and offers sign in again", a
       .fill(`http://127.0.0.1:${address.port}`);
     await page.getByRole("button", { name: "Sign in to GitLab" }).click();
     await expect(page.getByText("REEF-1234")).toBeVisible();
-    const error = page.locator(".text-danger");
-    await expect(error).toBeVisible();
-    expect
-      .soft(await page.locator("body").innerText())
-      .not.toMatch(/\{\s*"error"\s*:/);
-    await expect
-      .soft(error)
-      .toContainText(
-        "Reef couldn't save the GitLab sign-in to the system keychain:",
-        { timeout: 2000 },
-      );
+    await expectDesigned(
+      page,
+      notice(page, "Reef couldn't save the GitLab sign-in to the system keychain."),
+      {
+        title: "Reef couldn't save the GitLab sign-in to the system keychain.",
+        next: "Unlock the keychain or restart Reef, then try again.",
+        action: "Sign in again",
+        raw: /system keychain failed|secret store unavailable|MCP server|\{\s*"error"/,
+        details: /keychain · 500 · POST \/api\/connections\/\S+\/poll/,
+      },
+    );
     await expect
       .soft(page.getByText("Pending", { exact: true }))
       .toHaveCount(0, { timeout: 2000 });
@@ -154,12 +155,17 @@ test("a failed MCP secret save shows a keychain message without raw JSON", async
     await dialog.getByRole("textbox", { name: "Command" }).fill("echo");
     await dialog.getByRole("textbox", { name: "Env" }).fill("TOKEN=secret");
     await dialog.getByRole("button", { name: "Add", exact: true }).click();
-    const error = dialog.locator(".text-danger");
-    await expect(error).toBeVisible();
-    expect
-      .soft(await page.locator("body").innerText())
-      .not.toMatch(/\{\s*"error"\s*:/);
-    await expect(error).toContainText(/keychain/i, { timeout: 2000 });
+    await expectDesigned(
+      page,
+      notice(dialog, /^Reef couldn't save .+ to the system keychain\./),
+      {
+        title: /^Reef couldn't save .+ to the system keychain\.$/m,
+        next: "Unlock the keychain or restart Reef, then try again.",
+        action: "Try again",
+        raw: /system keychain failed|secret store unavailable|MCP server|\{\s*"error"/,
+        details: /keychain · 500 · POST \/api\/mcp-servers/,
+      },
+    );
   } finally {
     m.stop();
   }
