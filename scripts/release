@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Builds, signs and publishes a Reef update for this OS (macOS or Linux x86_64) into release
+# v<version>, which it creates or adds to. Usage: scripts/release <version>
+# Needs the updater signing key at ~/.tauri/reef.key (or TAURI_SIGNING_PRIVATE_KEY) and gh.
+set -euo pipefail
+
+version=${1:?usage: scripts/release <version>}
+[[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "version must look like 0.1.1" >&2; exit 1; }
+
+cd "$(dirname "$0")/.."
+conf=desktop/src-tauri/tauri.conf.json
+bundles=desktop/src-tauri/target/release/bundle
+repo=bhanuprakaash/atoll
+
+case $(uname -s) in
+Darwin)
+	platform=darwin-aarch64
+	bundle=$bundles/macos
+	update=Reef.app.tar.gz
+	extra=("$bundles/dmg/Reef_${version}_aarch64.dmg")
+	;;
+Linux)
+	platform=linux-x86_64
+	bundle=$bundles/appimage
+	update=Reef_${version}_amd64.AppImage
+	extra=()
+	;;
+esac
+
+sed -E "s/^(  \"version\": \")[^\"]*/\1$version/" "$conf" >"$conf.tmp" && mv "$conf.tmp" "$conf"
+
+export PATH="$HOME/.cargo/bin:$PATH"
+export TAURI_SIGNING_PRIVATE_KEY=${TAURI_SIGNING_PRIVATE_KEY:-$(cat ~/.tauri/reef.key)}
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${TAURI_SIGNING_PRIVATE_KEY_PASSWORD-}
+make app
+git checkout -- "$conf"
+
+# The release may exist already, made by the other OS's run; keep its platforms.
+if gh release view "v$version" --repo "$repo" >/dev/null 2>&1; then
+	exists=1
+	latest=$(gh release download "v$version" --repo "$repo" --pattern latest.json --output -)
+else
+	exists=
+	latest='{}'
+fi
+
+jq -n --argjson latest "$latest" \
+	--arg version "$version" \
+	--arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+	--arg platform "$platform" \
+	--arg signature "$(cat "$bundle/$update.sig")" \
+	--arg url "https://github.com/$repo/releases/download/v$version/$update" \
+	'{version: $version, notes: "Reef \($version)", pub_date: $date,
+	  platforms: (($latest.platforms // {}) + {($platform): {signature: $signature, url: $url}})}' >"$bundle/latest.json"
+
+files=("$bundle/$update" "$bundle/$update.sig" "$bundle/latest.json" ${extra[@]+"${extra[@]}"})
+if [[ $exists ]]; then
+	gh release upload "v$version" --repo "$repo" --clobber "${files[@]}"
+else
+	gh release create "v$version" --repo "$repo" --title "Reef $version" --notes "Reef $version" "${files[@]}"
+fi
+
+echo "Published v$version for $platform."

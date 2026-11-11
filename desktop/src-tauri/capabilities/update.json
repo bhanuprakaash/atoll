@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "update",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:4317/*"]
+  },
+  "permissions": ["allow-check-update", "allow-install-update"]
+}

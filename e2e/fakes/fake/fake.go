@@ -14,10 +14,11 @@ import (
 // that atoll might not pass on.
 var _testdata string
 
-// Record is one line of the call log: the first of a process has its argv and env, each later
+// Record is one line of the call log: the first of a process has its cwd, argv and env, each later
 // one a line it read on stdin.
 type Record struct {
 	PID   int            `json:"pid"`
+	Cwd   string         `json:"cwd,omitempty"`
 	Argv  []string       `json:"argv,omitempty"`
 	Env   []string       `json:"env,omitempty"`
 	Dirs  map[string]Dir `json:"dirs,omitempty"`
@@ -73,7 +74,8 @@ func Start() (*Log, error) {
 		return nil, err
 	}
 	l := &Log{f: f}
-	return l, l.write(Record{Argv: os.Args[1:], Env: os.Environ(), Dirs: probe()})
+	cwd, _ := os.Getwd()
+	return l, l.write(Record{Cwd: cwd, Argv: os.Args[1:], Env: os.Environ(), Dirs: probe()})
 }
 
 // Stdin records one line read on stdin.

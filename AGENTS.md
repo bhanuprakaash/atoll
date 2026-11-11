@@ -68,7 +68,8 @@ cmd/atoll -> server -> run -> provider | memory | repo | skill | connection | mc
 - Packages on the same level never import each other (`memory` does not import `repo`).
 - `provider` and `store` import no package of ours; `provider/claude` and `provider/codex` import
   only `provider`.
-- `web/` talks to Go only over HTTP and SSE. `desktop/` only starts the sidecar and loads `web/`.
+- `web/` talks to Go only over HTTP and SSE, and to the Tauri shell only for the two update commands.
+  `desktop/` starts the sidecar, loads `web/` and installs updates.
 - Inside `web/src`, modules never import other modules (see the React style).
 
 ## Commands
@@ -82,15 +83,15 @@ go tool lefthook install   # once per clone: pre-commit hook (gofmt, prettier on
 make check                 # format check, lint, vet, type-check, tests (pnpm install when needed)
 make format                # gofmt -w and prettier --write
 make run                   # builds the UI, then go run ./cmd/atoll serve
-make e2e                   # e2e/: builds the real binary and drives it
+make e2e                   # e2e/: builds the real binary and drives it (e2e-go, e2e-ui: one half each)
 make app                   # desktop/: Reef.app and an unsigned dmg
 ```
 
 To upgrade a tool: `go get -tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<version>`
 (same for `github.com/evilmartians/lefthook/v2`), then `go mod tidy`.
 
-CI (`.github/workflows/ci.yml`) runs `make check`, `make e2e` and `test-guard` on every PR. New
-issues and PRs start from the templates in `.github/`.
+CI (`.github/workflows/ci.yml`) runs `make check`, `make e2e-go`, `make e2e-ui` and `test-guard` on
+every PR. New issues and PRs start from the templates in `.github/`.
 
 ## Tests
 

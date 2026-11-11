@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -53,15 +54,24 @@ func (a *api) putSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) pickRepoFolder(w http.ResponseWriter, r *http.Request) {
-	cmd := exec.CommandContext(r.Context(), "osascript", "-e", `POSIX path of (choose folder with prompt "Choose a repo folder")`)
-	out, err := cmd.Output()
+	name, args := "osascript", []string{"-e", `POSIX path of (choose folder with prompt "Choose a repo folder")`}
+	if runtime.GOOS == "linux" {
+		name, args = "zenity", []string{"--file-selection", "--directory", "--title", "Choose a repo folder"}
+	}
+	out, err := exec.CommandContext(r.Context(), name, args...).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && strings.Contains(string(exitErr.Stderr), "User canceled") && strings.Contains(string(exitErr.Stderr), "-128") {
+		switch {
+		case errors.Is(err, exec.ErrNotFound):
+			fail(w, http.StatusNotImplemented, "No folder picker on this system. Type the repo path instead.")
+		case !errors.As(err, &exitErr):
+			a.fail(w, r, err)
+		case runtime.GOOS == "linux" && exitErr.ExitCode() == 1,
+			strings.Contains(string(exitErr.Stderr), "User canceled") && strings.Contains(string(exitErr.Stderr), "-128"):
 			w.WriteHeader(http.StatusNoContent)
-			return
+		default:
+			a.fail(w, r, err)
 		}
-		a.fail(w, r, err)
 		return
 	}
 	path := strings.TrimSuffix(strings.TrimRight(string(out), "\r\n"), "/")

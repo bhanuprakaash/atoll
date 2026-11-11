@@ -9,7 +9,6 @@ import (
 	"net/http/cgi"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -262,15 +261,11 @@ func (g *fakeGitHub) signIn(t *testing.T, s *server, path string, body map[strin
 // githubSecret reads the connection's keyring entry with the OS tool, not through Atoll.
 func githubSecret(t *testing.T, id string) string {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), "secret-tool", "lookup", "service", "atoll", "username", "github:"+id)
-	if runtime.GOOS == "darwin" {
-		cmd = exec.CommandContext(t.Context(), "security", "find-generic-password", "-s", "atoll", "-a", "github:"+id, "-w")
+	value, ok := secretEntry("github:" + id)
+	if !ok {
+		t.Fatalf("connection %s has no entry in the OS secret store", id)
 	}
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("connection %s has no entry in the OS secret store: %v", id, err)
-	}
-	return strings.TrimSpace(string(out))
+	return value
 }
 
 // githubFixture is a user's machine with its own glab, gh and git logins, gh tokens in the env and
@@ -285,11 +280,7 @@ func newGitHubFixture(t *testing.T, provider string) *githubFixture {
 	t.Helper()
 	requireSecretStore(t)
 	m := newLoginsMachine(t, provider, false)
-	for _, key := range []string{"DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "XDG_DATA_HOME"} {
-		if v := os.Getenv(key); v != "" {
-			m.env = append(m.env, key+"="+v)
-		}
-	}
+	m.env = append(m.env, secretServiceEnv()...)
 	gh := newFakeGitHub(t)
 	m.env = append(m.env, "ATOLL_GITHUB_URL="+gh.URL, "ATOLL_GITHUB_MCP_URL="+gh.URL+"/mcp/")
 	writeFile(t, filepath.Join(m.bin, "github-url"), gh.URL)
