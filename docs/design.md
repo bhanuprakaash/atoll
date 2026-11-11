@@ -1068,6 +1068,23 @@ Voice
   read. The Bot list's scrollbar is thin and has its own lane in the sidebar's right padding, so it
   never draws over a row. *The user wanted room for longer names and thread titles, and the
   scrollbar cut through the rows.*
+- Narrow windows: below 900 px (the window's inner width; 900 itself is wide) the sidebar is a
+  drawer. It is closed whenever the window becomes narrow and on every launch, opened by a
+  `Sidebar` button at the left of the header (`aria-expanded`) or `⌘B` (`Ctrl+B` off macOS),
+  and it overlays the thread column over a scrim: the thread column keeps the window's full
+  width and nothing shifts. The drawer has the sidebar's stored width, at most the window minus
+  48 px so the scrim shows, and no resize handle. Selecting a Bot, a thread or Settings (any
+  navigation), Esc, a click on the scrim or the button again closes it; a click inside it does
+  not. Opening focuses its search field; closing with Esc or the button returns focus to the
+  button. A closed drawer is hidden, so Tab never reaches it. Above 900 px nothing changes: the
+  sidebar is docked, there is no button, and `⌘B` does nothing. Crossing the threshold does not
+  carry the drawer's state: widening docks the sidebar at its stored width; narrowing leaves a
+  closed drawer. At 420 px and up no page scrolls sideways. The header island drops the thread
+  title when it lacks room, before the helper creatures and before the Bot name, and the
+  composer's placeholder while a run works is `Working…` (it was "{Bot} is working…", which
+  wrapped and clipped). *The desktop app's smallest window is 700 x 500, where the thread column
+  was 360 wide beside a 340 sidebar; an observer saw the island title cut to "Rou...", the
+  placeholder clipped and, at 420, the page scroll sideways.*
 - Thread tree: under each Bot, at most 3 thread rows (32 px, no gap) hang from one thin rail under
   the creature's centre (28 px from the row's left edge; rows start 14 px right of it, at 42 px).
   The rail starts at the bottom of the Bot row and ends in a rounded hook at the middle of the last row, the overflow line included; it never touches a row. A Bot with
