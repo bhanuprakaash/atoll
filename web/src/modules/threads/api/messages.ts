@@ -27,7 +27,7 @@ export type Run = {
   started_at: string;
   finished_at: string;
   tools: Record<string, number>;
-  report?: { blocked: string } | null;
+  report?: { done: string; blocked: string } | null;
   error: string;
   error_kind: '' | 'signed_out';
   provider: 'claude' | 'codex';
