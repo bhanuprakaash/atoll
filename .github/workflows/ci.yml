@@ -105,10 +105,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -127,8 +123,13 @@ jobs:
       - if: github.ref_type != 'tag'
         run: make app
       # A v* tag adds the AppImage to the release the dmg job created.
+      # Only this step gets the signing key: the job also runs on pull requests.
       - if: github.ref_type == 'tag'
         run: scripts/release "${GITHUB_REF_NAME#v}"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          GH_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@v4
         with:
           name: Reef-linux
