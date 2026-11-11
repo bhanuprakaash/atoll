@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -55,16 +56,24 @@ type waitRun struct {
 	report   Report
 }
 
+type waitedRun struct {
+	thread  string
+	replied int64
+	run     waitRun
+}
+
 type tracker struct {
-	closed, changed bool
-	title, ci       string
-	heads           []string
+	closed    bool
+	title, ci string
+	heads     []string
 }
 
 func (s *Store) waiting(ctx context.Context, threadID string) (map[string][]Waiting, error) {
 	reports := map[string][]waitRun{}
 	runs, err := query(ctx, s.db,
-		`SELECT r.thread_id, r.rowid, r.finished_at, r.report
+		`SELECT r.thread_id, r.rowid, r.finished_at, r.report, coalesce((
+		        SELECT max(r2.rowid) FROM messages m JOIN runs r2 ON r2.id = m.run_id
+		        WHERE m.thread_id = r.thread_id AND m.role = ?2 AND m.from_bot_id = '' AND m.kind = ''), 0)
 		 FROM runs r JOIN threads t ON t.id = r.thread_id
 		 WHERE t.closed = 0 AND t.parent_thread_id = '' AND r.report IS NOT NULL
 		   AND (?1 = '' OR r.thread_id = ?1)
@@ -72,13 +81,10 @@ func (s *Store) waiting(ctx context.Context, threadID string) (map[string][]Wait
 		        OR json_array_length(json_extract(r.report, '$.ready')) > 0
 		        OR r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = r.thread_id AND report IS NOT NULL))
 		 ORDER BY r.rowid`,
-		func(r *sql.Rows) (wr struct {
-			thread string
-			run    waitRun
-		}, err error) {
+		func(r *sql.Rows) (wr waitedRun, err error) {
 			var finished int64
 			var report string
-			if err = r.Scan(&wr.thread, &wr.run.rowid, &finished, &report); err != nil {
+			if err = r.Scan(&wr.thread, &wr.run.rowid, &finished, &report, &wr.replied); err != nil {
 				return wr, err
 			}
 			if finished != 0 {
@@ -88,52 +94,29 @@ func (s *Store) waiting(ctx context.Context, threadID string) (map[string][]Wait
 				return wr, fmt.Errorf("decode report: %w", err)
 			}
 			return wr, nil
-		}, threadID)
+		}, threadID, RoleUser)
 	if err != nil {
 		return nil, fmt.Errorf("list reports: %w", err)
 	}
+	replied := map[string]int64{}
 	for _, r := range runs {
 		reports[r.thread] = append(reports[r.thread], r.run)
+		replied[r.thread] = r.replied
 	}
 	if len(reports) == 0 {
 		return nil, nil
 	}
-	replied, err := s.lastReplies(ctx)
-	if err != nil {
-		return nil, err
-	}
-	trackers, err := s.trackers(ctx)
-	if err != nil {
-		return nil, err
+	var trackers map[string]*tracker
+	if slices.ContainsFunc(runs, func(r waitedRun) bool { return len(r.run.report.Ready) > 0 }) {
+		if trackers, err = s.trackers(ctx); err != nil {
+			return nil, err
+		}
 	}
 	out := map[string][]Waiting{}
 	for id, rs := range reports {
 		if items := waitingOf(rs, replied[id], trackers); len(items) > 0 {
 			out[id] = items
 		}
-	}
-	return out, nil
-}
-
-// lastReplies is, by thread, the rowid of the newest run that the person's own message started.
-func (s *Store) lastReplies(ctx context.Context) (map[string]int64, error) {
-	rows, err := query(ctx, s.db,
-		`SELECT m.thread_id, max(r.rowid)
-		 FROM messages m JOIN runs r ON r.id = m.run_id
-		 WHERE m.role = ? AND m.from_bot_id = '' AND m.kind = ''
-		 GROUP BY m.thread_id`,
-		func(r *sql.Rows) (row struct {
-			thread string
-			rowid  int64
-		}, err error) {
-			return row, r.Scan(&row.thread, &row.rowid)
-		}, RoleUser)
-	if err != nil {
-		return nil, fmt.Errorf("list replies: %w", err)
-	}
-	out := make(map[string]int64, len(rows))
-	for _, r := range rows {
-		out[r.thread] = r.rowid
 	}
 	return out, nil
 }

@@ -1368,10 +1368,10 @@ const (
 	_noteMax     = 120
 )
 
-// oneLine says whether s is one line of at most max characters, and not empty unless empty is set.
-func oneLine(s string, max int, empty bool) bool {
+// oneLine says whether s is one line of at most limit characters, and not empty unless empty is set.
+func oneLine(s string, limit int, empty bool) bool {
 	s = strings.TrimSpace(s)
-	return (s != "" || empty) && utf8.RuneCountInString(s) <= max && !strings.ContainsAny(s, "\r\n")
+	return (s != "" || empty) && utf8.RuneCountInString(s) <= limit && !strings.ContainsAny(s, "\r\n")
 }
 
 // askProblem is what is wrong with a decision, or "" when it is fine or absent.
