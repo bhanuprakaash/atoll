@@ -512,6 +512,54 @@ func (m *Manager) WorkDir(t store.Thread) string {
 	return m.threadDir(t.ID)
 }
 
+// hiddenPaths is where the repos the Bot lacks are: each repo, its worktree folder and the folder
+// of every thread on it (its read-only checkout), as known and with symlinks resolved.
+func (m *Manager) hiddenPaths(ctx context.Context, bot store.Bot) ([]string, error) {
+	repos, err := m.cfg.Store.Repos(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list repos: %w", err)
+	}
+	root, err := m.WorktreeRoot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, r := range repos {
+		if bot.RepoAccess.Allows(r.ID) {
+			continue
+		}
+		ids, err := m.cfg.Store.ThreadIDsOnRepo(ctx, r.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list threads of %s: %w", r.Name, err)
+		}
+		paths = append(paths, withResolved(r.Path)...)
+		paths = append(paths, withResolved(filepath.Join(root, r.Name))...)
+		for _, id := range ids {
+			paths = append(paths, withResolved(m.threadDir(id))...)
+		}
+	}
+	return paths, nil
+}
+
+// withResolved is path and, when it differs, path with symlinks resolved as far as it exists.
+func withResolved(path string) []string {
+	dir, rest := path, ""
+	for {
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			if full := filepath.Join(resolved, rest); full != path {
+				return []string{path, full}
+			}
+			break
+		}
+		if dir == filepath.Dir(dir) {
+			break
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+		dir = filepath.Dir(dir)
+	}
+	return []string{path}
+}
+
 func (m *Manager) threadDir(threadID string) string {
 	return filepath.Join(m.cfg.DataDir, "threads", threadID)
 }
