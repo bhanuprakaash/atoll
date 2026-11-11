@@ -43,8 +43,8 @@ func startWindow(t *testing.T, p, window string) (*machine, *server) {
 	return m, m.serve(t)
 }
 
-// userPrompts are the prompts of the user kind the provider got, in order, that hold text.
-func userPrompts(t *testing.T, m *machine, p, text string) []string {
+// promptsWith are the prompts of the user kind the provider got, in order, that hold text.
+func promptsWith(t *testing.T, m *machine, p, text string) []string {
 	t.Helper()
 	var out []string
 	for _, r := range promptLog(t, m, p) {
@@ -264,7 +264,7 @@ func TestBossQuiet_ReportsInWindowStartOneRun(t *testing.T) {
 			for _, h := range order {
 				headers = append(headers, "Tester "+_reportedBack+h+".")
 			}
-			prompts := userPrompts(t, m, p, _reportedBack)
+			prompts := promptsWith(t, m, p, _reportedBack)
 			if len(prompts) != 1 {
 				t.Fatalf("%d boss prompts hold a report, want 1: %q", len(prompts), prompts)
 			}
@@ -313,7 +313,7 @@ func TestBossQuiet_PersonTakesHeldReports(t *testing.T) {
 			if report.RunID != run.ID {
 				t.Errorf("Tester's report is a message of run %q, want the person's run %s", report.RunID, run.ID)
 			}
-			prompts := userPrompts(t, m, p, ask)
+			prompts := promptsWith(t, m, p, ask)
 			if len(prompts) != 1 || !inOrder(prompts[0], ask, "Tester "+_reportedBack+ids[0]+".") {
 				t.Errorf("boss prompts %q, want one with the person's text, then Tester's header", prompts)
 			}
@@ -364,7 +364,7 @@ func TestBossQuiet_StoppedRunStartsNone(t *testing.T) {
 			if report.RunID != run.ID {
 				t.Errorf("Tester's held report is a message of run %q, want the next run %s", report.RunID, run.ID)
 			}
-			prompts := userPrompts(t, m, p, ask)
+			prompts := promptsWith(t, m, p, ask)
 			if len(prompts) != 1 || !inOrder(prompts[0], ask, "Tester "+_reportedBack+ids[0]+".") {
 				t.Errorf("boss prompts %q, want one with the person's text, then Tester's header", prompts)
 			}
@@ -426,7 +426,7 @@ func TestBossQuiet_RestartWakesOnce(t *testing.T) {
 			if th := getThread(t, s, boss.ID); th.RunID != wake.ID {
 				t.Errorf("boss thread started run %s after the restart wake %s, want one run", th.RunID, wake.ID)
 			}
-			if got := userPrompts(t, m, p, ids[0]); len(got) != 1 {
+			if got := promptsWith(t, m, p, ids[0]); len(got) != 1 {
 				t.Errorf("%d boss prompts name helper %s, want 1", len(got), ids[0])
 			}
 		})
