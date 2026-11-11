@@ -14,6 +14,7 @@ export type Message = {
   from_bot_id?: string;
   created_at: string;
   attachments: { id: string; mime: string }[];
+  not_read: boolean;
 };
 
 export const fetchAttachment = (id: string) => apiBlob(`/attachments/${id}`);
@@ -29,7 +30,7 @@ export type Run = {
   tools: Record<string, number>;
   report?: { blocked: string } | null;
   error: string;
-  error_kind: '' | 'signed_out';
+  error_kind: '' | 'signed_out' | 'secret_store';
   provider: 'claude' | 'codex';
 };
 

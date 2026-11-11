@@ -56,6 +56,13 @@ const (
 // ErrorSignedOut is the error kind of a run that failed because its provider is signed out.
 const ErrorSignedOut = "signed_out"
 
+// ErrorSecretStore is the error kind of a run that failed because a secret could not be read.
+const ErrorSecretStore = "secret_store"
+
+// ErrSecretStore is wrapped when the OS secret store cannot be read; a secret that is simply
+// missing does not wrap it.
+var ErrSecretStore = errors.New("secret store unreachable")
+
 // KindGitLab is the kind of a GitLab connection.
 const KindGitLab = "gitlab"
 
@@ -180,6 +187,8 @@ type (
 		CreatedAt time.Time `json:"created_at"`
 		// Attachments are the message's images. Data is set only on a message just stored.
 		Attachments []Attachment `json:"attachments"`
+		// NotRead is set on a user message whose run failed because a secret could not be read.
+		NotRead bool `json:"not_read"`
 	}
 
 	// Attachment is an image sent with a message.
@@ -1133,7 +1142,8 @@ func enqueueWake(ctx context.Context, tx *sql.Tx, runID string, wake func(Wake) 
 func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error) {
 	return s.messages(ctx,
 		`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id,
-            CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END
+            CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
+            m.role = 'user' AND r.error_kind = 'secret_store'
          FROM messages m JOIN runs r ON r.id = m.run_id WHERE m.thread_id = ? ORDER BY m.rowid`,
 		threadID)
 }
@@ -1143,7 +1153,8 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 	if after != "" {
 		return s.messages(ctx,
 			`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id,
-                CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END
+                CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
+                m.role = 'user' AND r.error_kind = 'secret_store'
              FROM messages m JOIN runs r ON r.id = m.run_id
              WHERE m.thread_id = ? AND m.rowid > (
                  SELECT rowid FROM messages WHERE id = ? AND thread_id = ?
@@ -1151,9 +1162,10 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 			threadID, after, threadID)
 	}
 	return s.messages(ctx,
-		`SELECT id, thread_id, role, text, run_id, from_bot_id, at FROM (
+		`SELECT id, thread_id, role, text, run_id, from_bot_id, at, not_read FROM (
             SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id,
                 CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END AS at,
+                m.role = 'user' AND r.error_kind = 'secret_store' AS not_read,
                 m.rowid
             FROM messages m JOIN runs r ON r.id = m.run_id
             WHERE m.thread_id = ?
@@ -1169,7 +1181,7 @@ func (s *Store) messages(ctx context.Context, querySQL string, args ...any) ([]M
 	msgs, err := query(ctx, s.db, querySQL,
 		func(r *sql.Rows) (m Message, err error) {
 			var at int64
-			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &at)
+			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &at, &m.NotRead)
 			if at != 0 {
 				m.CreatedAt = time.UnixMicro(at).UTC()
 			}

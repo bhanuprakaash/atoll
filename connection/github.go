@@ -136,7 +136,8 @@ func SaveGitHubToken(id, token string) error {
 
 // GitHubToken loads the token from the OS secret store.
 func GitHubToken(id string) (string, error) {
-	return keyring.Get("atoll", "github:"+id)
+	token, err := keyring.Get("atoll", "github:"+id)
+	return token, readError(err)
 }
 
 // GitHub answers 200 with an error field, and form-encoded unless asked for JSON.

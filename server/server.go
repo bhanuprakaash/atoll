@@ -351,11 +351,12 @@ func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
 
 type threadSummary struct {
 	store.Thread
-	RunID     string        `json:"run_id"`
-	RunStatus string        `json:"run_status"`
-	Approval  *run.Approval `json:"approval"`
-	Verb      string        `json:"verb"`
-	UpdatedAt time.Time     `json:"updated_at"`
+	RunID        string        `json:"run_id"`
+	RunStatus    string        `json:"run_status"`
+	RunErrorKind string        `json:"run_error_kind"`
+	Approval     *run.Approval `json:"approval"`
+	Verb         string        `json:"verb"`
+	UpdatedAt    time.Time     `json:"updated_at"`
 
 	Step        string          `json:"step"`
 	ParentBotID string          `json:"parent_bot_id"`
@@ -398,7 +399,7 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 		if err != nil {
 			return out, err
 		}
-		out.RunStatus = ru.Status
+		out.RunStatus, out.RunErrorKind = ru.Status, ru.ErrorKind
 	}
 	_, approvals, _ := a.runs.Active(t.ID)
 	if len(approvals) > 0 {
