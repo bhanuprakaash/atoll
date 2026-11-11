@@ -1,4 +1,4 @@
-.PHONY: check fmt format lint vet typecheck test run e2e ui verify app icon
+.PHONY: check fmt format lint vet typecheck test run e2e e2e-go e2e-ui ui verify app icon
 
 # web/node_modules ships Go files; keep them out of every Go command.
 GO_DIRS = $(shell go list -f '{{.Dir}}' ./... | grep -v /node_modules/)
@@ -60,11 +60,17 @@ server/ui/index.html: web/node_modules $(shell find web/src -type f) $(wildcard 
 	cd web && $(PNPM) run build
 	@touch server/ui/.keep
 
-e2e: ui e2e/ui/node_modules
+e2e:
 	@status=0; \
-	e2e/with-secret-store go test -count=1 -timeout=15m ./e2e || status=1; \
-	(cd e2e/ui && $(PNPM) exec playwright test) || status=1; \
+	$(MAKE) e2e-go || status=1; \
+	$(MAKE) e2e-ui || status=1; \
 	exit $$status
+
+e2e-go: ui
+	e2e/with-secret-store go test -count=1 -timeout=15m ./e2e
+
+e2e-ui: ui e2e/ui/node_modules
+	cd e2e/ui && $(PNPM) exec playwright test
 
 e2e/ui/node_modules: e2e/ui/pnpm-lock.yaml
 	cd e2e/ui && $(PNPM) install --frozen-lockfile && $(PNPM) exec playwright install chromium
