@@ -26,6 +26,7 @@ export type Thread = {
   last_activity: string;
   run_id: string;
   run_status: string;
+  run_error_kind: string;
   approval: { id: string; tool: string; input: unknown } | null;
 };
 

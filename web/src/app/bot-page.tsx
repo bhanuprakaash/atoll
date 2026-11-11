@@ -93,7 +93,8 @@ export function BotHeader({
               ))}
             </span>
           ) : (
-            thread?.run_status === 'failed' && (
+            thread?.run_status === 'failed' &&
+            thread.run_error_kind !== 'secret_store' && (
               <span className="text-[13px] text-muted">Run failed</span>
             )
           )}

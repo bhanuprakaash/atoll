@@ -16,6 +16,7 @@ export type Message = {
   created_at: string;
   queued?: boolean;
   attachments: { id: string; mime: string }[];
+  not_read: boolean;
 };
 
 export const fetchAttachment = (id: string) => apiBlob(`/attachments/${id}`);
@@ -31,7 +32,7 @@ export type Run = {
   tools: Record<string, number>;
   report?: { blocked: string } | null;
   error: string;
-  error_kind: '' | 'signed_out' | 'rate_limited';
+  error_kind: '' | 'signed_out' | 'secret_store' | 'rate_limited';
   resets_at: string;
   provider: 'claude' | 'codex';
 };

@@ -61,9 +61,10 @@ const (
 const (
 	// A slow SSE client must not stall the run: its channel holds this many events and the
 	// subscriber is closed when it is full, so the client reconnects.
-	_subscriberBuffer = 64
-	_stopReason       = "Atoll stopped while the run was going"
-	_atollTools       = "mcp__" + provider.MCPServer + "__"
+	_subscriberBuffer  = 64
+	_stopReason        = "Atoll stopped while the run was going"
+	_secretStoreReason = "Reef can't reach its secret store. Restart Reef, or unlock it, then send again."
+	_atollTools        = "mcp__" + provider.MCPServer + "__"
 	// _callWait bounds how long Ask waits for its tool call to come through the provider's
 	// stdout, which races the permission prompt arriving over HTTP.
 	_callWait = 2 * time.Second
@@ -605,6 +606,10 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 		res = store.RunResult{Status: store.StatusFailed, Error: err.Error()}
 		if m.ctx.Err() != nil {
 			res.Error = _stopReason
+		} else if errors.Is(err, store.ErrSecretStore) {
+			res.Error, res.ErrorKind = _secretStoreReason, store.ErrorSecretStore
+			m.cfg.Log.Warn("secret store unreachable", "run_id", a.run.ID,
+				"error_kind", res.ErrorKind, "error", err)
 		} else if limit := (*provider.LimitError)(nil); errors.As(err, &limit) {
 			res.ErrorKind, res.ResetsAt = store.ErrorRateLimited, limit.ResetsAt
 		} else if errors.Is(err, provider.ErrSignedOut) {

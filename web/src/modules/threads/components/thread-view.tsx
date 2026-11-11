@@ -184,12 +184,14 @@ function MessageLine({
   from,
   brief,
   footer,
+  resend,
 }: {
   message: Message;
   threadId: string;
   from?: Bots[string];
   brief: boolean;
   footer?: ReactNode;
+  resend: (runId: string) => void;
 }) {
   const time = (
     <time className="text-xs text-muted" dateTime={message.created_at} data-testid="message-time">
@@ -263,7 +265,17 @@ function MessageLine({
             </div>
           )}
         </article>
-        <span className="pr-[18px]">{time}</span>
+        <span className="flex items-center gap-2 pr-[18px]">
+          {message.not_read && (
+            <>
+              <span className="text-xs text-muted">Not read</span>
+              <button type="button" onClick={() => resend(message.run_id)} className={quiet}>
+                Resend
+              </button>
+            </>
+          )}
+          {time}
+        </span>
       </div>
     );
   return (
@@ -690,6 +702,7 @@ export function ThreadView({
                   threadId={threadId}
                   from={bots[m.from_bot_id ?? '']}
                   brief={!!m.from_bot_id && m.from_bot_id === thread?.parent_bot_id}
+                  resend={retry}
                   footer={
                     m.role === 'bot' &&
                     messages[index + 1]?.run_id !== m.run_id && (

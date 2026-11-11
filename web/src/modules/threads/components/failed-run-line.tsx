@@ -57,6 +57,8 @@ export function FailedLine({
       </svg>
       {run.error_kind === 'signed_out' && signedOut ? (
         signedOut(run.provider)
+      ) : run.error_kind === 'secret_store' ? (
+        <span className="min-w-60 flex-1 text-ink/80">{run.error}</span>
       ) : (
         <span className="min-w-60 flex-1 text-ink/80 [overflow-wrap:anywhere]">
           {replied
@@ -89,7 +91,7 @@ export function FailedLine({
           )}
         </span>
       )}
-      {newest && (
+      {newest && run.error_kind !== 'secret_store' && (
         <button
           type="button"
           onClick={() => retry(run.id)}
