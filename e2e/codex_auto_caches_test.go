@@ -17,11 +17,13 @@ import (
 var _cacheVars = []string{"XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "GOCACHE", "GOLANGCI_LINT_CACHE", "pnpm_config_store_dir", "PNPM_HOME"}
 
 func TestCodexAuto_RunGetsReefOwnedCaches(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, data string }{
 		{"plain data dir", ""},
 		{"data dir with a space", "Application Support/Reef"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			data := ""
 			if tc.data != "" {
 				data = filepath.Join(t.TempDir(), tc.data)
@@ -57,6 +59,7 @@ func TestCodexAuto_RunGetsReefOwnedCaches(t *testing.T) {
 }
 
 func TestCodexAuto_CachesArePerBotAndGoWithTheBot(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "codex")
 	a, b := f.modeBot(t, "codex", "auto"), f.modeBot(t, "codex", "auto")
 	rootA, rootB := filepath.Join(f.m.data, "cache", a.ID), filepath.Join(f.m.data, "cache", b.ID)
@@ -90,8 +93,10 @@ func TestCodexAuto_CachesArePerBotAndGoWithTheBot(t *testing.T) {
 }
 
 func TestCodexAuto_OtherModesAndClaudeGetNoCaches(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ provider, mode string }{{"codex", "ask"}, {"codex", "full"}, {"claude", "auto"}, {"claude", "ask"}, {"claude", "full"}} {
 		t.Run(tc.provider+"/"+tc.mode, func(t *testing.T) {
+			t.Parallel()
 			f := newRepoFixture(t, tc.provider)
 			b := f.modeBot(t, tc.provider, tc.mode)
 			f.runThread(t, b, _fixRepoPrompt)

@@ -8,6 +8,7 @@ import (
 // Contract: mac-app-contract.md → Bots.
 
 func TestLooks_RetiredLooksComeBackAsNewOnes(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	retired := map[string]string{
 		"starfish": "scallop", "sand_dollar": "seal", "sponge": "shark", "kelp": "narwhal",

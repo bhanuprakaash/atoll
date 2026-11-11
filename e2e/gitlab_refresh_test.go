@@ -8,6 +8,7 @@ import (
 )
 
 func TestGitLabRefresh_ExpiredTokenIsRefreshedForTheRun(t *testing.T) {
+	t.Parallel()
 	f := newRefreshFixture(t, 1)
 	first, _ := f.oauth.tokens()
 	st, expires := secretTokens(t, f.id)
@@ -48,6 +49,7 @@ func TestGitLabRefresh_ExpiredTokenIsRefreshedForTheRun(t *testing.T) {
 }
 
 func TestGitLabRefresh_RefreshedTokensReplaceTheOldOnes(t *testing.T) {
+	t.Parallel()
 	f := newRefreshFixture(t, 1)
 	before, expires := secretTokens(t, f.id)
 	waitExpired(t, expires)
@@ -76,6 +78,7 @@ func TestGitLabRefresh_RefreshedTokensReplaceTheOldOnes(t *testing.T) {
 }
 
 func TestGitLabRefresh_InvalidGrantNeedsSignIn(t *testing.T) {
+	t.Parallel()
 	f := newRefreshFixture(t, 1)
 	_, expires := secretTokens(t, f.id)
 	f.oauth.set(func() { f.oauth.reject = true })
@@ -104,6 +107,7 @@ func TestGitLabRefresh_InvalidGrantNeedsSignIn(t *testing.T) {
 }
 
 func TestGitLabRefresh_SignInAgainKeepsTheConnection(t *testing.T) {
+	t.Parallel()
 	f := newRefreshFixture(t, 1)
 	_, expires := secretTokens(t, f.id)
 	f.oauth.set(func() { f.oauth.reject = true })
@@ -145,6 +149,7 @@ func TestGitLabRefresh_SignInAgainKeepsTheConnection(t *testing.T) {
 }
 
 func TestGitLabRefresh_LegacyBareTokenStillWorks(t *testing.T) {
+	t.Parallel()
 	f := newRefreshFixture(t, 1)
 	legacy := "glpat-legacy-bare-token"
 	setSecretValue(t, f.id, legacy)
