@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -57,6 +58,11 @@ export function Composer({
   const send = useSendMessage(threadId);
   const stop = useStopRun();
   const canSend = !disabled && !send.isPending && (text.trim() !== '' || images.length > 0);
+
+  useEffect(() => {
+    const held = document.activeElement?.closest('input, textarea, [role="dialog"], [role="menu"]');
+    if (!held) box.current?.focus();
+  }, []);
 
   useLayoutEffect(() => {
     const el = box.current;
@@ -117,6 +123,7 @@ export function Composer({
   const input = (
     <TextArea
       ref={box}
+      data-composer
       variant="bare"
       aria-label={`Message ${botName}${runId ? ', run in progress' : ''}`}
       placeholder={

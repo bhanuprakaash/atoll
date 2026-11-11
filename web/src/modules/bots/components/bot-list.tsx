@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router';
 import { Creature } from '@/components/creature';
 import { Menu } from '@/components/menu';
-import { useBots, usePinBot, type Bot } from '@/modules/bots/api/bots';
+import { useBots, usePinBot, type Bot, type SidebarThread } from '@/modules/bots/api/bots';
 import { useCreateGroup, useGroups, useSetBotGroup, type Group } from '@/modules/bots/api/groups';
 import { BotGroup, botDragType } from '@/modules/bots/components/bot-group';
 import { GroupNameField } from '@/modules/bots/components/group-name-field';
 import { ThreadTree, Wave } from '@/modules/bots/components/thread-tree';
+import { sidebarOrder } from '@/modules/bots/utils/sidebar-order';
 import { threadTree } from '@/modules/bots/utils/thread-tree';
 import { relativeTime } from '@/utils/time';
 
@@ -52,6 +53,7 @@ function BotRow({
   onMore,
   onCloseThread,
   onRenameThread,
+  titled,
 }: {
   bot: Bot;
   open: { botId?: string; threadId?: string };
@@ -63,6 +65,7 @@ function BotRow({
   onMore: (botId: string) => void;
   onCloseThread: (threadId: string) => void;
   onRenameThread: (threadId: string, title: string) => void;
+  titled: SidebarThread[];
 }) {
   const navigate = useNavigate();
   const pin = usePinBot(bot.id);
@@ -133,6 +136,7 @@ function BotRow({
         onMore={onMore}
         onCloseThread={onCloseThread}
         onRenameThread={onRenameThread}
+        only={titled.length > 0 ? titled : undefined}
       />
       {menu && (
         <Menu
@@ -204,13 +208,13 @@ export function BotList({
     ).more?.kind !== 'running'
   )
     setUnfolded(null);
-  const matching = bots
-    .filter((bot) => bot.name.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => Number(b.id === 'chief') - Number(a.id === 'chief'));
-  const top = matching.filter((bot) => bot.id === 'chief' || bot.pinned);
-  const rest = matching.filter((bot) => !top.includes(bot));
-  const inGroup = (id: string) => rest.filter((bot) => bot.group_id === id);
-  const ungrouped = rest.filter((bot) => !groups.some((group) => group.id === bot.group_id));
+  const query = search.toLowerCase();
+  const titled = (bot: Bot) =>
+    query ? (bot.threads ?? []).filter((t) => t.title.toLowerCase().includes(query)) : [];
+  const matching = bots.filter(
+    (bot) => bot.name.toLowerCase().includes(query) || titled(bot).length > 0,
+  );
+  const { top, inGroup, ungrouped } = sidebarOrder(matching, groups);
   const row = (bot: Bot) => (
     <BotRow
       key={bot.id}
@@ -224,6 +228,7 @@ export function BotList({
       onMore={onMore}
       onCloseThread={onCloseThread}
       onRenameThread={onRenameThread}
+      titled={titled(bot)}
     />
   );
   const needsYou = (members: Bot[]) =>

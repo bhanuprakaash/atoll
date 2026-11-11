@@ -10,6 +10,9 @@ export type SidebarThread = {
   state: 'needs_you' | 'running' | 'new' | '';
   pinned: boolean;
   helper?: boolean;
+  branch: string;
+  mr_url: string;
+  last_activity: string;
 };
 
 export type Bot = {

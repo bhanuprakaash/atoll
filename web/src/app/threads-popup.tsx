@@ -123,7 +123,15 @@ export function ThreadsPopup({
   const inSidebar = new Set(threadTree(openThreads, openThreadId, false).rows.map((t) => t.id));
   const closedThreads = threads
     .filter((t) => t.closed)
-    .map((t): SidebarThread => ({ id: t.id, title: t.title, state: '', pinned: false }));
+    .map((t): SidebarThread => ({
+      id: t.id,
+      title: t.title,
+      state: '',
+      pinned: false,
+      branch: t.branch,
+      mr_url: t.mr_url,
+      last_activity: t.last_activity,
+    }));
   const sections = [
     { title: 'In the sidebar', rows: openThreads.filter((t) => inSidebar.has(t.id)) },
     { title: 'Other open threads', rows: openThreads.filter((t) => !inSidebar.has(t.id)) },

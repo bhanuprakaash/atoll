@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"atoll/run"
 	"atoll/store"
@@ -15,11 +16,14 @@ import (
 // sidebarThread is an open thread of a Bot with the one marker the sidebar shows. Helper is set
 // for a thread another Bot handed to this one: the user cannot close it.
 type sidebarThread struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	State  string `json:"state"` // "needs_you", "running", "new" or ""
-	Pinned bool   `json:"pinned"`
-	Helper bool   `json:"helper,omitempty"`
+	ID           string    `json:"id"`
+	Title        string    `json:"title"`
+	State        string    `json:"state"` // "needs_you", "running", "new" or ""
+	Pinned       bool      `json:"pinned"`
+	Helper       bool      `json:"helper,omitempty"`
+	Branch       string    `json:"branch"`
+	MRURL        string    `json:"mr_url"`
+	LastActivity time.Time `json:"last_activity"`
 }
 
 // notice is one /api/events payload: an event of a thread with the thread's Bot and title.
@@ -48,6 +52,7 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 		state := a.marker(t, byBoss[t.ThreadID])
 		out = append(out, sidebarThread{
 			ID: t.ThreadID, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
+			Branch: t.Branch, MRURL: t.MRURL, LastActivity: t.LastActivity,
 		})
 	}
 	return out
