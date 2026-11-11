@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -303,14 +302,13 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	}
 	s.started = true
 
-	args, secrets, err := argv(cfg, extra...)
+	args, mcpConfig, err := argv(cfg, extra...)
 	if err != nil {
 		return err
 	}
 	cmd := exec.Command(cfg.Bin, args...)
 	cmd.Dir = cfg.Cwd
 	cmd.Env = append(configEnv(cfg.Dir), "ENABLE_CLAUDEAI_MCP_SERVERS=false", "MCP_TOOL_TIMEOUT=1800000", "CLAUDE_CODE_SHELL_PREFIX="+filepath.Join(cfg.Dir, "..", "..", "bin", "claude-shell-prefix"))
-	cmd.Env = append(cmd.Env, secrets...)
 	cmd.Env = append(cmd.Env, cfg.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.WaitDelay = _waitDelay
@@ -323,6 +321,21 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	if err != nil {
 		return err
 	}
+	if mcpConfig != nil {
+		r, w, err := os.Pipe()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = r.Close() }()
+		_, err = w.Write(mcpConfig)
+		if cerr := w.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			return err
+		}
+		cmd.ExtraFiles = []*os.File{r}
+	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start claude: %w", err)
 	}
@@ -332,16 +345,14 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	return nil
 }
 
-// argv returns the arguments for claude and the KEY=value variables they name. The MCP config holds
-// ${KEY} in place of every URL, header value and env value, which claude expands from its own
-// environment, so none of them shows in the process list.
-func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
-	var secrets []string
-	hide := func(value string) string {
-		name := "ATOLL_MCP_" + strconv.Itoa(len(secrets))
-		secrets = append(secrets, name+"="+value)
-		return "${" + name + "}"
-	}
+// _mcpConfigPath is the first extra file of the process (fd 3): a pipe holding the MCP config.
+const _mcpConfigPath = "/dev/fd/3"
+
+// argv returns the arguments for claude and the MCP config they name, or nil when there is none.
+// The config holds every URL, header value and env value; it goes to claude on a pipe, so none
+// shows in the process list or the environment.
+func argv(cfg provider.Config, extra ...string) ([]string, []byte, error) {
+	var mcpConfig []byte
 	isolation, err := IsolationArgs(cfg.Cwd, cfg.NoTools || cfg.NoShell)
 	if err != nil {
 		return nil, nil, err
@@ -363,24 +374,24 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 	}
 	if cfg.MCPURL != "" && !cfg.NoTools {
 		mcpServers := map[string]any{
-			provider.MCPServer: map[string]any{"type": "http", "url": hide(cfg.MCPURL)},
+			provider.MCPServer: map[string]any{"type": "http", "url": cfg.MCPURL},
 		}
 		if cfg.GitHubMCPURL != "" {
 			mcpServers[provider.GitHubMCPServer] = map[string]any{
 				"type": "http", "url": cfg.GitHubMCPURL,
-				"headers": map[string]string{"Authorization": "Bearer " + hide(cfg.GitHubToken)},
+				"headers": map[string]string{"Authorization": "Bearer " + cfg.GitHubToken},
 			}
 		}
 		for _, m := range cfg.MCPServers {
-			mcpServers[m.Name] = userServer(m, hide)
+			mcpServers[m.Name] = userServer(m)
 		}
-		servers, err := json.Marshal(map[string]any{"mcpServers": mcpServers})
+		mcpConfig, err = json.Marshal(map[string]any{"mcpServers": mcpServers})
 		if err != nil {
 			return nil, nil, err
 		}
 		mcp := "mcp__" + provider.MCPServer
 		args = append(args,
-			"--mcp-config", string(servers),
+			"--mcp-config", _mcpConfigPath,
 			"--permission-prompt-tool", mcp+"__"+provider.ToolApprove,
 			"--allowedTools", mcp,
 		)
@@ -394,7 +405,7 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 	if cfg.SkillDir != "" {
 		args = append(args, "--add-dir", cfg.SkillDir)
 	}
-	return append(args, extra...), secrets, nil
+	return append(args, extra...), mcpConfig, nil
 }
 
 // IsolationArgs excludes ancestor instructions, so cwd must be the repo root to keep its CLAUDE.md.
@@ -437,29 +448,21 @@ func IsolationArgs(cwd string, noTools bool) ([]string, error) {
 	return []string{"--setting-sources", "project", "--settings", string(settings), "--tools", tools}, nil
 }
 
-func userServer(m provider.UserMCPServer, hide func(string) string) map[string]any {
+func userServer(m provider.UserMCPServer) map[string]any {
 	e := map[string]any{"type": "stdio", "command": m.Command}
 	if m.Command == "" {
-		e = map[string]any{"type": "http", "url": hide(m.URL)}
+		e = map[string]any{"type": "http", "url": m.URL}
 	}
 	if len(m.Args) > 0 {
 		e["args"] = m.Args
 	}
 	if len(m.Env) > 0 {
-		e["env"] = hidden(m.Env, hide)
+		e["env"] = m.Env
 	}
 	if len(m.Headers) > 0 {
-		e["headers"] = hidden(m.Headers, hide)
+		e["headers"] = m.Headers
 	}
 	return e
-}
-
-func hidden(m map[string]string, hide func(string) string) map[string]string {
-	out := make(map[string]string, len(m))
-	for _, k := range slices.Sorted(maps.Keys(m)) {
-		out[k] = hide(m[k])
-	}
-	return out
 }
 
 func (s *Session) read(stdout io.Reader) {

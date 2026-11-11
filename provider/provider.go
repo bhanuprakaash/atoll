@@ -156,17 +156,28 @@ type Event struct {
 func Env(kv ...string) []string {
 	var env []string
 	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "ANTHROPIC_") && !strings.HasPrefix(e, "CLAUDE") &&
-			!strings.HasPrefix(e, "OPENAI_") && !strings.HasPrefix(e, "CODEX_") &&
-			!slices.ContainsFunc(_loginTokens, func(name string) bool { return strings.HasPrefix(e, name+"=") }) {
+		if !Login(e) && !slices.ContainsFunc(_loginSettings, func(name string) bool { return strings.HasPrefix(e, name+"=") }) {
 			env = append(env, e)
 		}
 	}
 	return append(env, kv...)
 }
 
+// Login reports whether e, a NAME=value entry, is a login token or provider session state:
+// ANTHROPIC_*, CLAUDE*, OPENAI_*, CODEX_*, or one of the GitHub, GitLab and OAuth tokens.
+func Login(e string) bool {
+	return strings.HasPrefix(e, "ANTHROPIC_") || strings.HasPrefix(e, "CLAUDE") ||
+		strings.HasPrefix(e, "OPENAI_") || strings.HasPrefix(e, "CODEX_") ||
+		slices.ContainsFunc(_loginTokens, func(name string) bool { return strings.HasPrefix(e, name+"=") })
+}
+
 var _loginTokens = []string{
 	"GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
-	"OAUTH_TOKEN", "GITLAB_HOST", "GIT_CONFIG_PARAMETERS", "SSH_AUTH_SOCK", "ATOLL_TOKEN",
+	"OAUTH_TOKEN",
+}
+
+// _loginSettings are not tokens, but a Bot's CLIs must not inherit them either; Reef keeps them.
+var _loginSettings = []string{
+	"GITLAB_HOST", "GIT_CONFIG_PARAMETERS", "SSH_AUTH_SOCK", "ATOLL_TOKEN",
 	"DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "DISPLAY",
 }
