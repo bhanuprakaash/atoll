@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"atoll/e2e/fakes/fake"
 )
@@ -184,6 +185,10 @@ func stream(log *fake.Log, args []string) error {
 			rec, _ := find(recs, prompt, resume)
 			signedOut(cmp.Or(rec.session, resume, "0b5e7a1c-3f2d-4c8e-9a61-7d4f2e8b1c90"))
 		}
+		if at, ok := fake.Limited(fake.ConfigDir("CLAUDE_CONFIG_DIR", ".claude"), ".credentials.json"); ok {
+			rec, _ := find(recs, prompt, resume)
+			limited(cmp.Or(rec.session, resume, "0b5e7a1c-3f2d-4c8e-9a61-7d4f2e8b1c90"), at)
+		}
 		rec, ok := find(recs, prompt, resume)
 		if !ok {
 			return fmt.Errorf("no recording for prompt %q (resume %q)", prompt, resume)
@@ -210,6 +215,37 @@ func signedOut(session string) {
 		{"type": "result", "subtype": "success", "is_error": true, "duration_ms": 212, "duration_api_ms": 0,
 			"num_turns": 1, "result": msg, "stop_reason": "stop_sequence", "session_id": session, "total_cost_usd": 0,
 			"permission_denials": []any{}},
+	} {
+		b, _ := json.Marshal(l)
+		fmt.Println(string(b))
+	}
+	os.Exit(1)
+}
+
+// limited ends the turn the way claude does when the account's usage limit is reached: the init
+// line, a rate_limit_event, a synthetic assistant message marked rate_limit / usage_limit_reached
+// with the same rate_limit_info, an error result with status 429, exit 1. The text names the
+// reset to the hour, as the CLI does; the time to trust is rate_limit_info.resetsAt.
+func limited(session string, at time.Time) {
+	clock := at.UTC().Format("3pm")
+	if at.UTC().Minute() != 0 {
+		clock = at.UTC().Format("3:04pm")
+	}
+	msg := "You've hit your 5-hour limit \u00b7 resets " + clock + " (UTC)"
+	info := map[string]any{"status": "rejected", "resetsAt": at.Unix(), "rateLimitType": "five_hour", "isUsingOverage": false}
+	cwd, _ := os.Getwd()
+	for _, l := range []map[string]any{
+		{"type": "system", "subtype": "init", "cwd": cwd, "session_id": session, "tools": []string{}, "mcp_servers": []any{},
+			"model": "claude-opus-5-5", "permissionMode": "default", "apiKeySource": "none", "claude_code_version": "2.1.322"},
+		{"type": "rate_limit_event", "rate_limit_info": info, "uuid": "5e0b7c2d-91a4-4f3e-8d16-2c7a9b4e1f08", "session_id": session},
+		{"type": "assistant", "message": map[string]any{"id": "b7d3f1a9-2c6e-4a80-9e45-1f8c0d5a7b32", "model": "<synthetic>",
+			"role": "assistant", "type": "message", "stop_reason": "stop_sequence", "stop_sequence": "",
+			"content": []map[string]string{{"type": "text", "text": msg}}},
+			"parent_tool_use_id": nil, "session_id": session, "error": "rate_limit", "is_api_error_message": true,
+			"api_error_status": 429, "api_error": "usage_limit_reached", "api_error_params": map[string]any{"rate_limit_info": info}},
+		{"type": "result", "subtype": "success", "is_error": true, "duration_ms": 187, "duration_api_ms": 0,
+			"num_turns": 1, "result": msg, "stop_reason": "stop_sequence", "session_id": session, "total_cost_usd": 0,
+			"api_error_status": 429, "permission_denials": []any{}},
 	} {
 		b, _ := json.Marshal(l)
 		fmt.Println(string(b))
