@@ -1170,7 +1170,10 @@ Voice
   | `closed` | 409 | `This thread is closed.` | Start a new thread to keep going. | New thread |
   | `not_found` | 404 | `That no longer exists.` | It was deleted or moved. Go back and pick another. | |
   | `exists` | 409 | `Something with that name already exists.` | Pick another name. | |
-  | `invalid` | 400 | the input rule in a plain sentence (`A name is required.`) | Fix it and try again. | |
+  | `invalid` | 400 | the input rule in a plain sentence, as the server words it (`name is required`), without a package's prefix | Fix it and try again. | |
+  | `conflict` | 409 | the rule that refused, plain (`Chief is always first`, `Poteto is handling this thread`) | Change it and try again. | |
+  | `forbidden` | 403 | the rule that refused, plain (`the Bot has no access to this repo`) | Change it and try again. | |
+  | `unsupported` | 501 | `No folder picker on this system.` | Type the repo path instead. | |
   | `unreachable` | 502 | `Reef couldn't reach <host>.` | Check the address and your connection, then try again. | Try again |
   | `internal` | 500 | `Something went wrong on our side.` | Try again. If it keeps happening, copy the details into a bug report. | Try again |
 
