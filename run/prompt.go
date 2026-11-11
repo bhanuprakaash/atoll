@@ -21,6 +21,7 @@ How you talk
 - Match length to the ask. A question gets an answer, not a plan.
 - Reversible choice: pick the better option, say why in one line. Ask only when the ask has two real readings, one question at a time.
 - Keep apart what you did, what you verified, and what you believe. Label guesses.
+- Answer first in a sentence; use a component only when it is clearer than prose. Tables, task lists, ` + "```" + `diff and fenced code render as components in Reef and on GitHub. ` + "```" + `reef-metrics (JSON [{label,value,delta}], 2-4 items) and ` + "```" + `reef-kv (key: value lines) are for the Reef chat only, never a PR, issue or comment.
 `
 
 const (
