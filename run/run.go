@@ -860,8 +860,8 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	return reply, nil
 }
 
-// stream reads the turn's events until it ends and returns the reply. With showText false the
-// turn's text is dropped.
+// stream reads the turn's events until it ends and returns the reply: the text after the last tool
+// call. With showText false the turn's text is dropped.
 func (m *Manager) stream(a *active, sess provider.Session, showText bool) (string, error) {
 	var reply strings.Builder
 	var wg sync.WaitGroup
@@ -894,6 +894,7 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 					return "", fmt.Errorf("save session: %w", err)
 				}
 			case provider.KindToolCall:
+				reply.Reset()
 				name := ev.Name
 				if ev.Server != "" {
 					name = "mcp__" + ev.Server + "__" + name
