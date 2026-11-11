@@ -548,9 +548,8 @@ after a failed undo counts a Bot that is already gone as removed.
     - The Bash tool runs through `CLAUDE_CODE_SHELL_PREFIX`, a script that unsets every variable
       starting with `CLAUDE` or `ATOLL_MCP_` and then runs the command. A Bot's shell has no
       `CLAUDE_CONFIG_DIR`, and `env | grep -c CLAUDE` prints 0.
-      - `ATOLL_MCP_<n>` carry the MCP secrets (see the known gap below) and are otherwise in the
-        shell's `env`. `claude` keeps its own copy: it still reads its config folder and expands
-        `${ATOLL_MCP_<n>}` in MCP headers (an MCP server received `Bearer <ATOLL_MCP_0 value>`).
+      - `ATOLL_MCP_<n>` are what #173 retires (see "Same-user reads" below); the prefix still
+        unsets them until the fix lands.
       - The script, exactly:
         ```sh
         #!/bin/bash
@@ -574,25 +573,53 @@ after a failed undo counts a Bot that is already gone as removed.
       entry (changes `claude` itself and signs it out); `BASH_ENV` (a login shell ignores it);
       `--setting-sources ""` and `CLAUDE_CODE_DISABLE_CLAUDE_MDS` (also drop the repo's files);
       a `!` negation in `claudeMdExcludes` (does not work).
-    - Known gap (issue #173 owns the fix): a Bot can read other runs' secrets and Reef's own
-      environment through `/proc`. Bots run as the same OS user as Reef, so on Linux a Bot can read
-      `/proc/<pid>/environ` of `claude` and of any other process of that user.
-      - `claude`'s environment holds `CLAUDE_CONFIG_DIR` (Reef's provider folder, with the login).
-      - It holds `ATOLL_MCP_<n>`, one per secret `argv` hides: Reef's MCP URL for the run (it
-        carries the run's token), the GitHub MCP bearer (the same token as `GH_TOKEN`), and every
-        secret, header and env value of the MCP servers attached to that Bot, an OAuth bearer
-        included.
-      - It holds the extras given to the run on purpose (`GH_TOKEN`, `OAUTH_TOKEN`, `GIT_CONFIG_*`,
-        `GH_CONFIG_DIR`, `GLAB_CONFIG_DIR`), which the shell has anyway.
-      - Only this Bot's own connections and servers are in there, none that were not attached.
-      - The same read reaches other live runs' `claude` processes (their MCP URLs and run tokens)
-        and the Reef server's own environment, which is not stripped.
-      - The prefix hides the variables from `env`; it is not a boundary. A Bot can also run `claude`
+    - Same-user reads (issue #173; the fix builds this). Bots run as the same OS user as Reef, so
+      what a process holds in its env or command line, another Bot's shell can read.
+      - Reef drops the login tokens from its own env before anything else in `main`: `GH_TOKEN`,
+        `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GITLAB_TOKEN`,
+        `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`, and `ANTHROPIC_*`, `CLAUDE*`, `OPENAI_*`, `CODEX_*`.
+        It keeps what it needs: the three secret-store variables and `SSH_AUTH_SOCK` (its own git
+        fetches), `HOME`, `PATH`, `ATOLL_*`.
+      - `os.Unsetenv` does not do it: `/proc/<pid>/environ` is the env the process started with
+        (spike: it still held `GH_TOKEN` after `Unsetenv`). Reef re-executes itself (`syscall.Exec`,
+        same pid) with the scrubbed env when any of these is set; a launcher cannot be relied on
+        (`make run` and the owner's shell pass whatever they hold).
+      - `ATOLL_TOKEN` (the local API credential, passed by the desktop shell in env) is the same
+        problem: it lets a Bot call the whole API. The first process reads it and hands it to the
+        re-executed one on an inherited pipe (`ATOLL_TOKEN_FD`, not secret); the new process reads
+        and closes it before it listens and holds it in memory only.
+      - Claude's `--mcp-config` is `/dev/fd/<n>`: a pipe holding the whole config with real URLs,
+        header values and env values, written and closed before `claude` starts. The run's Reef MCP
+        URL (with its token), the GitHub MCP bearer and every MCP server secret are then in no env
+        and no `argv`; `${ATOLL_MCP_<n>}` is gone. Spike on `claude` 2.1.322: the pipe and a 0600
+        file removed after the `init` event both connected and called tools; `claude` read the
+        config once, at start. If a platform refuses `/dev/fd`, the fallback is that 0600 file in
+        the run's folder, removed after `init`.
+      - Codex already takes MCP config in `thread/start` on stdin: its env and `argv` hold none.
+      - Stays: `GH_TOKEN`, `OAUTH_TOKEN` and `GIT_CONFIG_*` in the env of the Bot's own provider
+        process and tools (its shell needs them), and the env of a stdio MCP server (it reads its
+        secrets from it). So run A can still read run B's GitHub tool token. The only ways around
+        it are a credential broker that knows which process tree is asking (a socket with peer pid
+        and shims for `gh`, `glab`, git; not built, and unverified under Codex's sandbox) or
+        another OS user or PID namespace (out of scope).
+      - Not used: an exec-only (mode 0111) copy of `claude`, which makes the process non-dumpable
+        and its `/proc/<pid>/environ` unreadable (verified with a copy of `python3`); its Bash
+        children are dumpable again, so the tokens leak there anyway.
+      - What a same-user process can still read, Linux: the env of every tool process above; the
+        open pipe `/proc/<pid>/fd/<n>` of a new `claude` until it reads the config (a read that
+        wins leaves that run without its MCP servers, visible in `init`); `/proc/<pid>/{fd,cwd}`,
+        including `claude`'s stdin (it can inject messages); memory through ptrace when
+        `kernel.yama.ptrace_scope` is 0 (unverified here); signals (a Bot's `pkill -f` ended Reef's
+        secret-store daemon on 2026-11-09); the owner's `SSH_AUTH_SOCK` socket and `~/.claude`;
+        files under Reef's data dir; the secret-store bus by path. The fix for all of these is a
+        separate OS user or PID namespace.
+      - macOS: no `/proc`, but `ps eww -p <pid>` and `sysctl KERN_PROCARGS2` show the env and
+        arguments of a same-user process, so the env rules above matter there too (the exec-time
+        env is what they show; unverified that the re-exec replaces it). A pipe fd of another
+        process cannot be opened. Unverified: `/dev/fd/<n>` accepted by `claude`, memory access
+        (`task_for_pid` is refused for hardened apps), signals reach every same-user process.
+      - The prefix hides variables from `env`; it is not a boundary. A Bot can also run `claude`
         itself, which then uses the owner's `~/.claude`, because `HOME` is never changed.
-      - Observed on Linux: a Bot's shell listed `/proc/*/environ` entries holding
-        `CLAUDE_CONFIG_DIR` and `ATOLL_MCP_0` for `claude` and for other sessions. Unverified:
-        macOS has no `/proc`, but `ps eww -p <pid>` should show a same-user process's environment;
-        Codex's process holds the same extras.
   - Codex: `skills.bundled.enabled=false`; plugins, remote plugins and apps off; each skill in
     `~/.agents/skills` disabled by the path of its `SKILL.md`, since a skill's name can differ from
     its folder (Codex finds that folder through `HOME`).
@@ -806,8 +833,8 @@ after a failed undo counts a Bot that is already gone as removed.
   library. An unknown id fails with the known ones named. Remove drops the server from every Bot.
 - A run gets Atoll's own server, `github` when the Bot has a GitHub connection, and exactly its
   Bot's servers, read from the library when the run starts: Claude through `--mcp-config` (still
-  `--strict-mcp-config`; URLs, header values and env values are `${NAME}` placeholders, filled from the
-  process environment so none shows in the process list), Codex through `mcp_servers` in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
+  `--strict-mcp-config`; the config comes on a pipe, `/dev/fd/<n>`, so no secret shows in the process
+  list or the environment), Codex through `mcp_servers` in the config of `thread/start` and `thread/resume`, with the secret values filled in. Edit and
   Remove apply from the next run; a live run keeps its config. *A Bot that picks nothing gets none.*
 - A tool call to a user-added server is an approval in the thread, like any other tool. Claude's
   allow list stays `mcp__atoll`, so the permission prompt tool asks. Codex gets
