@@ -1136,6 +1136,13 @@ Voice
   line leaves once answered; a long command or path wraps), Chief's changes, the branch starting,
   the worktree cleaned up, a failed run (Retry), blocked, a refused message and reconnecting. Inline
   actions (Undo, Undo all, Open, Retire, Details, Show more) are one quiet text-button style.
+- A run that fails before any reply leaves one quiet line under the message that started it:
+  `Didn't run: <reason>`, in plain words (an unknown cause reads `Didn't run: something went
+  wrong.`), never the provider's raw error, which sits behind Details. The line stays in its thread
+  in order after later runs start and after a reload. Retry shows only when that run is the
+  thread's newest; an older failed run keeps the line without Retry. A sign-in failure keeps its
+  own line (see Providers). *A run that failed while a newer one went on made the message look
+  ignored.*
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `·
   Stopped by you after 4s`). Inside the run, above the footer: Chief's changes, then saved memory,
   then a Blocked line (from `finish_run`'s `blocked`) whose dot hangs in the margin so its text
