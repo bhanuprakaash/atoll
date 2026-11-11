@@ -32,11 +32,16 @@ test:
 run: ui
 	go run ./cmd/atoll serve
 
-# Update files (Reef.app.tar.gz and .sig) need TAURI_SIGNING_PRIVATE_KEY; without it, app and dmg only.
+# Update files (Reef.app.tar.gz or the AppImage, and .sig) need TAURI_SIGNING_PRIVATE_KEY; without it, no update files.
+BUNDLES = app,dmg
+ifeq ($(shell uname -s),Linux)
+BUNDLES = appimage
+endif
+
 app: ui
 	mkdir -p desktop/src-tauri/binaries
 	go build -o desktop/src-tauri/binaries/atoll-$$(rustc -vV | sed -n "s/^host: //p") ./cmd/atoll
-	cd desktop && $(PNPM) install --frozen-lockfile && $(PNPM) tauri build --bundles app,dmg \
+	cd desktop && $(PNPM) install --frozen-lockfile && $(PNPM) tauri build --bundles $(BUNDLES) \
 		$(if $(TAURI_SIGNING_PRIVATE_KEY),,--config '{"bundle":{"createUpdaterArtifacts":false}}')
 
 # Compiles the layered icon (icons/icon.icon, Icon Composer) into the committed Assets.car. Run it

@@ -1220,8 +1220,9 @@ Voice
 - Settings: General (name, worktree folder, and in the desktop app the Software update group), Providers, Connections, Skills, Repos, Memory, one
   list each. Content to the right of the section navigation is centred, with a maximum width of
   720px. Add repo opens a dialog (name, path, Choose… for the native folder picker, which the Go
-  sidecar opens with `osascript`, so the UI still talks to Go over HTTP only); with no repos yet the
-  same form shows inline. New skill opens an empty editor and creates the skill only on Create.
+  sidecar opens with `osascript` on macOS and `zenity` on Linux, so the UI still talks to Go over
+  HTTP only; with no `zenity` it answers `501` and the dialog says to type the path); with no
+  repos yet the same form shows inline. New skill opens an empty editor and creates the skill only on Create.
   A skill opens in a wide right panel: name, its files (`SKILL.md` first, then by path, scripts
   marked), the selected file in one editor (when to use it and the `SKILL.md` text, or a file's text
   with a Script checkbox that follows a leading `#!` until toggled, and Delete file), and the Bots
@@ -1237,7 +1238,7 @@ Voice
   in; Meet Chief with example asks, each opening Chief's thread with that message sent.
 - The Go server serves the UI at `/` and the API under `/api/`, one address. Vite builds `web/`
   into `server/ui`, which the binary embeds (`make ui`).
-- The desktop shell uses an overlay title bar; the Bot header’s empty space is a window drag region.
+- On macOS the desktop shell uses an overlay title bar; the Bot header’s empty space is a window drag region.
 - The Tauri shell (`desktop/`, `make app`) starts `atoll serve --addr 127.0.0.1:4317
   --exit-on-stdin-close`, keeps its stdin pipe open as the sidecar's lifeline, loads the URL it
   prints and restarts it when it exits (every 2 s while it keeps failing). On quit or SIGTERM it
@@ -1250,7 +1251,8 @@ Voice
   the cookie (401 otherwise); MCP URLs with a valid per-run token also work without the cookie.
   Local host and same-origin checks still apply. With `ATOLL_TOKEN` unset, `make run` and e2e
   keep their existing access without a cookie.
-  A page's `window.open` (provider sign-in) opens in the default browser (`on_new_window`), and so
+  A page's `window.open` (provider sign-in) opens in the default browser (`open` on macOS,
+  `xdg-open` on Linux; `on_new_window`), and so
   does any navigation of the window to a URL that is not Reef's own server (`on_navigation`), which
   is cancelled in the app. Only `http`, `https` and `mailto` URLs are handed to the browser; any
   other scheme is cancelled. Links in chat replies carry `target="_blank"`. *A fixed address lets the
@@ -1261,6 +1263,11 @@ Voice
   `scripts/release`, which publishes the release with the dmg. *Developer ID and
   notarization need the paid Apple Developer Program; add them when outside users need a clean
   first open.*
+- Reef runs on Linux x86_64 (Ubuntu/Debian) as an AppImage, which the Tauri updater supports and a
+  `.deb` does not; arm64, Windows and `.deb`/`.rpm` are out. `make app` bundles `appimage` on
+  Linux and `app,dmg` on macOS. CI's `linux` job builds the AppImage on every PR and push to
+  `main`, after `dmg` so that on a `v*` tag the release exists, and on a tag runs
+  `scripts/release` to add to it. The AppImage is signed only with the updater key.
 - Reef updates itself from GitHub Releases through the Tauri updater: the shell's `check_update`
   and `install_update` commands are the only ones the page (loaded from `http://127.0.0.1:4317`)
   may call, granted by the `update` capability. The page checks once on load, in the desktop app
@@ -1270,7 +1277,9 @@ Voice
   4317 free. Pushing tag `v<version>` releases: CI runs `scripts/release <version>`, which stamps
   the version into `tauri.conf.json` for the build only, signs with the `TAURI_SIGNING_PRIVATE_KEY`
   secret (locally, the key in `~/.tauri/reef.key`), and publishes `Reef.app.tar.gz`, its `.sig`,
-  `latest.json` and the dmg as release `v<version>`; the app reads
+  `latest.json` and the dmg as release `v<version>`; on Linux it adds
+  `Reef_<version>_amd64.AppImage` (itself the update file), its `.sig` and a `linux-x86_64` entry
+  in `latest.json` beside `darwin-aarch64` to that release. The app reads
   `releases/latest/download/latest.json`. The tag is the version; the committed one is not bumped.
   *Only the shell can replace the running app, so the web calls it for these two commands and
   nothing else; a progress bar can come later.*
@@ -1320,7 +1329,7 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 
 A Slack Marketplace listing (one-click Slack for every
 workspace, no per-workspace app), browser pane, background processes pane, the platform
-switch for Bots other than Chief, a skill's binary files, desktop Linux, mobile, memory pins (up
+switch for Bots other than Chief, a skill's binary files, mobile, memory pins (up
 to about 5 items always in the prompt), routines (scheduled, repeating runs), more provider
 adapters.
 

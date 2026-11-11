@@ -96,3 +96,41 @@ jobs:
         with:
           name: Reef
           path: desktop/src-tauri/target/release/bundle/dmg/
+
+  linux:
+    name: linux
+    # After dmg so that on a v* tag the release exists; dmg is skipped on pull requests.
+    needs: dmg
+    if: ${{ !cancelled() && (needs.dmg.result == 'success' || needs.dmg.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential file patchelf xdg-utils libssl-dev libxdo-dev \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.1
+      - run: npm i -g "$(node -p "require('./web/package.json').packageManager")"
+      - run: rustup toolchain install stable --profile minimal
+      - if: github.ref_type != 'tag'
+        run: make app
+      # A v* tag adds the AppImage to the release the dmg job created.
+      # Only this step gets the signing key: the job also runs on pull requests.
+      - if: github.ref_type == 'tag'
+        run: scripts/release "${GITHUB_REF_NAME#v}"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Reef-linux
+          path: desktop/src-tauri/target/release/bundle/appimage/*.AppImage
