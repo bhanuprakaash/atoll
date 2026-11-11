@@ -718,9 +718,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		}
 		rp.Host = RepoHost(a.ctx, rp.Path)
 	}
-	if cfg.Cwd, err = m.workdir(thread, rp); err != nil {
+	cwd, stale, err := m.workdir(thread, rp)
+	if err != nil {
 		return "", err
 	}
+	cfg.Cwd = cwd
 	user, err := m.cfg.Store.Setting(a.ctx, "user_name")
 	if err != nil {
 		return "", fmt.Errorf("load user name: %w", err)
@@ -785,7 +787,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			return "", fmt.Errorf("select memory: %w", err)
 		}
 	}
-	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd, a.kind)
+	var behind string
+	if rp.ID != "" && thread.Session == "" && thread.Worktree == "" {
+		behind = repo.BehindNote(a.ctx, rp.Path)
+	}
+	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd, behind, stale, a.kind)
 	var githubToken string
 	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {

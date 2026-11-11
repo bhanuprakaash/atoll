@@ -84,8 +84,8 @@ never a dependency.
     `packed-refs` for ref deletion even when the file does not exist. A command can succeed while
     printing `packed-refs.lock: Read-only file system`, which is harmless noise (exit code 0); deleting
     a packed branch fails. Claude Auto can write repo-local config,
-    which can define commands such as diff drivers and `core.sshCommand`. Reef's `worktree add` and
-    snapshot staging pin every filter key (`clean`, `smudge`, `process`, `required`) set in
+    which can define commands such as diff drivers and `core.sshCommand`. Reef's `worktree add`,
+    its `checkout` and `status` in the read-only checkout, and snapshot staging pin every filter key (`clean`, `smudge`, `process`, `required`) set in
     repo-local, included or per-worktree config to its global or system value, or to empty when
     there is none; a planted filter does not run, and the user's own, such as Git LFS, does. A Bot
     that overrides a global filter's key gets the user's value back. `glab mr view` runs in the repo and may invoke git using its config. A Bot process
@@ -339,8 +339,17 @@ after a failed undo counts a Bot that is already gone as removed.
 - The worktree is removed when the GitLab MR merges or the thread closes; uncommitted work is
   saved first.
   A helper's worktree goes with its boss's (see Delegation).
-- The read-only checkout is a detached git worktree of the repo's HEAD at `<data>/threads/<id>`,
-  outside the worktree root. It is removed when the thread closes.
+- The read-only checkout is a detached git worktree at `<data>/threads/<id>`, outside the worktree
+  root. It is removed when the thread closes. Its commit is the one `start_work` would branch from:
+  `origin/HEAD` when it resolves, else the local HEAD, so a Bot reads what it will edit. The server
+  never fetches. At the start of each run of a thread that has no worktree, Reef moves the checkout
+  to that commit as it is now (the checkout is read-only, so nothing is lost). A checkout with local
+  changes stays where it is, and the run's message says how far behind it is.
+- When the local default branch (the one origin/HEAD points at) is behind origin/HEAD, the repo
+  block of the thread's first message adds a line, like start_work's `ahead` note:
+  `Note: local main is 2 commits behind origin/HEAD (c3b1f0e); the checkout is at origin/HEAD`
+  (`1 commit` for one; the commit is origin/HEAD's). It is said once, in the first message, not at
+  later runs.
 - Reef's git disables hooks and fsmonitor, and uses `GIT_DIR` and `GIT_COMMON_DIR` from stored
   worktree IDs. It pins repo-local filter keys to the user's global value. Reef checks for
   symlinks before snapshot and removal, and cleans up a failed worktree setup. See Bots above for
