@@ -161,12 +161,12 @@ func waitingOf(runs []waitRun, replied int64, trackers map[string]*tracker) []Wa
 		if ask == nil {
 			continue
 		}
-		if runs[i].rowid > replied {
+		if runs[i].rowid >= replied {
 			out = append(out, Waiting{Kind: WaitDecision, Question: ask.Question, Options: ask.Options})
 		}
 		break
 	}
-	if last := runs[len(runs)-1]; last.rowid > replied && RealBlocked(last.report.Blocked) {
+	if last := runs[len(runs)-1]; last.rowid >= replied && RealBlocked(last.report.Blocked) {
 		out = append(out, Waiting{Kind: WaitBlocker, Text: strings.TrimSpace(last.report.Blocked)})
 	}
 	type entry struct {
@@ -199,7 +199,7 @@ func waitingOf(runs []waitRun, replied int64, trackers map[string]*tracker) []Wa
 			for _, head := range t.heads {
 				w.Changed = w.Changed || head != e.pr.SHA
 			}
-		} else if e.run.rowid <= replied {
+		} else if e.run.rowid < replied {
 			continue
 		}
 		w.OnPurpose = w.Checks == "red" && strings.EqualFold(strings.TrimSpace(e.pr.Note), OnPurposeNote)
