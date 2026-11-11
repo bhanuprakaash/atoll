@@ -1237,7 +1237,8 @@ Voice
   waiting state is the thread's own Needs you marker: the card adds no banner, badge or red.
   *An approval is usually one click; it should not compete with the reply.*
 - Composer: the message, then the thread's repo, branch and MR as chips on one row, and Send or
-  Stop. A long branch name ends in "…" with the full name on hover. The MR chip shows only its
+  Stop; while an approval waits, text in the box turns Stop into Send, and sending answers the
+  approval. A long branch name ends in "…" with the full name on hover. The MR chip shows only its
   reference (`#92`, `!12`) with a state dot (open, merged, closed); hovering shows its title. While
   the MR is open, a second mark shows its CI: running (muted), passed (green), failed (red);
   hovering adds the summary (`CI: 3 passed, 1 failed (build)`). The `mr_updated` event carries
