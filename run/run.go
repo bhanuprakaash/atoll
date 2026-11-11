@@ -556,9 +556,9 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	quiet := a.quiet
 	m.mu.Unlock()
 	res.Provider = a.bot.Provider
-	wake := WakeText
-	if quiet {
-		wake = nil
+	var wake func(store.Wake) string
+	if !quiet {
+		wake = m.wakeText(a.threadID)
 	}
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
@@ -590,6 +590,21 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 			m.flushLog(a.threadID)
 		}
 	}
+}
+
+// wakeText makes the wake text of a helper run on threadID, with the helpers line of its boss: the
+// helper whose run ended is not counted.
+func (m *Manager) wakeText(threadID string) func(store.Wake) string {
+	ctx := context.Background()
+	line := ""
+	t, err := m.cfg.Store.Thread(ctx, threadID)
+	if err == nil && t.ParentThreadID != "" {
+		line, err = m.helpersLine(ctx, t.ParentThreadID, threadID)
+	}
+	if err != nil {
+		m.cfg.Log.Error("count helpers", "thread_id", threadID, "error", err)
+	}
+	return func(w store.Wake) string { return WakeText(w, line) }
 }
 
 func (m *Manager) codexAutoCache(botID string) (string, []string, error) {
@@ -737,7 +752,8 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		}
 		onBossBranch = boss.Branch != "" && strings.HasPrefix(thread.Branch, boss.Branch+"--")
 	}
-	cfg.SystemPrompt = systemPrompt(bot, user, onBossBranch)
+	cfg.SystemPrompt = systemPrompt(bot, user, onBossBranch,
+		len(bot.Delegates) > 0 && thread.ParentThreadID == "")
 	skills := make([]store.Skill, 0, len(bot.Skills))
 	for _, id := range bot.Skills {
 		sk, err := m.cfg.Store.Skill(a.ctx, id)
