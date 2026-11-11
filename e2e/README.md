@@ -167,3 +167,5 @@ The sidebar thread tree, threads popup, Bot groups and island notifications exte
 Home paths in imported skills (the own folder becomes a placement token, any other home reference refuses the import) extend these contracts in [skill-home-paths-contract.md](skill-home-paths-contract.md).
 
 Claude not loading the owner's own setup extends these contracts in [claude-isolation-contract.md](claude-isolation-contract.md). Its one real-claude test has the build tag `realclaude`: `go test -tags realclaude -run TestClaudeIsolation_Real ./e2e`.
+
+Waking a Bot when its tracked GitHub PR merges, closes or finishes CI extends [github-repos-contract.md](github-repos-contract.md) in [pr-wake-contract.md](pr-wake-contract.md).
