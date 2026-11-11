@@ -52,7 +52,7 @@ func TestThread_ResumesAndReports(t *testing.T) {
 				if c.got.Status != "done" || c.got.Reply != c.reply {
 					t.Errorf("run %s: status %q, reply %q; want done, %q (error %q)", c.got.ID, c.got.Status, c.got.Reply, c.reply, c.got.Error)
 				}
-				want := report{Done: c.done, Tried: "none", Blocked: "none", Next: "none"}
+				want := report{Done: c.done, Tried: "none", Blocked: "", Next: "none"}
 				if c.got.Report == nil || *c.got.Report != want {
 					t.Errorf("run %s: report %+v, want the finish_run call %+v", c.got.ID, c.got.Report, want)
 				}
