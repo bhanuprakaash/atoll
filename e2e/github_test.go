@@ -200,7 +200,7 @@ func TestGitHub_RunGetsTheConnection(t *testing.T) {
 			if gh, ok := servers["github"]; !ok || gh.URL != f.gh.URL+"/mcp/" {
 				t.Errorf("MCP config github entry %+v (servers %v), want url %s", gh, servers, f.gh.URL+"/mcp/")
 			} else if p == "claude" && gh.Headers["Authorization"] != "Bearer "+token {
-				t.Errorf("claude --mcp-config github headers %v, want Authorization Bearer <token>", gh.Headers)
+				t.Errorf("claude loaded MCP config github headers %v, want Authorization Bearer <token>", gh.Headers)
 			}
 			if _, ok := servers["atoll"]; !ok {
 				t.Errorf("MCP config lost Reef's own server: %v", servers)
