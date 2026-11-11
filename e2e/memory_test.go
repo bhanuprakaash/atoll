@@ -162,6 +162,17 @@ func hasArg(args []string, want string) bool {
 	return false
 }
 
+// withoutFinishRules swaps the Finish section's lines for a placeholder: tests assert those rules
+// by meaning (TestPrompt_ReplyCarriesAnswerRule), not letter for letter.
+func withoutFinishRules(system string) string {
+	head, rest, ok := strings.Cut(system, "\nFinish\n")
+	if !ok {
+		return system
+	}
+	_, tail, _ := strings.Cut(rest, "\n\n")
+	return head + "\nFinish\n<finish rules>\n\n" + tail
+}
+
 func golden(t *testing.T, name, got string) {
 	t.Helper()
 	path := filepath.Join("testdata", "golden", name+".txt")
@@ -191,7 +202,7 @@ func TestMemory_PromptGoldenAndBudget(t *testing.T) {
 			system := lastPrompt(t, f.m, p, "system")
 			first := lastPrompt(t, f.m, p, "user")
 			normal := strings.NewReplacer(repo.ID, "<repo-item>", user.ID, "<user-item>", own.ID, "<bot-item>", f.repo.ID, "<repo>", filepath.Join(f.m.data, "threads", th.ID), "<checkout>", f.s.url, "<server>").Replace(first)
-			golden(t, "system", system)
+			golden(t, "system", withoutFinishRules(system))
 			golden(t, "first-message", normal)
 			if len(system) > 500*4 {
 				t.Errorf("system additions %.2f tokens, limit 500", float64(len(system))/4)

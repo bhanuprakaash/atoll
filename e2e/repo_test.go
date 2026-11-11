@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -54,15 +55,20 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 
 func newRepoFixture(t *testing.T, provider string) *repoFixture {
 	t.Helper()
+	return newRepoFixtureIn(t, provider, "")
+}
+
+// newRepoFixtureIn is newRepoFixture with the data dir at data, when set.
+func newRepoFixtureIn(t *testing.T, provider, data string) *repoFixture {
+	t.Helper()
 	m := newMachine(t, provider, "glab")
+	if data != "" {
+		m.data = data
+	}
 	m.signIn(t, provider)
 	writeFile(t, filepath.Join(m.bin, "mr-state"), "opened")
 	// Share only the private Secret Service session, never the host's credentials or PATH.
-	for _, key := range []string{"DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "XDG_DATA_HOME"} {
-		if v := os.Getenv(key); v != "" {
-			m.env = append(m.env, key+"="+v)
-		}
-	}
+	m.env = append(m.env, secretServiceEnv()...)
 	m.env = append(m.env, "ATOLL_REPO_POLL_INTERVAL=100ms")
 	f := &repoFixture{m: m, root: t.TempDir(), origin: filepath.Join(t.TempDir(), "origin.git")}
 	repoPath := t.TempDir()
@@ -426,20 +432,14 @@ func (f *repoFixture) connect(t *testing.T) (string, string) {
 		t.Fatal("run via make e2e: Linux needs the private Secret Service session")
 	}
 	// The public Secret Service boundary proves storage independently of Atoll's status response.
-	cmd := exec.CommandContext(t.Context(), "secret-tool", "lookup", "service", "atoll", "username", "gitlab:"+start.ID)
-	deleteSecret := exec.Command("secret-tool", "clear", "service", "atoll", "username", "gitlab:"+start.ID)
-	if runtime.GOOS == "darwin" {
-		cmd = exec.CommandContext(t.Context(), "security", "find-generic-password", "-s", "atoll", "-a", "gitlab:"+start.ID, "-w")
-		deleteSecret = exec.Command("security", "delete-generic-password", "-s", "atoll", "-a", "gitlab:"+start.ID)
-	}
-	out, err := cmd.Output()
+	value, ok := secretEntry("gitlab:" + start.ID)
 	var stored struct {
 		AccessToken string `json:"access_token"`
 	}
-	if err != nil || json.Unmarshal(out, &stored) != nil || stored.AccessToken != token {
+	if !ok || json.Unmarshal([]byte(value), &stored) != nil || stored.AccessToken != token {
 		t.Fatal("token not retrievable from OS secret store")
 	}
-	t.Cleanup(func() { _ = deleteSecret.Run() })
+	t.Cleanup(func() { clearSecretEntry("gitlab:" + start.ID) })
 	return start.ID, token
 }
 
@@ -470,6 +470,10 @@ func assertNoSecret(t *testing.T, token string, roots ...string) {
 	t.Helper()
 	for _, root := range roots {
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if errors.Is(err, fs.ErrNotExist) && path != root {
+				// The server renames or removes its temp files and folders while it runs.
+				return nil
+			}
 			if err != nil {
 				return err
 			}
@@ -477,6 +481,9 @@ func assertNoSecret(t *testing.T, token string, roots ...string) {
 				return nil
 			}
 			b, err := os.ReadFile(path)
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
 			if err != nil {
 				return err
 			}

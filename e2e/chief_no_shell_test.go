@@ -98,8 +98,8 @@ func TestChiefNoShell_ClaudeRunsWithoutTools(t *testing.T) {
 	}
 
 	for _, b := range []bot{keeper, plain, coder} {
-		if v, ok := tools(lastArgv(b)); ok {
-			t.Errorf("%s got --tools %q; only Chief runs without tools", b.Name, v)
+		if v, ok := tools(lastArgv(b)); !ok || v != _botTools {
+			t.Errorf("%s: --tools present %v with value %q, want exactly %q; only Chief runs with none", b.Name, ok, v, _botTools)
 		}
 	}
 }

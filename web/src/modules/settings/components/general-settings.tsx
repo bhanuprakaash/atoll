@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Box, RowText, rowClass, SectionHead } from '@/components/settings-ui';
 import { TextField } from '@/components/text-field';
+import { inDesktopApp } from '@/lib/app-update';
+import { SoftwareUpdate } from '@/modules/settings/components/software-update';
 import { type Settings, useSaveSettings, useSettings } from '@/modules/settings/api/settings';
 
 function GeneralForm({ settings }: { settings: Settings }) {
@@ -42,6 +44,7 @@ function GeneralForm({ settings }: { settings: Settings }) {
           <RowText title="App data" detail={settings.data_dir} mono />
         </div>
       </Box>
+      {inDesktopApp && <SoftwareUpdate />}
       {save.isError && <p className="text-danger">{save.error.message}</p>}
     </>
   );

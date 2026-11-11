@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -136,14 +137,27 @@ func starts(path string) int {
 	return strings.Count(string(b), "\n")
 }
 
-// secretEntry reads an OS secret store entry with the OS tool, not through Atoll.
+// secretEntry reads an OS secret store entry with the OS tool, not through Atoll. On macOS it
+// undoes the encoding go-keyring adds to what it stores.
 func secretEntry(username string) (string, bool) {
 	cmd := exec.Command("secret-tool", "lookup", "service", "atoll", "username", username)
 	if runtime.GOOS == "darwin" {
 		cmd = exec.Command("security", "find-generic-password", "-s", "atoll", "-a", username, "-w")
 	}
 	out, err := cmd.Output()
-	return strings.TrimSpace(string(out)), err == nil
+	value := strings.TrimSpace(string(out))
+	if runtime.GOOS == "darwin" {
+		if hexed, ok := strings.CutPrefix(value, "go-keyring-encoded:"); ok {
+			if b, err := hex.DecodeString(hexed); err == nil {
+				value = string(b)
+			}
+		} else if b64, ok := strings.CutPrefix(value, "go-keyring-base64:"); ok {
+			if b, err := base64.StdEncoding.DecodeString(b64); err == nil {
+				value = string(b)
+			}
+		}
+	}
+	return value, err == nil
 }
 
 func clearSecretEntry(username string) {
