@@ -18,6 +18,7 @@ import { useRun, useStopRun } from '@/modules/threads/api/runs';
 import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
 import { HelpersRegion } from '@/modules/threads/components/helpers-region';
+import { FailedLine, FailedRun } from '@/modules/threads/components/failed-run-line';
 import { LiveRun } from '@/modules/threads/components/live-run';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
@@ -33,11 +34,15 @@ function duration(run: Run) {
 function RunResult({
   id,
   time,
+  newest,
+  askedAbove,
   retry,
   signedOut,
 }: {
   id: string;
   time?: string;
+  newest: boolean;
+  askedAbove?: boolean;
   retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
@@ -53,6 +58,7 @@ function RunResult({
       )
     );
   if (run.status === 'running' || run.status === 'waiting') return null;
+  if (run.status === 'failed' && askedAbove) return null;
   const tools = run.tools ?? {};
   const blocked = run.report?.blocked?.trim();
   const parts = [
@@ -80,47 +86,7 @@ function RunResult({
         </p>
       )}
       {run.status === 'failed' && (
-        <div className="flex flex-wrap items-center gap-3">
-          <svg
-            aria-hidden="true"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            className="flex-none text-danger"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7.5v5M12 16v.5" />
-          </svg>
-          {run.error_kind === 'signed_out' && signedOut ? (
-            signedOut(run.provider)
-          ) : (
-            <span className="min-w-60 flex-1 text-ink/80 [overflow-wrap:anywhere]">
-              Run failed{run.error ? `: ${run.error}` : '.'}
-              {/sign.?in|authenticat|not logged in|login/i.test(run.error) && (
-                <>
-                  {' '}
-                  <Link
-                    className="text-ink underline decoration-outline underline-offset-3"
-                    to="/settings/providers"
-                  >
-                    Sign in
-                  </Link>
-                </>
-              )}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => retry(id)}
-            className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
-          >
-            Retry
-          </button>
-        </div>
+        <FailedLine run={run} replied newest={newest} retry={retry} signedOut={signedOut} />
       )}
       <p className="text-xs">
         <time dateTime={at} data-testid={time ? 'message-time' : undefined}>
@@ -527,6 +493,9 @@ export function ThreadView({
     if (messages.length > 50 && hasNextPage && !isFetching) void fetchNextPage();
   }, [fetchNextPage, hasNextPage, isFetching, messages.length]);
   const answered = new Set(messages.filter((m) => m.role === 'bot').map((m) => m.run_id));
+  const unanswered = (m: Message) => m.role === 'user' && !m.from_bot_id && !answered.has(m.run_id);
+  const asked = new Set(messages.filter(unanswered).map((m) => m.run_id));
+  const newest = (runId: string) => runId === thread?.run_id && !activeId;
   const retry = async (runId: string) => {
     const message = messages.find((m) => m.role === 'user' && m.run_id === runId);
     if (!message) return;
@@ -718,6 +687,7 @@ export function ThreadView({
                         <RunResult
                           id={m.run_id}
                           time={m.created_at}
+                          newest={newest(m.run_id)}
                           retry={retry}
                           signedOut={signedOut}
                         />
@@ -725,6 +695,14 @@ export function ThreadView({
                     )
                   }
                 />
+                {unanswered(m) && (
+                  <FailedRun
+                    id={m.run_id}
+                    newest={newest(m.run_id)}
+                    retry={retry}
+                    signedOut={signedOut}
+                  />
+                )}
                 {handoffs.has(m.id) && (
                   <p className="text-sm text-muted">Handed off to {names(handoffs.get(m.id)!)}</p>
                 )}
@@ -742,7 +720,13 @@ export function ThreadView({
               {run.finished && !answered.has(id) && (
                 <>
                   {afterRun?.(id)}
-                  <RunResult id={id} retry={retry} signedOut={signedOut} />
+                  <RunResult
+                    id={id}
+                    newest={newest(id)}
+                    askedAbove={asked.has(id)}
+                    retry={retry}
+                    signedOut={signedOut}
+                  />
                 </>
               )}
             </div>
@@ -750,7 +734,13 @@ export function ThreadView({
           {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
             <div className="flex flex-col gap-6">
               {afterRun?.(thread.run_id)}
-              <RunResult id={thread.run_id} retry={retry} signedOut={signedOut} />
+              <RunResult
+                id={thread.run_id}
+                newest={newest(thread.run_id)}
+                askedAbove={asked.has(thread.run_id)}
+                retry={retry}
+                signedOut={signedOut}
+              />
             </div>
           )}
           {lostRepo && (
