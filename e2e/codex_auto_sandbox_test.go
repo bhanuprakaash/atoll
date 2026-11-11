@@ -164,6 +164,13 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 			gitIn(t, p.repo, "config", "extensions.worktreeConfig", "true")
 			gitIn(t, p.repo, "config", "-f", filepath.Join(p.gitDir(t, worktree), "config.worktree"), "core.fsmonitor", p.script(t, "fsmonitor", p.record+"printf 'token\\0'\n"))
 		}},
+		{name: "worktree-config-filter", snapshotOnly: true, late: func(t *testing.T, p planter, worktree string) {
+			gitIn(t, p.repo, "config", "extensions.worktreeConfig", "true")
+			config := filepath.Join(p.gitDir(t, worktree), "config.worktree")
+			gitIn(t, p.repo, "config", "-f", config, "filter.x.clean", p.script(t, "clean", p.record+"cat\n"))
+			gitIn(t, p.repo, "config", "-f", config, "filter.x.smudge", "cat")
+			writeFile(t, filepath.Join(p.common, "info", "attributes"), "* filter=x\n")
+		}},
 	}
 	for _, route := range routes {
 		t.Run("control/"+route.name, func(t *testing.T) {
