@@ -1175,6 +1175,8 @@ func ToolVerb(name, kind string) string {
 			return "Remembering"
 		case provider.ToolFinishRun:
 			return "Wrapping up"
+		case provider.ToolDelegate, provider.ToolContinue:
+			return "Handing off"
 		}
 		if kind == "platform" && strings.HasPrefix(strings.TrimPrefix(name, _atollTools), "list_") {
 			return "Looking around"
@@ -1235,7 +1237,7 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		if v.Desc != "" {
 			return "command", v.Desc
 		}
-		return "command", commandTarget(v.Command)
+		return "command", CommandTarget(v.Command)
 	case "fileChange":
 		if len(v.Changes) > 0 {
 			return "edit", filepath.Base(v.Changes[0].Path)
@@ -1264,6 +1266,8 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 			return "memory", v.Topic
 		case provider.ToolStartWork, provider.ToolTrackMR:
 			return "work", ""
+		case provider.ToolDelegate, provider.ToolContinue:
+			return "platform", ""
 		default:
 			return "platform", v.Name
 		}
@@ -1283,26 +1287,95 @@ var (
 	_plainWord        = regexp.MustCompile(`^[A-Za-z][\w-]*$`)
 	_assignment       = regexp.MustCompile(`^\w+=`)
 	_quoted           = regexp.MustCompile(`\$\([^)]*\)|"[^"]*"|'[^']*'`)
+	_heredoc          = regexp.MustCompile(`<<-?\s*['"]?(\w+)`)
+	_shellWrapper     = regexp.MustCompile(`(?s)^(?:\S*/)?(?:ba|z)?sh\s+-\w*c\s+(.*)$`)
+	_writeRedirect    = regexp.MustCompile(`^\d?>`)
+	_timeout          = regexp.MustCompile(`^\d+[smhd]?$`)
+	_leadingWords     = map[string]bool{"if": true, "elif": true, "while": true, "until": true, "then": true, "do": true, "else": true, "{": true, "!": true}
+	_noCommand        = map[string]bool{"for": true, "case": true, "select": true, "}": true, "done": true, "fi": true, "esac": true, "[": true, "[[": true}
 )
 
-func commandWords(command string) []string {
-	command = _quoted.ReplaceAllString(command, "_")
-	for _, part := range strings.FieldsFunc(command, func(r rune) bool { return r == ';' || r == '&' || r == '\n' }) {
-		fields := strings.Fields(part)
-		for len(fields) > 0 && _assignment.MatchString(fields[0]) {
-			fields = fields[1:]
-		}
-		if len(fields) > 0 && fields[0] != "cd" {
-			if fields[0] == "_" {
-				return nil
-			}
-			return fields
+// unwrapShell returns the script of a `bash -lc '...'` wrapper, else command itself.
+func unwrapShell(command string) string {
+	m := _shellWrapper.FindStringSubmatch(strings.TrimSpace(command))
+	if m == nil {
+		return command
+	}
+	script := strings.TrimSpace(m[1])
+	if n := len(script); n >= 2 && (script[0] == '"' || script[0] == '\'') && script[n-1] == script[0] {
+		script = script[1 : n-1]
+		if m[1][0] == '"' {
+			script = strings.ReplaceAll(script, `\"`, `"`)
 		}
 	}
-	return nil
+	return script
 }
 
-func commandTarget(command string) string {
+// stripHeredocs drops the text of heredocs: it is input, never a command.
+func stripHeredocs(command string) string {
+	var out []string
+	end := ""
+	for _, line := range strings.Split(command, "\n") {
+		if end != "" {
+			if strings.TrimSpace(line) == end {
+				end = ""
+			}
+			continue
+		}
+		out = append(out, line)
+		if m := _heredoc.FindStringSubmatch(line); m != nil {
+			end = m[1]
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// commandWords returns the words of the first real command: past cd, assignments, a leading
+// timeout, function definitions, loop headers and a cat that only writes a file (which is the
+// answer only when nothing else runs).
+func commandWords(command string) []string {
+	command = _quoted.ReplaceAllString(stripHeredocs(unwrapShell(command)), "_")
+	var write []string
+	for _, part := range strings.FieldsFunc(command, func(r rune) bool { return r == ';' || r == '&' || r == '|' || r == '\n' }) {
+		fields := strings.Fields(part)
+		for len(fields) > 0 {
+			head := fields[0]
+			switch {
+			case _assignment.MatchString(head), _leadingWords[head]:
+				fields = fields[1:]
+			case len(fields) > 1 && strings.HasPrefix(fields[1], "()"):
+				fields = fields[2:]
+			case strings.HasSuffix(head, "()") || strings.Contains(head, "(){"):
+				fields = fields[1:]
+			case head == "timeout" && len(fields) > 1 && _timeout.MatchString(fields[1]):
+				fields = fields[2:]
+			case strings.HasPrefix(head, "("):
+				fields[0] = strings.TrimLeft(head, "(")
+				if fields[0] == "" {
+					fields = fields[1:]
+				}
+			default:
+				goto first
+			}
+		}
+	first:
+		if len(fields) == 0 || fields[0] == "cd" || _noCommand[fields[0]] {
+			continue
+		}
+		if fields[0] == "cat" && len(fields) > 1 && _writeRedirect.MatchString(fields[1]) {
+			write = fields[:1]
+			continue
+		}
+		if fields[0] == "_" {
+			return nil
+		}
+		return fields
+	}
+	return write
+}
+
+// CommandTarget is a command's program and plain first argument: "make e2e".
+func CommandTarget(command string) string {
 	fields := commandWords(command)
 	if len(fields) == 0 {
 		return ""
