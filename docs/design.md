@@ -1217,7 +1217,7 @@ Voice
 - New Bot is a full page with a centred form grouped into Basics, Brain and Access, and a link
   to ask Chief instead. Wide windows show a live card and sidebar row preview on the right. Create
   opens the new Bot's empty thread.
-- Settings: General (name, worktree folder), Providers, Connections, Skills, Repos, Memory, one
+- Settings: General (name, worktree folder, and in the desktop app the Software update group), Providers, Connections, Skills, Repos, Memory, one
   list each. Content to the right of the section navigation is centred, with a maximum width of
   720px. Add repo opens a dialog (name, path, Choose… for the native folder picker, which the Go
   sidecar opens with `osascript`, so the UI still talks to Go over HTTP only); with no repos yet the
@@ -1260,6 +1260,17 @@ Voice
   builds it on a GitHub macOS runner for every push to `main` and every `v*` tag. *Developer ID and
   notarization need the paid Apple Developer Program; add them when outside users need a clean
   first open.*
+- Reef updates itself from GitHub Releases through the Tauri updater: the shell's `check_update`
+  and `install_update` commands are the only ones the page (loaded from `http://127.0.0.1:4317`)
+  may call, granted by the `update` capability. The page checks once on load, in the desktop app
+  only; a newer version shows as Update available on the sidebar's Settings link and in Settings >
+  General > Software update, whose Update and restart installs it. `install_update` downloads and
+  verifies the update, stops the sidecar as quit does, then restarts, so the new app finds port
+  4317 free. `scripts/release <version>` builds, signs with the key in `~/.tauri/reef.key`, and
+  publishes `Reef.app.tar.gz`, its `.sig` and `latest.json` as release `v<version>`; the app reads
+  `releases/latest/download/latest.json`. The version lives in `tauri.conf.json` only. *Only the
+  shell can replace the running app, so the web calls it for these two commands and nothing else;
+  a CI release workflow and a progress bar can come later.*
 - Provider sign-in state is cached: checked on start, before each run, on Refresh and when a
   sign-in finishes, never on the sidebar's poll.
 - A run that fails because its provider refused the sign-in (Claude `authentication_failed`, Codex

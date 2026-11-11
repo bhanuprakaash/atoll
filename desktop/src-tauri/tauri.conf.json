@@ -28,6 +28,15 @@
     ],
     "macOS": {
       "signingIdentity": "-"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk5NEFGMjNEMUJEODJEMTkKUldRWkxkZ2JQZkpLbWRCU2VMVDZVK2FYQ3J3RmlXRHI4ODNXc3ZFR3VnSVFWc3RHT0M2RWVjU0IK",
+      "endpoints": [
+        "https://github.com/bhanuprakaash/atoll/releases/latest/download/latest.json"
+      ]
     }
   }
 }

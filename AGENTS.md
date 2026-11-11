@@ -68,7 +68,8 @@ cmd/atoll -> server -> run -> provider | memory | repo | skill | connection | mc
 - Packages on the same level never import each other (`memory` does not import `repo`).
 - `provider` and `store` import no package of ours; `provider/claude` and `provider/codex` import
   only `provider`.
-- `web/` talks to Go only over HTTP and SSE. `desktop/` only starts the sidecar and loads `web/`.
+- `web/` talks to Go only over HTTP and SSE, and to the Tauri shell only for the two update commands.
+  `desktop/` starts the sidecar, loads `web/` and installs updates.
 - Inside `web/src`, modules never import other modules (see the React style).
 
 ## Commands
