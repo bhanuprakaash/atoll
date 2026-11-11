@@ -158,9 +158,11 @@ after a failed undo counts a Bot that is already gone as removed.
 - `GET /api/events` is one SSE stream for the whole app: `approval`, `approval_closed`,
   `run_finished`, `mr_updated` and `platform_changed` from every thread, each as `{thread_id,
   bot_id, bot_name, title, data}` with `data` as on the thread's own stream. On connect it first
-  sends the approvals open now. It is live only: nothing is stored, so the island's Earlier list
-  lasts until the app reloads. *A notifications table would need read state and cleanup for
-  little gain; open approvals, the only thing that must survive, are replayed.*
+  sends the approvals open now, then one `earlier` event: the island's Earlier list, built from
+  rows (see the island). Every connect, a reload or the stream's own reconnect after a restart,
+  sends it again, and it replaces what the page holds. *A notifications table would need read
+  state and cleanup for little gain; the rows are already there and one timestamp says what the
+  user has seen.*
 - Resume by default. Each thread records the provider that owns its session. If the Bot's provider
   changes, its next run starts a fresh session and says so in the thread. New threads and delegation
   also start fresh sessions.
@@ -1114,6 +1116,27 @@ Voice
   ("reviewer finished Review !42", View), with no buttons, then it returns to rest. Clicking the
   island opens the notification list: Needs you (Allow and Deny inline), then Earlier (finished
   runs, MRs opened, Chief's changes). Hover does not open it.
+- The island remembers across a close of the app (server side, like the sidebar's New; browser
+  storage is not used, so a new window or a cleared webview changes nothing). One timestamp,
+  `island_seen_at` (settings), set to now by `POST /api/island/seen`. The page sends it when the
+  notification list closes (a click on the pill, Esc, a click away, or an item's link) and when
+  the person picks Mark all read, a quiet button on the Earlier heading that empties Earlier at
+  once and leaves the list open ("Nothing new"). Opening the list alone does not. A launch of the
+  version that adds it starts with the timestamp at now, so old runs do not flood the list. On
+  connect the server builds Earlier from rows newer than the timestamp, newest first, one row
+  per event, with the text a live event gets: a run that ended in an open thread
+  (`runs.finished_at`; "Pilot finished Review !42", or "Pilot failed Review !42" for a failed
+  one, which includes a run the restart cut short; a run the user stopped counts as finished), a
+  thread whose MR is `opened` since then (`threads.mr_changed_at`, new, set when `mr_state`
+  changes; "Pilot opened !42", the MR title as detail) and a platform change
+  (`changes.created_at`; "Chief created Bot Lagoon"). Threads on screen are left out, as they are
+  live. The 4 s widening and the approval drop are not replayed, except that an approval still
+  open drops the island as today. Needs you (and Waiting on you) are state, not events: they show
+  while true and the timestamp never clears them. A restart ends a run that waited on an approval
+  as failed, so that approval is gone and the run is under Earlier. The pill gets no new mark: the
+  list is where Earlier is read, so the island and the sidebar's New agree (every unread run is
+  both) without a second red thing. *The island said "Nothing new" next to 60 New threads after
+  every launch.*
 - Thread titles: the first six words of the first message (a helper's brief), set when that message
   is sent and stored, with trailing `.,;:!?` removed from the last word. After the thread's first
   reply, Reef asks the Bot's provider for a better one: a session of its own on the provider's
