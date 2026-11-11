@@ -18,12 +18,10 @@ import { useRun, useStopRun } from '@/modules/threads/api/runs';
 import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
 import { HelpersRegion } from '@/modules/threads/components/helpers-region';
-import { LiveRun } from '@/modules/threads/components/live-run';
+import { chatText, LiveRun } from '@/modules/threads/components/live-run';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 import { clockTime } from '@/utils/time';
-
-const chatText = 'text-base leading-[1.65] tracking-normal';
 
 function duration(run: Run) {
   const seconds =
@@ -738,7 +736,13 @@ export function ThreadView({
           })}
           {Object.entries(runs).map(([id, run]) => (
             <div key={id} className="flex flex-col gap-6">
-              <LiveRun id={id} run={run} look={look} />
+              <LiveRun
+                id={id}
+                threadId={threadId}
+                run={run}
+                answered={answered.has(id)}
+                look={look}
+              />
               {run.finished && !answered.has(id) && (
                 <>
                   {afterRun?.(id)}

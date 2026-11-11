@@ -1,21 +1,26 @@
 import { useEffect, useState } from 'react';
 import { useRun } from '@/modules/threads/api/runs';
-import { Creature, type CreatureLook, type ToolKind } from '@/components/creature';
+import { Creature, type CreatureLook } from '@/components/creature';
+import { Markdown } from '@/components/markdown';
 import { ApprovalCard } from '@/modules/threads/components/approval-card';
 import type { LiveRun as Live } from '@/modules/threads/hooks/use-thread-events';
+import { toolVerb } from '@/modules/threads/utils/tool-line';
 
-const verbs: Record<ToolKind, string> = {
-  none: 'Thinking',
-  search: 'Searching',
-  read: 'Reading',
-  edit: 'Editing',
-  command: 'Running',
-  memory: 'Remembering',
-  platform: 'Setting up',
-  work: 'Working',
-  other: 'Working',
-};
-export function LiveRun({ id, run, look }: { id: string; run: Live; look?: CreatureLook }) {
+export const chatText = 'text-base leading-[1.65] tracking-normal';
+
+export function LiveRun({
+  id,
+  threadId,
+  run,
+  answered,
+  look,
+}: {
+  id: string;
+  threadId: string;
+  run: Live;
+  answered: boolean;
+  look?: CreatureLook;
+}) {
   const { data } = useRun(id);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -27,7 +32,9 @@ export function LiveRun({ id, run, look }: { id: string; run: Live; look?: Creat
     ? Math.max(0, Math.floor((now - Date.parse(data.started_at)) / 1000))
     : 0;
   const kind = run.tool?.kind ?? 'none';
-  const verb = run.tool?.verb || verbs[kind] || 'Thinking';
+  const verb = toolVerb(run.tool);
+  const lastStep = run.parts.reduce((last, part, i) => ('step' in part ? i : last), -1);
+  const shown = answered || (run.finished && run.settled) ? [] : run.parts;
   return (
     <div className="flex flex-col gap-2">
       {!run.finished && (
@@ -43,6 +50,24 @@ export function LiveRun({ id, run, look }: { id: string; run: Live; look?: Creat
             <span className="flex-none text-xs text-label tabular-nums">
               {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
             </span>
+          )}
+        </div>
+      )}
+      {shown.length > 0 && (
+        <div data-testid="live-text" className="flex flex-col gap-3">
+          {shown.map((part, i) =>
+            'text' in part ? (
+              <div key={i} className={chatText}>
+                <Markdown threadId={threadId}>{part.text}</Markdown>
+              </div>
+            ) : (
+              part.step &&
+              i !== lastStep && (
+                <p key={i} data-testid="step" className="text-sm text-muted">
+                  {part.step}
+                </p>
+              )
+            ),
           )}
         </div>
       )}
