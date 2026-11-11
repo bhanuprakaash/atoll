@@ -22,6 +22,8 @@ import {
   type Connection,
   type DeviceFlow,
 } from '@/modules/connections/api/connections';
+import { ErrorNotice } from '@/components/error-notice';
+import { ApiError } from '@/lib/api-client';
 
 type Bot = { id: string; name: string; look: CreatureLook; connections: string[] };
 
@@ -30,7 +32,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
   const [instance, setInstance] = useState('https://gitlab.com');
   const [adding, setAdding] = useState(false);
   const [flow, setFlow] = useState<DeviceFlow | null>(null);
-  const [pollFailure, setPollFailure] = useState<{ id: string; message: string } | null>(null);
+  const [pollFailure, setPollFailure] = useState<{ id: string; error: unknown } | null>(null);
   const { data: connections = [] } = useConnections();
   const start = useStartGitlab();
   const startGithub = useStartGithub();
@@ -38,8 +40,6 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
   const gitlab = connections.filter((c) => c.kind === 'gitlab');
   const github = connections.find((c) => c.kind === 'github');
   const githubUsers = bots.filter((b) => github && b.connections?.includes(github.id));
-  const githubError = github && pollFailure?.id === github.id ? pollFailure.message : '';
-  const gitlabError = pollFailure && pollFailure.id !== github?.id ? pollFailure.message : '';
   const showForm = adding || !!flow || gitlab.length === 0;
 
   useEffect(() => {
@@ -52,9 +52,9 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
           setAdding(false);
           void queryClient.invalidateQueries({ queryKey: ['connections'] });
         },
-        (err: Error) => {
+        (err: unknown) => {
           setFlow(null);
-          setPollFailure({ id: flow.id, message: err.message });
+          setPollFailure({ id: flow.id, error: err });
           void queryClient.invalidateQueries({ queryKey: ['connections'] });
         },
       );
@@ -62,8 +62,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
     return () => clearInterval(timer);
   }, [flow, queryClient]);
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
+  const begin = () => {
     setPollFailure(null);
     start.mutate(instance, {
       onSuccess: (started) => {
@@ -72,6 +71,33 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
       },
     });
   };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    begin();
+  };
+  const beginGithub = () => {
+    setPollFailure(null);
+    startGithub.mutate(undefined, {
+      onSuccess: (started) => {
+        window.open(started.verification_uri, '_blank');
+        setFlow(started);
+        void queryClient.invalidateQueries({ queryKey: ['connections'] });
+      },
+    });
+  };
+  const restart = (c: Pick<Connection, 'kind' | 'id'>) => {
+    setPollFailure(null);
+    signInAgain.mutate(c, {
+      onSuccess: (started) => {
+        setFlow(started);
+        void queryClient.invalidateQueries({ queryKey: ['connections'] });
+      },
+    });
+  };
+
+  const restartFailed = () =>
+    pollFailure &&
+    restart({ id: pollFailure.id, kind: github?.id === pollFailure.id ? 'github' : 'gitlab' });
 
   const statusTag = (c: Connection) => (
     <Tag tone={c.status === 'connected' ? 'ok' : 'warn'}>
@@ -83,20 +109,17 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
     </Tag>
   );
 
+  // The notice of a failed sign-in already offers Sign in again: one button, not two.
+  const noticeSignsIn =
+    pollFailure?.error instanceof ApiError &&
+    ['keychain', 'signed_out'].includes(pollFailure.error.code);
   const signInAgainButton = (c: Connection) =>
+    !(noticeSignsIn && pollFailure?.id === c.id) &&
     (c.status === 'needs_sign_in' || (c.kind === 'github' && c.status === 'pending' && !flow)) && (
       <button
         type="button"
         disabled={signInAgain.isPending || !!flow}
-        onClick={() => {
-          setPollFailure(null);
-          signInAgain.mutate(c, {
-            onSuccess: (started) => {
-              setFlow(started);
-              void queryClient.invalidateQueries({ queryKey: ['connections'] });
-            },
-          });
-        }}
+        onClick={() => restart(c)}
         className={solidButton}
       >
         Sign in again
@@ -142,16 +165,7 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
             <button
               type="button"
               disabled={startGithub.isPending || !!flow}
-              onClick={() => {
-                setPollFailure(null);
-                startGithub.mutate(undefined, {
-                  onSuccess: (started) => {
-                    window.open(started.verification_uri, '_blank');
-                    setFlow(started);
-                    void queryClient.invalidateQueries({ queryKey: ['connections'] });
-                  },
-                });
-              }}
+              onClick={beginGithub}
               className={solidButton}
             >
               Connect GitHub
@@ -177,9 +191,12 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
               required
             />
           </label>
-          {start.isError && <p className="text-sm text-danger">{start.error.message}</p>}
+          {start.isError && <ErrorNotice error={start.error} retry={begin} />}
           {signInAgain.isError && (
-            <p className="text-sm text-danger">{signInAgain.error.message}</p>
+            <ErrorNotice
+              error={signInAgain.error}
+              retry={() => signInAgain.variables && restart(signInAgain.variables)}
+            />
           )}
           <button
             type="submit"
@@ -198,9 +215,10 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
           Add a GitLab instance
         </button>
       )}
-      {startGithub.isError && <p className="text-sm text-danger">{startGithub.error.message}</p>}
-      {gitlabError && <p className="text-sm text-danger">{gitlabError}</p>}
-      {githubError && <p className="text-sm text-danger">{githubError}</p>}
+      {startGithub.isError && <ErrorNotice error={startGithub.error} retry={beginGithub} />}
+      {pollFailure && (
+        <ErrorNotice error={pollFailure.error} signIn={restartFailed} retry={restartFailed} />
+      )}
       {flow && (
         <div className="flex flex-col gap-1 rounded-2xl border border-line bg-box p-4 text-sm">
           <p>

@@ -28,8 +28,10 @@ export type Run = {
   finished_at: string;
   tools: Record<string, number>;
   report?: { blocked: string } | null;
+  reply: string;
   error: string;
-  error_kind: '' | 'signed_out';
+  error_detail: string;
+  error_kind: '' | 'signed_out' | 'provider_off';
   provider: 'claude' | 'codex';
 };
 

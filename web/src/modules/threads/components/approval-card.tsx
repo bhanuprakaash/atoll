@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ErrorNotice } from '@/components/error-notice';
 import { ApiError } from '@/lib/api-client';
 import { useAnswerApproval } from '@/modules/threads/api/approvals';
 
@@ -104,7 +105,13 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
           {diff || 'No diff available'}
         </pre>
       )}
-      {answer.isError && <span className="text-danger">Could not answer approval</span>}
+      {answer.isError && (
+        <ErrorNotice
+          title="Couldn't send your answer."
+          error={answer.error}
+          retry={() => answer.variables !== undefined && respond(answer.variables)}
+        />
+      )}
     </div>
   );
 }

@@ -1,18 +1,6 @@
 import { Box, outlineButton, RowText, rowClass, solidButton } from '@/components/settings-ui';
-import { quiet } from '@/components/button';
+import { ErrorNotice } from '@/components/error-notice';
 import { useAppUpdate, useInstallUpdate } from '@/lib/app-update';
-
-function Failure({ text, message }: { text: string; message: string }) {
-  return (
-    <div className="py-3 pl-3.5 pr-3 text-[13px]">
-      <p className="text-danger">{text}</p>
-      <details className="mt-1">
-        <summary className={`cursor-pointer ${quiet}`}>Details</summary>
-        <p className="mt-1 break-words text-muted">{message}</p>
-      </details>
-    </div>
-  );
-}
 
 export function SoftwareUpdate() {
   const check = useAppUpdate();
@@ -48,10 +36,18 @@ export function SoftwareUpdate() {
           )}
         </div>
         {install.isError ? (
-          <Failure text="Couldn't update. Try again." message={install.error.message} />
+          <ErrorNotice
+            title="Couldn't update. Try again."
+            error={install.error}
+            className="py-3 pl-3.5 pr-3"
+          />
         ) : (
           check.isError && (
-            <Failure text="Couldn't check for updates. Try again." message={check.error.message} />
+            <ErrorNotice
+              title="Couldn't check for updates. Try again."
+              error={check.error}
+              className="py-3 pl-3.5 pr-3"
+            />
           )
         )}
       </Box>

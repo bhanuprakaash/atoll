@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Creature, type CreatureLook } from '@/components/creature';
+import { ErrorNotice } from '@/components/error-notice';
 import { solidButton } from '@/components/settings-ui';
 import { TextField } from '@/components/text-field';
 
@@ -58,7 +59,7 @@ export function FirstRun({
 }) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState(initialName);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [saving, setSaving] = useState(false);
   const asks = [
     'Make a reviewer Bot for my repo',
@@ -68,9 +69,10 @@ export function FirstRun({
   function saveName(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
+    setError(null);
     void onSave(name.trim())
       .then(() => setStep(2))
-      .catch((err: Error) => setError(err.message))
+      .catch(setError)
       .finally(() => setSaving(false));
   }
   return (
@@ -118,7 +120,7 @@ export function FirstRun({
             >
               Continue
             </button>
-            {error && <p className="text-danger">{error}</p>}
+            {error != null && <ErrorNotice error={error} />}
           </form>
         )}
         {step === 2 && (

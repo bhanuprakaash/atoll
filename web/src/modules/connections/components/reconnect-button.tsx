@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { ErrorNotice } from '@/components/error-notice';
 import {
   pollConnection,
   useSignInAgain,
@@ -9,7 +10,7 @@ import {
 
 export function ReconnectButton({ connection }: { connection: Connection }) {
   const [flow, setFlow] = useState<DeviceFlow | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const client = useQueryClient();
   const signInAgain = useSignInAgain();
   useEffect(() => {
@@ -21,8 +22,8 @@ export function ReconnectButton({ connection }: { connection: Connection }) {
           setFlow(null);
           void client.invalidateQueries({ queryKey: ['connections'] });
         },
-        (err: Error) => {
-          setError(err.message);
+        (err: unknown) => {
+          setError(err);
           setFlow(null);
           void client.invalidateQueries({ queryKey: ['connections'] });
         },
@@ -30,21 +31,22 @@ export function ReconnectButton({ connection }: { connection: Connection }) {
     }, flow.interval_ms);
     return () => clearInterval(timer);
   }, [flow, client]);
+  const start = () => {
+    setError(null);
+    signInAgain.mutate(connection, {
+      onSuccess: (started) => {
+        setFlow(started);
+        void client.invalidateQueries({ queryKey: ['connections'] });
+      },
+    });
+  };
   return (
     <>
       <button
         type="button"
         className="self-start rounded-full border border-outline px-3 py-1 text-[13px] hover:bg-tile"
         disabled={signInAgain.isPending || !!flow}
-        onClick={() => {
-          setError('');
-          signInAgain.mutate(connection, {
-            onSuccess: (started) => {
-              setFlow(started);
-              void client.invalidateQueries({ queryKey: ['connections'] });
-            },
-          });
-        }}
+        onClick={start}
       >
         Connect GitLab · {connection.instance_url}
       </button>
@@ -57,8 +59,8 @@ export function ReconnectButton({ connection }: { connection: Connection }) {
           and enter <span className="font-mono">{flow.user_code}</span>. Waiting for approval…
         </p>
       )}
-      {(error || signInAgain.isError) && (
-        <p className="text-sm text-danger">{error || signInAgain.error?.message}</p>
+      {(!!error || signInAgain.isError) && (
+        <ErrorNotice error={error ?? signInAgain.error} signIn={start} retry={start} />
       )}
     </>
   );

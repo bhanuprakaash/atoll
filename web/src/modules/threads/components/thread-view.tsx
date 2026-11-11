@@ -17,6 +17,7 @@ import {
 import { useRun, useStopRun } from '@/modules/threads/api/runs';
 import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
+import { ErrorNotice } from '@/components/error-notice';
 import { HelpersRegion } from '@/modules/threads/components/helpers-region';
 import { LiveRun } from '@/modules/threads/components/live-run';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
@@ -79,49 +80,44 @@ function RunResult({
           <span className="line-clamp-2">Blocked: {blocked}</span>
         </p>
       )}
-      {run.status === 'failed' && (
-        <div className="flex flex-wrap items-center gap-3">
-          <svg
-            aria-hidden="true"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            className="flex-none text-danger"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7.5v5M12 16v.5" />
-          </svg>
-          {run.error_kind === 'signed_out' && signedOut ? (
-            signedOut(run.provider)
-          ) : (
-            <span className="min-w-60 flex-1 text-ink/80 [overflow-wrap:anywhere]">
-              Run failed{run.error ? `: ${run.error}` : '.'}
-              {/sign.?in|authenticat|not logged in|login/i.test(run.error) && (
-                <>
-                  {' '}
-                  <Link
-                    className="text-ink underline decoration-outline underline-offset-3"
-                    to="/settings/providers"
-                  >
-                    Sign in
-                  </Link>
-                </>
-              )}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => retry(id)}
-            className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
-          >
-            Retry
-          </button>
-        </div>
-      )}
+      {run.status === 'failed' &&
+        (run.error_kind === 'signed_out' && signedOut ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <svg
+              aria-hidden="true"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              className="flex-none text-danger"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7.5v5M12 16v.5" />
+            </svg>
+            {signedOut(run.provider)}
+            <button
+              type="button"
+              onClick={() => retry(id)}
+              className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <ErrorNotice
+            title={`${run.reply ? 'Run failed' : "Didn't run"}: ${run.error_kind === 'provider_off' ? run.error : 'something went wrong.'}`}
+            details={run.error_detail || run.error}
+            actions={[
+              ...(run.error_kind === 'provider_off'
+                ? [{ label: 'Open settings', to: '/settings/providers' }]
+                : []),
+              { label: 'Retry', onClick: () => retry(id) },
+            ]}
+          />
+        ))}
       <p className="text-xs">
         <time dateTime={at} data-testid={time ? 'message-time' : undefined}>
           {messageTime(at)}
@@ -440,9 +436,7 @@ export function DraftThread({
           sendFirst={sendFirst}
           onSent={() => {}}
         />
-        {create.isError && (
-          <p className="text-center text-sm text-danger">{create.error.message}</p>
-        )}
+        {create.isError && <ErrorNotice error={create.error} />}
       </div>
     </div>
   );

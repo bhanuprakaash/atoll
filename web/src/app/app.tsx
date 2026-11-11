@@ -20,6 +20,7 @@ import {
   SkillsPage,
 } from '@/app/settings-page';
 import { Shell } from '@/app/shell';
+import { ReconnectingNotice } from '@/components/reconnecting-notice';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { useSetBotGroup } from '@/modules/bots/api/groups';
 import { NewBotForm } from '@/modules/bots/components/new-bot-form';
@@ -220,6 +221,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} useTransitions={false} />
+      <ReconnectingNotice />
     </QueryClientProvider>
   );
 }

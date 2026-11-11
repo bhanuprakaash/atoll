@@ -1,8 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Link } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
 import { Creature, type CreatureLook } from '@/components/creature';
+import { ErrorNotice } from '@/components/error-notice';
 import { Switch } from '@/components/switch';
 import { TextField } from '@/components/text-field';
 import { outlineButton, SectionHead, solidButton, Tag, Tile } from '@/components/settings-ui';
@@ -17,6 +18,11 @@ import {
 } from '@/modules/providers/api/providers';
 
 type Bot = { id: string; name: string; look: CreatureLook; provider: Provider['name'] };
+
+type Failure = Pick<
+  ComponentProps<typeof ErrorNotice>,
+  'error' | 'title' | 'next' | 'details' | 'actions' | 'retry'
+>;
 
 function useProviderSignIn(name: Provider['name']) {
   const [active, setActive] = useState(false);
@@ -41,12 +47,22 @@ function useProviderSignIn(name: Provider['name']) {
     });
   }
   const failed = state.data?.status === 'failed' || signIn.isError;
+  let failure: Failure | undefined;
+  if (!failed) failure = submit.isError ? { error: submit.error } : undefined;
+  else if (state.data?.error)
+    failure = {
+      title: "Sign-in didn't finish.",
+      next: 'Try again.',
+      details: state.data.error,
+      actions: [{ label: 'Try again', onClick: start }],
+    };
+  else if (signIn.isError) failure = { error: signIn.error, retry: start };
   return {
     start,
     busy: signIn.isPending || active,
     needsCode: active && !!state.data?.needs_code,
     submitCode: (code: string) => submit.mutate(code),
-    error: failed ? state.data?.error || signIn.error?.message : submit.error?.message,
+    failure,
   };
 }
 
@@ -77,17 +93,17 @@ function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }) {
 }
 
 export function SignInExpired({ provider }: { provider: Provider['name'] }) {
-  const { start, busy, needsCode, submitCode, error } = useProviderSignIn(provider);
+  const { start, busy, needsCode, submitCode, failure } = useProviderSignIn(provider);
   return (
     <>
       <span className="min-w-60 flex-1 text-ink/80">
         {provider === 'codex' ? 'Codex' : 'Claude'} sign-in expired
-        {error && <i className="block text-[12.5px] not-italic text-danger">{error}</i>}
       </span>
       <button type="button" className={outlineButton} onClick={start} disabled={busy}>
         Sign in again
       </button>
       {needsCode && <CodeForm onSubmit={submitCode} />}
+      {failure && <ErrorNotice {...failure} className="basis-full" />}
     </>
   );
 }
@@ -130,7 +146,11 @@ function PathOverride({ provider }: { provider: Provider }) {
         }}
       />
       {update.isError && (
-        <p className="basis-full text-[12.5px] text-danger">{update.error.message}</p>
+        <ErrorNotice
+          error={update.error}
+          retry={() => update.variables && update.mutate(update.variables)}
+          className="basis-full"
+        />
       )}
     </>
   );
@@ -153,7 +173,7 @@ function OwnNames({ title, names }: { title: string; names: string[] }) {
 }
 
 function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
-  const { start, busy, needsCode, submitCode, error } = useProviderSignIn(provider.name);
+  const { start, busy, needsCode, submitCode, failure } = useProviderSignIn(provider.name);
   const update = useUpdateProvider();
   const users = bots.filter((b) => b.provider === provider.name);
   const slash = provider.path.lastIndexOf('/');
@@ -247,13 +267,13 @@ function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
         </p>
       )}
       {needsCode && <CodeForm onSubmit={submitCode} />}
-      {error && <p className="mt-2 text-[12.5px] text-danger">{error}</p>}
+      {failure && <ErrorNotice {...failure} className="mt-2" />}
     </section>
   );
 }
 
 export function ProvidersSettings({ bots = [] }: { bots?: Bot[] }) {
-  const { data: providers = [], error } = useProviders();
+  const { data: providers = [], error, refetch } = useProviders();
   const refresh = useRefreshProviders();
   return (
     <>
@@ -265,7 +285,7 @@ export function ProvidersSettings({ bots = [] }: { bots?: Bot[] }) {
           Check again
         </button>
       </SectionHead>
-      {error && <p className="text-danger">{error.message}</p>}
+      {error && <ErrorNotice error={error} retry={() => void refetch()} />}
       <div className="flex flex-col gap-3">
         {providers.map((provider) => (
           <ProviderRow key={provider.name} provider={provider} bots={bots} />
@@ -286,7 +306,7 @@ const cardTone = {
 };
 
 function ProviderCard({ provider }: { provider: Provider }) {
-  const { start, busy, needsCode, submitCode, error } = useProviderSignIn(provider.name);
+  const { start, busy, needsCode, submitCode, failure } = useProviderSignIn(provider.name);
   return (
     <section
       role="group"
@@ -306,7 +326,6 @@ function ProviderCard({ provider }: { provider: Provider }) {
             {provider.version} · <span className="font-mono">{provider.path}</span>
           </i>
         )}
-        {error && <i className="block text-[12.5px] not-italic text-danger">{error}</i>}
       </span>
       <span
         className={`flex-none rounded-full px-2.5 py-1 text-[12.5px] ${cardTone[tone(provider)]}`}
@@ -319,17 +338,18 @@ function ProviderCard({ provider }: { provider: Provider }) {
         </button>
       )}
       {needsCode && <CodeForm onSubmit={submitCode} />}
+      {failure && <ErrorNotice {...failure} className="basis-full" />}
     </section>
   );
 }
 
 export function FirstRunProviders() {
-  const { data: providers = [], error } = useProviders();
+  const { data: providers = [], error, refetch } = useProviders();
   const refresh = useRefreshProviders();
   const ready = providers.filter((p) => p.signed_in).length;
   return (
     <div className="flex flex-col gap-3">
-      {error && <p className="text-danger">{error.message}</p>}
+      {error && <ErrorNotice error={error} retry={() => void refetch()} />}
       {providers.map((provider) => (
         <ProviderCard key={provider.name} provider={provider} />
       ))}
