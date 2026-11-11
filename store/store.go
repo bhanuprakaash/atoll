@@ -747,6 +747,8 @@ type ThreadRun struct {
 	Unseen         bool
 	Status         string
 	Reply          string
+	// Waiting is what waits on the person in the thread.
+	Waiting []Waiting
 }
 
 // ThreadRuns lists every thread with its newest run, newest activity first. botID limits it to
@@ -772,18 +774,28 @@ func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
 
 func (s *Store) threadRuns(ctx context.Context, where string, args ...any) ([]ThreadRun, error) {
 	return query(ctx, s.db,
-		`SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.closed, t.pinned_at IS NOT NULL,
+		`WITH `+_waitingWith+`
+		 SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.closed, t.pinned_at IS NOT NULL,
 		        t.last_activity, coalesce(r.finished_at, 0) > t.last_opened_at,
-		        coalesce(r.status, ''), substr(coalesce(r.reply, ''), 1, 300)
+		        coalesce(r.status, ''), substr(coalesce(r.reply, ''), 1, 300),
+		        coalesce(w.runs, ''), coalesce(rp.replied, 0), coalesce(tk.trackers, '')
 		 FROM threads t
 		 LEFT JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = t.id)
+		 LEFT JOIN waits w ON w.thread_id = t.id
+		 LEFT JOIN replies rp ON rp.thread_id = t.id
+		 LEFT JOIN tracked tk ON tk.thread_id = t.id
 		 WHERE `+where+`
 		 ORDER BY t.last_activity DESC, t.rowid DESC`,
 		func(r *sql.Rows) (tr ThreadRun, err error) {
-			var active int64
+			var active, replied int64
+			var runs, trackers string
 			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &tr.Title, &tr.Closed,
-				&tr.Pinned, &active, &tr.Unseen, &tr.Status, &tr.Reply)
+				&tr.Pinned, &active, &tr.Unseen, &tr.Status, &tr.Reply, &runs, &replied, &trackers)
+			if err != nil {
+				return tr, err
+			}
 			tr.LastActivity = time.UnixMicro(active).UTC()
+			tr.Waiting, err = waitingFrom(runs, replied, trackers)
 			return tr, err
 		}, args...)
 }

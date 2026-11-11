@@ -245,13 +245,8 @@ func (a *api) listBots(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	waiting, err := a.st.Waiting(r.Context())
-	if err != nil {
-		a.fail(w, r, err)
-		return
-	}
 	for i, resp := range responses {
-		responses[i].Threads = a.sidebarThreads(threads[resp.ID], helpers[resp.ID], waiting)
+		responses[i].Threads = a.sidebarThreads(threads[resp.ID], helpers[resp.ID])
 	}
 	write(w, http.StatusOK, responses)
 }

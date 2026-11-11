@@ -1,8 +1,8 @@
 package store
 
 import (
+	"cmp"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -39,15 +39,13 @@ type Waiting struct {
 	Since     time.Time `json:"since,omitzero"`
 }
 
-// Waiting lists what waits on the person in every open thread that is not a helper's, by thread.
-func (s *Store) Waiting(ctx context.Context) (map[string][]Waiting, error) {
-	return s.waiting(ctx, "")
-}
-
-// ThreadWaiting is Waiting for one thread.
+// ThreadWaiting lists what waits on the person in one thread.
 func (s *Store) ThreadWaiting(ctx context.Context, threadID string) ([]Waiting, error) {
-	all, err := s.waiting(ctx, threadID)
-	return all[threadID], err
+	threads, err := s.threadRuns(ctx, "t.id = ?", threadID)
+	if err != nil || len(threads) == 0 {
+		return nil, err
+	}
+	return threads[0].Waiting, nil
 }
 
 type waitRun struct {
@@ -56,10 +54,15 @@ type waitRun struct {
 	report   Report
 }
 
-type waitedRun struct {
-	thread  string
-	replied int64
-	run     waitRun
+type waitRow struct {
+	Rowid    int64
+	Finished int64
+	Report   Report
+}
+
+type trackRow struct {
+	Rowid                       int64
+	URL, State, Title, CI, Head string
 }
 
 type tracker struct {
@@ -68,85 +71,87 @@ type tracker struct {
 	heads     []string
 }
 
-func (s *Store) waiting(ctx context.Context, threadID string) (map[string][]Waiting, error) {
-	reports := map[string][]waitRun{}
-	runs, err := query(ctx, s.db,
-		`SELECT r.thread_id, r.rowid, r.finished_at, r.report, coalesce((
-		        SELECT max(r2.rowid) FROM messages m JOIN runs r2 ON r2.id = m.run_id
-		        WHERE m.thread_id = r.thread_id AND m.role = ?2 AND m.from_bot_id = '' AND m.kind = ''), 0)
-		 FROM runs r JOIN threads t ON t.id = r.thread_id
-		 WHERE t.closed = 0 AND t.parent_thread_id = '' AND r.report IS NOT NULL
-		   AND (?1 = '' OR r.thread_id = ?1)
-		   AND (json_extract(r.report, '$.ask') IS NOT NULL
-		        OR json_array_length(json_extract(r.report, '$.ready')) > 0
-		        OR r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = r.thread_id AND report IS NOT NULL))
-		 ORDER BY r.rowid`,
-		func(r *sql.Rows) (wr waitedRun, err error) {
-			var finished int64
-			var report string
-			if err = r.Scan(&wr.thread, &wr.run.rowid, &finished, &report, &wr.replied); err != nil {
-				return wr, err
-			}
-			if finished != 0 {
-				wr.run.finished = time.UnixMicro(finished).UTC()
-			}
-			if err = json.Unmarshal([]byte(report), &wr.run.report); err != nil {
-				return wr, fmt.Errorf("decode report: %w", err)
-			}
-			return wr, nil
-		}, threadID, RoleUser)
-	if err != nil {
-		return nil, fmt.Errorf("list reports: %w", err)
-	}
-	replied := map[string]int64{}
-	for _, r := range runs {
-		reports[r.thread] = append(reports[r.thread], r.run)
-		replied[r.thread] = r.replied
-	}
-	if len(reports) == 0 {
+// _waitingWith defines the CTEs that read, once for all threads, the runs, the reply and the PRs
+// that waitingFrom needs. waits has one row per open thread that is not a helper's, with the
+// runs that hold an ask, a ready list or its newest report. NOT INDEXED reads runs in one pass:
+// the planner otherwise visits every thread's runs through runs_thread, which is twice as slow.
+const _waitingWith = `waits AS MATERIALIZED (
+		   SELECT thread_id, json_group_array(json_object(
+		            'rowid', rid, 'finished', finished_at, 'report', json(report))) AS runs
+		   FROM (SELECT r.thread_id, r.rowid AS rid, r.finished_at, r.report,
+		                r.rowid = max(r.rowid) OVER (PARTITION BY r.thread_id) AS newest
+		         FROM runs r NOT INDEXED JOIN threads t ON t.id = r.thread_id
+		         WHERE t.closed = 0 AND t.parent_thread_id = '' AND r.report IS NOT NULL)
+		   WHERE newest
+		      OR json_extract(report, '$.ask') IS NOT NULL
+		      OR json_array_length(json_extract(report, '$.ready')) > 0
+		   GROUP BY thread_id),
+		 replies AS MATERIALIZED (
+		   SELECT m.thread_id, max(r.rowid) AS replied FROM messages m JOIN runs r ON r.id = m.run_id
+		   WHERE m.role = 'user' AND m.from_bot_id = '' AND m.kind = ''
+		     AND m.thread_id IN (SELECT thread_id FROM waits)
+		   GROUP BY m.thread_id),
+		 tracked AS MATERIALIZED (
+		   SELECT u.thread_id, json_group_array(json_object(
+		            'rowid', t3.rowid, 'url', t3.mr_url, 'state', t3.mr_state, 'title', t3.mr_title,
+		            'ci', t3.mr_ci, 'head', t3.mr_head)) AS trackers
+		   FROM (SELECT DISTINCT w.thread_id, json_extract(rd.value, '$.url') AS url
+		         FROM waits w, json_each(w.runs) run, json_each(run.value, '$.report.ready') rd) u
+		   JOIN threads t3 ON t3.mr_url = u.url
+		   GROUP BY u.thread_id)`
+
+// waitingFrom derives one thread's items from the columns of _waitingWith: its runs as a JSON
+// array, the rowid of the newest run a person's message started, and the PRs of its ready lists
+// as a JSON array.
+func waitingFrom(runsJSON string, replied int64, trackersJSON string) ([]Waiting, error) {
+	if runsJSON == "" {
 		return nil, nil
 	}
-	var trackers map[string]*tracker
-	if slices.ContainsFunc(runs, func(r waitedRun) bool { return len(r.run.report.Ready) > 0 }) {
-		if trackers, err = s.trackers(ctx); err != nil {
-			return nil, err
+	var raw []waitRow
+	if err := json.Unmarshal([]byte(runsJSON), &raw); err != nil {
+		return nil, fmt.Errorf("decode reports: %w", err)
+	}
+	slices.SortFunc(raw, func(a, b waitRow) int { return cmp.Compare(a.Rowid, b.Rowid) })
+	runs := make([]waitRun, len(raw))
+	for i, r := range raw {
+		runs[i] = waitRun{rowid: r.Rowid, report: r.Report}
+		if r.Finished != 0 {
+			runs[i].finished = time.UnixMicro(r.Finished).UTC()
 		}
 	}
-	out := map[string][]Waiting{}
-	for id, rs := range reports {
-		if items := waitingOf(rs, replied[id], trackers); len(items) > 0 {
-			out[id] = items
-		}
+	trackers, err := decodeTrackers(trackersJSON)
+	if err != nil {
+		return nil, err
 	}
-	return out, nil
+	return waitingOf(runs, replied, trackers), nil
 }
 
-// trackers reads, by PR URL, what the threads that track it last saw.
-func (s *Store) trackers(ctx context.Context) (map[string]*tracker, error) {
-	rows, err := query(ctx, s.db,
-		"SELECT mr_url, mr_state, mr_title, mr_ci, mr_head FROM threads WHERE mr_url != '' ORDER BY rowid",
-		func(r *sql.Rows) (row struct{ url, state, title, ci, head string }, err error) {
-			return row, r.Scan(&row.url, &row.state, &row.title, &row.ci, &row.head)
-		})
-	if err != nil {
-		return nil, fmt.Errorf("list tracked PRs: %w", err)
+// decodeTrackers reads, by PR URL, what the threads that track it last saw.
+func decodeTrackers(trackersJSON string) (map[string]*tracker, error) {
+	if trackersJSON == "" {
+		return nil, nil
 	}
+	var rows []trackRow
+	if err := json.Unmarshal([]byte(trackersJSON), &rows); err != nil {
+		return nil, fmt.Errorf("decode tracked PRs: %w", err)
+	}
+	slices.SortFunc(rows, func(a, b trackRow) int { return cmp.Compare(a.Rowid, b.Rowid) })
 	out := map[string]*tracker{}
 	for _, r := range rows {
-		t := out[r.url]
+		t := out[r.URL]
 		if t == nil {
 			t = &tracker{}
-			out[r.url] = t
+			out[r.URL] = t
 		}
-		t.closed = t.closed || r.state == "merged" || r.state == "closed"
-		if r.title != "" {
-			t.title = r.title
+		t.closed = t.closed || r.State == "merged" || r.State == "closed"
+		if r.Title != "" {
+			t.title = r.Title
 		}
-		if r.ci != "" {
-			t.ci = r.ci
+		if r.CI != "" {
+			t.ci = r.CI
 		}
-		if r.head != "" {
-			t.heads = append(t.heads, r.head)
+		if r.Head != "" {
+			t.heads = append(t.heads, r.Head)
 		}
 	}
 	return out, nil

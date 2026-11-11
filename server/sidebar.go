@@ -37,9 +37,7 @@ type notice struct {
 // sidebarThreads keeps the open threads in the order given and marks each: needs_you when its run
 // or a helper's waits on an approval, waiting when something else waits on the person, running when
 // its run or a helper's goes, new when its newest run finished after the user last opened it.
-func (a *api) sidebarThreads(
-	threads, helpers []store.ThreadRun, waiting map[string][]store.Waiting,
-) []sidebarThread {
+func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread {
 	byBoss := map[string][]store.ThreadRun{}
 	for _, h := range helpers {
 		byBoss[h.ParentThreadID] = append(byBoss[h.ParentThreadID], h)
@@ -49,10 +47,10 @@ func (a *api) sidebarThreads(
 		if t.Closed {
 			continue
 		}
-		state := a.marker(t, byBoss[t.ThreadID], len(waiting[t.ThreadID]) > 0)
+		state := a.marker(t, byBoss[t.ThreadID], len(t.Waiting) > 0)
 		out = append(out, sidebarThread{
 			ID: t.ThreadID, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
-			Waiting: waiting[t.ThreadID],
+			Waiting: t.Waiting,
 		})
 	}
 	return out
