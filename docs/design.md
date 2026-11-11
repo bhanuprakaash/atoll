@@ -84,10 +84,11 @@ never a dependency.
     `packed-refs` for ref deletion even when the file does not exist. A command can succeed while
     printing `packed-refs.lock: Read-only file system`, which is harmless noise (exit code 0); deleting
     a packed branch fails. Claude Auto can write repo-local config,
-    which can define commands such as filters, diff drivers and `core.sshCommand`. Per-worktree config
-    is read when `extensions.worktreeConfig` is on; a filter there remains a risk. Snapshot staging
-    disables repo-local filters, including included config; checkout keeps the user's filters so Git
-    LFS works. `glab mr view` runs in the repo and may invoke git using its config. A Bot process
+    which can define commands such as diff drivers and `core.sshCommand`. Reef's `worktree add` and
+    snapshot staging pin every filter key (`clean`, `smudge`, `process`, `required`) set in
+    repo-local, included or per-worktree config to its global or system value, or to empty when
+    there is none; a planted filter does not run, and the user's own, such as Git LFS, does. A Bot
+    that overrides a global filter's key gets the user's value back. `glab mr view` runs in the repo and may invoke git using its config. A Bot process
     that outlives its run can swap a worktree path between Reef's check and removal.
   - Codex Auto git limit (checked with `codex sandbox`, Linux): the `<common>/worktrees` and
     `<common>/refs` roots let a Bot break the repo's git state, not its files.
@@ -341,9 +342,9 @@ after a failed undo counts a Bot that is already gone as removed.
 - The read-only checkout is a detached git worktree of the repo's HEAD at `<data>/threads/<id>`,
   outside the worktree root. It is removed when the thread closes.
 - Reef's git disables hooks and fsmonitor, and uses `GIT_DIR` and `GIT_COMMON_DIR` from stored
-  worktree IDs. Snapshot staging neutralises repo-local filters; Reef checks for symlinks before
-  snapshot and removal, and cleans up a failed worktree setup. See Bots above for the access and
-  remaining risks.
+  worktree IDs. It pins repo-local filter keys to the user's global value. Reef checks for
+  symlinks before snapshot and removal, and cleans up a failed worktree setup. See Bots above for
+  the access and remaining risks.
 - `start_work` accepts types `feat`, `fix`, `chore`, `docs` and `test`. An optional `base` names
   a plain branch on origin, such as `test/x`. It refuses an invalid or missing remote branch,
   a ref or SHA, or the new branch name, before creating anything. Without a base, a new branch
