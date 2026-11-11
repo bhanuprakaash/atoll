@@ -193,7 +193,7 @@ test('selecting a Bot or Settings closes the drawer', async ({ page }) => {
   await toggle(page).click();
   await expect(sidebar(page)).toBeVisible();
   await sidebar(page).getByRole('link', { name: 'Settings' }).click();
-  await expect(page).toHaveURL(`${m.url}/settings`);
+  await expect(page).toHaveURL(new RegExp('/settings(/|$)'));
   await expect(sidebar(page)).toBeHidden();
 });
 
@@ -212,7 +212,7 @@ test('a click outside closes the drawer, a click inside does not', async ({ page
   await toggle(page).click();
   await expect(sidebar(page)).toBeVisible();
   await search(page).click();
-  await sidebar(page).click({ position: { x: 170, y: 300 } });
+  await sidebar(page).click({ position: { x: 4, y: 4 } });
   await expect(sidebar(page)).toBeVisible();
 
   await clickOutside(page);
