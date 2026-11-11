@@ -260,7 +260,7 @@ func TestReadyNamesCommit_StackedFixWaitsAsDraft(t *testing.T) {
 				t.Error("the stacked fix is still a draft after the Bot marked it ready")
 			}
 
-			f.quiet(t, 2*time.Second, "the base wake already sent", fix, 1, 1)
+			f.quiet(t, 2*time.Second, "the base wake already sent", fix, 1, 2)
 		})
 	}
 }
