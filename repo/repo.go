@@ -3,6 +3,7 @@
 package repo
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -367,10 +368,13 @@ func git(ctx context.Context, dir string, env []string, args ...string) (string,
 	}
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	cmd.Env = allEnv
-	out, err := cmd.CombinedOutput()
-	text := strings.TrimSpace(string(out))
+	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, text)
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			err = fmt.Errorf("%w: %s", err, bytes.TrimSpace(exit.Stderr))
+		}
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
-	return text, nil
+	return strings.TrimSpace(string(out)), nil
 }
