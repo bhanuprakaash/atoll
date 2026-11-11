@@ -20,6 +20,15 @@ func TestMain(m *testing.M) {
 }
 
 func run(m *testing.M) int {
+	// On macOS $TMPDIR is under /var, a symlink to /private/var. Atoll reports resolved paths, so
+	// every test folder must be the resolved one too.
+	tmp, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	_ = os.Setenv("TMPDIR", tmp)
+
 	dir, err := os.MkdirTemp("", "atoll-e2e-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -80,6 +89,7 @@ func newKeychain(home string) error {
 }
 
 func TestAtoll_PrintsName(t *testing.T) {
+	t.Parallel()
 	cmd := exec.Command(_atoll)
 	cmd.Dir = t.TempDir()
 	out, err := cmd.CombinedOutput()

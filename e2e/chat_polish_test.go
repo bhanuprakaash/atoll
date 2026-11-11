@@ -7,6 +7,7 @@ import (
 )
 
 func TestChatPolish_AutoTitleAndUserTitle(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	b := s.newBot(t, "Title", "claude")
 	th := s.newThread(t, b)
@@ -32,6 +33,7 @@ func TestChatPolish_AutoTitleAndUserTitle(t *testing.T) {
 }
 
 func TestChatPolish_SidebarActivity(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	b := s.newBot(t, "Reply", "claude")
 	th := s.newThread(t, b)
@@ -44,6 +46,7 @@ func TestChatPolish_SidebarActivity(t *testing.T) {
 }
 
 func TestChatPolish_PinBotsPersistAndOrder(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	first := s.newBot(t, "First", "claude")
 	second := s.newBot(t, "Second", "claude")
@@ -73,6 +76,7 @@ func TestChatPolish_PinBotsPersistAndOrder(t *testing.T) {
 }
 
 func TestChatPolish_OlderMessages(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	th := s.newThread(t, s.newBot(t, "History", "claude"))
 	ev := s.events(t, th)

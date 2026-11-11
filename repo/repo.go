@@ -3,6 +3,7 @@
 package repo
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -16,21 +17,16 @@ import (
 
 const _maxSlug = 40
 
-var (
-	// ErrType means the branch type is not one of feat, fix, chore or docs.
-	ErrType = errors.New("type must be feat, fix, chore or docs")
-
-	_nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
-)
+var _nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Branch normalises a branch name: ("fix", "Seeded BUG") -> "fix/seeded-bug". The slug is
 // lowercased, every run of characters outside [a-z0-9] becomes "-", the ends are trimmed of "-"
 // and the slug is cut to 40 characters.
 func Branch(typ, slug string) (string, error) {
 	switch typ {
-	case "feat", "fix", "chore", "docs":
+	case "feat", "fix", "chore", "docs", "test":
 	default:
-		return "", fmt.Errorf("branch type %q: %w", typ, ErrType)
+		return "", fmt.Errorf("branch type %q: type must be feat, fix, chore, docs or test", typ)
 	}
 	s := Slug(slug)
 	if s == "" {
@@ -99,17 +95,32 @@ func WithWorktree(ctx context.Context, common, id string) context.Context {
 
 // Create makes a new worktree of repoPath on a new branch at <root>/<repoName>/<folder>, where
 // folder is the branch with "/" replaced by "-". When the branch or the folder exists it tries
-// <branch>-2, <branch>-3 and so on. The branch starts at origin/HEAD when that resolves, else at
-// HEAD. It returns the absolute path, the branch used and the base. No fetch, no network.
+// <branch>-2, <branch>-3 and so on. A requested base names a branch on origin. Without one,
+// the branch starts at origin/HEAD when that resolves, else HEAD. It returns the absolute path,
+// the branch used and the base. No fetch, no network.
 func Create(
-	ctx context.Context, repoPath, root, repoName, branch string,
+	ctx context.Context, repoPath, root, repoName, branch, requestedBase string,
 ) (path, used string, base Base, err error) {
 	start := startRef(ctx, repoPath)
+	if requestedBase != "" {
+		ref := "refs/remotes/origin/" + requestedBase
+		_, validErr := git(ctx, repoPath, nil, "check-ref-format", "--branch", requestedBase)
+		_, refErr := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+		if validErr != nil || refErr != nil || requestedBase == branch || requestedBase == "HEAD" ||
+			strings.HasPrefix(requestedBase, "origin/") || strings.HasPrefix(requestedBase, "refs/") {
+			return "", "", Base{}, errors.New("base must be a plain branch on origin, e.g. test/x")
+		}
+		start = ref
+	}
 	commit, err := git(ctx, repoPath, nil, "rev-parse", "--short=7", start)
 	if err != nil {
 		return "", "", Base{}, fmt.Errorf("read base: %w", err)
 	}
-	base = Base{Name: start + " " + commit}
+	baseName := start
+	if requestedBase != "" {
+		baseName = "origin/" + requestedBase
+	}
+	base = Base{Name: baseName + " " + commit}
 	if start == "origin/HEAD" {
 		base.Note = aheadNote(ctx, repoPath)
 	}
@@ -407,37 +418,57 @@ func git(ctx context.Context, dir string, env []string, args ...string) (string,
 		allEnv = append(allEnv, "GIT_DIR="+trusted.dir, "GIT_COMMON_DIR="+trusted.common)
 	}
 	allEnv = append(allEnv, env...)
-	if enabled, _ := ctx.Value(snapshotKey{}).(bool); enabled {
-		config := exec.CommandContext(ctx, "git", append(base, "config", "--local", "--includes", "--null", "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process|required)$`)...)
-		config.Env = allEnv
-		keys, err := config.Output()
-		var exit *exec.ExitError
-		if err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1) {
-			return "", fmt.Errorf("list repo filters: %w", err)
+	runsFilters := args[0] == "checkout" || args[0] == "status" || (args[0] == "worktree" && len(args) > 1 && args[1] == "add")
+	if enabled, _ := ctx.Value(snapshotKey{}).(bool); enabled || runsFilters {
+		pins, err := pinFilters(ctx, base, allEnv)
+		if err != nil {
+			return "", err
 		}
-		count := 0
-		seen := map[string]bool{}
-		for _, key := range strings.Split(string(keys), "\x00") {
-			if key != "" {
-				name := key[:strings.LastIndexByte(key, '.')]
-				if seen[name] {
-					continue
-				}
-				seen[name] = true
-				for _, setting := range [][2]string{{"clean", ""}, {"smudge", ""}, {"process", ""}, {"required", "false"}} {
-					allEnv = append(allEnv, "GIT_CONFIG_KEY_"+strconv.Itoa(count)+"="+name+"."+setting[0], "GIT_CONFIG_VALUE_"+strconv.Itoa(count)+"="+setting[1])
-					count++
-				}
-			}
-		}
-		allEnv = append(allEnv, "GIT_CONFIG_COUNT="+strconv.Itoa(count))
+		allEnv = append(allEnv, pins...)
 	}
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	cmd.Env = allEnv
-	out, err := cmd.CombinedOutput()
-	text := strings.TrimSpace(string(out))
+	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, text)
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			err = fmt.Errorf("%w: %s", err, bytes.TrimSpace(exit.Stderr))
+		}
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
-	return text, nil
+	return strings.TrimSpace(string(out)), nil
+}
+
+// pinFilters returns command-scope config that sets every filter key defined in repo-local,
+// included or per-worktree config to its global or system value, or to empty (false for
+// required) when there is none. A filter a Bot planted does not run; the user's own does.
+func pinFilters(ctx context.Context, base, env []string) ([]string, error) {
+	list := exec.CommandContext(ctx, "git", append(base, "config", "--show-scope", "--null", "--get-regexp", `^filter\..*\.(clean|smudge|process|required)$`)...)
+	list.Env = env
+	out, err := list.Output()
+	var exit *exec.ExitError
+	if err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1) {
+		return nil, fmt.Errorf("list filters: %w", err)
+	}
+	global := map[string]string{}
+	var repoKeys []string
+	fields := strings.Split(string(out), "\x00")
+	for i := 0; i+1 < len(fields); i += 2 {
+		key, val, _ := strings.Cut(fields[i+1], "\n")
+		switch fields[i] {
+		case "global", "system":
+			global[key] = val
+		case "local", "worktree":
+			repoKeys = append(repoKeys, key)
+		}
+	}
+	var pins []string
+	for i, key := range repoKeys {
+		val, ok := global[key]
+		if !ok && strings.HasSuffix(key, ".required") {
+			val = "false"
+		}
+		pins = append(pins, "GIT_CONFIG_KEY_"+strconv.Itoa(i)+"="+key, "GIT_CONFIG_VALUE_"+strconv.Itoa(i)+"="+val)
+	}
+	return append(pins, "GIT_CONFIG_COUNT="+strconv.Itoa(len(repoKeys))), nil
 }

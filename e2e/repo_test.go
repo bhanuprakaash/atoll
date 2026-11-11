@@ -180,6 +180,7 @@ func assertRemoved(t *testing.T, ch <-chan event, runID, path, reason string) ev
 }
 
 func TestRepo_FixPushMRAndMerge(t *testing.T) {
+	t.Parallel()
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
 			f := newRepoFixture(t, provider)
@@ -263,6 +264,7 @@ func TestRepo_FixPushMRAndMerge(t *testing.T) {
 }
 
 func TestRepo_QuestionCreatesNoWorktree(t *testing.T) {
+	t.Parallel()
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
 			f := newRepoFixture(t, provider)
@@ -297,6 +299,7 @@ func TestRepo_QuestionCreatesNoWorktree(t *testing.T) {
 }
 
 func TestRepo_CloseSavesUncommittedWork(t *testing.T) {
+	t.Parallel()
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
 			f := newRepoFixture(t, provider)
@@ -322,6 +325,7 @@ func TestRepo_CloseSavesUncommittedWork(t *testing.T) {
 }
 
 func TestRepo_BranchCollision(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "claude")
 	b := f.bot(t, "claude", "all", nil)
 	first, path1, ch1, run1 := f.work(t, b, _unfinishedRepoPrompt, "fix/seeded-bug")
@@ -343,6 +347,7 @@ func TestRepo_BranchCollision(t *testing.T) {
 }
 
 func TestRepo_OnlyTheseDeniesOtherRepo(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "claude")
 	b := f.bot(t, "claude", []string{f.repo.ID}, nil)
 	f.thread(t, b)
@@ -432,20 +437,14 @@ func (f *repoFixture) connect(t *testing.T) (string, string) {
 		t.Fatal("run via make e2e: Linux needs the private Secret Service session")
 	}
 	// The public Secret Service boundary proves storage independently of Atoll's status response.
-	cmd := exec.CommandContext(t.Context(), "secret-tool", "lookup", "service", "atoll", "username", "gitlab:"+start.ID)
-	deleteSecret := exec.Command("secret-tool", "clear", "service", "atoll", "username", "gitlab:"+start.ID)
-	if runtime.GOOS == "darwin" {
-		cmd = exec.CommandContext(t.Context(), "security", "find-generic-password", "-s", "atoll", "-a", "gitlab:"+start.ID, "-w")
-		deleteSecret = exec.Command("security", "delete-generic-password", "-s", "atoll", "-a", "gitlab:"+start.ID)
-	}
-	out, err := cmd.Output()
+	value, ok := secretEntry("gitlab:" + start.ID)
 	var stored struct {
 		AccessToken string `json:"access_token"`
 	}
-	if err != nil || json.Unmarshal(out, &stored) != nil || stored.AccessToken != token {
+	if !ok || json.Unmarshal([]byte(value), &stored) != nil || stored.AccessToken != token {
 		t.Fatal("token not retrievable from OS secret store")
 	}
-	t.Cleanup(func() { _ = deleteSecret.Run() })
+	t.Cleanup(func() { clearSecretEntry("gitlab:" + start.ID) })
 	return start.ID, token
 }
 

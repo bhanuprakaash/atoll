@@ -48,6 +48,7 @@ type fakeGitHub struct {
 	mcp        []githubMCPRequest
 	pushAuth   []string // "user:password" of every git request GitHub accepted
 	pulls      []githubPull
+	watch      prWatch
 
 	// slowDownNext answers the next token request slow_down, as github.com does for a poll that
 	// came too early. From then on, like github.com, a poll sooner than interval after the
@@ -68,6 +69,9 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 	mux.HandleFunc("POST /login/oauth/access_token", g.accessToken)
 	mux.HandleFunc("GET /user", g.user)
 	mux.HandleFunc("POST /repos/{owner}/{repo}/pulls", g.createPull)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/pulls/{number}", g.getPull)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/commits/{sha}/check-runs", g.checkRuns)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/commits/{sha}/status", g.commitStatus)
 	mux.HandleFunc("POST /mcp/", g.mcpServer)
 	mux.HandleFunc("/octo/", g.gitRemote)
 	g.Server = httptest.NewServer(mux)
@@ -261,15 +265,11 @@ func (g *fakeGitHub) signIn(t *testing.T, s *server, path string, body map[strin
 // githubSecret reads the connection's keyring entry with the OS tool, not through Atoll.
 func githubSecret(t *testing.T, id string) string {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), "secret-tool", "lookup", "service", "atoll", "username", "github:"+id)
-	if runtime.GOOS == "darwin" {
-		cmd = exec.CommandContext(t.Context(), "security", "find-generic-password", "-s", "atoll", "-a", "github:"+id, "-w")
+	value, ok := secretEntry("github:" + id)
+	if !ok {
+		t.Fatalf("connection %s has no entry in the OS secret store", id)
 	}
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("connection %s has no entry in the OS secret store: %v", id, err)
-	}
-	return strings.TrimSpace(string(out))
+	return value
 }
 
 // githubFixture is a user's machine with its own glab, gh and git logins, gh tokens in the env and

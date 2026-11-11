@@ -28,12 +28,22 @@ type (
 				Executable bool   `json:"executable"`
 			} `json:"files"`
 		} `json:"skill"`
-		Added     []string  `json:"added"`
-		Changed   []string  `json:"changed"`
-		Removed   []string  `json:"removed"`
-		Skipped   []skipped `json:"skipped"`
-		HomePaths []string  `json:"home_paths"`
-		Warning   string    `json:"warning"`
+		Added     []string        `json:"added"`
+		Changed   []string        `json:"changed"`
+		Removed   []string        `json:"removed"`
+		Skipped   []skipped       `json:"skipped"`
+		Warning   string          `json:"warning"`
+		Name      string          `json:"name"`
+		Reason    string          `json:"reason"`
+		Refs      []refusal       `json:"refs"`
+		Rewritten json.RawMessage `json:"rewritten"`
+	}
+
+	// refusal is one home reference a refused import found.
+	refusal struct {
+		File string `json:"file"`
+		Line int    `json:"line"`
+		Ref  string `json:"ref"`
 	}
 
 	skipped struct {
@@ -119,6 +129,7 @@ func sorted(paths []skipped) []skipped {
 }
 
 func TestSkillFiles_ChiefImportsPotetoMode(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -134,9 +145,6 @@ func TestSkillFiles_ChiefImportsPotetoMode(t *testing.T) {
 			}
 			if len(imp.res.Added)+len(imp.res.Changed)+len(imp.res.Removed)+len(imp.res.Skipped) != 0 {
 				t.Fatalf("a new skill has nothing added, changed, removed or skipped: %+v", imp.res)
-			}
-			if !slices.Equal(imp.res.HomePaths, _potetoHomePaths) {
-				t.Fatalf("home_paths %q, want %q", imp.res.HomePaths, _potetoHomePaths)
 			}
 
 			skill := onlySkill(t, s)
@@ -154,8 +162,8 @@ func TestSkillFiles_ChiefImportsPotetoMode(t *testing.T) {
 					t.Fatalf("result file %+v, stored %s executable %v", got, f.Path, f.Executable)
 				}
 			}
-			if skill.Content != potetoPlaced() || strings.Contains(skill.Content, "~/.claude") || !strings.Contains(skill.Content, "`S=scripts`") {
-				t.Fatalf("SKILL.md %q, want the scripts path relative and no ~/.claude", skill.Content)
+			if skill.Content != potetoPlaced() || strings.Contains(skill.Content, "~/.claude") || !strings.Contains(skill.Content, "`S={{ATOLL_SKILL_DIR}}/scripts`") {
+				t.Fatalf("SKILL.md %q, want the placement token and no ~/.claude", skill.Content)
 			}
 			if after := treeSum(t, root); after != before {
 				t.Fatal("import changed the source folder")
@@ -180,6 +188,7 @@ func TestSkillFiles_ChiefImportsPotetoMode(t *testing.T) {
 }
 
 func TestSkillFiles_ImportSkipsBinariesAndGit(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -218,6 +227,7 @@ func TestSkillFiles_ImportSkipsBinariesAndGit(t *testing.T) {
 }
 
 func TestSkillFiles_BotRunsPlacedScript(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -237,13 +247,14 @@ func TestSkillFiles_BotRunsPlacedScript(t *testing.T) {
 			if filepath.Dir(placed.Path) != dir || strings.HasPrefix(placed.Path, m.home+string(filepath.Separator)) {
 				t.Fatalf("placed at %s, want %s outside HOME", placed.Path, dir)
 			}
-			checkPlaced(t, placed.Files, files)
+			checkPlaced(t, placed.Files, filepath.Dir(placed.Path), files)
 			folderGone(t, filepath.Join(m.providerDir(p), "runs", r.ID))
 		})
 	}
 }
 
 func TestSkillFiles_RejectsInvalidFiles(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	seed := []skillFile{{Path: "scripts/check", Content: _checkScript, Executable: true}, {Path: "playbooks/ship.md", Content: "# ship\n"}}
 	var skill fileSkill
@@ -288,6 +299,7 @@ func TestSkillFiles_RejectsInvalidFiles(t *testing.T) {
 }
 
 func TestSkillFiles_StoreAndReplace(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	var plain map[string]json.RawMessage
 	s.do(t, "POST", "/api/skills", map[string]string{"name": "reef-greeting", "content": fake.GreetingSkill}, &plain, 201)
@@ -327,6 +339,7 @@ func TestSkillFiles_StoreAndReplace(t *testing.T) {
 }
 
 func TestSkillFiles_SmallerSetIsPlaced(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -349,12 +362,14 @@ func TestSkillFiles_SmallerSetIsPlaced(t *testing.T) {
 				t.Fatalf("run: %+v", got)
 			}
 			inventory := skillInventories(t, m, p)
-			checkPlaced(t, potetoCopy(t, inventory[len(inventory)-1]).Files, put.Files)
+			last := potetoCopy(t, inventory[len(inventory)-1])
+			checkPlaced(t, last.Files, filepath.Dir(last.Path), put.Files)
 		})
 	}
 }
 
 func TestSkillFiles_ReimportWithoutReefEdit(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -402,6 +417,7 @@ func TestSkillFiles_ReimportWithoutReefEdit(t *testing.T) {
 }
 
 func TestSkillFiles_ReimportAfterReefEditAsksFirst(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -460,6 +476,7 @@ func TestSkillFiles_ReimportAfterReefEditAsksFirst(t *testing.T) {
 }
 
 func TestSkillFiles_LiveRunKeepsItsCopy(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -479,7 +496,8 @@ func TestSkillFiles_LiveRunKeepsItsCopy(t *testing.T) {
 				t.Fatalf("live run: %+v, want the old script's output: %q", got, want)
 			}
 			inventory := skillInventories(t, m, p)
-			checkPlaced(t, potetoCopy(t, inventory[len(inventory)-1]).Files, old)
+			first := potetoCopy(t, inventory[len(inventory)-1])
+			checkPlaced(t, first.Files, filepath.Dir(first.Path), old)
 			folderGone(t, filepath.Join(m.providerDir(p), "runs", live.ID))
 
 			next := s.send(t, th, "Run the poteto-mode script scripts/check.")
@@ -488,12 +506,14 @@ func TestSkillFiles_LiveRunKeepsItsCopy(t *testing.T) {
 				t.Fatalf("next run: %+v, want %q", got, want)
 			}
 			inventory = skillInventories(t, m, p)
-			checkPlaced(t, potetoCopy(t, inventory[len(inventory)-1]).Files, changed)
+			second := potetoCopy(t, inventory[len(inventory)-1])
+			checkPlaced(t, second.Files, filepath.Dir(second.Path), changed)
 		})
 	}
 }
 
 func TestSkillFiles_ImportSkillIsChiefOnly(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)

@@ -18,6 +18,7 @@ import (
 // {run_id, id} on the thread's stream. A stream opened mid-run, with one approval answered and
 // one open, leaves only the open one: a replayed approval is followed by its approval_closed.
 func TestApproval_ClosedOnAnswer(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newMCPFixture(t, p)
@@ -72,6 +73,7 @@ func TestApproval_ClosedOnAnswer(t *testing.T) {
 
 // TestApproval_ClosedOnStop: an approval dropped because its run ended is closed on the stream.
 func TestApproval_ClosedOnStop(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -114,6 +116,7 @@ func TestApproval_ClosedOnStop(t *testing.T) {
 // MCP_TOOL_TIMEOUT says otherwise, and Reef's permission prompt is such a call. A run gives
 // claude MCP_TOOL_TIMEOUT of at least 10 minutes, in milliseconds.
 func TestApproval_ClaudeToolTimeout(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	th := s.newThread(t, s.newBot(t, "Ada", "claude"))
 	s.finished(t, s.events(t, th), s.send(t, th, _keepPrompt).ID)

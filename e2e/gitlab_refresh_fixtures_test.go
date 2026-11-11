@@ -156,15 +156,11 @@ func requireSecretStore(t *testing.T) {
 // secretValue reads the connection's keyring entry with the OS tool, not through Atoll.
 func secretValue(t *testing.T, id string) string {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), "secret-tool", "lookup", "service", "atoll", "username", "gitlab:"+id)
-	if runtime.GOOS == "darwin" {
-		cmd = exec.CommandContext(t.Context(), "security", "find-generic-password", "-s", "atoll", "-a", "gitlab:"+id, "-w")
+	value, ok := secretEntry("gitlab:" + id)
+	if !ok {
+		t.Fatalf("connection %s has no entry in the OS secret store", id)
 	}
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("connection %s has no entry in the OS secret store: %v", id, err)
-	}
-	return strings.TrimSpace(string(out))
+	return value
 }
 
 // setSecretValue replaces the connection's keyring entry, as an older Atoll would have left it.

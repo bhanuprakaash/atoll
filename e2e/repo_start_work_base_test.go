@@ -7,6 +7,7 @@ import (
 )
 
 func TestRepo_StartWorkReplyNamesOriginHeadBase(t *testing.T) {
+	t.Parallel()
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
 			f := newRepoFixture(t, provider)
@@ -21,6 +22,7 @@ func TestRepo_StartWorkReplyNamesOriginHeadBase(t *testing.T) {
 }
 
 func TestRepo_StartWorkReplyNotesLocalBranchAhead(t *testing.T) {
+	t.Parallel()
 	for _, provider := range []string{"claude", "codex"} {
 		for _, ahead := range []struct {
 			name    string
@@ -50,6 +52,7 @@ func TestRepo_StartWorkReplyNotesLocalBranchAhead(t *testing.T) {
 }
 
 func TestRepo_StartWorkReplyOmitsAheadNoteWithoutOrigin(t *testing.T) {
+	t.Parallel()
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
 			f := newRepoFixture(t, provider)
