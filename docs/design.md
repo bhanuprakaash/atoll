@@ -173,8 +173,29 @@ after a failed undo counts a Bot that is already gone as removed.
   there is still none, the run ends `done` with `report: null` and a logged warning.
 - One provider process per run, in the thread's folder (`<data>/threads/<id>`): a provider
   resumes a session only in the folder that started it. One run per thread at a time; a message
-  the user sends while one is going is refused (`409`); one between a boss and a helper is held
-  (see Delegation).
+  for a thread whose run is going is queued, never refused (Queued messages below; between a boss
+  and a helper, Delegation).
+- Queued messages. A person can always write to a Bot. `POST /api/threads/{id}/messages` while the
+  thread's run is going stores the message and answers `202 {message, run: null}` with
+  `message.queued` true, and logs INFO `queued` with `thread_id`. Queued messages are the `queued`
+  list of `GET /api/threads/{id}` (`[{id, text, attachments}]`, oldest first), not part of `GET
+  /api/threads/{id}/messages`; the UI shows each as the user's bubble marked "Queued". *A list on
+  the summary the UI already polls avoids a cursor that mixes sent and unsent messages.* A send
+  while an approval is open answers the approval instead (#146).
+  - Delivery: when the going run ends other than stopped by the user, the thread's queued messages
+    start one run together: oldest first, texts joined by a blank line in the prompt, images in
+    order. Each keeps its `id` and becomes a normal message of that run, so the bubble stays in
+    place. A held message from a Bot (Delegation) still starts its own run; the oldest held item
+    goes first, so a person's messages behind one go after its run. *Several sends are one thought;
+    #190 decides the same for Bots' messages.* Queued messages survive a restart and are dropped
+    with a closed thread, as every held message.
+  - Edit and remove: `PATCH /api/threads/{id}/messages/{mid}` with `{text}` answers `200` with the
+    message; `DELETE` answers `204`. Both work only while it is queued: after delivery `409`
+    `already sent`, an unknown id `404`, an empty text with no image `400`.
+  - Stop and send: `POST /api/threads/{id}/messages/{mid}/send` stops the going run (if any), then
+    starts the one run of the thread's queued messages now, and answers `202 {run}`; `409`
+    `already sent` once delivered. A person's plain Stop leaves queued messages queued: they stay
+    editable and removable, and the same route sends them (UI: Send now).
 - Reef's own MCP tools (`finish_run`, and `approve` as Claude's permission prompt tool) are served
   over streamable HTTP on Reef's own server at `/mcp/<run token>`. *They need live server state
   (open approvals, the run being reported); stdio would need a child that calls back anyway.*
@@ -246,7 +267,10 @@ after a failed undo counts a Bot that is already gone as removed.
 - `continue` is accepted only from the helper's boss thread, and gives the helper a run with the
   message. A message for a thread whose run is going is held (the `inbox` table) and delivered
   when that run ends, oldest first, one run each (a run the user stopped starts none: they wait
-  for that thread's next run to end); `continue` never answers busy. A message for a helper
+  for that thread's next run to end); `continue` never answers busy: to a helper whose run is going
+  it answers `Queued: {Helper} is working; it gets this when its run ends.`, else `Sent.`, and the
+  message is in the helper thread's `queued` list (a helper thread's messages are one run each, and
+  the person cannot edit or remove them) until delivered. A message for a helper
   thread is also held while its boss has 3 helper runs going, and goes out when one of them ends,
   so `continue` never takes a boss past 3. A held message
   survives a restart: on start, after the going runs are marked `failed`, each thread's held
@@ -264,8 +288,8 @@ after a failed undo counts a Bot that is already gone as removed.
 - Closing the boss thread stops its helpers' runs (no wake) and closes their threads, saving
   unfinished work as any close does; deleting a Bot does the same for each of its threads. Stopping
   the boss's run leaves its helpers going.
-- A helper thread is read-only for the user: `POST /api/threads/{id}/messages` answers 409 `{boss}
-  is handling this thread`.
+- A helper thread is read-only for the user: `POST /api/threads/{id}/messages` and the queued-message
+  routes answer 409 `{boss} is handling this thread`.
 - A child's questions go to its parent; approvals go to the user. The child's first message is one
   line, then the brief: `{parent} delegated this to you; your replies go to {parent}.` The helper
   thread's title comes from the brief, never from that line.
@@ -1170,6 +1194,10 @@ Voice
   repo-step.tsx") and the time; never raw tool calls. Approvals show a short form per tool: a
   command shows the command, an edit shows the file with its diff behind a toggle, anything else
   shows the tool and its target.
+- While a run works the composer shows Send beside Stop and still sends: the message shows at once
+  as the user's bubble with a quiet "Queued" mark and, in that bubble, Edit, Remove and Stop and
+  send (Send now after a Stop). Edit turns the text into a field named "Edit message" with Save and Cancel. The mark and
+  buttons go when the run delivers it. A busy thread shows no error under the composer.
 - Composer: the message, then the thread's repo, branch and MR as chips on one row, and Send or
   Stop. A long branch name ends in "…" with the full name on hover. The MR chip shows only its
   reference (`#92`, `!12`) with a state dot (open, merged, closed); hovering shows its title. While
