@@ -1194,9 +1194,9 @@ Voice
   repo-step.tsx") and the time; never raw tool calls. Approvals show a short form per tool: a
   command shows the command, an edit shows the file with its diff behind a toggle, anything else
   shows the tool and its target.
-- While a run works the composer still sends: the message shows at once as the user's bubble with
-  a quiet "Queued" mark and, in that bubble, Edit, Remove and Stop and send (Send now after a
-  Stop). Edit turns the text into a field named "Edit message" with Save and Cancel. The mark and
+- While a run works the composer shows Send beside Stop and still sends: the message shows at once
+  as the user's bubble with a quiet "Queued" mark and, in that bubble, Edit, Remove and Stop and
+  send (Send now after a Stop). Edit turns the text into a field named "Edit message" with Save and Cancel. The mark and
   buttons go when the run delivers it. A busy thread shows no error under the composer.
 - Composer: the message, then the thread's repo, branch and MR as chips on one row, and Send or
   Stop. A long branch name ends in "…" with the full name on hover. The MR chip shows only its
