@@ -14,6 +14,7 @@ const (
 	EntityBot    = "bot"
 	EntitySkill  = "skill"
 	EntityRepo   = "repo"
+	EntityAllow  = "allow"
 	ActionCreate = "create"
 	ActionEdit   = "edit"
 )

@@ -26,14 +26,20 @@ export type Thread = {
   last_activity: string;
   run_id: string;
   run_status: string;
-  approval: { id: string; tool: string; input: unknown } | null;
+  approval: { id: string; tool: string; input: unknown; allow_in_thread?: boolean } | null;
 };
 
 export const getThread = (threadId: string) =>
   api<
     Thread & {
       active_run: Run | null;
-      approvals: { run_id: string; id: string; tool: string; input: unknown }[];
+      approvals: {
+        run_id: string;
+        id: string;
+        tool: string;
+        input: unknown;
+        allow_in_thread?: boolean;
+      }[];
     }
   >(`/threads/${threadId}`);
 
