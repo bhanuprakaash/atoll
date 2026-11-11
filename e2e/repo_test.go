@@ -432,20 +432,14 @@ func (f *repoFixture) connect(t *testing.T) (string, string) {
 		t.Fatal("run via make e2e: Linux needs the private Secret Service session")
 	}
 	// The public Secret Service boundary proves storage independently of Atoll's status response.
-	cmd := exec.CommandContext(t.Context(), "secret-tool", "lookup", "service", "atoll", "username", "gitlab:"+start.ID)
-	deleteSecret := exec.Command("secret-tool", "clear", "service", "atoll", "username", "gitlab:"+start.ID)
-	if runtime.GOOS == "darwin" {
-		cmd = exec.CommandContext(t.Context(), "security", "find-generic-password", "-s", "atoll", "-a", "gitlab:"+start.ID, "-w")
-		deleteSecret = exec.Command("security", "delete-generic-password", "-s", "atoll", "-a", "gitlab:"+start.ID)
-	}
-	out, err := cmd.Output()
+	value, ok := secretEntry("gitlab:" + start.ID)
 	var stored struct {
 		AccessToken string `json:"access_token"`
 	}
-	if err != nil || json.Unmarshal(out, &stored) != nil || stored.AccessToken != token {
+	if !ok || json.Unmarshal([]byte(value), &stored) != nil || stored.AccessToken != token {
 		t.Fatal("token not retrievable from OS secret store")
 	}
-	t.Cleanup(func() { _ = deleteSecret.Run() })
+	t.Cleanup(func() { clearSecretEntry("gitlab:" + start.ID) })
 	return start.ID, token
 }
 

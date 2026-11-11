@@ -261,15 +261,11 @@ func (g *fakeGitHub) signIn(t *testing.T, s *server, path string, body map[strin
 // githubSecret reads the connection's keyring entry with the OS tool, not through Atoll.
 func githubSecret(t *testing.T, id string) string {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), "secret-tool", "lookup", "service", "atoll", "username", "github:"+id)
-	if runtime.GOOS == "darwin" {
-		cmd = exec.CommandContext(t.Context(), "security", "find-generic-password", "-s", "atoll", "-a", "github:"+id, "-w")
+	value, ok := secretEntry("github:" + id)
+	if !ok {
+		t.Fatalf("connection %s has no entry in the OS secret store", id)
 	}
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("connection %s has no entry in the OS secret store: %v", id, err)
-	}
-	return strings.TrimSpace(string(out))
+	return value
 }
 
 // githubFixture is a user's machine with its own glab, gh and git logins, gh tokens in the env and
