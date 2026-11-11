@@ -71,8 +71,27 @@ never a dependency.
     is read when `extensions.worktreeConfig` is on; a filter there remains a risk. Snapshot staging
     disables repo-local filters, including included config; checkout keeps the user's filters so Git
     LFS works. `glab mr view` runs in the repo and may invoke git using its config. A Bot process
-    that outlives its run can swap a worktree path between Reef's check and removal. Codex Auto can
-    rewrite other worktrees' metadata and refs under the granted directories.
+    that outlives its run can swap a worktree path between Reef's check and removal.
+  - Codex Auto git limit (checked with `codex sandbox`, Linux): the `<common>/worktrees` and
+    `<common>/refs` roots let a Bot break the repo's git state, not its files.
+    - Through `worktrees`: delete or rewrite the `HEAD`, `index`, `gitdir`, `commondir` and logs of
+      any linked worktree, the user's own included; that worktree breaks until repaired.
+    - Through `refs`: create, rewrite or delete any loose ref: branches (a loose ref overrides a
+      packed one), tags, remotes, `refs/stash` and `refs/atoll/unfinished/*`. Deleting a snapshot
+      ref leaves the saved work of a closed thread unreferenced; it is the one way to lose work
+      that is not in the worktree root.
+    - `objects` and `logs` are granted too, so a Bot can also delete objects and reflogs.
+    - It cannot write `config`, `hooks`, `info` or `packed-refs`, nor the working files of a
+      worktree outside the worktree root. Worktrees under the root are writable by the root grant.
+    - Narrower grant, not adopted: a commit needs the worktree's own git dir, `objects`, `logs`
+      and the directory that holds the branch ref (`refs/heads/<type>`, for the `.lock` file git
+      renames over the ref); with those only, `codex sandbox` commits and blocks other
+      worktrees' metadata, other prefixes, tags, remotes and snapshots. But the git dir is named
+      after the branch the Bot picks in `start_work`, mid-turn, and Codex fixes its roots at
+      `thread/start`. It would take a worktree for every Codex thread before its turn, or turning
+      the clean checkout into the worktree, plus the four `refs/heads/<type>` folders made in the
+      user's repo. The gain is small: `feat/`, `fix/`, `chore/` and `docs/` branches, where
+      every Bot's work lives, stay writable, and so do `objects` and `logs`.
 
   *Claude's auto mode classifier runs safe steps and blocks risky ones (Claude reports the block);
   explicit ask rules still come to the thread as cards.* Full access never asks, even to delete
