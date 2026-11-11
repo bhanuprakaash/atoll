@@ -1082,7 +1082,8 @@ Voice
   idle, asleep or failed Bot is one line. *Two lines for every Bot made the list twice as tall as
   Claude's; the user wanted a calm list.* `+` at the top opens New Bot and New
   group; the bottom user row opens Settings. No group chats. A thread's activity time moves when a run
-  starts, an approval opens or closes, and a run ends, not on every event. *The sidebar polls
+  starts, an approval opens or closes, and a run ends (also one failed at start-up), not on every
+  event. *The sidebar polls
   every 2 s; a write per text delta would cost more than the time is worth.* Clicking a Bot opens
   its latest thread.
 - Sidebar width: 340px by default, dragged on its right edge between 260px and 480px; a
@@ -1107,6 +1108,24 @@ Voice
   the threads popup. A helper thread is listed under its own Bot, without close or pin. *The
   server sends each Bot's open threads with their marker on `GET /api/bots`; the client picks the
   rows, since only it knows the thread on screen and what is unfolded.*
+- Bot list poll (`GET /api/bots`, every 2 s): the Bots with their summary, each with every open
+  thread as `{id, title, state, pinned, helper?}`, newest activity first; `state` is `needs_you`,
+  `running`, `new` or empty. Two queries, a Bots query and a threads query; no new field and no
+  migration (`threads_bot_activity` and `runs_thread` already exist). The threads query reads each
+  thread row once and never joins every thread to its newest run. It reads a run only for the
+  threads with a live run (database status `running` or `waiting`, a closed thread included, which
+  feeds the Bot's state and its boss's marker) and for each Bot's newest thread with a run (its
+  activity line and time), both found once per poll in a materialised set; one scan of `runs`
+  finds the live ones. `new` comes from the thread row: its activity is after the user last opened
+  it, it has had a run (`last_activity` is after `created`) and no run is live. That is exact
+  because every write that starts, moves or ends a run sets `last_activity` in the same
+  transaction, a run failed at start-up included. A test on an all-open seed and on a seed with
+  nine in ten closed fails when the plan reads `runs` inside the loop over the threads, or on a
+  p95 of 50 ms; a second test pins `new` for a thread with no run, a message after the thread was
+  opened, a run failed at restart, a helper thread and a closed thread. *Joining every thread to
+  its newest run cost 36 ms a poll with every thread open; the thread rows are most of the rest.*
+  - Known gap: the live scan reads the whole `runs` table each poll, so it grows with run history;
+    an index on `runs.status` would fix it and needs a migration, which this change does not add.
 - New thread: `+` on Bot row hover, the Bot's right-click menu (New thread, Pin to sidebar, Move
   to group, Bot settings), or `⌘N` for the open Bot. A thread row shows `×` on hover (Close thread,
   saving unfinished work as before); right-click has Rename and Close.
