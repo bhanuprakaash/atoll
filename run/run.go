@@ -155,6 +155,7 @@ type (
 		calls    map[string]chan struct{} // closed once the tool call with that id is published
 		tool     ToolCall
 		shown    []string // memory ids the run's memory tools returned
+		kind     string   // of the wake the run answers; empty for a message
 	}
 
 	// Event is one event on a thread's stream. Data is one of the types below. ThreadID is the
@@ -247,7 +248,7 @@ func (m *Manager) Send(
 func (m *Manager) send(ctx context.Context, it store.InboxItem) (store.Message, store.Run, error) {
 	threadID, text := it.ThreadID, it.Text
 	runCtx, cancel := context.WithCancel(m.ctx)
-	a := &active{threadID: threadID, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
+	a := &active{threadID: threadID, kind: it.Kind, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		cancel()
@@ -776,7 +777,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			return "", fmt.Errorf("select memory: %w", err)
 		}
 	}
-	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
+	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd, a.kind)
 	var githubToken string
 	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {

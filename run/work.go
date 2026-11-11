@@ -27,6 +27,7 @@ const (
 	_snapshotRefPrefix   = "refs/atoll/unfinished/"
 	_mrOpened            = "opened"
 	_mrMerged            = "merged"
+	_mrClosed            = "closed"
 	_hostGitHub          = "github"
 	_hostGitLab          = "gitlab"
 )
@@ -689,8 +690,9 @@ func (m *Manager) watch() {
 	defer m.wg.Done()
 	tick := time.NewTicker(m.cfg.PollInterval)
 	defer tick.Stop()
+	w := &watcher{threads: map[string]*watched{}, paused: map[string]time.Time{}}
 	for {
-		m.poll()
+		m.poll(w)
 		select {
 		case <-m.ctx.Done():
 			return
@@ -699,7 +701,7 @@ func (m *Manager) watch() {
 	}
 }
 
-func (m *Manager) poll() {
+func (m *Manager) poll(w *watcher) {
 	threads, err := m.cfg.Store.Watched(m.ctx)
 	if err != nil {
 		m.cfg.Log.Warn("list watched threads", "error", err)
@@ -709,16 +711,27 @@ func (m *Manager) poll() {
 		if m.ctx.Err() != nil {
 			return
 		}
-		if err := m.check(t); err != nil && m.ctx.Err() == nil {
-			m.cfg.Log.Warn("check MR", "thread_id", t.ID, "error", err)
+		ws := w.of(t)
+		if time.Now().Before(ws.next) {
+			continue
 		}
+		if err := m.check(w, t); err != nil {
+			if m.ctx.Err() != nil {
+				return
+			}
+			ws.fails = min(ws.fails+1, 4)
+			ws.next = time.Now().Add(m.cfg.PollInterval * time.Duration(min(1<<ws.fails, _maxBackoff)))
+			m.cfg.Log.Warn("check MR", "thread_id", t.ID, "error", err)
+			continue
+		}
+		ws.fails, ws.next = 0, time.Time{}
 	}
 }
 
-// check reads the state of the thread's MR. A change is stored and sent; a merged MR also has
-// its worktree saved and removed, once no run is going in the thread. A failure is retried on
-// the next tick.
-func (m *Manager) check(t store.Thread) error {
+// check reads the state of the thread's MR. A change is stored and sent, with the wake it
+// reports; a merged GitLab MR also has its worktree saved and removed, once no run is going in the
+// thread. A failure is retried after a back-off.
+func (m *Manager) check(w *watcher, t store.Thread) error {
 	bot, err := m.cfg.Store.Bot(m.ctx, t.BotID)
 	if err != nil {
 		return err
@@ -728,7 +741,7 @@ func (m *Manager) check(t store.Thread) error {
 		return err
 	}
 	if RepoHost(m.ctx, rp.Path) == _hostGitHub {
-		return nil
+		return m.checkGitHub(w, t, bot)
 	}
 	env, _, err := m.runEnv(m.ctx, bot, false)
 	if err != nil {
@@ -738,18 +751,14 @@ func (m *Manager) check(t store.Thread) error {
 	if err != nil {
 		return err
 	}
+	if state == "locked" {
+		state = _mrOpened
+	}
 	if t.MRTitle != "" {
 		title = t.MRTitle
 	}
-	if state != t.MRState || title != t.MRTitle {
-		runID, err := m.cfg.Store.LatestRun(m.ctx, t.ID)
-		if err != nil {
-			return err
-		}
-		if err := m.cfg.Store.SetMR(m.ctx, t.ID, t.MRURL, state, title); err != nil {
-			return err
-		}
-		m.announce(t.ID, runID, EventMRUpdated, MRUpdated{RunID: runID, URL: t.MRURL, State: state, Title: title})
+	if err := m.update(t, "", store.MRRead{State: state, Title: title, CI: t.MRCI, Woke: t.MRWoke}); err != nil {
+		return err
 	}
 	if state != _mrMerged {
 		return nil
