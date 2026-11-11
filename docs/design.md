@@ -203,7 +203,9 @@ after a failed undo counts a Bot that is already gone as removed.
   also start fresh sessions.
 - Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply
   carries the answer itself, never only in the report or thinking. Status uses 2–3 plain lines,
-  not an answer the person asked for. *The report feeds memory, parents and fresh
+  not an answer the person asked for. The reply is only what the Bot writes after its last tool
+  call (after `finish_run` when the run ends with it); earlier text streams live but is not stored
+  or relayed to a boss, and a run with no tool call keeps all its text. *The report feeds memory, parents and fresh
   starts.* `blocked` is only what the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
   is not blocked, so the chat shows no Blocked line for it. A turn that ends without
   the report gets one more prompt in the same session asking for it; its text is not shown. If
