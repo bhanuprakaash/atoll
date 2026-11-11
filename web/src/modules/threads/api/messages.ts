@@ -5,6 +5,7 @@ import {
   type InfiniteData,
 } from '@tanstack/react-query';
 import { api, apiBlob } from '@/lib/api-client';
+import type { RunUsage } from '@/utils/usage';
 
 export type Message = {
   id: string;
@@ -31,6 +32,7 @@ export type Run = {
   error: string;
   error_kind: '' | 'signed_out';
   provider: 'claude' | 'codex';
+  usage?: RunUsage | null;
 };
 
 type MessagePageParam = { before?: string; after?: string };
