@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Builds, signs and publishes a Reef update. Usage: scripts/release <version>
+# Needs the updater signing key at ~/.tauri/reef.key (or TAURI_SIGNING_PRIVATE_KEY) and gh.
+set -euo pipefail
+
+version=${1:?usage: scripts/release <version>}
+[[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "version must look like 0.1.1" >&2; exit 1; }
+
+cd "$(dirname "$0")/.."
+conf=desktop/src-tauri/tauri.conf.json
+bundle=desktop/src-tauri/target/release/bundle/macos
+repo=bhanuprakaash/atoll
+
+sed -E "s/^(  \"version\": \")[^\"]*/\1$version/" "$conf" >"$conf.tmp" && mv "$conf.tmp" "$conf"
+
+export PATH="$HOME/.cargo/bin:$PATH"
+export TAURI_SIGNING_PRIVATE_KEY=${TAURI_SIGNING_PRIVATE_KEY:-$(cat ~/.tauri/reef.key)}
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${TAURI_SIGNING_PRIVATE_KEY_PASSWORD-}
+make app
+
+jq -n \
+	--arg version "$version" \
+	--arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+	--arg signature "$(cat "$bundle/Reef.app.tar.gz.sig")" \
+	--arg url "https://github.com/$repo/releases/download/v$version/Reef.app.tar.gz" \
+	'{version: $version, notes: "Reef \($version)", pub_date: $date,
+	  platforms: {"darwin-aarch64": {signature: $signature, url: $url}}}' >"$bundle/latest.json"
+
+gh release create "v$version" --repo "$repo" --title "Reef $version" --notes "Reef $version" \
+	"$bundle/Reef.app.tar.gz" "$bundle/Reef.app.tar.gz.sig" "$bundle/latest.json"
+
+echo "Published v$version. $conf now says $version: commit it."
