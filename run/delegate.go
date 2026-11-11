@@ -23,6 +23,12 @@ type RefusedError string
 
 func (e RefusedError) Error() string { return string(e) }
 
+// HelperStarted is a helper thread made for the boss's run, so the boss's page reads its helpers.
+type HelperStarted struct {
+	RunID    string `json:"run_id"`
+	ThreadID string `json:"thread_id"`
+}
+
 // Handoff is the boss's result for a delegate.
 type Handoff struct {
 	ThreadID string `json:"thread_id"`
@@ -72,6 +78,7 @@ func (m *Manager) Delegate(
 		m.abandonHelper(ctx, rp, h, path)
 		return Handoff{}, err
 	}
+	m.publish(a, EventHelperStarted, HelperStarted{RunID: a.run.ID, ThreadID: h.ThreadID})
 	return h, nil
 }
 

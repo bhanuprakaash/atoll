@@ -59,7 +59,7 @@ function Pull({ helper }: { helper: Thread }) {
           className={`size-1.5 rounded-full ${dot[helper.mr_state] ?? 'bg-ok'}`}
         />
         {ref}
-      </a>
+      </a>{' '}
       {word && <span className={ciStyle[word] ?? 'text-muted'}>{word}</span>}
     </span>
   );
@@ -86,27 +86,27 @@ function Row({
       onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && navigate(href)}
       className="group flex items-center gap-3 rounded-xl px-3 py-2 outline-none focus-visible:bg-selected hover:bg-selected"
     >
-      <HelperCreature name={bot?.name ?? 'Helper'} creature={bot?.look} state={state} />
-      <span className="flex-none">{bot?.name ?? 'Helper'}</span>
+      <HelperCreature name={bot?.name ?? 'Helper'} creature={bot?.look} state={state} />{' '}
+      <span className="flex-none">{bot?.name ?? 'Helper'}</span>{' '}
       <span className="min-w-0 flex-1 truncate text-muted" title={helper.title}>
         {helper.title}
-      </span>
+      </span>{' '}
       {live ? (
         <>
           <span className="max-w-48 flex-none truncate text-muted">
             {state === 'needs_you' ? 'Needs you' : helper.step || 'Working'}
-          </span>
+          </span>{' '}
           <span className="w-10 flex-none text-right text-muted tabular-nums">
             {elapsed(helper.created_at, now)}
           </span>
         </>
       ) : (
         <span className="flex-none text-muted">{reportedWord[helper.run_status]}</span>
-      )}
-      <Pull helper={helper} />
+      )}{' '}
+      <Pull helper={helper} />{' '}
       <Link to={href} className={quiet}>
         Open
-      </Link>
+      </Link>{' '}
       {live && (
         <button
           type="button"
