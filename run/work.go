@@ -690,7 +690,7 @@ func (m *Manager) watch() {
 	defer m.wg.Done()
 	tick := time.NewTicker(m.cfg.PollInterval)
 	defer tick.Stop()
-	w := &watcher{threads: map[string]*watched{}, paused: map[string]time.Time{}}
+	w := &watcher{threads: map[string]*watched{}, issues: map[string]*watchedIssue{}, paused: map[string]time.Time{}}
 	for {
 		m.poll(w)
 		select {
@@ -719,13 +719,19 @@ func (m *Manager) poll(w *watcher) {
 			if m.ctx.Err() != nil {
 				return
 			}
-			ws.fails = min(ws.fails+1, 4)
-			ws.next = time.Now().Add(m.cfg.PollInterval * time.Duration(min(1<<ws.fails, _maxBackoff)))
+			ws.fails, ws.next = m.backoff(ws.fails)
 			m.cfg.Log.Warn("check MR", "thread_id", t.ID, "error", err)
 			continue
 		}
 		ws.fails, ws.next = 0, time.Time{}
 	}
+	m.pollIssues(w)
+}
+
+// backoff counts one more failure and returns when to try again.
+func (m *Manager) backoff(fails int) (int, time.Time) {
+	fails = min(fails+1, 4)
+	return fails, time.Now().Add(m.cfg.PollInterval * time.Duration(min(1<<fails, _maxBackoff)))
 }
 
 // check reads the state of the thread's MR. A change is stored and sent, with the wake it
@@ -757,7 +763,7 @@ func (m *Manager) check(w *watcher, t store.Thread) error {
 	if t.MRTitle != "" {
 		title = t.MRTitle
 	}
-	if err := m.update(t, "", store.MRRead{State: state, Title: title, CI: t.MRCI, Woke: t.MRWoke}); err != nil {
+	if err := m.update(t, "", store.MRRead{State: state, Title: title, CI: t.MRCI, Woke: t.MRWoke}, ""); err != nil {
 		return err
 	}
 	if state != _mrMerged {

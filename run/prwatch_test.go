@@ -25,3 +25,20 @@ func TestCIText(t *testing.T) {
 		})
 	}
 }
+
+func TestCloses(t *testing.T) {
+	tests := []struct{ body, want string }{
+		{"Issue: Closes #7", "#7"},
+		{"This resolves #7, and fixes #9 on the way.\nfix: #12", "#7 #9 #12"},
+		{"Refs #8\nCloses #07\nCloses #7a\nprefix #3\nCloses #", ""},
+	}
+	for _, tt := range tests {
+		var got []string
+		for _, m := range _closes.FindAllStringSubmatch(tt.body, -1) {
+			got = append(got, m[1])
+		}
+		if s := strings.Join(got, " "); s != tt.want {
+			t.Errorf("%q closes %q, want %q", tt.body, s, tt.want)
+		}
+	}
+}

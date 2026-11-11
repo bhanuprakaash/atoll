@@ -927,7 +927,9 @@ after a failed undo counts a Bot that is already gone as removed.
   no item). Ids only, so no Bot-written text joins the sentence; the Bot reads each with
   `read_memory`. In a tick the PR read comes before the issue read, so an item whose issue GitHub
   closed with the merge is named first and retired right after: the Bot then saves what still
-  holds as a new item instead of `replaces`.
+  holds as a new item instead of `replaces`. A merge can land between the two reads of one tick,
+  so Reef retires only on the read after the one that first saw the issue closed. A wake prompt
+  carries no memory items: Reef's own words are not a query.
 - Storage: the `memory` package keeps its own tables and migrations in `atoll.db`; ids are random hex.
   The run fills the source (Bot, thread, run) and the repo/Bot scope id; tools see only the run's
   shelf (user, its repo, its Bot). Embeddings stay off: no embedder is wired.

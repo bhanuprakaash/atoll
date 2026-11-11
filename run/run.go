@@ -758,7 +758,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	}
 	var items []memory.Item
 	var counts memory.Counts
-	if m.cfg.Memory != nil {
+	if m.cfg.Memory != nil && a.kind == "" {
 		shelf := memory.Shelf{RepoID: rp.ID, BotID: thread.BotID}
 		var seen map[string]bool
 		if thread.Session != "" {

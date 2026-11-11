@@ -32,6 +32,7 @@ type (
 	// connection.
 	watcher struct {
 		threads map[string]*watched
+		issues  map[string]*watchedIssue
 		paused  map[string]time.Time
 	}
 
@@ -47,6 +48,7 @@ type (
 		State  string `json:"state"`
 		Merged bool   `json:"merged"`
 		Title  string `json:"title"`
+		Body   string `json:"body"`
 		Head   struct {
 			SHA string `json:"sha"`
 		} `json:"head"`
@@ -127,7 +129,13 @@ func (m *Manager) checkGitHub(w *watcher, t store.Thread, bot store.Bot) error {
 			return err
 		}
 	}
-	return m.update(t, label, r)
+	note := ""
+	if state == _mrMerged && t.MRState != _mrMerged {
+		if note, err = m.memoryNote(t.RepoID, ws.pull.Body); err != nil {
+			return err
+		}
+	}
+	return m.update(t, label, r, note)
 }
 
 // readCI reads the checks of the head commit until its CI is reported, and sets in r the stored
@@ -219,12 +227,12 @@ func statusOutcome(state string) string {
 	return "pending"
 }
 
-// update stores what a poll read, with the wake for a new merged or closed state, then sends the
-// change and delivers the wake. A GitLab MR has no label: it wakes nothing yet.
-func (m *Manager) update(t store.Thread, label string, r store.MRRead) error {
+// update stores what a poll read, with the wake for a new merged or closed state (note ends its
+// text), then sends the change and delivers the wake. A GitLab MR has no label: it wakes nothing yet.
+func (m *Manager) update(t store.Thread, label string, r store.MRRead, note string) error {
 	r.URL, r.Prev = t.MRURL, t.MRState
 	if label != "" && t.MRWake && r.State != t.MRState && (r.State == _mrMerged || r.State == _mrClosed) {
-		r.WakeKind, r.WakeText, r.DropCI = r.State, label+" "+r.State, true
+		r.WakeKind, r.WakeText, r.DropCI = r.State, label+" "+r.State+note, true
 	}
 	if t.MRWake && r.WakeKind == "" && r.State == t.MRState && r.Title == t.MRTitle && r.CI == t.MRCI &&
 		r.Woke == t.MRWoke && !r.DropCI {
