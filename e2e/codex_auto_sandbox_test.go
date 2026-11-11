@@ -270,10 +270,9 @@ func TestRepo_ReefGitRunsNoRepoCode(t *testing.T) {
 				if resp.StatusCode != 204 && !route.anyClose {
 					t.Errorf("%s: status %d, want 204", want, resp.StatusCode)
 				}
-				if ref := "refs/atoll/unfinished/" + th.ID; c.end == "close" {
-					if err := exec.CommandContext(t.Context(), "git", "-C", f.repo.Path, "rev-parse", "--verify", "--quiet", ref+"^{commit}").Run(); err != nil {
-						t.Errorf("%s: the repo has no %s; Atoll's git did not work on the repo's own git dir", want, ref)
-					}
+				ref := "refs/atoll/unfinished/" + th.ID
+				if err := exec.CommandContext(t.Context(), "git", "-C", f.repo.Path, "rev-parse", "--verify", "--quiet", ref+"^{commit}").Run(); err != nil {
+					t.Errorf("%s: the repo has no %s; Atoll's git did not work on the repo's own git dir", want, ref)
 				}
 			})
 		}
