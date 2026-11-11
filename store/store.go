@@ -161,6 +161,9 @@ type (
 		MRURL           string     `json:"mr_url"`
 		MRState         string     `json:"mr_state"`
 		MRTitle         string     `json:"mr_title"`
+		MRCI            string     `json:"-"`
+		MRWoke          string     `json:"-"`
+		MRWake          bool       `json:"-"`
 		WorktreeRemoved bool       `json:"worktree_removed"`
 		SnapshotRef     string     `json:"snapshot_ref"`
 		ClosedAt        *time.Time `json:"closed_at"`
@@ -177,6 +180,7 @@ type (
 		Text      string    `json:"text"`
 		RunID     string    `json:"run_id"`
 		FromBotID string    `json:"from_bot_id,omitempty"`
+		Kind      string    `json:"kind"`
 		CreatedAt time.Time `json:"created_at"`
 		// Attachments are the message's images. Data is set only on a message just stored.
 		Attachments []Attachment `json:"attachments"`
@@ -195,7 +199,18 @@ type (
 		ThreadID  string
 		FromBotID string
 		Text      string
+		Kind      string
 		Images    []Attachment
+	}
+
+	// MRRead is what one poll of a thread's MR changes: the values to store, and the wake they
+	// report. Prev is the state the poll started from.
+	MRRead struct {
+		URL, Prev, State, Title, CI, Woke string
+		// DropCI deletes the thread's held ci wake: its commit is no longer the head or the MR is done.
+		DropCI   bool
+		WakeKind string
+		WakeText string
 	}
 
 	// Run is one message handled.
@@ -225,7 +240,7 @@ type (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake"
 	_messagePageSize = 50
 )
 
@@ -385,7 +400,7 @@ func (s *Store) DeleteBot(ctx context.Context, id string, wakes []InboxItem) ([]
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		const threads = "(SELECT id FROM threads WHERE bot_id = ?)"
 		for _, w := range wakes {
-			if err := insertInbox(ctx, tx, w.ThreadID, w.FromBotID, w.Text); err != nil {
+			if err := insertInbox(ctx, tx, w.ThreadID, w.FromBotID, w.Text, ""); err != nil {
 				return err
 			}
 		}
@@ -608,14 +623,49 @@ func (s *Store) RemoveWorktree(ctx context.Context, threadID, ref string) error 
 	return found(res, "thread", threadID)
 }
 
-// SetMR records the thread's MR and its state.
+// SetMR records the thread's MR and, for a new URL, its state. A repeat call with the URL the
+// thread has keeps the state and what the poll stored, so a re-track after a merge never wakes
+// twice.
 func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE threads SET mr_url = ?, mr_state = ?, mr_title = ? WHERE id = ?",
+	res, err := s.db.ExecContext(ctx, `UPDATE threads SET
+		mr_state = CASE WHEN mr_url = ?1 THEN mr_state ELSE ?2 END,
+		mr_ci = CASE WHEN mr_url = ?1 THEN mr_ci ELSE '' END,
+		mr_woke = CASE WHEN mr_url = ?1 THEN mr_woke ELSE '' END,
+		mr_url = ?1, mr_title = ?3, mr_wake = 1 WHERE id = ?4`,
 		url, state, title, threadID)
 	if err != nil {
 		return fmt.Errorf("set MR: %w", err)
 	}
 	return found(res, "thread", threadID)
+}
+
+// StoreMR stores what a poll read and, with it, the wake it reports, in one transaction: a restart
+// cannot repeat the wake or lose it. It reports false and stores nothing when the thread is
+// closed, tracks another MR or no longer has the state the poll started from.
+func (s *Store) StoreMR(ctx context.Context, threadID string, r MRRead) (bool, error) {
+	stored := false
+	err := s.tx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE threads SET mr_state = ?, mr_title = ?, mr_ci = ?, mr_woke = ?, mr_wake = 1
+			WHERE id = ? AND mr_url = ? AND mr_state = ? AND closed = 0`,
+			r.State, r.Title, r.CI, r.Woke, threadID, r.URL, r.Prev)
+		if err != nil {
+			return fmt.Errorf("store MR: %w", err)
+		}
+		if n, err := res.RowsAffected(); err != nil || n == 0 {
+			return err
+		}
+		stored = true
+		if r.DropCI || r.WakeKind == "ci" {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM inbox WHERE thread_id = ? AND kind = 'ci'", threadID); err != nil {
+				return fmt.Errorf("drop held ci wake: %w", err)
+			}
+		}
+		if r.WakeKind == "" {
+			return nil
+		}
+		return insertInbox(ctx, tx, threadID, "", r.WakeText, r.WakeKind)
+	})
+	return stored, err
 }
 
 // SetTitle sets the thread's title.
@@ -889,14 +939,14 @@ func (s *Store) SetSession(ctx context.Context, threadID, session, provider stri
 // StartRunFrom stores the message and a running run, removing the inbox item when it has an ID,
 // in one transaction.
 func (s *Store) StartRunFrom(ctx context.Context, it InboxItem) (Message, Run, error) {
-	return s.startRun(ctx, it.ThreadID, it.FromBotID, it.Text, it.ID, it.Images)
+	return s.startRun(ctx, it.ThreadID, it.FromBotID, it.Text, it.Kind, it.ID, it.Images)
 }
 
 func (s *Store) startRun(
-	ctx context.Context, threadID, fromBotID, text, inboxID string, images []Attachment,
+	ctx context.Context, threadID, fromBotID, text, kind, inboxID string, images []Attachment,
 ) (Message, Run, error) {
 	r := Run{ID: newID(), ThreadID: threadID, Status: StatusRunning, StartedAt: time.Now().UTC(), Tools: map[string]int{}}
-	m := Message{ID: newID(), ThreadID: threadID, Role: RoleUser, Text: text, RunID: r.ID, FromBotID: fromBotID}
+	m := Message{ID: newID(), ThreadID: threadID, Role: RoleUser, Text: text, RunID: r.ID, FromBotID: fromBotID, Kind: kind}
 	m.Attachments = []Attachment{}
 	for _, img := range images {
 		m.Attachments = append(m.Attachments, Attachment{ID: newID(), Mime: img.Mime, Data: img.Data})
@@ -931,15 +981,15 @@ func (s *Store) startRun(
 
 // Enqueue holds text for the thread until a run can start.
 func (s *Store) Enqueue(ctx context.Context, threadID, fromBotID, text string) error {
-	return insertInbox(ctx, s.db, threadID, fromBotID, text)
+	return insertInbox(ctx, s.db, threadID, fromBotID, text, "")
 }
 
 // OldestInbox returns the oldest held message; ok is false when none.
 func (s *Store) OldestInbox(ctx context.Context, threadID string) (it InboxItem, ok bool, err error) {
 	items, err := query(ctx, s.db,
-		"SELECT id, thread_id, from_bot_id, text FROM inbox WHERE thread_id = ? ORDER BY rowid LIMIT 1",
+		"SELECT id, thread_id, from_bot_id, text, kind FROM inbox WHERE thread_id = ? ORDER BY rowid LIMIT 1",
 		func(r *sql.Rows) (it InboxItem, err error) {
-			return it, r.Scan(&it.ID, &it.ThreadID, &it.FromBotID, &it.Text)
+			return it, r.Scan(&it.ID, &it.ThreadID, &it.FromBotID, &it.Text, &it.Kind)
 		}, threadID)
 	if err != nil || len(items) == 0 {
 		return InboxItem{}, false, err
@@ -1148,13 +1198,13 @@ func enqueueWake(ctx context.Context, tx *sql.Tx, runID string, wake func(Wake) 
 			return fmt.Errorf("decode report of run %s: %w", runID, err)
 		}
 	}
-	return insertInbox(ctx, tx, bossID, botID, wake(w))
+	return insertInbox(ctx, tx, bossID, botID, wake(w), "")
 }
 
 // Messages lists every message in the thread, oldest first.
 func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error) {
 	return s.messages(ctx,
-		`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id,
+		`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
             CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END
          FROM messages m JOIN runs r ON r.id = m.run_id WHERE m.thread_id = ? ORDER BY m.rowid`,
 		threadID)
@@ -1164,7 +1214,7 @@ func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error
 func (s *Store) MessagePage(ctx context.Context, threadID, before, after string) ([]Message, error) {
 	if after != "" {
 		return s.messages(ctx,
-			`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id,
+			`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
                 CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END
              FROM messages m JOIN runs r ON r.id = m.run_id
              WHERE m.thread_id = ? AND m.rowid > (
@@ -1173,8 +1223,8 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 			threadID, after, threadID)
 	}
 	return s.messages(ctx,
-		`SELECT id, thread_id, role, text, run_id, from_bot_id, at FROM (
-            SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id,
+		`SELECT id, thread_id, role, text, run_id, from_bot_id, kind, at FROM (
+            SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
                 CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END AS at,
                 m.rowid
             FROM messages m JOIN runs r ON r.id = m.run_id
@@ -1191,7 +1241,7 @@ func (s *Store) messages(ctx context.Context, querySQL string, args ...any) ([]M
 	msgs, err := query(ctx, s.db, querySQL,
 		func(r *sql.Rows) (m Message, err error) {
 			var at int64
-			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &at)
+			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &m.Kind, &at)
 			if at != 0 {
 				m.CreatedAt = time.UnixMicro(at).UTC()
 			}
@@ -1295,10 +1345,10 @@ func FirstWords(text string) string {
 	return strings.Join(words, " ")
 }
 
-func insertInbox(ctx context.Context, db execer, threadID, fromBotID, text string) error {
+func insertInbox(ctx context.Context, db execer, threadID, fromBotID, text, kind string) error {
 	_, err := db.ExecContext(ctx,
-		"INSERT INTO inbox (id, thread_id, from_bot_id, text, created) VALUES (?, ?, ?, ?, ?)",
-		newID(), threadID, fromBotID, text, time.Now().UTC().UnixMicro())
+		"INSERT INTO inbox (id, thread_id, from_bot_id, text, kind, created) VALUES (?, ?, ?, ?, ?, ?)",
+		newID(), threadID, fromBotID, text, kind, time.Now().UTC().UnixMicro())
 	if err != nil {
 		return fmt.Errorf("enqueue message: %w", err)
 	}
@@ -1307,8 +1357,8 @@ func insertInbox(ctx context.Context, db execer, threadID, fromBotID, text strin
 
 func insertMessage(ctx context.Context, tx *sql.Tx, m Message) error {
 	_, err := tx.ExecContext(ctx,
-		"INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id) VALUES (?, ?, ?, ?, ?, ?)",
-		m.ID, m.ThreadID, m.Role, m.Text, m.RunID, m.FromBotID)
+		"INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id, kind) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		m.ID, m.ThreadID, m.Role, m.Text, m.RunID, m.FromBotID, m.Kind)
 	if err != nil {
 		return fmt.Errorf("insert message: %w", err)
 	}
@@ -1339,16 +1389,17 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	var t Thread
 	var closed int
 	var created, lastActivity int64
-	var removed int
+	var removed, wake int
 	var closedAt sql.NullInt64
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
 		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
-		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir)
+		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir, &t.MRCI, &t.MRWoke, &wake)
 	if err != nil {
 		return Thread{}, err
 	}
 	t.Closed = closed != 0
 	t.WorktreeRemoved = removed != 0
+	t.MRWake = wake != 0
 	if closedAt.Valid {
 		when := time.UnixMicro(closedAt.Int64).UTC()
 		t.ClosedAt = &when

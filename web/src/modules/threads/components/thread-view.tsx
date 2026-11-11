@@ -231,6 +231,13 @@ function MessageLine({
       {messageTime(message.created_at)}
     </time>
   );
+  if (message.kind) {
+    return (
+      <p data-testid="message" className="text-sm text-muted">
+        Reef: {message.text} {time}
+      </p>
+    );
+  }
   if (message.from_bot_id) {
     const report = brief ? { prose: message.text, threadId: '' } : helperReport(message.text);
     const text = (
