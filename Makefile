@@ -32,10 +32,12 @@ test:
 run: ui
 	go run ./cmd/atoll serve
 
+# Update files (Reef.app.tar.gz and .sig) need TAURI_SIGNING_PRIVATE_KEY; without it, app and dmg only.
 app: ui
 	mkdir -p desktop/src-tauri/binaries
 	go build -o desktop/src-tauri/binaries/atoll-$$(rustc -vV | sed -n "s/^host: //p") ./cmd/atoll
-	cd desktop && $(PNPM) install --frozen-lockfile && $(PNPM) tauri build --bundles app,dmg
+	cd desktop && $(PNPM) install --frozen-lockfile && $(PNPM) tauri build --bundles app,dmg \
+		$(if $(TAURI_SIGNING_PRIVATE_KEY),,--config '{"bundle":{"createUpdaterArtifacts":false}}')
 
 # Compiles the layered icon (icons/icon.icon, Icon Composer) into the committed Assets.car. Run it
 # after changing the icon: actool fails with "Bad file descriptor" when the bundler runs it in CI.
