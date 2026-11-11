@@ -972,7 +972,7 @@ time.*
 
 Platform prompt (draft; the code part is `How you work`, the platform block follows `Finish`):
 
-```
+````
 You are {bot}, a Bot in Reef. {user} talks to you in a thread; you do the work and bring back the result.
 
 How you talk
@@ -980,6 +980,7 @@ How you talk
 - Match length to the ask. A question gets an answer, not a plan.
 - Reversible choice: pick the better option, say why in one line. Ask only when the ask has two real readings, one question at a time.
 - Keep apart what you did, what you verified, and what you believe. Label guesses.
+- Answer first in a sentence; use a component only when it is clearer than prose. Tables, task lists, ```diff and fenced code render as components in Reef and on GitHub. ```reef-metrics (JSON [{label,value,delta}], 2-4 items) and ```reef-kv (key: value lines) are for the Reef chat only, never a PR, issue or comment.
 
 How you work
 - Read the code and context before changing anything. Fix causes, not symptoms.
@@ -1021,7 +1022,7 @@ Import a local skill
 Voice
 - A calm, dry reef keeper. At most one sea word per reply.
 - Questions, errors and undo messages stay plain.
-```
+````
 
 ## App and UI
 
@@ -1296,6 +1297,50 @@ Voice
 - Names: the UI says Reef. Repo, Go module, binary and bundle ID (`dev.atoll.desktop`) say
   `atoll`; app data lives in `~/Library/Application Support/Atoll`. *Runs beside the old Reef;
   rename when it retires.*
+
+## Rich output
+
+Replies show data with Reef's own components, built for Reef's look (no Mermaid, no off-the-shelf
+renderer). Every message body goes through one Markdown renderer, so a Bot's reply, a helper's
+report relayed into the boss thread and the boss's brief all render alike.
+
+- Native first. What Markdown already says becomes a component, so a Bot writes what it knows and
+  the same text reads well on GitHub. Only what Markdown cannot say gets a `reef-` fence. *A model
+  writes a pipe table or a ```` ```diff ```` fence without being taught; JSON for a table would add
+  a malformed state and nothing else.*
+
+  | Component | A Bot writes | Shows |
+  | --- | --- | --- |
+  | `code` | a fenced block, with its language when known | highlighted box with the language and Copy; past 20 lines it shows the first 20 and Show all (Show less) |
+  | `table` | a Markdown (GFM) pipe table | sticky header, a click on a header sorts (ascending, descending, back to the order written), a column of numbers is right-aligned and sorts as numbers |
+  | `diff` | a ```` ```diff ```` fence holding a unified diff | a file header with `+N -N` per file, hunk headers, added and removed lines marked; a diff with no headers shows lines only |
+  | `checklist` | a Markdown task list where every item is `- [x]` or `- [ ]` | read-only done and not-done rows; a list that mixes in plain items stays an ordinary list |
+  | `metrics` | a ```` ```reef-metrics ```` fence: JSON `[{"label":"Open PRs","value":"12","delta":"+3"}]`, 2 to 4 items, `value` a string or number, `delta` optional | one tile per item |
+  | `kv` | a ```` ```reef-kv ```` fence: one `key: value` per line (the first `: ` splits; blank lines are skipped) | a key-value card |
+
+- Fallback: a `reef-` fence whose body does not fit its form (bad JSON, 1 or 5+ metrics, an item
+  without `label` or `value`, a `kv` line with no `: `) or whose tag is unknown (`reef-chart`) shows
+  as an ordinary code block holding the body as written, with no language label. Never an error, a
+  placeholder or JSON on its own. The HTML fallback and charts, timelines and trees are later
+  tickets.
+- Streaming: while a `reef-` fence has no closing fence yet, the live reply shows one line, the
+  component's name and an ellipsis (`Metrics…`, `Details…` for `kv`), not the partial body; it swaps
+  to the component when the fence closes. A fence still open when the run ends shows as a code
+  block. An open ordinary fence just grows as a code block. A half-written table is plain text
+  until its rows arrive.
+- Plain-text surfaces (sidebar preview, island line, notification text) show the reply with every
+  `reef-` fence removed; when nothing is left, the component's name. Raw `reef-` JSON never reaches
+  them.
+- The prompt catalog is one line in the shared core, under How you talk. It starts "Answer first in
+  a sentence; use a component only when it is clearer than prose." and says tables, task lists,
+  `diff` and code render as components in Reef and on GitHub, while `reef-metrics` and `reef-kv`
+  are for the Reef chat only, never a PR, issue or comment. A Bot writing a PR, issue or comment
+  with `gh` or `glab` therefore uses Markdown tables and code only.
+- Shipping: the first PR is `code` and `table` (they cover most replies) and the fallback;
+  `diff`, `checklist`, `metrics` and `kv` follow when a real reply asks for them, and the catalog
+  line grows only with `metrics` and `kv`.
+- Components read the theme tokens, never a literal colour; colour carries meaning (red only for
+  danger or failure).
 
 ## Testing
 
