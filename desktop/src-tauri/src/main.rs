@@ -15,7 +15,7 @@ use std::{
 };
 use tauri::{
     webview::{Color, NewWindowResponse},
-    AppHandle, LogicalPosition, Manager, Theme, TitleBarStyle, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Manager, Theme, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_updater::UpdaterExt;
 
@@ -86,42 +86,41 @@ fn main() {
             });
             // The sidecar's URL is known only once it listens; provider sign-in pages open in
             // the default browser, not in a webview window.
-            let window = WebviewWindowBuilder::new(
+            let builder = WebviewWindowBuilder::new(
                 app,
                 "main",
                 WebviewUrl::External("about:blank".parse().expect("valid URL")),
             )
-            .title("Reef")
-            .title_bar_style(TitleBarStyle::Overlay)
-            .hidden_title(true)
-            .traffic_light_position(LogicalPosition::new(18.0, 33.0))
-            .theme(Some(Theme::Dark))
-            .background_color(Color(19, 19, 19, 255))
-            .inner_size(1200.0, 800.0)
-            .min_inner_size(700.0, 500.0)
-            .disable_drag_drop_handler()
-            .on_new_window(|url, _| {
-                if matches!(url.scheme(), "http" | "https" | "mailto") {
-                    if let Err(err) = Command::new("open").arg(url.as_str()).spawn() {
-                        eprintln!("open {url}: {err}");
+            .title("Reef");
+            #[cfg(target_os = "macos")]
+            let builder = builder
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true)
+                .traffic_light_position(tauri::LogicalPosition::new(18.0, 33.0));
+            let window = builder
+                .theme(Some(Theme::Dark))
+                .background_color(Color(19, 19, 19, 255))
+                .inner_size(1200.0, 800.0)
+                .min_inner_size(700.0, 500.0)
+                .disable_drag_drop_handler()
+                .on_new_window(|url, _| {
+                    if matches!(url.scheme(), "http" | "https" | "mailto") {
+                        open_url(url.as_str());
                     }
-                }
-                NewWindowResponse::Deny
-            })
-            .on_navigation(|url| {
-                if url.scheme() == "about"
-                    || (url.host_str() == Some("127.0.0.1") && url.port() == Some(4317))
-                {
-                    return true;
-                }
-                if matches!(url.scheme(), "http" | "https" | "mailto") {
-                    if let Err(err) = Command::new("open").arg(url.as_str()).spawn() {
-                        eprintln!("open {url}: {err}");
+                    NewWindowResponse::Deny
+                })
+                .on_navigation(|url| {
+                    if url.scheme() == "about"
+                        || (url.host_str() == Some("127.0.0.1") && url.port() == Some(4317))
+                    {
+                        return true;
                     }
-                }
-                false
-            })
-            .build()?;
+                    if matches!(url.scheme(), "http" | "https" | "mailto") {
+                        open_url(url.as_str());
+                    }
+                    false
+                })
+                .build()?;
             let binary = std::env::current_exe()?.with_file_name("atoll");
             let mut token = [0u8; 32];
             File::open("/dev/urandom")?.read_exact(&mut token)?;
@@ -239,6 +238,17 @@ fn main() {
                 stop_sidecar(app);
             }
         });
+}
+
+fn open_url(url: &str) {
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    if let Err(err) = Command::new(opener).arg(url).spawn() {
+        eprintln!("{opener} {url}: {err}");
+    }
 }
 
 fn show_port_error(window: &tauri::WebviewWindow) {
