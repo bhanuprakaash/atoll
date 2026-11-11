@@ -242,6 +242,8 @@ test('a helper approval is one line under the summary within 2s; two waiting sho
   await expect(region).toContainText(otherName);
   await expect(allow).toHaveCount(1);
 
+  // Each page holds two event streams; a third tab would use up Chromium's six per host.
+  await helperPage.close();
   const otherPage = await context.newPage();
   await otherPage.goto(`${m.url}/bots/${bots[otherName].id}/threads/${second.id}`);
   const inOther = otherPage
