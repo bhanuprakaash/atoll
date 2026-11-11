@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Atoll's own MCP server, as every provider's config names it, and its tools.
@@ -56,6 +57,15 @@ const (
 
 // ErrSignedOut is the error of a run that failed because the provider refused its sign-in.
 var ErrSignedOut = errors.New("provider is signed out")
+
+// LimitError is the error of a run a provider's usage limit stopped. ResetsAt is zero when the
+// provider gave no time.
+type LimitError struct {
+	Text     string
+	ResetsAt time.Time
+}
+
+func (e *LimitError) Error() string { return e.Text }
 
 // ErrApprovalEnded means the provider resolved an approval before Answer reached it.
 var ErrApprovalEnded = errors.New("approval request has ended")
@@ -129,7 +139,7 @@ const (
 	KindText    Kind = iota + 1 // Text is a piece of the reply
 	KindSession                 // SessionID is the id Resume takes
 	KindTurnEnd
-	KindError       // Text is the error; SignedOut when the provider refused its sign-in
+	KindError       // Text is the error; SignedOut when the provider refused its sign-in; Limited when its usage limit stopped the turn
 	KindToolCall    // ID, Server, Name and Input: a tool call started
 	KindApproval    // ID, Name and Input: the provider waits for Answer(ID, ...)
 	KindApprovalEnd // ID: the provider ended the request without an Answer
@@ -145,6 +155,8 @@ type Event struct {
 	Server    string
 	Input     json.RawMessage
 	SignedOut bool
+	Limited   bool
+	ResetsAt  time.Time // when Limited, the provider's reset time; zero if it gave none
 }
 
 // Env returns the parent environment without the variables that carry a provider's credentials or

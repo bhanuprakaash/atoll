@@ -541,6 +541,8 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 		res = store.RunResult{Status: store.StatusFailed, Error: err.Error()}
 		if m.ctx.Err() != nil {
 			res.Error = _stopReason
+		} else if limit := (*provider.LimitError)(nil); errors.As(err, &limit) {
+			res.ErrorKind, res.ResetsAt = store.ErrorRateLimited, limit.ResetsAt
 		} else if errors.Is(err, provider.ErrSignedOut) {
 			res.ErrorKind = store.ErrorSignedOut
 			if m.cfg.SignedOut != nil {
@@ -955,6 +957,9 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 			case provider.KindError:
 				if ev.SignedOut {
 					return "", fmt.Errorf("%w: %s", provider.ErrSignedOut, ev.Text)
+				}
+				if ev.Limited {
+					return "", &provider.LimitError{Text: ev.Text, ResetsAt: ev.ResetsAt}
 				}
 				return "", errors.New(ev.Text)
 			}

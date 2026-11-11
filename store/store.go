@@ -56,6 +56,9 @@ const (
 // ErrorSignedOut is the error kind of a run that failed because its provider is signed out.
 const ErrorSignedOut = "signed_out"
 
+// ErrorRateLimited is the error kind of a run a provider's usage limit stopped.
+const ErrorRateLimited = "rate_limited"
+
 // KindGitLab is the kind of a GitLab connection.
 const KindGitLab = "gitlab"
 
@@ -206,6 +209,7 @@ type (
 		Reply      string         `json:"reply"`
 		Error      string         `json:"error"`
 		ErrorKind  string         `json:"error_kind"`
+		ResetsAt   string         `json:"resets_at"`
 		Provider   string         `json:"provider"`
 		Report     *Report        `json:"report"`
 		StartedAt  time.Time      `json:"started_at"`
@@ -951,8 +955,8 @@ func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 	var started, finished int64
 	var tools string
 	err := s.db.QueryRowContext(ctx,
-		"SELECT id, thread_id, status, reply, error, error_kind, provider, report, started_at, finished_at, tools FROM runs WHERE id = ?", id).
-		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &r.ErrorKind, &r.Provider, &report, &started, &finished, &tools)
+		"SELECT id, thread_id, status, reply, error, error_kind, resets_at, provider, report, started_at, finished_at, tools FROM runs WHERE id = ?", id).
+		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &r.ErrorKind, &r.ResetsAt, &r.Provider, &report, &started, &finished, &tools)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("run %s: %w", id, ErrNotFound)
 	}
@@ -1021,7 +1025,8 @@ type RunResult struct {
 	Reply     string
 	Error     string
 	ErrorKind string
-	Provider  string // the provider the run used
+	ResetsAt  time.Time // when the provider's usage limit resets, if it said
+	Provider  string    // the provider the run used
 }
 
 // Wake is a finished helper run with what the boss's message is made of.
@@ -1049,9 +1054,13 @@ func (s *Store) FinishRun(
 		if err != nil {
 			return fmt.Errorf("read run %s: %w", runID, err)
 		}
+		resetsAt := ""
+		if !res.ResetsAt.IsZero() {
+			resetsAt = res.ResetsAt.UTC().Format(time.RFC3339)
+		}
 		_, err = tx.ExecContext(ctx,
-			"UPDATE runs SET status = ?, reply = ?, error = ?, error_kind = ?, provider = ?, finished_at = ? WHERE id = ?",
-			res.Status, res.Reply, res.Error, res.ErrorKind, res.Provider, time.Now().UTC().UnixMicro(), runID)
+			"UPDATE runs SET status = ?, reply = ?, error = ?, error_kind = ?, resets_at = ?, provider = ?, finished_at = ? WHERE id = ?",
+			res.Status, res.Reply, res.Error, res.ErrorKind, resetsAt, res.Provider, time.Now().UTC().UnixMicro(), runID)
 		if err != nil {
 			return fmt.Errorf("finish run: %w", err)
 		}
@@ -1108,13 +1117,13 @@ func enqueueWake(ctx context.Context, tx *sql.Tx, runID string, wake func(Wake) 
 	var botID, bossID string
 	var report sql.NullString
 	err := tx.QueryRowContext(ctx,
-		`SELECT b.id, b.name, t.id, t.branch, p.id, p.branch, r.status, r.reply, r.error, r.report
+		`SELECT b.id, b.name, t.id, t.branch, p.id, p.branch, r.status, r.reply, r.error, r.error_kind, r.resets_at, r.provider, r.report
 		 FROM runs r JOIN threads t ON t.id = r.thread_id
 		 JOIN bots b ON b.id = t.bot_id AND b.removed = 0
 		 JOIN threads p ON p.id = t.parent_thread_id
 		 WHERE r.id = ?`, runID).
 		Scan(&botID, &w.Helper, &w.ThreadID, &w.Branch, &bossID, &w.BossBranch,
-			&w.Run.Status, &w.Run.Reply, &w.Run.Error, &report)
+			&w.Run.Status, &w.Run.Reply, &w.Run.Error, &w.Run.ErrorKind, &w.Run.ResetsAt, &w.Run.Provider, &report)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}

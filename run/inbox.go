@@ -136,5 +136,15 @@ func WakeText(w store.Wake) string {
 	case store.StatusStopped:
 		return fmt.Sprintf("The user stopped %s\n(thread %s)", helper, threadID)
 	}
+	if run.ErrorKind == store.ErrorRateLimited {
+		until := "its Claude limit resets"
+		if run.Provider == "codex" {
+			until = "its Codex limit resets"
+		}
+		if run.ResetsAt != "" {
+			until = run.ResetsAt
+		}
+		return fmt.Sprintf("%s is out until %s.\nDo not send it work until then.\n(thread %s)", helper, until, threadID)
+	}
 	return fmt.Sprintf("%s's run failed: %s\n(thread %s)", helper, run.Error, threadID)
 }

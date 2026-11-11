@@ -29,7 +29,8 @@ export type Run = {
   tools: Record<string, number>;
   report?: { blocked: string } | null;
   error: string;
-  error_kind: '' | 'signed_out';
+  error_kind: '' | 'signed_out' | 'rate_limited';
+  resets_at: string;
   provider: 'claude' | 'codex';
 };
 
