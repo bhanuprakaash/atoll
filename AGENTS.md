@@ -29,6 +29,7 @@
 - Smallest change that closes the ticket; owner merges.
 - Fix the whole class: when one instance is found, fix all of them, in the same PR if small.
 - Design first: settle an unsettled design before test and code; ask once, with a recommendation.
+- Full, living list; read before UI or product work: `.claude/skills/self-heal/references/owner-taste.md`
 
 ## What Reef is
 
