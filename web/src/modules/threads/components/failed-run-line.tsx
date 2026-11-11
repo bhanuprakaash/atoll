@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { quiet } from '@/components/button';
 import type { Run } from '@/modules/threads/api/messages';
 import { useRun } from '@/modules/threads/api/runs';
+import { messageTime } from '@/utils/time';
 
 const signedOutError = /sign.?in|authenticat|not logged in|login/i;
 const connectionSignIn = /needs sign-in/i;
@@ -16,18 +17,28 @@ function reason(error: string) {
 
 export function FailedLine({
   run,
+  botName,
   replied,
   newest,
   retry,
   signedOut,
 }: {
   run: Run;
+  botName: string;
   replied: boolean;
   newest: boolean;
   retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
   const [details, setDetails] = useState(false);
+  if (run.error_kind === 'rate_limited') {
+    return (
+      <p className="text-ink/80">
+        {botName} hit its {run.provider === 'codex' ? 'Codex' : 'Claude'} limit;{' '}
+        {run.resets_at ? `back at ${messageTime(run.resets_at)}` : 'try again later'}
+      </p>
+    );
+  }
   return (
     <div className="flex flex-wrap items-center gap-3">
       <svg
@@ -93,11 +104,13 @@ export function FailedLine({
 
 export function FailedRun({
   id,
+  botName,
   newest,
   retry,
   signedOut,
 }: {
   id: string;
+  botName: string;
   newest: boolean;
   retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
@@ -105,6 +118,13 @@ export function FailedRun({
   const { data: run } = useRun(id);
   if (run?.status !== 'failed') return null;
   return (
-    <FailedLine run={run} replied={false} newest={newest} retry={retry} signedOut={signedOut} />
+    <FailedLine
+      run={run}
+      botName={botName}
+      replied={false}
+      newest={newest}
+      retry={retry}
+      signedOut={signedOut}
+    />
   );
 }

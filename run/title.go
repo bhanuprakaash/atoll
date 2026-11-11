@@ -124,14 +124,9 @@ func (m *Manager) writeTitle(ctx context.Context, name, message, reply string) (
 // punctuation, first letter upper case.
 func cleanTitle(s string) string {
 	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
-	s = strings.Trim(s, " \t#*\"'`")
-	words := strings.Fields(s)
-	if len(words) == 0 {
-		return ""
-	}
-	words = words[:min(6, len(words))]
-	words[len(words)-1] = strings.TrimRight(words[len(words)-1], ".,;:!?\"'`")
-	s = strings.TrimSpace(strings.Join(words, " "))
+	s = strings.TrimLeft(s, " \t#\"'`")
+	s = strings.TrimRight(s, " \t*\"'`")
+	s = strings.Trim(store.CleanTitle(s, store.TitleGenerated), "*\"'`")
 	if s == "" {
 		return ""
 	}

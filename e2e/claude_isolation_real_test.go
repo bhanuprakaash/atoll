@@ -164,8 +164,8 @@ func TestClaudeIsolation_RealClaudeToolList(t *testing.T) {
 			var config struct {
 				McpServers map[string]map[string]any `json:"mcpServers"`
 			}
-			if err := json.Unmarshal([]byte(argv[j+1]), &config); err != nil || config.McpServers["atoll"] == nil {
-				t.Fatalf("--mcp-config %s has no atoll server (%v)", argv[j+1], err)
+			if err := json.Unmarshal(c.mcp, &config); err != nil || config.McpServers["atoll"] == nil {
+				t.Fatalf("MCP config %s has no atoll server (%v)", c.mcp, err)
 			}
 			config.McpServers["atoll"]["url"] = url
 			delete(config.McpServers["atoll"], "headers")
@@ -200,6 +200,87 @@ func TestClaudeIsolation_RealClaudeToolList(t *testing.T) {
 			slices.Sort(got)
 			if !slices.Equal(got, want) {
 				t.Errorf("init tools in %s\n%q\nwant\n%q", mode, got, want)
+			}
+		})
+	}
+}
+
+// TestNoRepoShell_RealClaudeCannotReadRegisteredRepo starts the real claude with the argv and env
+// atoll builds for a Bot with no repo access (captured from the fake) and asks it to read a
+// registered repo's README by its absolute path through Bash (`head`, and python, which no
+// permission rule covers) and Read. Contract: no-repo-shell-contract.md. Ask is left out: the
+// stand-in MCP server answers no approval, so every call would be refused for that reason.
+func TestNoRepoShell_RealClaudeCannotReadRegisteredRepo(t *testing.T) {
+	claude := realClaude(t)
+	m := ownerSetupMachine(t)
+	s := m.serve(t)
+	w := newRepoWorld(t, m, s)
+	// Another Bot's thread on beta gets its read-only checkout at its first run.
+	s.finished(t, s.events(t, w.betaThread), s.send(t, w.betaThread, _hey).ID)
+	checkout := filepath.Join(m.data, "threads", w.betaThread.ID, "README.md")
+
+	for _, mode := range []string{"auto", "full"} {
+		t.Run(mode, func(t *testing.T) {
+			none := w.bot(t, "None-"+mode, []string{}, mode)
+			_, _, c := w.session(t, none, "", _hey)
+			if err := os.WriteFile(filepath.Join(c.cwd, "control.txt"), []byte("control-line\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			url, _ := probeMCP(t, _standInTools...)
+			argv := slices.Clone(c.argv)
+			j := slices.Index(argv, "--mcp-config")
+			var config struct {
+				McpServers map[string]map[string]any `json:"mcpServers"`
+			}
+			if err := json.Unmarshal([]byte(argv[j+1]), &config); err != nil || config.McpServers["atoll"] == nil {
+				t.Fatalf("--mcp-config %s has no atoll server (%v)", argv[j+1], err)
+			}
+			config.McpServers["atoll"]["url"] = url
+			delete(config.McpServers["atoll"], "headers")
+			b, _ := json.Marshal(config)
+			argv[j+1] = string(b)
+
+			readme := filepath.Join(w.beta.Path, "README.md")
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, claude, argv...)
+			ask := "Do these five things with tools, one tool call each, and say what each returned or that it failed. " +
+				"1. Bash: head -1 " + readme + " " +
+				"2. Bash: python3 -c \"print(open('" + readme + "').readline())\" " +
+				"3. Read the file " + readme + " " +
+				"4. Bash: python3 -c \"print(open('" + checkout + "').readline())\" " +
+				"5. Bash: cat control.txt"
+			cmd.Stdin = strings.NewReader(`{"type":"user","message":{"role":"user","content":` + string(mustJSON(ask)) + `}}` + "\n")
+			cmd.Dir = c.cwd
+			cmd.Env = os.Environ()
+			for k, v := range c.env {
+				if k == "CLAUDE_CODE_SHELL_PREFIX" || k == "ENABLE_CLAUDEAI_MCP_SERVERS" || strings.HasPrefix(k, "ATOLL_MCP_") {
+					cmd.Env = append(cmd.Env, k+"="+v)
+				}
+			}
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("claude %q: %v\n%s", argv, err, out)
+			}
+			var results []string
+			for _, line := range strings.Split(string(out), "\n") {
+				var l struct {
+					Type    string
+					Message struct {
+						Content json.RawMessage
+					}
+				}
+				if json.Unmarshal([]byte(line), &l) == nil && l.Type == "user" {
+					results = append(results, string(l.Message.Content))
+				}
+			}
+			all := strings.Join(results, "\n")
+			if strings.Contains(all, _readmeMarker) {
+				t.Errorf("a tool result held the README of a repo the Bot lacks:\n%s", all)
+			}
+			if !strings.Contains(all, "control-line") {
+				t.Errorf("Bash did not read the control file in the Bot's own folder, so a refusal proves nothing:\n%s", all)
 			}
 		})
 	}

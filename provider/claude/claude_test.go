@@ -114,30 +114,27 @@ func TestArgv(t *testing.T) {
 	}
 	noTools := slices.Clone(base)
 	noTools[len(noTools)-1] = ""
-	mcp := func(servers string) []string {
-		return []string{
-			"--mcp-config", servers,
-			"--permission-prompt-tool", "mcp__atoll__approve",
-			"--allowedTools", "mcp__atoll",
-		}
+	atoll := []string{
+		"--mcp-config", "/dev/fd/3",
+		"--permission-prompt-tool", "mcp__atoll__approve",
+		"--allowedTools", "mcp__atoll",
 	}
-	atoll := mcp(`{"mcpServers":{"atoll":{"type":"http","url":"${ATOLL_MCP_0}"}}}`)
-	atollSecrets := []string{"ATOLL_MCP_0=http://127.0.0.1:9/mcp/t0k"}
+	atollConfig := `{"mcpServers":{"atoll":{"type":"http","url":"http://127.0.0.1:9/mcp/t0k"}}}`
 	tests := []struct {
-		name        string
-		cfg         provider.Config
-		extra       []string
-		want        []string
-		wantSecrets []string
+		name       string
+		cfg        provider.Config
+		extra      []string
+		want       []string
+		wantConfig string
 	}{
-		{"without MCP", provider.Config{}, nil, base, nil},
+		{"without MCP", provider.Config{}, nil, base, ""},
 		{"with MCP", provider.Config{MCPURL: "http://127.0.0.1:9/mcp/t0k"}, nil,
-			append(base[:len(base):len(base)], atoll...), atollSecrets},
+			append(base[:len(base):len(base)], atoll...), atollConfig},
 		{"resume comes last", provider.Config{MCPURL: "http://127.0.0.1:9/mcp/t0k"}, []string{"--resume", "abc"},
-			append(append(base[:len(base):len(base)], atoll...), "--resume", "abc"), atollSecrets},
+			append(append(base[:len(base):len(base)], atoll...), "--resume", "abc"), atollConfig},
 		{"system on resume", provider.Config{SystemPrompt: "addition"}, []string{"--resume", "abc"},
-			append(base[:len(base):len(base)], "--append-system-prompt", "addition", "--resume", "abc"), nil},
-		{"tokens, headers and env stay out of argv", provider.Config{
+			append(base[:len(base):len(base)], "--append-system-prompt", "addition", "--resume", "abc"), ""},
+		{"tokens, headers and env go in the config, not argv", provider.Config{
 			MCPURL:       "http://127.0.0.1:9/mcp/t0k",
 			GitHubMCPURL: "https://api.githubcopilot.com/mcp/",
 			GitHubToken:  "gho_abc",
@@ -146,42 +143,38 @@ func TestArgv(t *testing.T) {
 				{Name: "local", Command: "srv", Args: []string{"--stdio"}, Env: map[string]string{"TOKEN": "e1"}},
 			},
 		}, nil,
-			append(base[:len(base):len(base)], mcp(`{"mcpServers":{`+
-				`"atoll":{"type":"http","url":"${ATOLL_MCP_0}"},`+
-				`"docs":{"headers":{"Authorization":"${ATOLL_MCP_3}","X-Key":"${ATOLL_MCP_4}"},"type":"http","url":"${ATOLL_MCP_2}"},`+
-				`"github":{"headers":{"Authorization":"Bearer ${ATOLL_MCP_1}"},"type":"http","url":"https://api.githubcopilot.com/mcp/"},`+
-				`"local":{"args":["--stdio"],"command":"srv","env":{"TOKEN":"${ATOLL_MCP_5}"},"type":"stdio"}`+
-				`}}`)...),
-			[]string{
-				"ATOLL_MCP_0=http://127.0.0.1:9/mcp/t0k", "ATOLL_MCP_1=gho_abc",
-				"ATOLL_MCP_2=https://docs.example/mcp?key=k1", "ATOLL_MCP_3=Bearer b1", "ATOLL_MCP_4=h1",
-				"ATOLL_MCP_5=e1",
-			}},
+			append(base[:len(base):len(base)], atoll...),
+			`{"mcpServers":{` +
+				`"atoll":{"type":"http","url":"http://127.0.0.1:9/mcp/t0k"},` +
+				`"docs":{"headers":{"Authorization":"Bearer b1","X-Key":"h1"},"type":"http","url":"https://docs.example/mcp?key=k1"},` +
+				`"github":{"headers":{"Authorization":"Bearer gho_abc"},"type":"http","url":"https://api.githubcopilot.com/mcp/"},` +
+				`"local":{"args":["--stdio"],"command":"srv","env":{"TOKEN":"e1"},"type":"stdio"}` +
+				`}}`},
 		{"title without tools", provider.Config{NoTools: true}, nil,
-			noTools, nil},
+			noTools, ""},
 		{"no tools ignores MCP", provider.Config{MCPURL: "http://127.0.0.1:9/mcp/t0k", NoTools: true}, nil,
-			noTools, nil},
+			noTools, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, secrets, err := argv(tt.cfg, tt.extra...)
+			got, config, err := argv(tt.cfg, tt.extra...)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("argv = %q, want %q", got, tt.want)
 			}
-			if !reflect.DeepEqual(secrets, tt.wantSecrets) {
-				t.Errorf("secrets = %q, want %q", secrets, tt.wantSecrets)
+			if string(config) != tt.wantConfig {
+				t.Errorf("config = %s, want %s", config, tt.wantConfig)
 			}
 		})
 	}
 }
 
-func TestStartKeepsSecretsOutOfArgv(t *testing.T) {
+func TestStartKeepsSecretsOutOfArgvAndEnv(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "claude")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + dir + "/args\nenv > " + dir + "/env\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + dir + "/args\nenv > " + dir + "/env\ncat /dev/fd/3 > " + dir + "/config\n"
 	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +182,7 @@ func TestStartKeepsSecretsOutOfArgv(t *testing.T) {
 	cfg := provider.Config{
 		Bin: bin, Dir: t.TempDir(), Cwd: t.TempDir(),
 		MCPURL: "http://127.0.0.1:9/mcp/t0k", GitHubMCPURL: "https://api.githubcopilot.com/mcp/", GitHubToken: "gho_abc",
-		MCPServers: []provider.UserMCPServer{{Name: "local", Command: "srv", Env: map[string]string{"TOKEN": "e1"}}},
+		MCPServers: []provider.UserMCPServer{{Name: "local", Command: "srv", Env: map[string]string{"TOKEN": "srv_env_secret"}}},
 	}
 	if err := s.Start(t.Context(), cfg); err != nil {
 		t.Fatal(err)
@@ -206,16 +199,16 @@ func TestStartKeepsSecretsOutOfArgv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{"t0k", "gho_abc", "e1"} {
-		if strings.Contains(string(args), secret) {
-			t.Errorf("argv holds %q:\n%s", secret, args)
-		}
+	config, err := os.ReadFile(filepath.Join(dir, "config"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, want := range []string{
-		"ATOLL_MCP_0=http://127.0.0.1:9/mcp/t0k\n", "ATOLL_MCP_1=gho_abc\n", "ATOLL_MCP_2=e1\n",
-	} {
-		if !strings.Contains(string(env), want) {
-			t.Errorf("environment lacks %q", want)
+	for _, secret := range []string{"t0k", "gho_abc", "srv_env_secret"} {
+		if strings.Contains(string(args), secret) || strings.Contains(string(env), secret) {
+			t.Errorf("argv or environment holds %q", secret)
+		}
+		if !strings.Contains(string(config), secret) {
+			t.Errorf("config lacks %q", secret)
 		}
 	}
 }

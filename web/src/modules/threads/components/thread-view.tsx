@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
 import { quiet } from '@/components/button';
@@ -17,12 +18,13 @@ import {
 import { useRun, useStopRun } from '@/modules/threads/api/runs';
 import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
+import { QueuedMessage } from '@/modules/threads/components/queued-message';
 import { HelpersRegion } from '@/modules/threads/components/helpers-region';
 import { FailedLine, FailedRun } from '@/modules/threads/components/failed-run-line';
 import { LiveRun } from '@/modules/threads/components/live-run';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
-import { clockTime } from '@/utils/time';
+import { clockTime, messageTime } from '@/utils/time';
 
 const chatText = 'text-base leading-[1.65] tracking-normal';
 
@@ -33,6 +35,7 @@ function duration(run: Run) {
 }
 function RunResult({
   id,
+  botName,
   time,
   newest,
   askedAbove,
@@ -40,6 +43,7 @@ function RunResult({
   signedOut,
 }: {
   id: string;
+  botName: string;
   time?: string;
   newest: boolean;
   askedAbove?: boolean;
@@ -86,7 +90,14 @@ function RunResult({
         </p>
       )}
       {run.status === 'failed' && (
-        <FailedLine run={run} replied newest={newest} retry={retry} signedOut={signedOut} />
+        <FailedLine
+          run={run}
+          botName={botName}
+          replied
+          newest={newest}
+          retry={retry}
+          signedOut={signedOut}
+        />
       )}
       <p className="text-xs">
         <time dateTime={at} data-testid={time ? 'message-time' : undefined}>
@@ -96,18 +107,6 @@ function RunResult({
       </p>
     </div>
   );
-}
-function messageTime(createdAt: string) {
-  const date = new Date(createdAt);
-  const today = new Date();
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const startOfMessage = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const daysAgo = Math.round((startOfToday.getTime() - startOfMessage.getTime()) / 86_400_000);
-  const time = clockTime(createdAt);
-  if (daysAgo === 0) return time;
-  if (daysAgo === 1) return `Yesterday ${time}`;
-  if (daysAgo < 7) return `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
-  return `${date.getDate()} ${date.toLocaleDateString([], { month: 'short' })} ${time}`;
 }
 
 // helperReport is a helper's message in its boss's thread as the user reads it: the prose, and the
@@ -197,6 +196,13 @@ function MessageLine({
       {messageTime(message.created_at)}
     </time>
   );
+  if (message.kind) {
+    return (
+      <p data-testid="message" className="text-sm text-muted">
+        Reef: {message.text} {time}
+      </p>
+    );
+  }
   if (message.from_bot_id) {
     const report = brief ? { prose: message.text, threadId: '' } : helperReport(message.text);
     const text = (
@@ -445,6 +451,11 @@ export function ThreadView({
   const messages = messageQuery.data?.pages.flat() ?? [];
   const { fetchNextPage, hasNextPage, isFetching } = messageQuery;
   const { data: thread } = useThread(threadId);
+  const queryClient = useQueryClient();
+  const queued = thread?.queued ?? [];
+  useEffect(() => {
+    void queryClient.invalidateQueries({ queryKey: ['messages', threadId] });
+  }, [queryClient, threadId, thread?.run_id, queued.length]);
   const create = useCreateThreadWithMessage(botId);
   const send = useSendMessage(threadId);
   const stop = useStopRun();
@@ -510,7 +521,7 @@ export function ThreadView({
         return { mime: a.mime, data: url.slice(url.indexOf(',') + 1) };
       }),
     );
-    send.mutate({ text: message.text, images }, { onSuccess: ({ run }) => begin(run.id) });
+    send.mutate({ text: message.text, images }, { onSuccess: ({ run }) => run && begin(run.id) });
   };
   const sendFirst = (text: string, images?: ImageInput[]) => {
     if (repoId && !thread?.repo_id)
@@ -521,7 +532,7 @@ export function ThreadView({
             navigate(`/bots/${botId}/threads/${result.thread?.id ?? result.id}`),
         },
       );
-    else send.mutate({ text, images }, { onSuccess: ({ run }) => begin(run.id) });
+    else send.mutate({ text, images }, { onSuccess: ({ run }) => run && begin(run.id) });
   };
   const mrUrl = mr?.url ?? thread?.mr_url;
   const mrState = mr?.state ?? thread?.mr_state;
@@ -686,6 +697,7 @@ export function ThreadView({
                         {afterRun?.(m.run_id)}
                         <RunResult
                           id={m.run_id}
+                          botName={botName}
                           time={m.created_at}
                           newest={newest(m.run_id)}
                           retry={retry}
@@ -698,6 +710,7 @@ export function ThreadView({
                 {unanswered(m) && (
                   <FailedRun
                     id={m.run_id}
+                    botName={botName}
                     newest={newest(m.run_id)}
                     retry={retry}
                     signedOut={signedOut}
@@ -722,6 +735,7 @@ export function ThreadView({
                   {afterRun?.(id)}
                   <RunResult
                     id={id}
+                    botName={botName}
                     newest={newest(id)}
                     askedAbove={asked.has(id)}
                     retry={retry}
@@ -736,6 +750,7 @@ export function ThreadView({
               {afterRun?.(thread.run_id)}
               <RunResult
                 id={thread.run_id}
+                botName={botName}
                 newest={newest(thread.run_id)}
                 askedAbove={asked.has(thread.run_id)}
                 retry={retry}
@@ -743,6 +758,15 @@ export function ThreadView({
               />
             </div>
           )}
+          {queued.map((m) => (
+            <QueuedMessage
+              key={m.id}
+              message={m}
+              threadId={threadId}
+              running={!!activeId}
+              editable={!thread?.parent_thread_id}
+            />
+          ))}
           {lostRepo && (
             <p className="text-sm text-muted">
               {botName} no longer has access to {lostRepo}
