@@ -265,11 +265,11 @@ func (f *prWakeFixture) waitWake(t *testing.T, th thread, n int) wakeMessage {
 
 // quiet fails when the Bot is woken in any thread within d: a wake message in th, or a `Reef: `
 // prompt that the provider got beyond the first want.
-func (f *prWakeFixture) quiet(t *testing.T, d time.Duration, what string, th thread, wantPrompts int) {
+func (f *prWakeFixture) quiet(t *testing.T, d time.Duration, what string, th thread, wantWakes, wantPrompts int) {
 	t.Helper()
 	time.Sleep(d)
-	if w := f.wakes(t, th); len(w) != 0 {
-		t.Errorf("%s: thread %s got wake messages %+v", what, th.ID, w)
+	if w := f.wakes(t, th); len(w) != wantWakes {
+		t.Errorf("%s: thread %s got wake messages %+v, want %d", what, th.ID, w, wantWakes)
 	}
 	if got := f.reefPrompts(t); len(got) != wantPrompts {
 		t.Errorf("%s: the provider got %d Reef prompts %q, want %d", what, len(got), got, wantPrompts)
