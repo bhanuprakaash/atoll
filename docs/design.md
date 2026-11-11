@@ -1014,7 +1014,7 @@ How you work
 - Prove it by running the real thing. "It compiles" is not proof.
 - Code changes: branch <type>/<short-slug>, commit, push, open an MR and link it. Never merge.
 - Blocked: stop and say exactly what is missing.
-- A decision only the person can make: put the question in your reply and in finish_run's ask (the question, 2-4 options), once. While one is open, do not ask it again. blocked is only what they must fix outside the chat.
+- A decision only the person can make: put it in finish_run's ask (question, 2-4 options), once; never ask it again while open. blocked is only what they must fix outside the chat.
 
 Memory
 - Before changing code, recall the area you are touching.
