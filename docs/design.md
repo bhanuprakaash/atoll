@@ -1126,7 +1126,7 @@ Voice
   connect the server builds Earlier from rows newer than the timestamp, newest first, one row
   per event, with the text a live event gets: a run that ended in an open thread
   (`runs.finished_at`; "Pilot finished Review !42", or "Pilot failed Review !42" for a failed
-  one, which includes a run the restart cut short; a run the user stopped is not listed), a
+  one, which includes a run the restart cut short; a run the user stopped counts as finished), a
   thread whose MR is `opened` since then (`threads.mr_changed_at`, new, set when `mr_state`
   changes; "Pilot opened !42", the MR title as detail) and a platform change
   (`changes.created_at`; "Chief created Bot Lagoon"). Threads on screen are left out, as they are
