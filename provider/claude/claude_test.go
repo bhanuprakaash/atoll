@@ -182,7 +182,7 @@ func TestStartKeepsSecretsOutOfArgvAndEnv(t *testing.T) {
 	cfg := provider.Config{
 		Bin: bin, Dir: t.TempDir(), Cwd: t.TempDir(),
 		MCPURL: "http://127.0.0.1:9/mcp/t0k", GitHubMCPURL: "https://api.githubcopilot.com/mcp/", GitHubToken: "gho_abc",
-		MCPServers: []provider.UserMCPServer{{Name: "local", Command: "srv", Env: map[string]string{"TOKEN": "e1"}}},
+		MCPServers: []provider.UserMCPServer{{Name: "local", Command: "srv", Env: map[string]string{"TOKEN": "srv_env_secret"}}},
 	}
 	if err := s.Start(t.Context(), cfg); err != nil {
 		t.Fatal(err)
@@ -203,7 +203,7 @@ func TestStartKeepsSecretsOutOfArgvAndEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{"t0k", "gho_abc", "e1"} {
+	for _, secret := range []string{"t0k", "gho_abc", "srv_env_secret"} {
 		if strings.Contains(string(args), secret) || strings.Contains(string(env), secret) {
 			t.Errorf("argv or environment holds %q", secret)
 		}
