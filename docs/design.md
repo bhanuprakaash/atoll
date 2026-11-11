@@ -168,7 +168,11 @@ after a failed undo counts a Bot that is already gone as removed.
   carries the answer itself, never only in the report or thinking. Status uses 2–3 plain lines,
   not an answer the person asked for. *The report feeds memory, parents and fresh
   starts.* `blocked` is only what the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
-  is not blocked, so the chat shows no Blocked line for it. A turn that ends without
+  is not blocked, so the chat shows no Blocked line for it. A `blocked` that only says there is
+  none ("Nothing blocking", "None", "nothing", "n/a", any case, with spaces or trailing
+  punctuation) is stored empty. A `finish_run` with `done` absent or blank is refused as a tool
+  error naming `done` and stores nothing, so the Bot reads it and calls again in the same run.
+  A turn that ends without
   the report gets one more prompt in the same session asking for it; its text is not shown. If
   there is still none, the run ends `done` with `report: null` and a logged warning.
 - One provider process per run, in the thread's folder (`<data>/threads/<id>`): a provider
