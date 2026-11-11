@@ -7,12 +7,12 @@ import { getThread, markOpened } from '@/modules/threads/api/threads';
 export type LiveRun = {
   text: string;
   tool?: { kind: ToolKind; target: string; name: string; verb: string };
-  approvals: { id: string; tool: string; input: unknown }[];
+  approvals: { id: string; tool: string; input: unknown; allow_in_thread?: boolean }[];
   finished?: { status: string; error: string; blocked?: string };
 };
 type Data<T> = T & { run_id: string };
 const empty: LiveRun = { text: '', approvals: [] };
-const withApproval = (run: LiveRun, a: { id: string; tool: string; input: unknown }): LiveRun =>
+const withApproval = (run: LiveRun, a: LiveRun['approvals'][number]): LiveRun =>
   run.approvals.some((x) => x.id === a.id) ? run : { ...run, approvals: [...run.approvals, a] };
 
 export function useThreadEvents(threadId: string) {
@@ -92,7 +92,7 @@ export function useThreadEvents(threadId: string) {
       ...run,
       tool: { kind: d.kind, target: d.target, name: d.name, verb: d.verb },
     }));
-    on<{ id: string; tool: string; input: unknown }>('approval', (d, run) => withApproval(run, d));
+    on<LiveRun['approvals'][number]>('approval', (d, run) => withApproval(run, d));
     on<{ id: string }>('approval_closed', (d, run) => {
       closedApprovals.current.add(d.id);
       return { ...run, approvals: run.approvals.filter((x) => x.id !== d.id) };
