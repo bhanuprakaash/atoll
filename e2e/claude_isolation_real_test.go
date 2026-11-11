@@ -164,8 +164,8 @@ func TestClaudeIsolation_RealClaudeToolList(t *testing.T) {
 			var config struct {
 				McpServers map[string]map[string]any `json:"mcpServers"`
 			}
-			if err := json.Unmarshal([]byte(argv[j+1]), &config); err != nil || config.McpServers["atoll"] == nil {
-				t.Fatalf("--mcp-config %s has no atoll server (%v)", argv[j+1], err)
+			if err := json.Unmarshal(c.mcp, &config); err != nil || config.McpServers["atoll"] == nil {
+				t.Fatalf("MCP config %s has no atoll server (%v)", c.mcp, err)
 			}
 			config.McpServers["atoll"]["url"] = url
 			delete(config.McpServers["atoll"], "headers")

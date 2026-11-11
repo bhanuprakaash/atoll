@@ -212,6 +212,17 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
+		case "procs-hold", "procs-scan":
+			var err error
+			if e.Fake == "procs-hold" {
+				repoReply, err = fake.ProcsHold(t.servers)
+			} else {
+				repoReply, err = fake.ProcsScan(t.userMessage)
+			}
+			if err != nil {
+				return err
+			}
+			continue
 		case "ask":
 			if skip {
 				continue

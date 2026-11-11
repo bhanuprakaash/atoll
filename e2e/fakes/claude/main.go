@@ -126,6 +126,9 @@ func stream(log *fake.Log, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := log.MCPConfig(p.mcpConfig); err != nil {
+		return err
+	}
 	if err := autoMemory(args); err != nil {
 		return err
 	}
