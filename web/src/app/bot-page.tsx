@@ -8,6 +8,7 @@ import {
   useSearchParams,
 } from 'react-router';
 import { Creature, type CreatureLook } from '@/components/creature';
+import { Gone } from '@/components/gone';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { BotMemory } from '@/modules/memory/components/bot-memory';
 import { BotSettings } from '@/modules/bots/components/bot-settings';
@@ -143,7 +144,7 @@ export function BotHeader({
   );
 }
 
-export function BotPage() {
+function BotFrame() {
   const { botId = '', threadId = '' } = useParams();
   const { data: bots = [] } = useBots();
   const { data: threads = [] } = useThreads(botId);
@@ -246,6 +247,15 @@ export function BotPage() {
       )}
     </div>
   );
+}
+
+export function BotPage() {
+  const { botId = '' } = useParams();
+  const { data: bots } = useBots();
+  if (!bots) return null;
+  if (!bots.some((bot) => bot.id === botId))
+    return <Gone title="This Bot is gone" to="/" link="Go home" />;
+  return <BotFrame />;
 }
 
 export function LatestThread() {
