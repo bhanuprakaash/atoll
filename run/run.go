@@ -541,6 +541,8 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 		res = store.RunResult{Status: store.StatusFailed, Error: err.Error()}
 		if m.ctx.Err() != nil {
 			res.Error = _stopReason
+		} else if errors.Is(err, provider.ErrOff) {
+			res.ErrorKind = store.ErrorProviderOff
 		} else if errors.Is(err, provider.ErrSignedOut) {
 			res.ErrorKind = store.ErrorSignedOut
 			if m.cfg.SignedOut != nil {

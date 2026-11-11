@@ -56,6 +56,9 @@ const (
 // ErrorSignedOut is the error kind of a run that failed because its provider is signed out.
 const ErrorSignedOut = "signed_out"
 
+// ErrorProviderOff is the error kind of a run whose provider is not installed or is turned off.
+const ErrorProviderOff = "provider_off"
+
 // KindGitLab is the kind of a GitLab connection.
 const KindGitLab = "gitlab"
 
@@ -200,17 +203,19 @@ type (
 
 	// Run is one message handled.
 	Run struct {
-		ID         string         `json:"id"`
-		ThreadID   string         `json:"thread_id"`
-		Status     string         `json:"status"`
-		Reply      string         `json:"reply"`
-		Error      string         `json:"error"`
-		ErrorKind  string         `json:"error_kind"`
-		Provider   string         `json:"provider"`
-		Report     *Report        `json:"report"`
-		StartedAt  time.Time      `json:"started_at"`
-		FinishedAt time.Time      `json:"finished_at"`
-		Tools      map[string]int `json:"tools"`
+		ID        string `json:"id"`
+		ThreadID  string `json:"thread_id"`
+		Status    string `json:"status"`
+		Reply     string `json:"reply"`
+		Error     string `json:"error"`
+		ErrorKind string `json:"error_kind"`
+		// ErrorDetail is the raw error behind a plain Error; empty when Error is the raw one.
+		ErrorDetail string         `json:"error_detail"`
+		Provider    string         `json:"provider"`
+		Report      *Report        `json:"report"`
+		StartedAt   time.Time      `json:"started_at"`
+		FinishedAt  time.Time      `json:"finished_at"`
+		Tools       map[string]int `json:"tools"`
 	}
 
 	// Report is what the provider passed to finish_run, exactly.
