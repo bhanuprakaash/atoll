@@ -45,6 +45,7 @@ func titled(t *testing.T, s *server, id, want string) {
 // TestTitles_Generated: after the first reply the provider's cheapest model titles the thread, in
 // a fresh session of its own that is no run and sends nothing on the thread's stream.
 func TestTitles_Generated(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -93,6 +94,7 @@ func TestTitles_Generated(t *testing.T) {
 
 // TestTitles_UserTitleKept: a title the user set is never replaced, so no title session runs.
 func TestTitles_UserTitleKept(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	th := s.newThread(t, s.newBot(t, "Ada", "claude"))
 	s.do(t, "PATCH", "/api/threads/"+th.ID, map[string]string{"title": "My plan"}, nil, http.StatusOK)
@@ -110,6 +112,7 @@ func TestTitles_UserTitleKept(t *testing.T) {
 // thread's title comes from the brief, never from the "delegated this to you" preface: first
 // words until a reply, then a title from a session that saw no preface.
 func TestTitles_HelperBrief(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)

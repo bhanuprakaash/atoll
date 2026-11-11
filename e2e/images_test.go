@@ -117,6 +117,7 @@ func (s *server) wantImage(t *testing.T, path, mime string, want []byte) {
 }
 
 func TestImages_SendStoreAndServe(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	b := s.newBot(t, "Pixel", "claude")
 	th := s.newThread(t, b)
@@ -171,6 +172,7 @@ func (s *server) runOf(t *testing.T, th thread) string {
 }
 
 func TestImages_Rejected(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	b := s.newBot(t, "Strict", "claude")
 	small := tinyPNG(t, color.RGBA{B: 255, A: 255})
@@ -215,6 +217,7 @@ func TestImages_Rejected(t *testing.T) {
 }
 
 func TestImages_ProviderInput(t *testing.T) {
+	t.Parallel()
 	red, jpg := tinyPNG(t, color.RGBA{R: 255, A: 255}), tinyJPEG(t)
 	images := []imageIn{asImage("image/png", red), asImage("image/jpeg", jpg)}
 	for _, p := range _providers {
@@ -272,6 +275,7 @@ func TestImages_ProviderInput(t *testing.T) {
 }
 
 func TestImages_DeleteBot(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	b := s.newBot(t, "Gone", "claude")
 	th := s.newThread(t, b)
@@ -292,6 +296,7 @@ func TestImages_DeleteBot(t *testing.T) {
 }
 
 func TestImages_ThreadFile(t *testing.T) {
+	t.Parallel()
 	f := newRepoFixture(t, "claude")
 	b := f.bot(t, "claude", "all", nil)
 	th, work, _, _ := f.work(t, b, _unfinishedRepoPrompt, "fix/seeded-bug")

@@ -6,6 +6,7 @@ import (
 )
 
 func TestRun_StatusWords(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	b := chief(t, s).bot
 	th := s.newThread(t, b)

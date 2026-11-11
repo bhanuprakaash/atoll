@@ -39,6 +39,7 @@ func wantDelegates(t *testing.T, s *server, id, when string, want ...string) {
 }
 
 func TestDelegates_API(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	poteto := s.newBot(t, "Poteto", "claude")
 	lagoon := s.newBot(t, "Lagoon", "claude")
@@ -83,6 +84,7 @@ func TestDelegates_API(t *testing.T) {
 }
 
 func TestDelegates_Chief(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -142,6 +144,7 @@ func TestDelegates_Chief(t *testing.T) {
 }
 
 func TestDelegates_DeleteRemovesFromLists(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	mako := s.newBot(t, "Mako", "claude")
 	lagoon := s.newBot(t, "Lagoon", "claude")

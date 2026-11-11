@@ -138,6 +138,7 @@ func loggedCalls(t *testing.T, m *machine, name string) []*call {
 // fake GitHub's pull request route work without the product: the fake provider is started by hand
 // with the env of a run of a Bot with GitHub, against a stub of Reef's MCP tools.
 func TestGitHubReposFixtures_ProviderScenario(t *testing.T) {
+	t.Parallel()
 	for _, provider := range _providers {
 		t.Run(provider, func(t *testing.T) {
 			m := newMachine(t, provider, "gh")

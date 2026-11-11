@@ -18,6 +18,7 @@ func catalogOnly() []mcpServer {
 }
 
 func TestMCPGitHub_RowFollowsTheConnection(t *testing.T) {
+	t.Parallel()
 	f := newGitHubFixture(t, "claude")
 	mcpURL := f.gh.URL + "/mcp/"
 	row := norm(mcpServer{ID: "github", Name: "GitHub", Kind: "connection", URL: mcpURL})
@@ -81,6 +82,7 @@ func TestMCPGitHub_RowFollowsTheConnection(t *testing.T) {
 }
 
 func TestMCPGitHub_RowIsReadOnly(t *testing.T) {
+	t.Parallel()
 	f := newGitHubFixture(t, "claude")
 	body := map[string]any{"name": "GitHub", "url": "https://mcp.example.test/mcp"}
 	// Without the connection `github` is an id the library does not have.
@@ -130,6 +132,7 @@ func clearSecretEntryAfter(t *testing.T, username string) {
 }
 
 func TestMCPGitHub_BotWithBothGetsOnlyTheConnectionsEntry(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newGitHubFixture(t, p)

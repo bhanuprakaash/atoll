@@ -13,6 +13,7 @@ import (
 // Issue #227: on Linux the repo folder picker is zenity, run by the server, so the UI still talks
 // to Go over HTTP only.
 func TestRepos_PickFolderLinux(t *testing.T) {
+	t.Parallel()
 	type picked struct {
 		Path  string `json:"path"`
 		Error string `json:"error"`
