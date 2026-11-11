@@ -724,6 +724,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	cfg.Model = bot.Model
 	cfg.Mode = bot.Mode
 	cfg.NoShell = bot.ID == "chief" && bot.Provider == "claude"
+	if bot.Provider == "claude" && !cfg.NoShell {
+		if cfg.HiddenPaths, err = m.hiddenPaths(a.ctx, bot); err != nil {
+			return "", err
+		}
+	}
 	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
 		if cfg.WritableRoots, err = m.codexAutoRoots(a.ctx, thread, rp); err != nil {
 			return "", err

@@ -566,6 +566,15 @@ func (s *Store) Threads(ctx context.Context, botID string) ([]Thread, error) {
 		scanThread, botID)
 }
 
+// ThreadIDsOnRepo lists the ids of the threads on the repo repoID.
+func (s *Store) ThreadIDsOnRepo(ctx context.Context, repoID string) ([]string, error) {
+	return query(ctx, s.db, "SELECT id FROM threads WHERE repo_id = ? ORDER BY rowid",
+		func(r *sql.Rows) (string, error) {
+			var id string
+			return id, r.Scan(&id)
+		}, repoID)
+}
+
 // HelperThreads lists the threads that help parentID, oldest first.
 func (s *Store) HelperThreads(ctx context.Context, parentID string) ([]Thread, error) {
 	return query(ctx, s.db,
