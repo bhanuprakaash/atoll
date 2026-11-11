@@ -1279,6 +1279,12 @@ Voice
   the threads popup. A helper thread is listed under its own Bot, without close or pin. *The
   server sends each Bot's open threads with their marker on `GET /api/bots`; the client picks the
   rows, since only it knows the thread on screen and what is unfolded.*
+- Selected row: the sidebar marks where you are once, on the most specific item. With a thread
+  open, only that thread's row has the selected fill and `aria-current="page"`; its Bot row has
+  neither (hover still shows). With a Bot open and no thread (its new-thread page), the Bot row
+  has them. It holds for helper threads, pinned Bots and pinned threads, and the open thread's
+  row in the threads popup. Never two selected rows in the sidebar. *A Bot row's heavy fill and
+  the thread row's fill competed, and the heavier one sat on the less specific item.*
 - Bot list poll (`GET /api/bots`, every 2 s): the Bots with their summary, each with every open
   thread as `{id, title, state, pinned, helper?}`, newest activity first; `state` is `needs_you`,
   `running`, `new` or empty. Two queries, a Bots query and a threads query; no new field and no
