@@ -36,6 +36,7 @@ export function Composer({
   threadId,
   botName,
   runId,
+  waiting,
   disabled,
   onSent,
   context,
@@ -44,6 +45,7 @@ export function Composer({
   threadId: string;
   botName: string;
   runId?: string;
+  waiting?: boolean;
   disabled: boolean;
   onSent: (run: Run) => void;
   context?: ReactNode;
@@ -108,7 +110,7 @@ export function Composer({
         onSuccess: ({ run }) => {
           setText('');
           setImages([]);
-          onSent(run);
+          if (run) onSent(run);
         },
       },
     );
@@ -139,35 +141,36 @@ export function Composer({
       className="block max-h-[194px] overflow-y-auto py-2.25 text-[15px] leading-[22px]"
     />
   );
-  const action = runId ? (
-    <button
-      type="button"
-      aria-label="Stop"
-      disabled={stop.isPending}
-      onClick={() => stop.mutate(runId)}
-      className={roundButton}
-    >
-      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14">
-        <rect x="2" y="2" width="10" height="10" rx="2" fill="currentColor" />
-      </svg>
-    </button>
-  ) : (
-    <button type="submit" aria-label="Send" disabled={!canSend} className={roundButton}>
-      <svg
-        aria-hidden="true"
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+  const action =
+    runId && !(waiting && canSend) ? (
+      <button
+        type="button"
+        aria-label="Stop"
+        disabled={stop.isPending}
+        onClick={() => stop.mutate(runId)}
+        className={roundButton}
       >
-        <path d="M12 19V5M5 12l7-7 7 7" />
-      </svg>
-    </button>
-  );
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14">
+          <rect x="2" y="2" width="10" height="10" rx="2" fill="currentColor" />
+        </svg>
+      </button>
+    ) : (
+      <button type="submit" aria-label="Send" disabled={!canSend} className={roundButton}>
+        <svg
+          aria-hidden="true"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 19V5M5 12l7-7 7 7" />
+        </svg>
+      </button>
+    );
 
   return (
     <div className="flex flex-col gap-2" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>

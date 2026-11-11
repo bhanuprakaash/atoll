@@ -295,7 +295,7 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if err := json.Unmarshal(call.Arguments, &in); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		allow, err := a.runs.Ask(r.Context(), token, in.ToolUseID, in.ToolName, in.Input)
+		decision, err := a.runs.Ask(r.Context(), token, in.ToolUseID, in.ToolName, in.Input)
 		if err != nil {
 			return nil, a.toolError(err)
 		}
@@ -304,8 +304,10 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			UpdatedInput json.RawMessage `json:"updatedInput,omitempty"`
 			Message      string          `json:"message,omitempty"`
 		}{Behavior: "deny", Message: "The user rejected this step."}
-		if allow {
+		if decision.Allow {
 			answer.Behavior, answer.UpdatedInput, answer.Message = "allow", in.Input, ""
+		} else if decision.Reason != "" {
+			answer.Message = "The user did not allow this and wrote: " + decision.Reason
 		}
 		body, err := json.Marshal(answer)
 		if err != nil {

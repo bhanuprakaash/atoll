@@ -92,7 +92,7 @@ export function BotGroup({
                   <path d="M6 9l6 6 6-6" />
                 </svg>
                 {folded && needsYou && (
-                  <span aria-hidden="true" className="size-1.5 flex-none rounded-full bg-danger" />
+                  <span aria-hidden="true" className="size-1.5 flex-none rounded-full bg-accent" />
                 )}
               </button>
             ) : (

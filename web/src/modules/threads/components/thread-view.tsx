@@ -17,6 +17,7 @@ import {
 import { useRun, useStopRun } from '@/modules/threads/api/runs';
 import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
+import { approvalTarget } from '@/modules/threads/components/approval-card';
 import { HelpersRegion } from '@/modules/threads/components/helpers-region';
 import { LiveRun } from '@/modules/threads/components/live-run';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
@@ -292,6 +293,15 @@ function MessageLine({
           )}
         </article>
         <span className="pr-[18px]">{time}</span>
+        {message.answered_approvals?.map((a) => (
+          <p
+            key={a.id}
+            className="flex max-w-full items-baseline gap-2 pr-[18px] text-xs text-muted"
+          >
+            <code className="min-w-0 truncate font-mono">{approvalTarget(a.input) || a.tool}</code>
+            <span className="flex-none">You replied instead</span>
+          </p>
+        ))}
       </div>
     );
   return (
@@ -541,7 +551,7 @@ export function ThreadView({
         return { mime: a.mime, data: url.slice(url.indexOf(',') + 1) };
       }),
     );
-    send.mutate({ text: message.text, images }, { onSuccess: ({ run }) => begin(run.id) });
+    send.mutate({ text: message.text, images }, { onSuccess: ({ run }) => run && begin(run.id) });
   };
   const sendFirst = (text: string, images?: ImageInput[]) => {
     if (repoId && !thread?.repo_id)
@@ -552,7 +562,7 @@ export function ThreadView({
             navigate(`/bots/${botId}/threads/${result.thread?.id ?? result.id}`),
         },
       );
-    else send.mutate({ text, images }, { onSuccess: ({ run }) => begin(run.id) });
+    else send.mutate({ text, images }, { onSuccess: ({ run }) => run && begin(run.id) });
   };
   const mrUrl = mr?.url ?? thread?.mr_url;
   const mrState = mr?.state ?? thread?.mr_state;
@@ -568,7 +578,7 @@ export function ThreadView({
     >
       <span
         aria-hidden="true"
-        className={`size-1.5 rounded-full ${{ merged: 'bg-whale', closed: 'bg-danger' }[mrState ?? ''] ?? 'bg-ok'}`}
+        className={`size-1.5 rounded-full ${{ merged: 'bg-whale', closed: 'bg-muted' }[mrState ?? ''] ?? 'bg-ok'}`}
       />
       {ref ?? '!MR'}
     </a>
@@ -854,6 +864,9 @@ export function ThreadView({
               threadId={threadId}
               botName={botName}
               runId={activeId}
+              waiting={
+                !!thread?.approval || Object.values(runs).some((r) => r.approvals.length > 0)
+              }
               disabled={!connected || !!thread?.closed}
               onSent={(run) => begin(run.id)}
               context={context}

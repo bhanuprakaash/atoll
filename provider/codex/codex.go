@@ -58,12 +58,14 @@ type (
 		tools    map[string]string // server to its last started MCP tool, which names an elicitation
 		notes    map[string]bool   // commentary agent message items of the turn; owned by run
 
-		askMu sync.Mutex
-		asks  map[string]ask
+		askMu   sync.Mutex
+		asks    map[string]ask
+		steered string // turn and text of the last steer, so several refusals send it once
 	}
 
 	ask struct {
-		id json.RawMessage
+		id     json.RawMessage
+		turnID string
 		// elicitation: MCP elicitations answer {action}, other requests {decision}.
 		elicitation bool
 	}
@@ -83,6 +85,7 @@ type (
 		ItemID     string          `json:"itemId"`
 		ServerName string          `json:"serverName"`
 		RequestID  json.RawMessage `json:"requestId"`
+		TurnID     string          `json:"turnId"`
 		Item       json.RawMessage `json:"item"`
 		Turn       struct {
 			Status string `json:"status"`
@@ -182,14 +185,26 @@ func (s *Session) Send(_ context.Context, prompt string, images []provider.Image
 // Events streams events until codex exits, then closes the channel.
 func (s *Session) Events() <-chan provider.Event { return s.events }
 
-// Answer replies to the approval request with id. It is safe to call while run reads.
-func (s *Session) Answer(id string, allow bool) error {
+// Answer replies to the approval request with id. A refusal with a reason steers the turn with
+// the reason first. It is safe to call while run reads.
+func (s *Session) Answer(id string, allow bool, reason string) error {
 	s.askMu.Lock()
 	a, ok := s.asks[id]
 	delete(s.asks, id)
+	steer := !allow && reason != "" && s.steered != a.turnID+"\x00"+reason
+	if steer {
+		s.steered = a.turnID + "\x00" + reason
+	}
 	s.askMu.Unlock()
 	if !ok {
 		return fmt.Errorf("no open approval request %s: %w", id, provider.ErrApprovalEnded)
+	}
+	var steerErr error
+	if steer {
+		steerErr = s.write(map[string]any{"id": "steer-" + a.turnID, "method": "turn/steer", "params": map[string]any{
+			"threadId": s.threadID, "expectedTurnId": a.turnID,
+			"input": []map[string]string{{"type": "text", "text": reason}},
+		}})
 	}
 	reply, answer := "decision", "decline"
 	if a.elicitation {
@@ -198,7 +213,7 @@ func (s *Session) Answer(id string, allow bool) error {
 	if allow {
 		answer = "accept"
 	}
-	return s.write(map[string]any{"id": a.id, "result": map[string]string{reply: answer}})
+	return errors.Join(steerErr, s.write(map[string]any{"id": a.id, "result": map[string]string{reply: answer}}))
 }
 
 // Interrupt stops codex, waits for it, and closes Events. Codex gets SIGTERM so it can stop the
@@ -427,7 +442,7 @@ func (s *Session) serverRequest(m message) bool {
 	}
 	id := string(m.ID)
 	s.askMu.Lock()
-	s.asks[id] = ask{id: m.ID, elicitation: elicitation}
+	s.asks[id] = ask{id: m.ID, turnID: m.body().TurnID, elicitation: elicitation}
 	s.askMu.Unlock()
 	input := m.Params
 	if name == "fileChange" {

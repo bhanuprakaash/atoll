@@ -99,7 +99,7 @@ function BotRow({
               </span>
             )}
             {bot.state === 'needs_you' && (
-              <span className="truncate text-[13px] text-needs-ink">{bot.activity}</span>
+              <span className="truncate text-[13px] text-ink">{bot.activity}</span>
             )}
           </span>
         </NavLink>

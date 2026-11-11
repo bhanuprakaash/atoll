@@ -175,7 +175,7 @@ func (s *Session) Events() <-chan provider.Event { return s.events }
 
 // Answer always fails: claude asks through the permission prompt tool on Atoll's MCP server and
 // never sends a KindApproval event.
-func (s *Session) Answer(string, bool) error {
+func (s *Session) Answer(string, bool, string) error {
 	return errors.New("claude asks for approval through its permission prompt tool")
 }
 

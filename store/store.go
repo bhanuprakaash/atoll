@@ -180,6 +180,15 @@ type (
 		CreatedAt time.Time `json:"created_at"`
 		// Attachments are the message's images. Data is set only on a message just stored.
 		Attachments []Attachment `json:"attachments"`
+		// Answered are the approvals this message denied by replying.
+		Answered []AnsweredApproval `json:"answered_approvals,omitempty"`
+	}
+
+	// AnsweredApproval is an approval a reply denied.
+	AnsweredApproval struct {
+		ID    string          `json:"id"`
+		Tool  string          `json:"tool"`
+		Input json.RawMessage `json:"input"`
 	}
 
 	// Attachment is an image sent with a message.
@@ -912,6 +921,38 @@ func (s *Store) startRun(
 	return m, r, nil
 }
 
+// AddReply stores text as the user's message in the thread, under run runID, with the approvals it
+// denied.
+func (s *Store) AddReply(
+	ctx context.Context, threadID, runID, text string, answered []AnsweredApproval,
+) (Message, error) {
+	m := Message{
+		ID: newID(), ThreadID: threadID, Role: RoleUser, Text: text, RunID: runID,
+		CreatedAt: time.Now().UTC(), Attachments: []Attachment{}, Answered: answered,
+	}
+	err := s.tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, "UPDATE threads SET last_activity = ? WHERE id = ?",
+			m.CreatedAt.UnixMicro(), threadID); err != nil {
+			return fmt.Errorf("touch thread: %w", err)
+		}
+		if err := insertMessage(ctx, tx, m); err != nil {
+			return err
+		}
+		for _, a := range answered {
+			if _, err := tx.ExecContext(ctx,
+				"INSERT INTO answered_approvals (id, message_id, tool, input) VALUES (?, ?, ?, ?)",
+				a.ID, m.ID, a.Tool, string(a.Input)); err != nil {
+				return fmt.Errorf("insert answered approval: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return Message{}, fmt.Errorf("add reply: %w", err)
+	}
+	return m, nil
+}
+
 // Enqueue holds text for the thread until a run can start.
 func (s *Store) Enqueue(ctx context.Context, threadID, fromBotID, text string) error {
 	return insertInbox(ctx, s.db, threadID, fromBotID, text)
@@ -1205,6 +1246,26 @@ func (s *Store) messages(ctx context.Context, querySQL string, args ...any) ([]M
 	for _, a := range rows {
 		m := byID[a.messageID]
 		m.Attachments = append(m.Attachments, a.Attachment)
+	}
+	type answered struct {
+		messageID string
+		AnsweredApproval
+	}
+	replies, err := query(ctx, s.db,
+		`SELECT message_id, id, tool, input FROM answered_approvals
+         WHERE message_id IN (SELECT value FROM json_each(?)) ORDER BY rowid`,
+		func(r *sql.Rows) (a answered, err error) {
+			var input string
+			err = r.Scan(&a.messageID, &a.ID, &a.Tool, &input)
+			a.Input = json.RawMessage(input)
+			return a, err
+		}, string(list))
+	if err != nil {
+		return nil, fmt.Errorf("list answered approvals: %w", err)
+	}
+	for _, a := range replies {
+		m := byID[a.messageID]
+		m.Answered = append(m.Answered, a.AnsweredApproval)
 	}
 	return msgs, nil
 }

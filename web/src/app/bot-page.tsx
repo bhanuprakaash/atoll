@@ -78,7 +78,7 @@ export function BotHeader({
             </div>
           )}
           {thread?.approval ? (
-            <span className="text-[13px] text-needs-ink">Needs you</span>
+            <span className="text-[13px] text-ink">Needs you</span>
           ) : thread?.run_status === 'running' ? (
             <span className="flex h-3.5 items-center gap-0.75">
               <span className="sr-only">Thinking</span>
@@ -99,9 +99,9 @@ export function BotHeader({
           {waiting > 0 && (
             <span
               aria-hidden="true"
-              className="flex items-center gap-1 rounded-full bg-needs-badge px-2 py-px text-xs text-needs-ink"
+              className="flex items-center gap-1 rounded-full bg-tile px-2 py-px text-xs text-ink"
             >
-              <span className="size-1.5 rounded-full bg-danger" />
+              <span className="size-1.5 rounded-full bg-accent" />
               {waiting}
             </span>
           )}

@@ -14,6 +14,7 @@ export type Message = {
   from_bot_id?: string;
   created_at: string;
   attachments: { id: string; mime: string }[];
+  answered_approvals?: { id: string; tool: string; input: unknown }[];
 };
 
 export const fetchAttachment = (id: string) => apiBlob(`/attachments/${id}`);
@@ -80,10 +81,13 @@ export function useSendMessage(threadId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { text: string; images?: ImageInput[] }) =>
-      api<{ message: Message; run: Run }>(`/threads/${threadId}/messages`, {
-        method: 'POST',
-        body: input,
-      }),
+      api<{ message: Message; run: Run | null; answered?: string[] }>(
+        `/threads/${threadId}/messages`,
+        {
+          method: 'POST',
+          body: input,
+        },
+      ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['messages', threadId] }),
   });
 }
