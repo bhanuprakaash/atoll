@@ -110,6 +110,7 @@ every PR. New issues and PRs start from the templates in `.github/`.
 
 A ticket is done when:
 
+- Docs-only: `make format` check and `scripts/check-tests`; CI runs the rest
 - `make check` passes locally and in the PR checks.
 - Every acceptance line is proven by running it, and the PR's Proof section shows the command and
   its output.
