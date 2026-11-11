@@ -50,6 +50,7 @@ func useAll() []fake.MCPCall {
 }
 
 func TestMCPServers_LibraryKeepsSecretsInTheOSStore(t *testing.T) {
+	t.Parallel()
 	f := newMCPFixture(t, "claude")
 
 	var list []mcpServer
@@ -103,6 +104,7 @@ func TestMCPServers_LibraryKeepsSecretsInTheOSStore(t *testing.T) {
 }
 
 func TestMCPServers_RunGetsExactlyThePickedServers(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newMCPFixture(t, p)
@@ -165,6 +167,7 @@ func TestMCPServers_RunGetsExactlyThePickedServers(t *testing.T) {
 }
 
 func TestMCPServers_DeniedCallDoesNotReachTheServer(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newMCPFixture(t, p)
@@ -183,6 +186,7 @@ func TestMCPServers_DeniedCallDoesNotReachTheServer(t *testing.T) {
 }
 
 func TestMCPServers_EditAndRemoveApplyFromTheNextRun(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newMCPFixture(t, p)
@@ -249,6 +253,7 @@ func mustJSON(v any) string {
 }
 
 func TestMCPServers_Refusals(t *testing.T) {
+	t.Parallel()
 	f := newMCPFixture(t, "claude")
 	post := func(body map[string]any, want int) {
 		t.Helper()
@@ -288,6 +293,7 @@ func TestMCPServers_Refusals(t *testing.T) {
 }
 
 func TestMCPServers_BotPicks(t *testing.T) {
+	t.Parallel()
 	f := newMCPFixture(t, "claude")
 	var plain mcpBot
 	f.s.do(t, "POST", "/api/bots", map[string]any{"name": "Plain", "persona": "x", "provider": "claude"}, &plain, http.StatusCreated)
@@ -335,6 +341,7 @@ func TestMCPServers_BotPicks(t *testing.T) {
 }
 
 func TestChiefBot_MCPServers(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newMCPFixture(t, p)
@@ -399,6 +406,7 @@ func TestChiefBot_MCPServers(t *testing.T) {
 // any MCP config, to prove the mcp-use scenario: a stdio server and an HTTP server with a header
 // in the config, a call on each, an ask before each, and nothing for a server the config lacks.
 func TestMCPFixtures_ProviderScenarios(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		for _, decision := range []string{"allow", "deny"} {
 			t.Run(p+"/"+decision, func(t *testing.T) {

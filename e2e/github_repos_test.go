@@ -13,6 +13,7 @@ import (
 // Contract: github-repos-contract.md.
 
 func TestGitHubRepos_RepoShowsItsHost(t *testing.T) {
+	t.Parallel()
 	f := newGitHubRepoFixture(t, "claude")
 	hello := f.register(t, "octo-hello", f.hello(t))
 	gitlab := f.register(t, "gitlab-repo", seedRepo(t, "https://gitlab.example/fixtures/seeded.git"))
@@ -33,6 +34,7 @@ func TestGitHubRepos_RepoShowsItsHost(t *testing.T) {
 }
 
 func TestGitHubRepos_BotPushesAndOpensAPullRequest(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newGitHubRepoFixture(t, p)
@@ -122,6 +124,7 @@ func TestGitHubRepos_BotPushesAndOpensAPullRequest(t *testing.T) {
 }
 
 func TestGitHubRepos_WithoutTheConnectionStartWorkSaysWhatToDo(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			f := newGitHubRepoFixture(t, p)

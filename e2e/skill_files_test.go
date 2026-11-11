@@ -119,6 +119,7 @@ func sorted(paths []skipped) []skipped {
 }
 
 func TestSkillFiles_ChiefImportsPotetoMode(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -180,6 +181,7 @@ func TestSkillFiles_ChiefImportsPotetoMode(t *testing.T) {
 }
 
 func TestSkillFiles_ImportSkipsBinariesAndGit(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -218,6 +220,7 @@ func TestSkillFiles_ImportSkipsBinariesAndGit(t *testing.T) {
 }
 
 func TestSkillFiles_BotRunsPlacedScript(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -244,6 +247,7 @@ func TestSkillFiles_BotRunsPlacedScript(t *testing.T) {
 }
 
 func TestSkillFiles_RejectsInvalidFiles(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	seed := []skillFile{{Path: "scripts/check", Content: _checkScript, Executable: true}, {Path: "playbooks/ship.md", Content: "# ship\n"}}
 	var skill fileSkill
@@ -288,6 +292,7 @@ func TestSkillFiles_RejectsInvalidFiles(t *testing.T) {
 }
 
 func TestSkillFiles_StoreAndReplace(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	var plain map[string]json.RawMessage
 	s.do(t, "POST", "/api/skills", map[string]string{"name": "reef-greeting", "content": fake.GreetingSkill}, &plain, 201)
@@ -327,6 +332,7 @@ func TestSkillFiles_StoreAndReplace(t *testing.T) {
 }
 
 func TestSkillFiles_SmallerSetIsPlaced(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -355,6 +361,7 @@ func TestSkillFiles_SmallerSetIsPlaced(t *testing.T) {
 }
 
 func TestSkillFiles_ReimportWithoutReefEdit(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -402,6 +409,7 @@ func TestSkillFiles_ReimportWithoutReefEdit(t *testing.T) {
 }
 
 func TestSkillFiles_ReimportAfterReefEditAsksFirst(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -460,6 +468,7 @@ func TestSkillFiles_ReimportAfterReefEditAsksFirst(t *testing.T) {
 }
 
 func TestSkillFiles_LiveRunKeepsItsCopy(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -494,6 +503,7 @@ func TestSkillFiles_LiveRunKeepsItsCopy(t *testing.T) {
 }
 
 func TestSkillFiles_ImportSkillIsChiefOnly(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
