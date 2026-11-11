@@ -180,13 +180,30 @@ func TestWorktrees(t *testing.T) {
 	}
 
 	dir := filepath.Join(root, "threads", "t2")
-	for range 2 {
-		if err := Checkout(ctx, src, dir); err != nil {
-			t.Fatalf("Checkout: %v", err)
-		}
+	if _, err := Checkout(ctx, src, dir, ""); err != nil {
+		t.Fatalf("Checkout: %v", err)
 	}
 	if got := git(dir, "branch", "--show-current"); got != "" {
 		t.Errorf("Checkout branch = %q, want detached", got)
+	}
+	if got, want := git(dir, "rev-parse", "HEAD"), git(src, "rev-parse", "origin/HEAD"); got != want {
+		t.Errorf("Checkout at %s, want origin/HEAD %s", got, want)
+	}
+
+	write(dir, "a.txt", "local edit\n")
+	oldHead := git(dir, "rev-parse", "--short=7", "HEAD")
+	git(src, "update-ref", "refs/remotes/origin/main", "main")
+	newHead := git(src, "rev-parse", "--short=7", "origin/HEAD")
+	note, err := Checkout(ctx, src, dir, "")
+	if want := fmt.Sprintf("the checkout has local changes, so it stays at %s, 2 commits behind origin/HEAD (%s)", oldHead, newHead); err != nil || note != want {
+		t.Errorf("Checkout with local changes = %q, %v, want %q", note, err, want)
+	}
+	git(dir, "checkout", "--", "a.txt")
+	if note, err = Checkout(ctx, src, dir, ""); err != nil || note != "" {
+		t.Fatalf("Checkout of a clean checkout = %q, %v", note, err)
+	}
+	if got := git(dir, "rev-parse", "--short=7", "HEAD"); got != newHead {
+		t.Errorf("clean checkout moved to %s, want %s", got, newHead)
 	}
 }
 

@@ -119,7 +119,7 @@ func cut(s string, limit int) string {
 
 func messagePrompt(
 	text string, items []memory.Item, counts memory.Counts, thread store.Thread, repo store.Repo,
-	cwd string,
+	cwd, behind, stale string,
 ) string {
 	var blocks []string
 	if len(items) > 0 {
@@ -152,9 +152,15 @@ func messagePrompt(
 			case repo.Host == _hostGitHub:
 				work = _repoWorkGitHub
 			}
-			blocks = append(blocks, fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s\n%s",
-				repo.Name, repo.ID, path, branch, work))
+			block := fmt.Sprintf("Repo: %s (%s)\nWorktree: %s\nBranch: %s\n", repo.Name, repo.ID, path, branch)
+			if behind != "" {
+				block += "Note: " + behind + "\n"
+			}
+			blocks = append(blocks, block+work)
 		}
+	}
+	if stale != "" {
+		blocks = append(blocks, "Note: "+stale)
 	}
 	blocks = append(blocks, "Message:\n"+text)
 	return strings.Join(blocks, "\n\n")

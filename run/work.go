@@ -453,7 +453,7 @@ func (m *Manager) reserve(threadID string) *active {
 // workdir is where the thread's runs work: its worktree; else, for a repo thread, a clean
 // checkout of the repo; else a folder of its own. A thread whose Bot lost its repo (rp is empty)
 // gets a folder that holds neither the checkout nor the worktree.
-func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, error) {
+func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, string, error) {
 	dir := m.threadDir(t.ID)
 	switch {
 	case t.RepoID != "" && rp.ID == "":
@@ -463,40 +463,41 @@ func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, error) {
 		if rp.ID != "" && t.WorktreeGitDir == "" && !errors.Is(statErr, os.ErrNotExist) {
 			common, err := repo.GitCommonDir(m.ctx, rp.Path)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			id, err := repo.WorktreeID(common, t.Worktree)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			if err := m.cfg.Store.SetGitDirs(m.ctx, t.ID, t.CheckoutGitDir, id); err != nil {
-				return "", err
+				return "", "", err
 			}
 		}
-		return t.Worktree, nil
+		return t.Worktree, "", nil
 	case rp.ID != "":
-		if err := repo.Checkout(m.ctx, rp.Path, dir); err != nil {
-			return "", err
+		note, err := repo.Checkout(m.ctx, rp.Path, dir, t.CheckoutGitDir)
+		if err != nil {
+			return "", "", err
 		}
 		if t.CheckoutGitDir == "" {
 			common, err := repo.GitCommonDir(m.ctx, rp.Path)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			id, err := repo.WorktreeID(common, dir)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			if err := m.cfg.Store.SetGitDirs(m.ctx, t.ID, id, t.WorktreeGitDir); err != nil {
-				return "", err
+				return "", "", err
 			}
 		}
-		return dir, nil
+		return dir, note, nil
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("create thread folder: %w", err)
+		return "", "", fmt.Errorf("create thread folder: %w", err)
 	}
-	return dir, nil
+	return dir, "", nil
 }
 
 // WorkDir is the folder the thread's runs work in: its worktree, else its own folder.

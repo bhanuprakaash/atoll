@@ -104,10 +104,7 @@ func WithWorktree(ctx context.Context, common, id string) context.Context {
 func Create(
 	ctx context.Context, repoPath, root, repoName, branch string,
 ) (path, used string, base Base, err error) {
-	start := "HEAD"
-	if _, err := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", "origin/HEAD^{commit}"); err == nil {
-		start = "origin/HEAD"
-	}
+	start := startRef(ctx, repoPath)
 	commit, err := git(ctx, repoPath, nil, "rev-parse", "--short=7", start)
 	if err != nil {
 		return "", "", Base{}, fmt.Errorf("read base: %w", err)
@@ -162,14 +159,35 @@ func add(ctx context.Context, repoPath, root, repoName, branch, start string) (p
 	return path, used, nil
 }
 
+// startRef is the ref start_work branches from and the read-only checkout sits at: origin/HEAD when
+// it resolves, else HEAD.
+func startRef(ctx context.Context, repoPath string) string {
+	if _, err := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", "origin/HEAD^{commit}"); err == nil {
+		return "origin/HEAD"
+	}
+	return "HEAD"
+}
+
+// defaultBranch is the local branch origin/HEAD points at.
+func defaultBranch(ctx context.Context, repoPath string) (string, bool) {
+	remote, err := git(ctx, repoPath, nil, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+	return strings.TrimPrefix(remote, "origin/"), err == nil
+}
+
+func commits(count string) string {
+	if count == "1" {
+		return "1 commit"
+	}
+	return count + " commits"
+}
+
 // aheadNote names the local default branch (the one origin/HEAD points at) and how far it is ahead
 // of origin/HEAD. It is empty when it is not ahead or cannot be read.
 func aheadNote(ctx context.Context, repoPath string) string {
-	remote, err := git(ctx, repoPath, nil, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
-	if err != nil {
+	local, ok := defaultBranch(ctx, repoPath)
+	if !ok {
 		return ""
 	}
-	local := strings.TrimPrefix(remote, "origin/")
 	count, err := git(ctx, repoPath, nil, "rev-list", "--count", "origin/HEAD..refs/heads/"+local)
 	if err != nil || count == "0" {
 		return ""
@@ -178,26 +196,75 @@ func aheadNote(ctx context.Context, repoPath string) string {
 	if err != nil {
 		return ""
 	}
-	noun := "commits"
-	if count == "1" {
-		noun = "commit"
-	}
-	return fmt.Sprintf("local %s is %s %s ahead (%s); not included", local, count, noun, tip)
+	return fmt.Sprintf("local %s is %s ahead (%s); not included", local, commits(count), tip)
 }
 
-// Checkout makes dir a detached worktree of repoPath at HEAD. A dir that already is a worktree
-// is left alone.
-func Checkout(ctx context.Context, repoPath, dir string) error {
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-		return nil
+// BehindNote says how far the local default branch (the one origin/HEAD points at) is behind
+// origin/HEAD. It is empty when it is not behind or cannot be read.
+func BehindNote(ctx context.Context, repoPath string) string {
+	local, ok := defaultBranch(ctx, repoPath)
+	if !ok {
+		return ""
 	}
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-		return fmt.Errorf("make checkout folder: %w", err)
+	count, err := git(ctx, repoPath, nil, "rev-list", "--count", "refs/heads/"+local+"..origin/HEAD")
+	if err != nil || count == "0" {
+		return ""
 	}
-	if _, err := git(ctx, repoPath, nil, "worktree", "add", "--detach", dir, "HEAD"); err != nil {
-		return fmt.Errorf("add checkout: %w", err)
+	tip, err := git(ctx, repoPath, nil, "rev-parse", "--short=7", "origin/HEAD")
+	if err != nil {
+		return ""
 	}
-	return nil
+	return fmt.Sprintf("local %s is %s behind origin/HEAD (%s); the checkout is at origin/HEAD", local, commits(count), tip)
+}
+
+// Checkout makes dir a detached worktree of repoPath at the commit start_work would branch from
+// and moves an existing one there. id is the checkout's stored git directory ID, empty when not
+// stored yet. A checkout with local changes stays; the note then says how far behind it is.
+func Checkout(ctx context.Context, repoPath, dir, id string) (note string, err error) {
+	start := startRef(ctx, repoPath)
+	commit, err := git(ctx, repoPath, nil, "rev-parse", "--verify", start+"^{commit}")
+	if err != nil {
+		return "", fmt.Errorf("read base: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+			return "", fmt.Errorf("make checkout folder: %w", err)
+		}
+		if _, err := git(ctx, repoPath, nil, "worktree", "add", "--detach", dir, commit); err != nil {
+			return "", fmt.Errorf("add checkout: %w", err)
+		}
+		return "", nil
+	}
+	if id != "" {
+		common, err := GitCommonDir(ctx, repoPath)
+		if err != nil {
+			return "", err
+		}
+		ctx = WithWorktree(ctx, common, id)
+	}
+	head, err := git(ctx, dir, nil, "rev-parse", "--verify", "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("read checkout HEAD: %w", err)
+	}
+	if head == commit {
+		return "", nil
+	}
+	status, err := git(ctx, dir, nil, "status", "--porcelain")
+	if err != nil {
+		return "", fmt.Errorf("read checkout status: %w", err)
+	}
+	if status != "" {
+		count, err := git(ctx, dir, nil, "rev-list", "--count", head+".."+commit)
+		if err != nil || count == "0" {
+			return "", nil
+		}
+		return fmt.Sprintf("the checkout has local changes, so it stays at %s, %s behind %s (%s)",
+			head[:7], commits(count), start, commit[:7]), nil
+	}
+	if _, err := git(ctx, dir, nil, "checkout", "--detach", commit); err != nil {
+		return "", fmt.Errorf("move checkout: %w", err)
+	}
+	return "", nil
 }
 
 // Save stores HEAD plus every tracked change and untracked file (ignored ones left out) of the
