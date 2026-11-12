@@ -307,16 +307,18 @@ after a failed undo counts a Bot that is already gone as removed.
   and ends with the thread. `in_thread` on an approval that does not offer it, or with
   `approve: false`, answers `400` and leaves the approval open; a closed approval still answers `404`.
   - The same command: the command text, trimmed of surrounding whitespace, equal byte for byte.
-    The text is Claude's `command`, or Codex's `command` without its `bash|sh|zsh -c|-lc` wrapper.
+    The text is Claude's `command`, or Codex's `command` without its `bash|sh|zsh` `-c` wrapper (any
+    flag word ending in `c`: `-c`, `-lc`, `-ec`), whose one quoted script loses its quotes.
     Case, inner spaces, quoting and argument order count, so `a && b` equals only `a && b`.
   - Not offered, when any one holds (the card is then Allow and Deny alone, same size and weight):
     the text contains `push` or `delete`, in any case; it has a flag word holding both `r` and `f`
     (`-rf`, `-fr`, `-Rf`), both `--recursive` and `--force`, or an `rm` whose flag words together
     hold both (`-r -f`, `-r --force`, `--recursive -f`), and any other word of the command is not
     an absolute path inside the thread's worktree or a tmp root (`/tmp`, `/var/tmp`, `$TMPDIR`; a
-    relative path, `~`, `$`, a glob or `..` counts as outside); it runs `git` to throw work away
-    (`clean` with `-f` or `--force`, `reset --hard`, `checkout` with `--`, `.` or `-f`, any
-    `restore`); or it runs `gh` as a write. A `gh` write is a `gh` word whose subcommand is not a read: reads are
+    relative path, `~`, `$`, a glob or `..` counts as outside); any `git` in it throws work away
+    (`clean` with `-f` or `--force`, `reset --hard`, `checkout` with `--`, `.`, `-f` or a revision
+    and a path, any `restore`); or it runs `gh` as a write. Program words (`rm`, `git`, `gh`) are read
+    unquoted, in lower case and without their folder, so `"rm"`, `\rm`, `RM` and `/usr/bin/git` count. A `gh` write is a `gh` word whose subcommand is not a read: reads are
     `view`, `list`, `status`, `diff`, `checks`, `search`, `browse`, `watch`, `download` and
     `gh api` with neither `-X`/`--method` other than `GET` nor `-f`/`-F`/`--field`/`--raw-field`/
     `--input`; every other verb, `create`, `edit`, `merge`, `close`, `comment`, `review`, `run`,

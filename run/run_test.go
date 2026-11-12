@@ -1136,6 +1136,10 @@ func TestCommandTarget(t *testing.T) {
 		{name: "timeout and cd", give: "cd x && timeout 540 make e2e", want: "make e2e"},
 		{name: "bash wrapper", give: `/bin/bash -lc "cd x && make check"`, want: "make check"},
 		{name: "bash wrapper quotes", give: `/bin/bash -lc "e() { gh pr view \"$1\"; }; e a"`, want: "gh pr"},
+		{name: "bash -ec wrapper", give: `bash -ec "make check"`, want: "make check"},
+		{name: "sh -xc wrapper", give: `/bin/sh -xc 'make check'`, want: "make check"},
+		{name: "wrapper wide spaces", give: `zsh  -lc  'make check'`, want: "make check"},
+		{name: "wrapper escaped quotes", give: `bash -lc "gh pr view \"1\""`, want: "gh pr"},
 		{name: "bash wrapper single quotes", give: `/bin/bash -lc 'ls -la'`, want: "ls"},
 	}
 	for _, tt := range tests {
