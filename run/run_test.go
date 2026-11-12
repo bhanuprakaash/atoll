@@ -757,6 +757,28 @@ func TestRun_AllowInThreadNotSaved(t *testing.T) {
 	}
 }
 
+func TestRun_AllowInThreadNotSavedRunEnded(t *testing.T) {
+	e := newEnv(t, &fakeSession{})
+	ended, end := context.WithCancel(t.Context())
+	end()
+	e.m.mu.Lock()
+	e.m.approvals["gone"] = open{
+		approval: Approval{ID: "gone", AllowInThread: true},
+		command:  "go clean -cache",
+		run:      &active{threadID: e.thread.ID, ctx: ended},
+		answer:   make(chan Decision, 1),
+	}
+	e.m.mu.Unlock()
+	if err := e.m.AnswerInThread(ended, "gone", true); err == nil {
+		t.Fatal("AnswerInThread with the save failing returned no error")
+	}
+	e.m.mu.Lock()
+	defer e.m.mu.Unlock()
+	if _, ok := e.m.approvals["gone"]; ok {
+		t.Error("approval of an ended run is open again after the failed save, want it dropped")
+	}
+}
+
 func TestRun_ApprovalEndedByProvider(t *testing.T) {
 	e := newEnv(t, &fakeSession{script: []provider.Event{
 		{Kind: provider.KindApproval, ID: "p1", Name: "Write", Input: json.RawMessage(`{"a":1}`)},

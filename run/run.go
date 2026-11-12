@@ -580,7 +580,9 @@ func (m *Manager) AnswerInThread(ctx context.Context, id string, allow bool) err
 	}
 	if err != nil {
 		m.mu.Lock()
-		m.approvals[id] = o
+		if m.runs[o.run.threadID] == o.run && o.run.ctx.Err() == nil {
+			m.approvals[id] = o
+		}
 		m.mu.Unlock()
 		return fmt.Errorf("record allow: %w", err)
 	}
