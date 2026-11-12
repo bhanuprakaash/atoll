@@ -145,7 +145,7 @@ func TestSlots_ToolResultsCarryHelpersLine(t *testing.T) {
 			}
 
 			got := useAtoll(t, s, boss, ev, continueCall(ids[0], _askPrompt), finishRunCall())
-			want := []string{"atoll/continue: Sent.", helpersLine(running...), "atoll/finish_run: Report saved.", helpersLine(running...)}
+			want := []string{"atoll/continue: Queued: Tester is working; it gets this when its run ends.", "atoll/finish_run: Report saved.", helpersLine(running...)}
 			if strings.Join(got, "\n") != strings.Join(want, "\n") {
 				t.Errorf("continue and finish_run in the boss thread: reply %q, want %q", got, want)
 			}
