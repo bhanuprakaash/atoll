@@ -342,6 +342,22 @@ after a failed undo counts a Bot that is already gone as removed.
   permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes). *The
   variable covers every MCP server of the run, not only Reef's: Claude Code has no per-server
   timeout, so a hung user tool also waits up to 30 minutes.*
+- Replying to an approval. A person's message to a thread with open approvals answers them, as the
+  composer's own reply rather than a refusal or a queued message. `POST /api/threads/{id}/messages`
+  stores the text as the user's message and denies every approval open in that thread, a helper's
+  shown there included, with the text as the reason; the run continues with that guidance. The
+  words are never read as Allow or Deny: a reply is always "do this instead", and Allow stays a
+  button. *A guess from "yes" or "ok" would run a command nobody allowed; the Bot can ask again.*
+  Claude: the permission prompt tool answers `deny` with the message `The user did not allow this
+  and wrote: <text>`. Codex: `turn/steer` with the text on the turn, then `decline` for each
+  open approval. The answer is `202 {message, run, answered}`: `run` is the thread's going run
+  (null when only a helper's approval was answered), `answered` the approval ids, and the message
+  holds `answered_approvals` (`[{id, tool, input}]`), so the chat shows one muted line under the
+  bubble per approval, `You replied instead`, after a reload too. Each approval closes
+  (`approval_closed`) and a later `POST /api/approvals/{id}` answers `404`. The text starts no run
+  and is not queued; a helper's approval gets it, not also the boss. A Bot's `continue`, and a
+  message with images, do not answer an approval: they follow the busy-thread rule. Without an open
+  approval a message to a busy thread follows that rule as before.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
   into a pane the user can take over (v2).
 
@@ -1416,7 +1432,17 @@ Voice
   (https://claude.ai/artifact/Grf7TUVqfAsv4oHU96rWrU); this section is the contract.
 - Look: Geist, regular weight. Main `#171717`, sidebar `#1A1A1A`, composer `#222222`, hairlines
   `#262626`, text `#ECECEC`, muted `#9B9B9B`. The light pill (`#ECECEC` on `#161616`) is the primary
-  action and the user's own message. Red `#E5484D` means needs you; amber means blocked.
+  action and the user's own message. Colour carries meaning (Colour, below).
+- Colour: calm by default. Red `#E5484D` means real danger, and only these: a failure the person
+  must deal with (a failed run's icon, the error text under a control whose action failed, a failed
+  CI mark) and a control that destroys or refuses (Delete Bot, Delete file, and Deny, on hover or
+  keyboard focus only). Nothing is red at rest because it waits. Needs you (a thread's marker, the
+  sidebar's second line, the island's count and rows, a helper's line, the creature's pulse) is
+  the light accent `#ECECEC`: a light dot, text in the main ink, neutral surfaces, never a red
+  fill or border. Amber means blocked and the blue dot means New. An MR chip's dot is never red
+  (merged blue, open green, closed grey), and a diff's counts are muted. Brand and creature colours
+  are identity, not state. *Red on every waiting item taught the user to skim past red; the owner
+  wants it left for the moments that are really bad (#146).*
 - Bot looks: 12, each the same soft pebble with one small sea trait at its edge, its own flat
   colour, two thin tick eyes and a slight tilt: jellyfish (Chief, as the logo; tentacles), whale
   (spout), shark (fin), penguin (belly), anglerfish (lure), pufferfish (spikes), octopus (arms),
@@ -1428,13 +1454,13 @@ Voice
   starfish, clownfish to scallop; sand dollar, island, sailboat, otter to seal; sponge to shark;
   kelp, turtle to narwhal; shell to octopus; wave to manta; sun, seahorse to pufferfish. Octopus
   and manta are looks again and keep their Bots. *Replaces the 14 looks in three groups: the user
-  picked pebble + one trait on the canvas.* Idle blinks; needs you is a pulsing red dot; asleep is
+  picked pebble + one trait on the canvas.* Idle blinks; needs you is a pulsing light dot; asleep is
   grey; failed has slanted eyes; reduced motion stops every animation.
 - Working shows by tool kind in the creature's eyes and body: no tool yet, the eyes circle up;
   reading, searching or recalling, the eyes scan; editing, writing, remembering or changing the
   platform, it bounces; running a command, it breathes. No spinner rings or bubbles anywhere, on a
   creature or a thread; a running thread shows three small wave dots.
-- Sidebar: a search field on top filters Bots by name, `+` beside it; no logo (the user found it
+- Sidebar: a search field on top filters Bots by name and open threads by title (see Keyboard), `+` beside it; no logo (the user found it
   redundant). Mockups: the "Reef thread tracking" canvas
   (https://claude.ai/artifact/McPffSMXRCir3g17QQJTGQ).
   One row per Bot (36 px creature, name, time; 9 px 10 px padding, 4 px between rows): Chief
@@ -1479,7 +1505,7 @@ Voice
   the creature's centre (28 px from the row's left edge; rows start 14 px right of it, at 42 px).
   The rail starts at the bottom of the Bot row and ends in a rounded hook at the middle of the last row, the overflow line included; it never touches a row. A Bot with
   nothing to show is its plain row. A row is the title and one marker at its right end: "Needs
-  you" and a red dot; "Waiting on you" and a red dot, the same marker for a thread with a waiting
+  you" and a light dot; "Waiting on you" and a light dot, the same marker for a thread with a waiting
   item (below), after Needs you in priority; a blue dot and a bold title for New; three wave dots while running; a pin
   when pinned and nothing else applies (a pinned thread that needs you, is New or runs shows that
   instead). Only the open thread and the hovered row have a box. *The tick tree started inside the
@@ -1527,6 +1553,29 @@ Voice
   address stays as typed (no redirect), no other Bot's or thread's content shows, and
   `Reconnecting` is for a lost server only, never for a `404`. *A blank page, or a stuck
   Reconnecting under another Bot's greeting, tells the person nothing and gives no way on.*
+- Keyboard: Reef works like a chat app. Opening a thread or the New thread screen, by any route
+  (sidebar, island, switcher, `⌘N`, a link), puts focus in its composer; a thread with no composer
+  (a helper thread) takes none. A printable key pressed with nothing focused, and no `⌘`, `Ctrl` or
+  `Alt` held, goes into the composer; with a dialog or menu open it goes nowhere. *Typing right
+  after a thread opened was lost: focus stayed on the link or the body.* The switcher is `⌘K`
+  (`Ctrl+K` off macOS), from anywhere including the composer: a dialog named `Go to` with a search
+  field and a list of the Bots and the open threads of every Bot. A Bot row is its creature and name;
+  Enter opens its latest thread, or its New thread screen when it has none. A thread row is its
+  Bot's creature, the title, the Bot's name and, on a second line, its branch and MR reference
+  (`#92`, `!7`) when it has them. Closed threads are not listed (the threads popup has them). A
+  query is split into words; each must be contained, ignoring case, in the Bot name, thread title,
+  branch or MR reference. With no query the order is threads that need you, threads by last
+  activity, then Bots in the sidebar's order. With a query: Bots whose name matches; threads whose
+  title holds every word; threads that needed the branch or MR too; threads that needed their Bot's
+  name too; inside each group, needs you first, then last activity. The first row is selected and
+  stays the first as the query changes; Up and Down move (they stop at the ends), Enter opens the
+  selected row and closes the switcher, Esc closes it and focus returns to where it was. No match
+  shows "No threads or Bots match". The Bots poll (`GET /api/bots`) gives each open thread its
+  `branch`, `mr_url` and `last_activity`, so the switcher needs no request of its own. *With 80+
+  threads a person finds "the thread about #161" by what they remember, not by whose it is.* The
+  sidebar search matches Bot names and open thread titles: a Bot shows when its name or a title
+  matches; while a title matches, its tree is the matching threads, all of them with no `N more`;
+  a Bot matched by name only keeps its usual tree.
 - Threads popup (from `N more`): a dialog with the Bot's creature and name, "N open threads · N
   closed", New thread and close; a search over title, branch and MR (`!7`); the rows the tree shows
   ("In the sidebar"), Other open threads, and Closed folded. Row hover has Pin to sidebar or Unpin
@@ -1536,7 +1585,7 @@ Voice
   Move a Bot with right-click › Move to group (the groups, No group, New group…) or by dragging it
   onto a heading. A heading's hover shows a fold arrow and ⋯ (Rename, New Bot in this group, Move
   up, Move down, Delete group); deleting moves its Bots to Ungrouped. Name, order and fold state
-  are stored (`/api/groups`). A folded group shows a red dot only when a Bot in it needs the user or has a
+  are stored (`/api/groups`). A folded group shows a light dot only when a Bot in it needs the user or has a
   waiting item; no counts.
 - Bot header: a solid band in the main background, 72 px tall, with a 24 px fade below it; the
   centred island sits on it. Messages scroll under the band and fade out; no text shows above its
@@ -1551,7 +1600,7 @@ Voice
   screen, the same Bot's other threads included (`GET /api/events`). An approval drops the island
   open: the Bot, the thread, the exact command or path, Open thread, Deny and Allow; Allow lets
   that run go on without leaving the thread on screen. It stays until answered; Esc or a click
-  away shrinks it to a red count on the pill. A finished run widens the island for about 4 s
+  away shrinks it to a count on the pill. A finished run widens the island for about 4 s
   ("reviewer finished Review !42", View), with no buttons, then it returns to rest. Clicking the
   island opens the notification list: Needs you (Allow and Deny inline), then Waiting on you (an
   item of another thread: its question with Open thread, a blocker's text, a ready PR's row), then
@@ -1632,6 +1681,50 @@ Voice
   (`claude-sonnet-5-5` is `Sonnet 5.5`); any other id as it is. A run without `cost_usd` (Codex)
   has no dollars: `gpt-5.6-sol, 3 calls`. A run without `usage` has no segment. *Evidence over claims: what
   a run cost shows where the run ends, with no page of its own.*
+- Errors are designed, never raw. One component, `ErrorNotice` (`web/src/components/error-notice.tsx`),
+  shows every failure a person can cause: a `role="alert"` block with a title in plain words, one
+  line of what to do next, an action button when there is one, and a collapsed `Details` button
+  (`aria-expanded`) whose text is for a bug report. It sits inline where the action failed (the
+  form, card, dialog or setting), replaces itself on the next attempt and never toasts. Calm:
+  only its icon is red; the words are ink and muted. No screen renders `error.message`, a JSON
+  body, an HTTP status text or a Go error chain; `.message` of an error is read only inside
+  `ErrorNotice`, which only `Details` shows. A chat run line is the same component in its
+  one-line form: the title is the line (`Didn't run: <reason>`, or `Run failed: <reason>` after a
+  reply), Retry or Resend is the action and stands in for the next-step line, and `Details` holds
+  the provider's raw error. The callback pages (`/oauth/callback`) take the same shape as static
+  HTML: the title, the next-step line and a closed `<details>` with the summary `Details`. *37 of
+  44 red texts rendered a server string, `internal error` or a raw HTML 502 page.*
+- The server answers a failed request `{"error": "<plain sentence>", "code": "<id>"}`. `error` is
+  the title as is; the UI adds the next step and action from `code`. A cause it knows gets its
+  code and sentence; any other failure is `internal` with the generic sentence, and its Go error
+  chain goes to the log (`request failed`, with method, path and `err`), never to the client. A
+  response that is not this JSON (a proxy's HTML page, an empty body) reads as `internal`. The
+  codes:
+
+  | code | status | `error` | next step | action |
+  | --- | --- | --- | --- | --- |
+  | `keychain` | 500 | `Reef couldn't save <what> to the system keychain.` | Unlock the keychain or restart Reef, then try again. | Sign in again (a connection) or Try again |
+  | `signed_out` | 401 | `That sign-in expired or was refused.` | Sign in again. | Sign in again |
+  | `provider_off` | 409 | `<Provider> isn't installed or isn't signed in.` | Open Settings > Providers. | Open settings |
+  | `busy` | 409 | `A run is going in this thread.` | Wait for it to finish, or stop it. | |
+  | `closed` | 409 | `This thread is closed.` | Start a new thread to keep going. | New thread |
+  | `not_found` | 404 | `That no longer exists.` | It was deleted or moved. Go back and pick another. | |
+  | `exists` | 409 | `Something with that name already exists.` | Pick another name. | |
+  | `invalid` | 400 | the input rule in a plain sentence, as the server words it (`name is required`), without a package's prefix | Fix it and try again. | |
+  | `conflict` | 409 | the rule that refused, plain (`Chief is always first`, `Poteto is handling this thread`) | Change it and try again. | |
+  | `forbidden` | 403 | the rule that refused, plain (`the Bot has no access to this repo`) | Change it and try again. | |
+  | `unsupported` | 501 | `No folder picker on this system.` | Type the repo path instead. | |
+  | `unreachable` | 502 | `Reef couldn't reach <host>.` | Check the address and your connection, then try again. | Try again |
+  | `internal` | 500 | `Something went wrong on our side.` | Try again. If it keeps happening, copy the details into a bug report. | Try again |
+
+  `Details` of a failed request reads `<code> · <status> · <METHOD> <path>`, nothing from the
+  chain. `provider_off` is also a run's `error_kind` (the CLI missing, or not signed in at
+  start); with `signed_out` and `secret_store` it picks the reason of the run line. An unknown
+  route or method is `not_found`. Losing the server is not an error of any request: the app shows
+  one `Reconnecting` notice (`role="status"`), on every page, until the server answers again, and
+  the requests that failed meanwhile show nothing of their own. *One notice per failed request
+  looked like ten bugs for one cause.* The gone pages (a deleted Bot or thread) are the full-page
+  form of `not_found`: a sentence and one link, no Details, since nothing failed.
 - Chat type: Bot replies, the user's bubble and briefs are 16 px, line height 1.65, letter spacing
   0; the rest of the app keeps 14 px. *Replies read as a wall next to Claude's app; the user wanted
   more air.*
@@ -1675,6 +1768,16 @@ Voice
   as the user's bubble with a quiet "Queued" mark and, in that bubble, Edit, Remove and Stop and
   send (Send now after a Stop). Edit turns the text into a field named "Edit message" with Save and Cancel. The mark and
   buttons go when the run delivers it. A busy thread shows no error under the composer.
+- Approval card: one quiet row in a group named Approval, with no fill or border of its own. A
+  one-line command is `Wants to run` (muted) and the command in a code line (`code`), then Allow
+  and Deny on that same row, at most 72 px tall at 1280x800. A tool that is not a command shows its
+  tool and target in the same code line; an edit shows its file there and keeps its Show diff /
+  Hide diff toggle. A command or path longer than 2 lines is clamped to 2 inside the code line
+  with Show all / Show less in the card, and the toggle never changes what Allow answers. Allow
+  is the light pill, Deny an outline pill that turns red on hover and keyboard focus only (the
+  island and its list too). The
+  waiting state is the thread's own Needs you marker: the card adds no banner, badge or red.
+  *An approval is usually one click; it should not compete with the reply.*
 - Composer: the message, then the thread's repo, branch and MR as chips on one row, and Send or
   Stop. A long branch name ends in "…" with the full name on hover. The MR chip shows only its
   reference (`#92`, `!12`) with a state dot (open, merged, closed); hovering shows its title. While
@@ -1703,27 +1806,49 @@ Voice
   Buttons answer like the composer, so a button while a run goes does what the composer does.
   *One pending item shows in every place it matters, clears in all, never twice; a test PR that is
   red until its fix lands is the expected state, not an alarm.*
-- Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` region sits between
-  the chat and the composer with one quiet line per helper whose run is going or waiting on an
-  approval: creature, Bot name, state
-  and `Open`. The state is the live step while it works: the verb and a short target, for a
-  command its program and plain first argument ("Running make build"; Codex shows the program only), never the raw
-  command. The program is the first real one: past `cd`, `VAR=value` assignments, a leading
-  `timeout <n>`, and a leading `cat > file` or other redirect; a function definition
-  (`name() {`) and a loop or `if` header (`for`, `while`, `until`, `if`) show the first command
-  inside; a heredoc's text is never a command; a command that only writes a file shows "Running
-  cat" (`e() { gh pr view "$1"; }; e a`, `for n in a b; do gh pr view $n; done` and
-  `timeout 400 gh pr checks 168 --watch` all show "Running gh pr"). Other words: "Waiting on a background task" for a command that reads a task's output file, "Looking around"
-  for Chief's `list_*` tools, "Handing off" (no target) for `delegate` and `continue`, else "Working"; or "Needs you" with an open approval; the line leaves when the run ends, and the report in the chat
-  says how it went. A helper's open approval shows under its line in the usual inline form; Allow and Deny
-  there answer it, and answering it in either thread removes it from both (`approval_closed`). The
+- Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` tray (a region of
+  that name) is attached to the top of the composer, on the composer's surface and border. It is
+  one line of about 32 px that never grows with more helpers: each helper task's creature, stacked
+  (two helpers of one Bot are two creatures), `N working · N reported` (a zero part is left out)
+  and `Show`; with no helper running or unread, nothing shows above the composer. The Waiting on
+  you card sits above the tray. Only what needs the person opens by itself: a helper's open
+  approval is one line under the summary, the approval card led by the helper's creature and name
+  (`Tester wants to run make check`, with Allow and Deny); with two waiting it shows the first and
+  `1 more`. It leaves when answered, in either thread (`approval_closed`), and a message in the
+  boss's composer answers it as Replying to an approval says. Needs you is marked as the approval
+  card marks it (#146), not with an amber or red alarm of its own. `Show` opens the list as a popover over the chat (a
+  dialog named `Helper tasks`; the chat does not move); Esc, a click outside or `Show` again
+  closes it, `⌘.` (`Ctrl+.` off macOS) toggles it, the arrow keys move between rows and Enter
+  opens the helper's thread. One row per helper task: creature, Bot name, the helper thread's
+  title (the task), the step, the time, its PR, `Open` and, while its run goes, `Stop` on hover or
+  focus. The step is the live verb and a short target, for a command its program and plain first
+  argument ("Running make build"; Codex shows the program only), never raw shell ("Running for
+  i"). The program is the first real one: past `cd`, `VAR=value` assignments, a leading `timeout
+  <n>`, and a leading `cat > file` or other redirect; a function definition (`name() {`) and a loop
+  or `if` header (`for`, `while`, `until`, `if`) show the first command inside; a heredoc's text is
+  never a command; a command that only writes a file shows "Running cat" (`e() { gh pr view "$1";
+  }; e a`, `for n in a b; do gh pr view $n; done` and `timeout 400 gh pr checks 168 --watch` all
+  show "Running gh pr"). Other words: "Waiting on a background task" for a command that reads a
+  task's output file, "Looking around" for Chief's `list_*` tools, "Handing off" (no target) for
+  `delegate` and `continue`, "Needs you" with an open approval, else "Working". The time is `42s`, `3m`,
+  `1h 5m` since the helper thread was created, counting while its run goes. A helper thread that
+  tracks a PR or MR shows its reference (`#7`, `!7`) as a link to it, with the state dot of the
+  composer's chip and, while it is open, its CI as a word: `running` (muted), `passed` (green) or
+  `failed` (red, a real failure), from the last read of the watcher (so `mr_ci` joins `mr_state`
+  in every thread summary, `helpers` included); no PR, no mark. The resting line holds no PR text.
+  A helper whose run ended stays as a row with `Reported` (`Failed` or `Stopped` for those ends)
+  in place of the step and the time, and in the summary's reported count, until its report (the
+  helper Bot's message in the chat) has been in the visible part of the chat; then it leaves and
+  the count follows. Which reports were seen is kept in the browser per helper thread, so a reload
+  does not bring one back. *The first design said `Approved · Read`; a report has no verdict to
+  read it from, and reading prose to guess one is not something Reef does.* The
   chat keeps one line where work was handed off, after the message that led to it ("Handed off to
   Tester and Reviewer", `Tester ×2` for two helpers of one Bot), each name linking to its helper
   thread; a helper's report is a message from the helper Bot, an article named after it with its
   creature, not the user's bubble, when the person must act on it, else a line of the lead's ledger
   (below). The island shows one small creature per such helper
-  after the boss's name (`Tester: working`, `needs you` with a red dot),
-  the red count includes helper approvals, and the boss's sidebar row says "Needs you" while a
+  after the boss's name (`Tester: working`, `needs you` with a light dot),
+  the count includes helper approvals, and the boss's sidebar row says "Needs you" while a
   helper waits. A helper thread is listed under its Bot in the sidebar tree, with no close; the
   composer is replaced by "{Boss} is handling this thread. Talk to {Boss} to change it.", `Open
   {Boss}'s thread` and, while its run goes, `Stop`. *The boss thread's stream carries only the
