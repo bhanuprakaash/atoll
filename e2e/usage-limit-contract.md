@@ -49,8 +49,10 @@ then.` It holds none of the provider's text.
 ## UI contract
 
 - The run's line in the Messages log is the text `<Bot> hit its <Claude|Codex> limit; back at
-  <time>`, for the run's provider. `<time>` is the clock in the viewer's zone (`3:42 PM`), or
-  `Tomorrow 3:42 PM` when the day is not today. There is no `button` "Retry", no "Run failed", no
+  <time>`, for the run's provider. `<time>` is the clock in the viewer's zone (`3:42 PM`) on the
+  viewer's today, `Tomorrow 3:42 PM` on the next day, and the weekday and clock (`Sat 3:42 PM`) later
+  in the week. The spec runs in `Asia/Kolkata` with the page's clock set to the reset, a day before
+  it and three days before it. There is no `button` "Retry", no "Run failed", no
   element drawn in the failed line's danger colour, and none of the provider's text ever appears on
   the page. The line comes from the run, so it is there again when the thread is reopened.
 

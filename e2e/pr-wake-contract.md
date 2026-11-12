@@ -31,7 +31,7 @@ and `CI noted.`.
 | --- | --- |
 | Merging a tracked PR wakes the thread's Bot within a couple of minutes with "PR #N merged", no user message | `TestPRWake_MergedWakesTheBot/{claude,codex}` |
 | Closing it unmerged wakes it with "PR #N closed" | `TestPRWake_ClosedUnmergedWakesTheBot/{claude,codex}` |
-| CI finishing (all checks done) wakes it once with pass/fail | `TestPRWake_CIFinishedWakesOnce/{claude,codex}` (a pending check wakes nothing; the sentence is `CI finished on PR #1: 2 passed, 2 failed ("unit", "deploy/preview")` up to the order of the names) |
+| CI finishing (all checks done) wakes it once with pass/fail | `TestPRWake_CIFinishedWakesOnce/{claude,codex}` (a pending check wakes nothing; the sentence is `CI finished on PR #1: 2 passed, 2 failed ("unit", "deploy/preview")` up to the order of the names); `TestPRWake_CINamesAreCleanedAndCut/{claude,codex}` (a name loses control characters, quotes and backslashes, is cut at 60 characters and quoted; 5 names, then `and 2 more`) |
 | Nothing wakes a PR whose thread is closed | `TestPRWake_ClosedThreadIsNotWoken/{claude,codex}` (an open thread's PR merged at the same moment is the control) |
 | No duplicate wakes for one event | `TestPRWake_OneWakePerEvent/{claude,codex}` (the same state read again, a title change, a server restart; two provider sessions in all) |
 

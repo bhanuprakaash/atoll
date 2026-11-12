@@ -14,6 +14,64 @@ import (
 
 // Contract: helper-work-contract.md → Failed delegate.
 
+// TestHelperWork_FailedDelegateRemovesItsWorktree: a delegate that fails right after the helper's
+// worktree is made (the helper's title update fails on a database trigger) removes that worktree
+// and its branch. A git on the server's PATH notes that `git worktree add` made the helper's.
+func TestHelperWork_FailedDelegateRemovesItsWorktree(t *testing.T) {
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range _providers {
+		t.Run(p, func(t *testing.T) {
+			f := newRepoFixture(t, p)
+			s := f.s
+			poteto, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
+			setDelegates(t, s, poteto, tester)
+			boss := f.thread(t, poteto)
+			ev := s.events(t, boss)
+			own := bossWorktree(t, s, boss, ev)
+			helperBranch := own.Branch + "--tester"
+			helperPath := filepath.Join(f.root, f.repo.Name, strings.ReplaceAll(helperBranch, "/", "-"))
+			made := filepath.Join(t.TempDir(), "made")
+			writeFile(t, filepath.Join(f.m.bin, "git"), fmt.Sprintf(`#!/bin/bash
+%[1]q "$@" || exit $?
+args=("$@")
+n=${#args[@]}
+for ((i = 0; i + 1 < n; i++)); do
+	if [ "${args[i]}" = worktree ] && [ "${args[i+1]}" = add ] && [ "${args[n-2]}" = %[2]q ]; then
+		%[1]q -C %[2]q rev-parse --abbrev-ref HEAD >%[3]q
+	fi
+done
+`, realGit, helperPath, made))
+			if err := os.Chmod(filepath.Join(f.m.bin, "git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			dbExec(t, f.m, "CREATE TRIGGER fail_helper_title BEFORE UPDATE OF title ON threads "+
+				"WHEN OLD.parent_thread_id != '' BEGIN SELECT RAISE(ABORT, 'no title'); END")
+
+			calls, _ := json.Marshal([]fake.MCPCall{delegateCall("Tester", _unfinishedRepoPrompt, "")})
+			r := s.finished(t, ev, s.send(t, boss, _mcpPromptHead+string(calls)).ID)
+
+			if r.Status != "failed" || !strings.Contains(r.Error, "no title") {
+				t.Fatalf("run %s: status %q, error %q; want the delegate to fail on the helper's title, so the helper is abandoned", r.ID, r.Status, r.Error)
+			}
+			if b, err := os.ReadFile(made); err != nil || strings.TrimSpace(string(b)) != helperBranch {
+				t.Fatalf("git worktree add made %s on %q (error %v), want the helper's worktree on %s", helperPath, b, err, helperBranch)
+			}
+			if _, err := os.Lstat(helperPath); !os.IsNotExist(err) {
+				t.Errorf("after the failed delegate, the helper's worktree %s is still there (%v), want it removed", helperPath, err)
+			}
+			if got := gitIn(t, f.repo.Path, "branch", "--list", helperBranch); got != "" {
+				t.Errorf("after the failed delegate, git branch --list %s gives %q, want the branch deleted", helperBranch, got)
+			}
+			if got := worktreeOf(t, f.repo.Path, own.Branch); got != own.Path {
+				t.Errorf("after the failed delegate, the boss's branch is checked out at %q, want its worktree %q", got, own.Path)
+			}
+		})
+	}
+}
+
 // TestHelperWork_FailedDelegateKeepsOtherWorktrees: a delegate fails right after the helper's
 // worktree is made, and what a Bot with the worktree root writable could plant is planted at that
 // moment: the helper's path swapped for a symlink to a worktree the user made outside the root

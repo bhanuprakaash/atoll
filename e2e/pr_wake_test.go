@@ -67,15 +67,9 @@ func TestPRWake_CIFinishedWakesOnce(t *testing.T) {
 			w := f.waitWake(t, th, 1)
 
 			f.wantWake(t, th, w, "ci", "CI finished on PR #1: 2 passed, 2 failed (")
-			for _, name := range []string{`"unit"`, `"deploy/preview"`} {
-				if !strings.Contains(w.Text, name) {
-					t.Errorf("wake %q does not name the failed check %s", w.Text, name)
-				}
-			}
-			for _, passed := range []string{"build", "lint"} {
-				if strings.Contains(w.Text, passed) {
-					t.Errorf("wake %q names the passed check %s; passed checks are only counted", w.Text, passed)
-				}
+			if one, other := `CI finished on PR #1: 2 passed, 2 failed ("unit", "deploy/preview")`,
+				`CI finished on PR #1: 2 passed, 2 failed ("deploy/preview", "unit")`; w.Text != one && w.Text != other {
+				t.Errorf("wake %q, want %q up to the order of the names", w.Text, one)
 			}
 			f.wantReply(t, th, "CI noted.", first)
 			if got := f.mrState(t, th); got != "opened" {
@@ -85,6 +79,34 @@ func TestPRWake_CIFinishedWakesOnce(t *testing.T) {
 			f.quiet(t, 1, "CI already reported", th, 1, 1)
 			if got := len(f.wakes(t, th)); got != 1 {
 				t.Errorf("thread has %d wakes after the same CI result was read again, want 1", got)
+			}
+		})
+	}
+}
+
+// A check name is cleaned (no control characters, quotes or backslashes), cut at 60 characters and
+// quoted; the sentence names up to 5 failed checks, then how many more.
+func TestPRWake_CINamesAreCleanedAndCut(t *testing.T) {
+	for _, p := range _providers {
+		t.Run(p, func(t *testing.T) {
+			f := newPRWakeFixture(t, p)
+			th := f.openPR(t, 1)
+			long := strings.Repeat("x", 70)
+			f.gh.setChecks(headSHA(1), []fakeCheck{
+				{"lint", "completed", "success"},
+				{"bad \"name\"\\with\ttab\n", "completed", "failure"},
+				{long, "completed", "failure"},
+				{"c3", "completed", "failure"},
+				{"c4", "completed", "failure"},
+				{"c5", "completed", "failure"},
+				{"c6", "completed", "failure"},
+				{"c7", "completed", "timed_out"},
+			}, nil)
+			w := f.waitWake(t, th, 1)
+
+			want := `CI finished on PR #1: 1 passed, 7 failed ("bad namewithtab", "` + long[:60] + `", "c3", "c4", "c5", and 2 more)`
+			if w.Kind != "ci" || w.Text != want {
+				t.Errorf("wake %+v, want kind ci, text %q", w, want)
 			}
 		})
 	}
