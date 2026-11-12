@@ -23,6 +23,7 @@ import (
 
 const (
 	_maxBackoff   = 15
+	_noCheckEvery = 5
 	_nameCut      = 60
 	_namesListed  = 5
 	_readTimeout  = 30 * time.Second
@@ -50,6 +51,8 @@ type (
 		baseETag string
 		fails    int
 		next     time.Time
+
+		noCheckPolls int
 	}
 
 	ghPull struct {
@@ -208,8 +211,9 @@ func (m *Manager) readBase(w *watcher, connID, token, api string, t store.Thread
 func short(sha string) string { return sha[:min(len(sha), 7)] }
 
 // readCI reads the checks of the head commit until its CI is reported, and sets in r the stored
-// result and, when CI finished, the wake. A finished result counts once seen on two reads in a row,
-// and a head with no checks stops being read once two reads in a row found none.
+// result and, when CI finished, the wake. A finished result counts once seen on two reads in a row.
+// A head with no checks is recorded as such once two reads in a row found none, and is then read
+// again only every _noCheckEvery polls, so a check that appears later is still seen.
 func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, head, label string, r *store.MRRead) error {
 	var prev ciResult
 	if t.MRCI != "" {
@@ -218,8 +222,19 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, 
 	if prev.Head != "" && prev.Head != head {
 		r.DropCI = true
 	}
-	if head == "" || t.MRWoke == head {
+	if head == "" {
 		return nil
+	}
+	recheck := false
+	if t.MRWoke == head {
+		if prev.Head != head || !prev.none() {
+			return nil
+		}
+		ws := w.of(t)
+		if ws.noCheckPolls++; ws.noCheckPolls%_noCheckEvery != 0 {
+			return nil
+		}
+		recheck = true
 	}
 	res := ciResult{Head: head}
 	for _, route := range []string{"check-runs", "status"} {
@@ -252,6 +267,9 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, 
 			r.Woke = head
 		}
 		return nil
+	}
+	if recheck {
+		r.Woke = ""
 	}
 	finished := res.Passed+res.Failed > 0 && res.Pending == 0
 	if !finished || t.MRWake && (prev.Head != head || !res.same(prev)) {

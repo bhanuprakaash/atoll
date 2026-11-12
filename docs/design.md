@@ -706,7 +706,9 @@ Follow-ups, not filed:
   `manual` or `blocked` one, and a commit with no check never finish CI. *Checks of one commit
   appear over a few seconds; a result seen on two reads in a row, for the same commit, is not a
   first check that finished before the next one registered.* A commit that two reads in a row found
-  with no check is not read again until a push changes the head.
+  with no check is read again only every fifth poll, until a push changes the head: a check that
+  appears later (an external CI, or a workflow that starts when a draft is marked ready) is seen
+  then and counted like any first check.
 - Three events wake the thread's Bot, each at most once (a GitHub PR for now: see the GitLab gap
   below): the MR or PR is merged, is closed
   unmerged, or CI finished on its open head commit. A push changes the head commit, clears the
