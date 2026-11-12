@@ -327,7 +327,7 @@ function EmptyThread({
   threadId: string;
   disabled: boolean;
   context?: ReactNode;
-  sendFirst: (text: string, images?: ImageInput[]) => void;
+  sendFirst: (text: string, images?: ImageInput[], restore?: () => void) => void;
   onSent: (run: Run) => void;
 }) {
   return (
@@ -413,13 +413,14 @@ export function DraftThread({
   const navigate = useNavigate();
   const [repoId, setRepoId] = useState('');
   const create = useCreateThreadWithMessage(botId);
-  const sendFirst = (text: string, images?: ImageInput[]) => {
+  const sendFirst = (text: string, images?: ImageInput[], restore?: () => void) => {
     if (create.isPending) return;
     create.mutate(
       { repoId, text, images },
       {
         onSuccess: (result) =>
           navigate(`/bots/${botId}/threads/${result.thread?.id ?? result.id}`, { replace: true }),
+        onError: restore,
       },
     );
   };
@@ -571,16 +572,21 @@ export function ThreadView({
   };
   const retry = (runId: string) =>
     resend(messages.filter((m) => fromPerson(m) && m.run_id === runId));
-  const sendFirst = (text: string, images?: ImageInput[]) => {
+  const sendFirst = (text: string, images?: ImageInput[], restore?: () => void) => {
     if (repoId && !thread?.repo_id)
       create.mutate(
         { repoId, text, images },
         {
           onSuccess: (result) =>
             navigate(`/bots/${botId}/threads/${result.thread?.id ?? result.id}`),
+          onError: restore,
         },
       );
-    else send.mutate({ text, images }, { onSuccess: ({ run }) => run && begin(run.id) });
+    else
+      send.mutate(
+        { text, images },
+        { onSuccess: ({ run }) => run && begin(run.id), onError: restore },
+      );
   };
   const mrUrl = mr?.url ?? thread?.mr_url;
   const mrState = mr?.state ?? thread?.mr_state;
@@ -787,19 +793,24 @@ export function ThreadView({
       >
         <div ref={content} className="mx-auto flex w-full max-w-190 flex-col gap-4.5 pt-6 pb-4">
           {empty && (
-            <EmptyThread
-              botName={botName}
-              look={look}
-              setup={bot}
-              repos={repos}
-              repoId={repoId}
-              setRepoId={setRepoId}
-              threadId={threadId}
-              disabled={!connected}
-              context={context}
-              sendFirst={sendFirst}
-              onSent={(run) => begin(run.id)}
-            />
+            <>
+              <EmptyThread
+                botName={botName}
+                look={look}
+                setup={bot}
+                repos={repos}
+                repoId={repoId}
+                setRepoId={setRepoId}
+                threadId={threadId}
+                disabled={!connected}
+                context={context}
+                sendFirst={sendFirst}
+                onSent={(run) => begin(run.id)}
+              />
+              {(create.isError || send.isError) && (
+                <ErrorNotice error={create.error ?? send.error} />
+              )}
+            </>
           )}
           {items.map((item) => {
             const separator = item.day && (
