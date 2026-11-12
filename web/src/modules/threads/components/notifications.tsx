@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { refuse } from '@/components/button';
 import { Creature, type CreatureLook } from '@/components/creature';
+import { ErrorNotice } from '@/components/error-notice';
 import { useAnswerApproval } from '@/modules/threads/api/approvals';
 import { approvalTarget, approvalVerb } from '@/modules/threads/components/approval-card';
 import { waitingText } from '@/modules/threads/components/waiting-card';
@@ -103,7 +104,7 @@ export function FinishedNotice({ notice, look }: { notice: EarlierNotice; look?:
 }
 
 export function NotificationList({
-  notifications: { needs, earlier, markAllRead },
+  notifications: { needs, earlier, markAllRead, markAllReadError },
   waiting,
   looks,
   onClose,
@@ -205,6 +206,7 @@ export function NotificationList({
           </ul>
         </>
       )}
+      {!!markAllReadError && <ErrorNotice error={markAllReadError} className="px-2" />}
       {needs.length === 0 && waiting.length === 0 && earlier.length === 0 && (
         <p className="px-2 py-3 text-center text-[13px] text-muted">Nothing new</p>
       )}

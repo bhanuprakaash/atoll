@@ -121,7 +121,7 @@ export function useChangeQueued(threadId: string) {
       else if (text !== undefined) await api(path, { method: 'PATCH', body: { text } });
       else await api(path, { method: 'DELETE' });
     },
-    onSettled: () =>
+    onSuccess: () =>
       Promise.all(
         [
           ['messages', threadId],

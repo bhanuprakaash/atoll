@@ -1815,9 +1815,10 @@ Voice
   one-line form: the title is the line (`Didn't run: <reason>`, or `Run failed: <reason>` after a
   reply), Retry or Resend is the action and stands in for the next-step line, and `Details` holds
   the provider's raw error (`error_detail` of a `provider_off` run, whose `error` is the plain
-  sentence; the run's `error` otherwise). The reason is that sentence, or `something went wrong`
-  for any other failure; `Run failed` is for a run that had replied, `Didn't run` for one that had
-  not. The callback pages (`/oauth/callback`) take the same shape as static
+  sentence; the run's `error` otherwise). The reason comes from `error_kind` alone, never from the
+  error's words: the plain `error` of a `provider_off` or `needs_sign_in` run, `the provider isn't
+  signed in` for `signed_out`, and `something went wrong` for any other failure; `Run failed` is
+  for a run that had replied, `Didn't run` for one that had not. The callback pages (`/oauth/callback`) take the same shape as static
   HTML: the title, the next-step line and a closed `<details>` with the summary `Details`. *37 of
   44 red texts rendered a server string, `internal error` or a raw HTML 502 page.*
 - The server answers a failed request `{"error": "<plain sentence>", "code": "<id>"}`. `error` is

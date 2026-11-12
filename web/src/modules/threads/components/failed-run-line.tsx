@@ -4,15 +4,7 @@ import type { Run } from '@/modules/threads/api/messages';
 import { useRun } from '@/modules/threads/api/runs';
 import { messageTime } from '@/utils/time';
 
-const signedOutError = /sign.?in|authenticat|not logged in|login/i;
-const connectionSignIn = /needs sign-in/i;
-
-function reason(error: string) {
-  if (connectionSignIn.test(error)) return `${error.replace(/\.$/, '')}.`;
-  if (/keyring|keychain/i.test(error)) return "Reef couldn't reach the system keychain.";
-  if (signedOutError.test(error)) return "the provider isn't signed in.";
-  return 'something went wrong.';
-}
+const sentence = (text: string) => `${text.replace(/\.$/, '')}.`;
 
 export function FailedLine({
   run,
@@ -71,19 +63,22 @@ export function FailedLine({
       </div>
     );
   }
-  const plain =
-    run.error_kind === 'provider_off' ||
-    run.error_kind === 'needs_sign_in' ||
-    connectionSignIn.test(run.error);
+  const kind = run.error_kind;
+  const plain = kind === 'provider_off' || kind === 'needs_sign_in';
   const settings =
-    run.error_kind === 'provider_off' || (signedOutError.test(run.error) && !plain)
+    kind === 'provider_off' || kind === 'signed_out'
       ? '/settings/providers'
-      : run.error_kind === 'needs_sign_in'
+      : kind === 'needs_sign_in'
         ? '/settings/connections'
         : '';
+  const reason = plain
+    ? sentence(run.error)
+    : kind === 'signed_out'
+      ? "the provider isn't signed in."
+      : 'something went wrong.';
   return (
     <ErrorNotice
-      title={`${replied ? 'Run failed' : "Didn't run"}: ${plain ? `${run.error.replace(/\.$/, '')}.` : reason(run.error)}`}
+      title={`${replied ? 'Run failed' : "Didn't run"}: ${reason}`}
       details={run.error_detail || (plain ? '' : run.error)}
       actions={[
         ...(settings ? [{ label: 'Open settings', to: settings }] : []),
