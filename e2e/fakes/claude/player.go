@@ -148,6 +148,12 @@ func (p *player) play(lines []string) error {
 				return err
 			}
 			continue
+		case "command-use":
+			var err error
+			if repoReply, err = p.commandUse(); err != nil {
+				return err
+			}
+			continue
 		case "fs-read":
 			var err error
 			if repoReply, err = p.fsRead(p.args); err != nil {
@@ -340,6 +346,43 @@ func (p *player) mcpUse() (string, error) {
 		}
 		emit(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": []any{result}}})
 		lines = append(lines, fake.MCPLine(call, text))
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+// commandUse runs each command the prompt names as claude's Bash tool: it prints the tool call,
+// asks the permission prompt tool, then prints the result. Nothing is executed.
+func (p *player) commandUse() (string, error) {
+	cmds, err := fake.Commands(p.userMessage)
+	if err != nil {
+		return "", err
+	}
+	var lines []string
+	for i, cmd := range cmds {
+		input, _ := json.Marshal(map[string]string{"command": cmd, "description": "Run the command"})
+		use := toolUse{Type: "tool_use", ID: fmt.Sprintf("toolu_command_use_%d", i+1), Name: "Bash", Input: input}
+		p.uses[use.ID] = use
+		emit := func(l map[string]any) {
+			l["parent_tool_use_id"], l["session_id"] = nil, p.session
+			b, _ := json.Marshal(l)
+			fmt.Println(string(b))
+		}
+		emit(map[string]any{"type": "assistant", "message": map[string]any{"role": "assistant", "type": "message", "content": []toolUse{use}}})
+		answer, err := p.ask(&use)
+		if err != nil {
+			return "", err
+		}
+		time.Sleep(fake.Pace)
+		text, isErr := "ran", false
+		if answer != "allow" {
+			text, isErr = "denied", true
+		}
+		result := map[string]any{"type": "tool_result", "tool_use_id": use.ID, "content": []map[string]string{{"type": "text", "text": text}}}
+		if isErr {
+			result["is_error"] = true
+		}
+		emit(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": []any{result}}})
+		lines = append(lines, fake.CommandLine(cmd, text))
 	}
 	return strings.Join(lines, "\n"), nil
 }
