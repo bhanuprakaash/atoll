@@ -163,6 +163,12 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
+		case "command-use":
+			var err error
+			if repoReply, err = t.commandUse(in, log); err != nil {
+				return err
+			}
+			continue
 		case "skills-use", "skills-hold", "skills-worktree", "skills-run":
 			if e.Fake == "skills-worktree" {
 				var err error
@@ -200,6 +206,17 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
+		case "repo-github-stack":
+			var err error
+			if repoReply, err = fake.StackStep(t.servers["atoll"], t.userMessage); err != nil {
+				return err
+			}
+			continue
+		case "github-base-merged":
+			if err := fake.BaseMergedStep(t.userMessage, t.cwd); err != nil {
+				return err
+			}
+			continue
 		case "logins-probe":
 			var err error
 			if repoReply, err = fake.LoginsProbe(); err != nil {
@@ -209,6 +226,17 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 		case "github-probe":
 			var err error
 			if repoReply, err = fake.GitHubProbe(t.servers["github"]); err != nil {
+				return err
+			}
+			continue
+		case "procs-hold", "procs-scan":
+			var err error
+			if e.Fake == "procs-hold" {
+				repoReply, err = fake.ProcsHold(t.servers)
+			} else {
+				repoReply, err = fake.ProcsScan(t.userMessage)
+			}
+			if err != nil {
 				return err
 			}
 			continue
@@ -239,7 +267,7 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 			continue
 		}
 		encoded, _ := json.Marshal(repoReply)
-		out := json.RawMessage(strings.ReplaceAll(string(e.Msg), "$REPO_REPLY", string(encoded[1:len(encoded)-1])))
+		out := json.RawMessage(strings.ReplaceAll(strings.ReplaceAll(string(e.Msg), "$REPO_REPLY", string(encoded[1:len(encoded)-1])), `"$READY"`, fake.ReadyArg(t.userMessage)))
 		var m message
 		_ = json.Unmarshal(out, &m)
 		var p itemParams
@@ -306,6 +334,49 @@ func (t *turn) ask(req json.RawMessage, in *bufio.Scanner, log *fake.Log) (strin
 	return "", fmt.Errorf("stdin closed while %s waited for an answer", r.Method)
 }
 
+// commandUse runs each command the prompt names as app-server would: a commandExecution item
+// starts, Codex asks the client (offering the amendment it proposes for the command), then the item
+// completes. Nothing is executed. A later ask for a command the client allowed with an amendment
+// is still sent: the client, not this fake, decides whether to ask the user.
+func (t *turn) commandUse(in *bufio.Scanner, log *fake.Log) (string, error) {
+	cmds, err := fake.Commands(t.userMessage)
+	if err != nil {
+		return "", err
+	}
+	var lines []string
+	for i, cmd := range cmds {
+		wrapped := fake.ShellWrap(cmd)
+		it := map[string]any{"type": "commandExecution", "id": fmt.Sprintf("command-use-%d", i+1), "command": wrapped, "cwd": t.cwd,
+			"processId": nil, "source": "agent", "status": "inProgress", "commandActions": []map[string]string{{"type": "unknown", "command": strings.TrimSpace(cmd)}},
+			"aggregatedOutput": nil, "exitCode": nil, "durationMs": nil}
+		emit := func(method string) {
+			b, _ := json.Marshal(map[string]any{"method": method, "params": map[string]any{"item": it}})
+			fmt.Println(string(b))
+		}
+		emit("item/started")
+		req, _ := json.Marshal(map[string]any{"id": 8000 + i + 1, "method": "item/commandExecution/requestApproval", "params": map[string]any{
+			"threadId": "01a1a5b5-3b2c-71f2-84d9-e7c08190f545", "turnId": "01a1a5c4-e5fc-7687-865c-a5fd55e77da0", "itemId": it["id"],
+			"approvalId": nil, "reason": "Run the command outside the sandbox?", "command": wrapped, "cwd": t.cwd,
+			"commandActions":              it["commandActions"],
+			"proposedExecpolicyAmendment": strings.Fields(cmd),
+			"availableDecisions":          []string{"accept", "acceptWithExecpolicyAmendment", "cancel"},
+		}})
+		answer, err := t.ask(req, in, log)
+		if err != nil {
+			return "", err
+		}
+		time.Sleep(fake.Pace)
+		text := "ran"
+		it["status"], it["exitCode"], it["durationMs"], it["aggregatedOutput"] = "completed", 0, 31, ""
+		if answer != "allow" {
+			text, it["status"], it["exitCode"], it["durationMs"], it["aggregatedOutput"] = "denied", "declined", nil, nil, nil
+		}
+		emit("item/completed")
+		lines = append(lines, fake.CommandLine(cmd, text))
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
 // mcpUse calls each tool the prompt names on the configured server, as app-server would: an
 // mcpToolCall item starts, Codex asks the client through an elicitation when the server's
 // default_tools_approval_mode is "prompt" (the stub tools count as read-only, which Codex runs
@@ -323,6 +394,10 @@ func (t *turn) mcpUse(in *bufio.Scanner, log *fake.Log) (string, error) {
 		c := t.servers[call.Server]
 		if c == nil || !c.Tools[call.Tool] {
 			lines = append(lines, fake.MCPLine(call, "unavailable"))
+			continue
+		}
+		if bad := call.Undeclared(c); bad != "" {
+			lines = append(lines, fake.MCPLine(call, bad))
 			continue
 		}
 		it := map[string]any{"type": "mcpToolCall", "id": fmt.Sprintf("mcp-use-%d", i+1), "server": call.Server, "tool": call.Tool,

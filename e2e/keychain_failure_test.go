@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -19,11 +20,11 @@ func TestKeychainFailure_Connections(t *testing.T) {
 	gl := newGitLabOAuth(t, 7200)
 	gl.set(func() { gl.allowed = true })
 	for _, tc := range []struct {
-		name, path, prefix string
-		body               map[string]string
+		name, path, sentence string
+		body                 map[string]string
 	}{
-		{"GitHub", "/api/connections/github/start", "Reef couldn't save the GitHub sign-in to the system keychain: ", nil},
-		{"GitLab", "/api/connections/gitlab/start", "Reef couldn't save the GitLab sign-in to the system keychain: ", map[string]string{"instance_url": gl.URL}},
+		{"GitHub", "/api/connections/github/start", "Reef couldn't save the GitHub sign-in to the system keychain.", nil},
+		{"GitLab", "/api/connections/gitlab/start", "Reef couldn't save the GitLab sign-in to the system keychain.", map[string]string{"instance_url": gl.URL}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := newMachine(t)
@@ -39,10 +40,11 @@ func TestKeychainFailure_Connections(t *testing.T) {
 			time.Sleep(1100 * time.Millisecond)
 			var result struct {
 				Error string `json:"error"`
+				Code  string `json:"code"`
 			}
 			keychainFailure(t, s, "/api/connections/"+start.ID+"/poll", nil, &result)
-			if !strings.HasPrefix(result.Error, tc.prefix) || len(result.Error) <= len(tc.prefix) {
-				t.Errorf("error = %q, want %q followed by the cause", result.Error, tc.prefix)
+			if result.Error != tc.sentence || result.Code != "keychain" {
+				t.Errorf("reply {error: %q, code: %q}, want {error: %q, code: keychain}: the sentence, no cause", result.Error, result.Code, tc.sentence)
 			}
 			var connection connectionInfo
 			s.do(t, "GET", "/api/connections/"+start.ID, nil, &connection, http.StatusOK)
@@ -64,10 +66,14 @@ func TestKeychainFailure_MCPSecret(t *testing.T) {
 	s := m.serve(t)
 	var result struct {
 		Error string `json:"error"`
+		Code  string `json:"code"`
 	}
 	keychainFailure(t, s, "/api/mcp-servers", map[string]any{"name": "docs-local", "command": "echo", "env": map[string]string{"TOKEN": "secret"}}, &result)
-	if !strings.Contains(strings.ToLower(result.Error), "keychain") {
-		t.Errorf("error = %q, want a message naming the keychain", result.Error)
+	if !regexp.MustCompile(`^Reef couldn't save .+ to the system keychain\.$`).MatchString(result.Error) || result.Code != "keychain" {
+		t.Errorf("reply {error: %q, code: %q}, want code keychain and \"Reef couldn't save <what> to the system keychain.\" with no cause", result.Error, result.Code)
+	}
+	if strings.Contains(result.Error, "docs-local: ") || strings.Contains(result.Error, "keychain failed") {
+		t.Errorf("error = %q holds the error chain", result.Error)
 	}
 }
 
@@ -119,8 +125,11 @@ func TestKeychainFailure_MCPOAuth(t *testing.T) {
 		t.Errorf("callback status %d content type %q, want >= 500 and text/html: %s", cb.status, cb.contentType, cb.body)
 	}
 	text := html.UnescapeString(cb.body)
-	if !strings.Contains(text, "Reef couldn't save the") || !strings.Contains(text, "docs-oauth") || !strings.Contains(text, "sign-in to the system keychain:") {
-		t.Errorf("callback page %q, want a message that Reef couldn't save the sign-in to the system keychain", text)
+	if !strings.Contains(text, "Reef couldn't save the docs-oauth sign-in to the system keychain.") || strings.Contains(text, "keychain:") || strings.Contains(text, "keychain failed") {
+		t.Errorf("callback page %q, want the sentence \"Reef couldn't save the docs-oauth sign-in to the system keychain.\" and no cause", text)
+	}
+	if !strings.Contains(cb.body, "<details>") || !strings.Contains(cb.body, "<summary>Details</summary>") || strings.Contains(cb.body, "<details open") {
+		t.Errorf("callback page %q, want a closed <details> with the summary Details", cb.body)
 	}
 	if strings.Contains(text, "Sign-in to docs-oauth failed") || strings.Contains(text, `{"error":`) {
 		t.Errorf("callback page contains a generic error or raw JSON: %q", text)
