@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -55,6 +56,33 @@ func TestSidebar_Routes(t *testing.T) {
 	}
 	pin := func(id string) string { return "/api/threads/" + id + "/pin" }
 
+	type row struct {
+		ID     string `json:"id"`
+		Title  string `json:"title"`
+		State  string `json:"state"`
+		Pinned bool   `json:"pinned"`
+	}
+	t.Run("bots list marks the finished thread New", func(t *testing.T) {
+		rec := do("GET", "/api/bots", "")
+		var bots []struct {
+			ID      string `json:"id"`
+			Threads []row  `json:"threads"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &bots); rec.Code != 200 || err != nil {
+			t.Fatalf("status %d body %s: %v", rec.Code, rec.Body, err)
+		}
+		want := []row{{ids[0], "hello there", "new", false}, {ids[3], "", "", false}, {ids[2], "", "", false}, {ids[1], "", "", false}}
+		var got []row
+		for _, b := range bots {
+			if b.ID == bot.ID {
+				got = b.Threads
+			}
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("threads %+v, want %+v", got, want)
+		}
+	})
+
 	tests := []struct {
 		name       string
 		method     string
@@ -63,8 +91,6 @@ func TestSidebar_Routes(t *testing.T) {
 		wantStatus int
 		wantBody   string
 	}{
-		{"bots list marks the finished thread New", "GET", "/api/bots", "", 200,
-			`"threads":[{"id":"` + ids[0] + `","title":"hello there","state":"new","pinned":false,"branch":"","mr_url":"","last_activity":"`},
 		{"list has group_id and threads", "GET", "/api/bots", "", 200,
 			`"can_manage_platform":false,"group_id":"","threads":[{`},
 		{"one Bot has group_id and no threads", "GET", "/api/bots/" + bot.ID, "", 200,
