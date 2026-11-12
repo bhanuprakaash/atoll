@@ -15,6 +15,7 @@ import {
   type Choices,
   type ModelControl,
 } from '@/modules/bots/components/new-bot-form';
+import { ErrorNotice } from '@/components/error-notice';
 
 const modes = [
   { value: 'auto', label: 'Auto' },
@@ -235,7 +236,10 @@ export function BotSettings({
             </label>
           )}
           {update.isError ? (
-            <p className="text-danger">{update.error.message}</p>
+            <ErrorNotice
+              error={update.error}
+              retry={() => update.variables && send(update.variables)}
+            />
           ) : (
             update.isSuccess && <p className="text-sm text-muted">Saved</p>
           )}
@@ -278,7 +282,13 @@ function DeleteDialog({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         <p className="mb-5 text-[13px] text-muted">
           Its threads and runs are deleted. Memory it saved stays.
         </p>
-        {remove.isError && <p className="mb-3 text-sm text-danger">{remove.error.message}</p>}
+        {remove.isError && (
+          <ErrorNotice
+            error={remove.error}
+            retry={() => remove.mutate(undefined, { onSuccess: () => navigate('/bots/chief') })}
+            className="mb-3"
+          />
+        )}
         <div className="flex justify-end gap-2">
           <button type="button" className={outlineButton} onClick={onClose}>
             Cancel

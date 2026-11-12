@@ -8,9 +8,6 @@
   --color-composer: #222222;
   --color-composer-line: #2e2e2e;
   --color-popover: #1c1c1c;
-  --color-needs: #2a1a1c;
-  --color-needs-badge: #3a1d20;
-  --color-needs-ink: #ffb3b5;
   --color-line: #262626;
   --color-selected: #2a2a2a;
   --color-ink: #ececec;
@@ -66,6 +63,11 @@
   --color-gitlab-dark: #e24329;
   --color-gitlab-light: #fca326;
   --color-gitlab-bg: #2b1a12;
+  --color-del-bg: #3a1d20;
+  --color-syn-comment: #7a7a80;
+  --color-syn-string: #a5d6a7;
+  --color-syn-number: #f5c76a;
+  --color-syn-keyword: #a9cbff;
   --color-sidebar-line: #2a2a2a;
   --color-sidebar: #131313;
   --color-brand-claude: #d97757;

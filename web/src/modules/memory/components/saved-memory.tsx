@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { quiet } from '@/components/button';
 import { Fold } from '@/components/fold';
 import { type MemoryItem, useMemory, useRetireMemory } from '@/modules/memory/api/memory';
+import { ErrorNotice } from '@/components/error-notice';
 
 function Bookmark({ className = '' }: { className?: string }) {
   return (
@@ -62,7 +63,7 @@ function SavedItem({ item, botName }: { item: MemoryItem; botName?: string }) {
             )}
           </dl>
         )}
-        {retire.isError && <p className="text-sm text-danger">{retire.error.message}</p>}
+        {retire.isError && <ErrorNotice error={retire.error} retry={() => retire.mutate()} />}
       </div>
       <button
         type="button"

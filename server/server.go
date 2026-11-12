@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"strings"
 	"sync"
 	"time"
@@ -134,8 +133,12 @@ func New(
 	mux.HandleFunc("DELETE /api/threads/{id}/pin", a.unpinThread)
 	mux.HandleFunc("POST /api/threads/{id}/messages", a.sendMessage)
 	mux.HandleFunc("GET /api/threads/{id}/messages", a.listMessages)
+	mux.HandleFunc("PATCH /api/threads/{id}/messages/{mid}", a.editQueued)
+	mux.HandleFunc("DELETE /api/threads/{id}/messages/{mid}", a.removeQueued)
+	mux.HandleFunc("POST /api/threads/{id}/messages/{mid}/send", a.sendQueued)
 	mux.HandleFunc("GET /api/threads/{id}/events", a.events)
 	mux.HandleFunc("GET /api/events", a.notices)
+	mux.HandleFunc("POST /api/island/seen", a.markIslandSeen)
 	mux.HandleFunc("GET /api/threads/{id}/file", a.threadFile)
 	mux.HandleFunc("GET /api/attachments/{id}", a.getAttachment)
 	mux.HandleFunc("GET /api/runs/{id}", a.getRun)
@@ -351,11 +354,12 @@ func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
 
 type threadSummary struct {
 	store.Thread
-	RunID     string        `json:"run_id"`
-	RunStatus string        `json:"run_status"`
-	Approval  *run.Approval `json:"approval"`
-	Verb      string        `json:"verb"`
-	UpdatedAt time.Time     `json:"updated_at"`
+	RunID        string        `json:"run_id"`
+	RunStatus    string        `json:"run_status"`
+	RunErrorKind string        `json:"run_error_kind"`
+	Approval     *run.Approval `json:"approval"`
+	Verb         string        `json:"verb"`
+	UpdatedAt    time.Time     `json:"updated_at"`
 
 	Step        string          `json:"step"`
 	ParentBotID string          `json:"parent_bot_id"`
@@ -398,7 +402,7 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 		if err != nil {
 			return out, err
 		}
-		out.RunStatus = ru.Status
+		out.RunStatus, out.RunErrorKind = ru.Status, ru.ErrorKind
 	}
 	_, approvals, _ := a.runs.Active(t.ID)
 	if len(approvals) > 0 {
@@ -422,26 +426,10 @@ func (a *api) liveStep(threadID string) string {
 	var in struct {
 		Command string `json:"command"`
 	}
-	if tool.Kind == "command" && json.Unmarshal(tool.Input, &in) == nil && in.Command != "" {
-		target = shortCommand(in.Command)
+	if tool.Name == "Bash" && json.Unmarshal(tool.Input, &in) == nil && in.Command != "" {
+		target = run.CommandTarget(in.Command)
 	}
 	return strings.TrimSpace(tool.Verb + " " + target)
-}
-
-// shortCommand is a command's program and plain first argument, past any leading cd: "make e2e".
-func shortCommand(command string) string {
-	for _, part := range strings.FieldsFunc(command, func(r rune) bool { return r == '&' || r == ';' || r == '|' }) {
-		f := strings.Fields(strings.Trim(strings.TrimSpace(part), "()"))
-		if len(f) == 0 || f[0] == "cd" {
-			continue
-		}
-		f[0] = path.Base(f[0])
-		if len(f) > 1 && !strings.HasPrefix(f[1], "-") && !strings.ContainsAny(f[1], "/=~$'\"") {
-			return f[0] + " " + f[1]
-		}
-		return f[0]
-	}
-	return ""
 }
 
 func (a *api) listThreads(w http.ResponseWriter, r *http.Request) {
@@ -487,11 +475,21 @@ func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	queued, err := a.st.Queued(r.Context(), t.ID)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	waiting := make([]store.Message, len(queued))
+	for i, it := range queued {
+		waiting[i] = queuedMessage(it)
+	}
 	write(w, http.StatusOK, struct {
 		threadSummary
-		ActiveRun *store.Run     `json:"active_run"`
-		Approvals []run.Approval `json:"approvals"`
-	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals)})
+		ActiveRun *store.Run      `json:"active_run"`
+		Approvals []run.Approval  `json:"approvals"`
+		Queued    []store.Message `json:"queued"`
+	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals), Queued: waiting})
 }
 
 func (a *api) patchThread(w http.ResponseWriter, r *http.Request) {
@@ -529,14 +527,21 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if t, err := a.st.Thread(r.Context(), id); err == nil && t.ParentThreadID != "" {
-		boss, err := a.bossName(r.Context(), t.ParentThreadID)
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			a.fail(w, r, err)
+	if !a.userMayWrite(w, r, id) {
+		return
+	}
+	if len(images) == 0 {
+		replied, err := a.runs.Reply(r.Context(), id, body.Text)
+		if err == nil {
+			write(w, http.StatusAccepted, struct {
+				Message  store.Message `json:"message"`
+				Run      *store.Run    `json:"run"`
+				Answered []string      `json:"answered"`
+			}{Message: replied.Message, Run: replied.Run, Answered: replied.Answered})
 			return
 		}
-		if err == nil {
-			fail(w, http.StatusConflict, boss+" is handling this thread")
+		if !errors.Is(err, run.ErrNoApproval) {
+			a.fail(w, r, err)
 			return
 		}
 	}
@@ -545,10 +550,85 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	var started *store.Run
+	if !m.Queued {
+		started = &ru
+	}
 	write(w, http.StatusAccepted, struct {
 		Message store.Message `json:"message"`
-		Run     store.Run     `json:"run"`
-	}{Message: m, Run: ru})
+		Run     *store.Run    `json:"run"`
+	}{Message: m, Run: started})
+}
+
+// userMayWrite answers 409 and returns false when the thread is a helper thread whose boss is
+// handling it.
+func (a *api) userMayWrite(w http.ResponseWriter, r *http.Request, threadID string) bool {
+	t, err := a.st.Thread(r.Context(), threadID)
+	if err != nil || t.ParentThreadID == "" {
+		return true
+	}
+	boss, err := a.bossName(r.Context(), t.ParentThreadID)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		a.fail(w, r, err)
+		return false
+	}
+	if err == nil {
+		fail(w, http.StatusConflict, boss+" is handling this thread")
+		return false
+	}
+	return true
+}
+
+func (a *api) editQueued(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		fail(w, http.StatusBadRequest, "text or an image is required")
+		return
+	}
+	id := r.PathValue("id")
+	if !a.userMayWrite(w, r, id) {
+		return
+	}
+	it, err := a.runs.EditQueued(r.Context(), id, r.PathValue("mid"), body.Text)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusOK, queuedMessage(it))
+}
+
+func queuedMessage(it store.InboxItem) store.Message {
+	return store.Message{ID: it.ID, ThreadID: it.ThreadID, Role: store.RoleUser, Text: it.Text,
+		FromBotID: it.FromBotID, CreatedAt: it.CreatedAt, Queued: true, Attachments: orEmpty(it.Images)}
+}
+
+func (a *api) removeQueued(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !a.userMayWrite(w, r, id) {
+		return
+	}
+	if err := a.runs.RemoveQueued(r.Context(), id, r.PathValue("mid")); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *api) sendQueued(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !a.userMayWrite(w, r, id) {
+		return
+	}
+	ru, err := a.runs.SendNow(r.Context(), id, r.PathValue("mid"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusAccepted, struct {
+		Run store.Run `json:"run"`
+	}{Run: ru})
 }
 
 func (a *api) bossName(ctx context.Context, threadID string) (string, error) {
@@ -583,18 +663,27 @@ func (a *api) getRun(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	if ru.ErrorKind == store.ErrorProviderOff {
+		name := strings.ToUpper(ru.Provider[:1]) + ru.Provider[1:]
+		ru.ErrorDetail, ru.Error = ru.Error, name+" isn't installed or isn't signed in."
+	}
 	write(w, http.StatusOK, ru)
 }
 
 func (a *api) answer(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Approve *bool `json:"approve"`
+		Approve  *bool `json:"approve"`
+		InThread bool  `json:"in_thread"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Approve == nil {
 		fail(w, http.StatusBadRequest, "approve is required")
 		return
 	}
-	if err := a.runs.Answer(r.Context(), r.PathValue("id"), *body.Approve); err != nil {
+	answer := a.runs.Answer
+	if body.InThread {
+		answer = a.runs.AnswerInThread
+	}
+	if err := answer(r.Context(), r.PathValue("id"), *body.Approve); err != nil {
 		a.fail(w, r, err)
 		return
 	}
@@ -614,11 +703,17 @@ func (a *api) events(w http.ResponseWriter, r *http.Request) {
 	a.stream(w, r, events, func(ev run.Event) (any, bool) { return ev.Data, true })
 }
 
+// sseEvent is one server-sent event.
+type sseEvent struct {
+	Type string
+	Data any
+}
+
 // stream writes events as server-sent events until the client goes or events closes. data gives
-// an event's payload, or false to skip it.
+// an event's payload, or false to skip it. The lead events are written first.
 func (a *api) stream(
 	w http.ResponseWriter, r *http.Request, events <-chan run.Event,
-	data func(run.Event) (any, bool),
+	data func(run.Event) (any, bool), lead ...sseEvent,
 ) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -626,6 +721,15 @@ func (a *api) stream(
 	rc := http.NewResponseController(w)
 	if rc.Flush() != nil {
 		return
+	}
+	for _, ev := range lead {
+		line, err := json.Marshal(ev.Data)
+		if err == nil {
+			_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, line)
+		}
+		if err != nil || rc.Flush() != nil {
+			return
+		}
 	}
 	ping := time.NewTicker(_pingEvery)
 	defer ping.Stop()
@@ -655,33 +759,6 @@ func (a *api) stream(
 			return
 		}
 	}
-}
-
-// fail answers err with the status it maps to, and logs it when it is a 500.
-func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, store.ErrNotFound), errors.Is(err, run.ErrNotFound),
-		errors.Is(err, memory.ErrNotFound):
-		fail(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, memory.ErrInvalid), errors.Is(err, mcpserver.ErrInvalid):
-		fail(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed),
-		errors.Is(err, store.ErrExists), errors.Is(err, store.ErrUndone),
-		errors.Is(err, store.ErrInUse), errors.Is(err, store.ErrPinLimit):
-		fail(w, http.StatusConflict, err.Error())
-	case errors.Is(err, mcpserver.ErrKeychain):
-		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
-		fail(w, http.StatusInternalServerError, err.Error())
-	default:
-		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
-		fail(w, http.StatusInternalServerError, "internal error")
-	}
-}
-
-func fail(w http.ResponseWriter, status int, msg string) {
-	write(w, status, struct {
-		Error string `json:"error"`
-	}{Error: msg})
 }
 
 func write(w http.ResponseWriter, status int, v any) {

@@ -9,13 +9,13 @@ export type LivePart = { text: string } | { step: string };
 export type LiveRun = {
   parts: LivePart[];
   tool?: { kind: ToolKind; target: string; name: string; verb: string };
-  approvals: { id: string; tool: string; input: unknown }[];
+  approvals: { id: string; tool: string; input: unknown; allow_in_thread?: boolean }[];
   finished?: { status: string; error: string; blocked?: string };
   settled?: boolean;
 };
 type Data<T> = T & { run_id: string };
 const empty: LiveRun = { parts: [], approvals: [] };
-const withApproval = (run: LiveRun, a: { id: string; tool: string; input: unknown }): LiveRun =>
+const withApproval = (run: LiveRun, a: LiveRun['approvals'][number]): LiveRun =>
   run.approvals.some((x) => x.id === a.id) ? run : { ...run, approvals: [...run.approvals, a] };
 
 export function useThreadEvents(threadId: string) {
@@ -117,7 +117,7 @@ export function useThreadEvents(threadId: string) {
         parts: [...run.parts, { step: d.name.endsWith('finish_run') ? '' : toolLine(tool) }],
       };
     });
-    on<{ id: string; tool: string; input: unknown }>('approval', (d, run) => withApproval(run, d));
+    on<LiveRun['approvals'][number]>('approval', (d, run) => withApproval(run, d));
     on<{ id: string }>('approval_closed', (d, run) => {
       closedApprovals.current.add(d.id);
       return { ...run, approvals: run.approvals.filter((x) => x.id !== d.id) };

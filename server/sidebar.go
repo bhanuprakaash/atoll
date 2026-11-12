@@ -6,7 +6,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
+	"time"
 
 	"atoll/run"
 	"atoll/store"
@@ -15,11 +17,14 @@ import (
 // sidebarThread is an open thread of a Bot with the one marker the sidebar shows. Helper is set
 // for a thread another Bot handed to this one: the user cannot close it.
 type sidebarThread struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	State  string `json:"state"` // "needs_you", "running", "new" or ""
-	Pinned bool   `json:"pinned"`
-	Helper bool   `json:"helper,omitempty"`
+	ID           string    `json:"id"`
+	Title        string    `json:"title"`
+	State        string    `json:"state"` // "needs_you", "running", "new" or ""
+	Pinned       bool      `json:"pinned"`
+	Helper       bool      `json:"helper,omitempty"`
+	Branch       string    `json:"branch"`
+	MRURL        string    `json:"mr_url"`
+	LastActivity time.Time `json:"last_activity"`
 }
 
 // notice is one /api/events payload: an event of a thread with the thread's Bot and title.
@@ -48,6 +53,7 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 		state := a.marker(t, byBoss[t.ThreadID])
 		out = append(out, sidebarThread{
 			ID: t.ThreadID, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
+			Branch: t.Branch, MRURL: t.MRURL, LastActivity: t.LastActivity,
 		})
 	}
 	return out
@@ -207,19 +213,83 @@ func (a *api) deleteGroup(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// earlierNotice is one row of the island's Earlier list: a notice of the type and with the data a
+// live event of that type has, and when it happened in milliseconds.
+type earlierNotice struct {
+	notice
+	Type string `json:"type"`
+	At   int64  `json:"at"`
+}
+
 // notices streams the events of every thread that the sidebar and the island show, each with its
-// thread's Bot and title. An event whose thread is gone is skipped.
+// thread's Bot and title, led by the island's Earlier list. An event whose thread is gone is
+// skipped.
 func (a *api) notices(w http.ResponseWriter, r *http.Request) {
 	events, cancel := a.runs.SubscribeAll()
 	defer cancel()
+	earlier, err := a.earlier(r.Context())
+	if err != nil {
+		a.log.Error("build earlier", "err", err)
+	}
 	a.stream(w, r, events, func(ev run.Event) (any, bool) {
 		n, err := a.noticeOf(r.Context(), ev)
 		return n, err == nil
-	})
+	}, sseEvent{Type: "earlier", Data: earlier})
+}
+
+// earlier lists, newest first, what happened after the island was last read: runs that ended, MRs
+// opened and platform changes.
+func (a *api) earlier(ctx context.Context) ([]earlierNotice, error) {
+	out := []earlierNotice{}
+	since, err := a.st.IslandSeenAt(ctx)
+	if err != nil {
+		return out, err
+	}
+	add := func(typ string, at time.Time, threadID string, data any) {
+		if n, err := a.noticeAbout(ctx, threadID, data); err == nil {
+			out = append(out, earlierNotice{notice: n, Type: typ, At: at.UnixMilli()})
+		}
+	}
+	runs, err := a.st.FinishedRunsSince(ctx, since)
+	if err != nil {
+		return out, err
+	}
+	for _, e := range runs {
+		add(run.EventRunFinished, e.At, e.ThreadID, run.Finished{Status: e.Status, Error: e.Error})
+	}
+	mrs, err := a.st.OpenedMRsSince(ctx, since)
+	if err != nil {
+		return out, err
+	}
+	for _, e := range mrs {
+		add(run.EventMRUpdated, e.At, e.ThreadID, run.MRUpdated{URL: e.URL, State: "opened", Title: e.Title})
+	}
+	changes, err := a.st.ChangesSince(ctx, since)
+	if err != nil {
+		return out, err
+	}
+	for _, c := range changes {
+		add(run.EventPlatformChanged, c.Created, c.SourceThreadID,
+			run.PlatformChanged{SourceBotID: c.SourceBotID, ThreadID: c.SourceThreadID, RunID: c.SourceRunID, Change: c})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At > out[j].At })
+	return out, nil
+}
+
+func (a *api) markIslandSeen(w http.ResponseWriter, r *http.Request) {
+	if err := a.st.MarkIslandSeen(context.WithoutCancel(r.Context())); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *api) noticeOf(ctx context.Context, ev run.Event) (notice, error) {
-	t, err := a.st.Thread(ctx, ev.ThreadID)
+	return a.noticeAbout(ctx, ev.ThreadID, ev.Data)
+}
+
+func (a *api) noticeAbout(ctx context.Context, threadID string, data any) (notice, error) {
+	t, err := a.st.Thread(ctx, threadID)
 	if err != nil {
 		return notice{}, err
 	}
@@ -229,6 +299,6 @@ func (a *api) noticeOf(ctx context.Context, ev run.Event) (notice, error) {
 	}
 	return notice{
 		ThreadID: t.ID, ParentThreadID: t.ParentThreadID, BotID: t.BotID, BotName: b.Name,
-		Title: t.Title, Data: ev.Data,
+		Title: t.Title, Data: data,
 	}, nil
 }
