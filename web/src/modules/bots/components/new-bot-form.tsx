@@ -10,6 +10,7 @@ import { BotPreview, CreatureSidebar } from '@/modules/bots/components/bot-previ
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { ConnectionList } from '@/modules/bots/components/connection-list';
 import { CreatureCarousel } from '@/modules/bots/components/creature-picker';
+import { ErrorNotice } from '@/components/error-notice';
 
 export type ModelControl = (
   provider: Provider,
@@ -164,7 +165,14 @@ export function NewBotForm({
               reconnect={reconnect}
             />
           </section>
-          {create.isError && <p className="text-sm text-danger">{create.error.message}</p>}
+          {create.isError && (
+            <ErrorNotice
+              error={create.error}
+              retry={() =>
+                create.variables && create.mutate(create.variables, { onSuccess: onCreated })
+              }
+            />
+          )}
         </form>
         <section
           aria-label="Preview"

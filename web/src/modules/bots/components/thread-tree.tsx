@@ -55,7 +55,7 @@ export function ThreadLabel({ thread }: { thread: SidebarThread }) {
   return (
     <>
       {thread.state === 'needs_you' ? (
-        <Dot className="bg-danger" />
+        <Dot className="bg-accent" />
       ) : thread.state === 'new' ? (
         <Dot className="bg-kind" />
       ) : thread.pinned && thread.state === '' ? (
@@ -67,7 +67,7 @@ export function ThreadLabel({ thread }: { thread: SidebarThread }) {
         {thread.title || 'Empty thread'}
       </span>
       {thread.state === 'needs_you' && (
-        <span className="flex-none text-xs text-needs-ink">Needs you</span>
+        <span className="flex-none text-xs text-ink">Needs you</span>
       )}
       {thread.state === 'new' && <span className="flex-none text-xs text-kind">New</span>}
       {thread.state === 'running' && <Wave label="Running" />}
@@ -79,8 +79,8 @@ function ThreadMarker({ thread }: { thread: SidebarThread }) {
   if (thread.state === 'needs_you')
     return (
       <>
-        <span className="flex-none text-xs text-needs-ink">Needs you</span>
-        <Dot className="bg-danger" />
+        <span className="flex-none text-xs text-ink">Needs you</span>
+        <Dot className="bg-accent" />
       </>
     );
   if (thread.state === 'new')
@@ -121,6 +121,7 @@ export function ThreadTree({
   onMore,
   onCloseThread,
   onRenameThread,
+  only,
 }: {
   bot: Pick<Bot, 'id' | 'name' | 'threads'>;
   selected: boolean;
@@ -130,10 +131,13 @@ export function ThreadTree({
   onMore: (botId: string) => void;
   onCloseThread: (threadId: string) => void;
   onRenameThread: (threadId: string, title: string) => void;
+  only?: SidebarThread[];
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number; thread: SidebarThread } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const { rows, more } = threadTree(bot.threads ?? [], openThreadId, unfolded);
+  const { rows, more } = only
+    ? { rows: only, more: null }
+    : threadTree(bot.threads ?? [], openThreadId, unfolded);
   if (rows.length === 0) return null;
   return (
     <>

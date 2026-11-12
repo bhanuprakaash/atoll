@@ -4,6 +4,7 @@ import { TextField } from '@/components/text-field';
 import { inDesktopApp } from '@/lib/app-update';
 import { SoftwareUpdate } from '@/modules/settings/components/software-update';
 import { type Settings, useSaveSettings, useSettings } from '@/modules/settings/api/settings';
+import { ErrorNotice } from '@/components/error-notice';
 
 function GeneralForm({ settings }: { settings: Settings }) {
   const [name, setName] = useState(settings.user_name);
@@ -45,7 +46,12 @@ function GeneralForm({ settings }: { settings: Settings }) {
         </div>
       </Box>
       {inDesktopApp && <SoftwareUpdate />}
-      {save.isError && <p className="text-danger">{save.error.message}</p>}
+      {save.isError && (
+        <ErrorNotice
+          error={save.error}
+          retry={() => save.variables && save.mutate(save.variables)}
+        />
+      )}
     </>
   );
 }

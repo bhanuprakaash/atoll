@@ -9,7 +9,7 @@ The implementer separately proves a real provider opening an MR on gitlab.com.
 ## First edit and working directory
 
 The Bot calls Atoll MCP `start_work({type, slug})` before its first edit. Allowed types
-are `feat`, `fix`, `chore`, `docs`. The app normalises `Seeded BUG` to `seeded-bug`,
+are `feat`, `fix`, `chore`, `docs`, `test`. The app normalises `Seeded BUG` to `seeded-bug`,
 creates `fix/seeded-bug` (then `fix/seeded-bug-2` when taken), creates the worktree
 under the configured root, and returns text JSON `{path, branch}` with an absolute
 path. The Bot changes directory there for this run's edits. The branch is fixed for
@@ -164,4 +164,12 @@ Helpers in the UI (above the composer, in the island, a read-only helper thread)
 
 The sidebar thread tree, threads popup, Bot groups and island notifications extend these contracts in [sidebar-tree-contract.md](sidebar-tree-contract.md).
 
+Home paths in imported skills (the own folder becomes a placement token, any other home reference refuses the import) extend these contracts in [skill-home-paths-contract.md](skill-home-paths-contract.md).
+
 Claude not loading the owner's own setup extends these contracts in [claude-isolation-contract.md](claude-isolation-contract.md). Its one real-claude test has the build tag `realclaude`: `go test -tags realclaude -run TestClaudeIsolation_Real ./e2e`.
+
+Waking a Bot when its tracked GitHub PR merges, closes or finishes CI extends [github-repos-contract.md](github-repos-contract.md) in [pr-wake-contract.md](pr-wake-contract.md).
+
+Allow in this thread (a third choice on a command that may repeat) extends these contracts in [allow-in-thread-contract.md](allow-in-thread-contract.md).
+
+The approval card (compact, quiet, answered by writing in the chat) and red only for real danger extend these contracts in [approval-card-contract.md](approval-card-contract.md).

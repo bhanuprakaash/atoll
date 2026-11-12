@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"unicode"
 
 	"atoll/memory"
 	"atoll/provider"
@@ -25,12 +26,12 @@ const _tools = `{"tools":[
 {"name":"finish_run",
 "description":"Report how this run went. Call it once in every run, when the work is done and before your final reply.",
 "inputSchema":{"type":"object",
-"properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string","description":"What stopped the work that only the user can fix: a missing sign-in or token, no access, a denied approval, a failing service. Empty string if nothing. A question you asked in your reply is not blocked."},"next":{"type":"string"}},
+"properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string","description":"What stopped the work that only the user can fix: a missing sign-in or token, no access, a denied approval, a failing service. Empty string if nothing. A question you asked in your reply is not blocked."},"next":{"type":"string"},"ready":{"type":"array","description":"The pull requests you call ready to merge, each with its head commit as you saw it.","items":{"type":"object","properties":{"url":{"type":"string"},"sha":{"type":"string","description":"The 40-hex head commit of the PR."}},"required":["url","sha"]}}},
 "required":["done","tried","blocked","next"]}},
 {"name":"start_work",
 "description":"Repo threads start in a clean read-only checkout. Call before your first edit in a repo thread. Makes this thread's worktree on a new branch type/slug and returns its path and branch as JSON. Change into that path for your edits. Calling it again returns the same worktree.",
 "inputSchema":{"type":"object",
-"properties":{"type":{"type":"string","enum":["feat","fix","chore","docs"]},"slug":{"type":"string"}},
+"properties":{"type":{"type":"string","enum":["feat","fix","chore","docs","test"]},"slug":{"type":"string"},"base":{"type":"string","description":"Optional plain branch name on origin, e.g. test/x"}},
 "required":["type","slug"]}},
 {"name":"track_mr",
 "description":"When the change is ready, commit, push, open a merge request, call this tool with its URL and title, and include the URL in your reply. Never merge.",
@@ -41,9 +42,9 @@ const _tools = `{"tools":[
 "properties":{"tool_name":{"type":"string"},"input":{"type":"object"},"tool_use_id":{"type":"string"}},
 "required":["tool_name","input"]}},
 {"name":"remember",
-"description":"Save one lasting fact for later threads: a decision, convention, finding, fact or lesson. Put one idea in body and the reason in why. Scope repo is for this repo, bot for this Bot only, user for the user in every repo. To change an older item, pass its id in replaces: it is retired and this one takes its place. Returns the saved item and a similar array of existing items that look the same.",
+"description":"Save one lasting fact for later threads: a decision, convention, finding, fact or lesson. Put one idea in body and the reason in why. Scope repo is for this repo, bot for this Bot only, user for the user in every repo. To change an older item, pass its id in replaces: it is retired and this one takes its place. For a note about one issue of this repo, pass ticket as #N; it is retired when the issue closes. Returns the saved item and a similar array of existing items that look the same.",
 "inputSchema":{"type":"object",
-"properties":{"kind":{"type":"string","enum":["decision","convention","finding","fact","lesson"]},"body":{"type":"string"},"why":{"type":"string"},"scope":{"type":"string","enum":["repo","user","bot"]},"replaces":{"type":"array","items":{"type":"string"}}},
+"properties":{"kind":{"type":"string","enum":["decision","convention","finding","fact","lesson"]},"body":{"type":"string"},"why":{"type":"string"},"scope":{"type":"string","enum":["repo","user","bot"]},"replaces":{"type":"array","items":{"type":"string"}},"ticket":{"type":"string"}},
 "required":["kind","body","why","scope"]}},
 {"name":"recall",
 "description":"Search saved memory for this repo, this Bot and the user. Returns an array of items, best match first. Call read_memory with an id for one item.",
@@ -169,19 +170,29 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if err := json.Unmarshal(call.Arguments, &rep); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		if err := a.runs.Report(r.Context(), token, rep); err != nil {
-			return nil, a.toolError(err)
+		if strings.TrimSpace(rep.Done) == "" {
+			return failure("done is required."), nil
 		}
-		return text("Report saved."), nil
+		blocked := strings.TrimSpace(rep.Blocked)
+		blocked = strings.TrimSpace(strings.TrimRightFunc(blocked, unicode.IsPunct))
+		switch strings.ToLower(blocked) {
+		case "nothing blocking", "none", "nothing", "n/a":
+			rep.Blocked = ""
+		}
+		if err := a.runs.Report(r.Context(), token, rep); err != nil {
+			return a.refusal(err)
+		}
+		return a.withHelpers(r, token, "Report saved.")
 	case provider.ToolStartWork:
 		var in struct {
 			Type string `json:"type"`
 			Slug string `json:"slug"`
+			Base string `json:"base"`
 		}
 		if err := json.Unmarshal(call.Arguments, &in); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		path, branch, base, err := a.runs.StartWork(r.Context(), token, in.Type, in.Slug)
+		path, branch, base, err := a.runs.StartWork(r.Context(), token, in.Type, in.Slug, in.Base)
 		if errors.Is(err, run.ErrNoGitHubConnection) {
 			return failure(err.Error()), nil
 		}
@@ -217,12 +228,13 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			Why      string   `json:"why"`
 			Scope    string   `json:"scope"`
 			Replaces []string `json:"replaces"`
+			Ticket   string   `json:"ticket"`
 		}
 		if err := json.Unmarshal(call.Arguments, &in); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
 		item, similar, err := a.runs.Remember(
-			r.Context(), token, in.Kind, in.Body, in.Why, in.Scope, in.Replaces)
+			r.Context(), token, in.Kind, in.Body, in.Why, in.Scope, in.Ticket, in.Replaces)
 		if err != nil {
 			return nil, a.toolError(err)
 		}
@@ -281,11 +293,14 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if err := json.Unmarshal(call.Arguments, &in); err != nil || in.Thread == "" || in.Message == "" {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		err := a.runs.Continue(r.Context(), token, in.Thread, in.Message)
+		queuedFor, err := a.runs.Continue(r.Context(), token, in.Thread, in.Message)
 		if res, rpcErr := a.refusal(err); res != nil || rpcErr != nil {
 			return res, rpcErr
 		}
-		return text("Sent."), nil
+		if queuedFor != "" {
+			return text("Queued: " + queuedFor + " is working; it gets this when its run ends."), nil
+		}
+		return a.withHelpers(r, token, "Sent.")
 	case provider.ToolApprove:
 		var in struct {
 			ToolName  string          `json:"tool_name"`
@@ -295,7 +310,7 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if err := json.Unmarshal(call.Arguments, &in); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		allow, err := a.runs.Ask(r.Context(), token, in.ToolUseID, in.ToolName, in.Input)
+		decision, err := a.runs.Ask(r.Context(), token, in.ToolUseID, in.ToolName, in.Input)
 		if err != nil {
 			return nil, a.toolError(err)
 		}
@@ -304,8 +319,10 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			UpdatedInput json.RawMessage `json:"updatedInput,omitempty"`
 			Message      string          `json:"message,omitempty"`
 		}{Behavior: "deny", Message: "The user rejected this step."}
-		if allow {
+		if decision.Allow {
 			answer.Behavior, answer.UpdatedInput, answer.Message = "allow", in.Input, ""
+		} else if decision.Reason != "" {
+			answer.Message = "The user did not allow this and wrote: " + decision.Reason
 		}
 		body, err := json.Marshal(answer)
 		if err != nil {
@@ -334,7 +351,8 @@ func (a *api) delegateTools(ctx context.Context, bot store.Bot) ([]json.RawMessa
 		"description": "Hand work to a Bot on your delegate list (" + strings.Join(names, ", ") +
 			"). Returns at once with {\"thread_id\"}; the helper works in a thread of its own and " +
 			"its replies come back to you. The brief must hold everything the helper needs. " +
-			"The helper works in this thread's repo; with no repo here, repo names a registered repo.",
+			"The helper works in this thread's repo; with no repo here, repo names a registered repo. " +
+			"End every brief with: " + run.FreezeSentence,
 		"inputSchema": map[string]any{
 			"type":       "object",
 			"properties": map[string]any{"bot": str, "brief": str, "repo": str},
@@ -386,6 +404,18 @@ func (a *api) jsonText(v any) (any, *rpcError) {
 		return nil, a.toolError(err)
 	}
 	return text(string(body)), nil
+}
+
+// withHelpers is the text result s, then the helpers line on a new line when the run lists delegate.
+func (a *api) withHelpers(r *http.Request, token, s string) (any, *rpcError) {
+	line, err := a.runs.BossHelpers(r.Context(), token)
+	if err != nil {
+		return nil, a.toolError(err)
+	}
+	if line != "" {
+		s += "\n" + line
+	}
+	return text(s), nil
 }
 
 func text(s string) any { return result(s, false) }

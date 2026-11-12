@@ -181,13 +181,21 @@ func Remove(ctx context.Context, st *store.Store, id string) error {
 	return errors.Join(deleteSecrets(s, nil), deleteTokens(id))
 }
 
+// readError marks a failed secret read as an unreachable store, unless the secret is only missing.
+func readError(err error) error {
+	if errors.Is(err, keyring.ErrNotFound) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", store.ErrSecretStore, err)
+}
+
 // Secrets returns the stored env values of a local server, or the header values of a remote one.
 func Secrets(s store.MCPServer) (map[string]string, error) {
 	values := map[string]string{}
 	for _, name := range secretNames(s) {
 		v, err := keyring.Get("atoll", secretUser(s, name))
 		if err != nil {
-			return nil, fmt.Errorf("read %s of MCP server %s: %w", name, s.Name, err)
+			return nil, fmt.Errorf("read %s of MCP server %s: %w", name, s.Name, readError(err))
 		}
 		values[name] = v
 	}

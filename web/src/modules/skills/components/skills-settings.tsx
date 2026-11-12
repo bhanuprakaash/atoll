@@ -23,6 +23,7 @@ import {
   useSaveSkill,
   useSkills,
 } from '@/modules/skills/api/skills';
+import { ErrorNotice } from '@/components/error-notice';
 
 type Bot = { id: string; name: string; look: CreatureLook; skills: string[] };
 
@@ -183,6 +184,16 @@ function SkillEditor({
       files: files.map((f) => (f.path === path ? { ...f, ...patch } : f)),
     });
   }
+  const saveSkill = () =>
+    save.mutate(
+      { ...edit, name: name.trim() },
+      {
+        onSuccess: (s) => {
+          if (isNew) onCreated(s.id);
+          else setBase(toDraft(s));
+        },
+      },
+    );
   function addFile(path: string) {
     const problem = pathProblem(path, files);
     setAddError(problem);
@@ -246,7 +257,9 @@ function SkillEditor({
         </button>
       </div>
       <div className="flex flex-1 flex-col gap-5 overflow-auto p-5">
-        {reimport.isError && <p className="text-[13px] text-danger">{reimport.error.message}</p>}
+        {reimport.isError && (
+          <ErrorNotice error={reimport.error} retry={() => runReimport(false)} />
+        )}
         {result && (
           <ReimportResult
             result={result}
@@ -300,11 +313,7 @@ function SkillEditor({
                   Add
                 </button>
               </div>
-              {addError && (
-                <p role="alert" className="text-xs text-danger">
-                  {addError}
-                </p>
-              )}
+              {addError && <ErrorNotice title={addError} next="Fix the path and try again." />}
             </form>
           )}
           <ul aria-label="Files" className="flex flex-col rounded-2xl border border-line py-1">
@@ -433,7 +442,7 @@ function SkillEditor({
       </div>
       <div className="flex items-center gap-2 border-t border-line px-5 py-3.5 text-[12.5px] text-muted">
         {save.isError ? (
-          <span className="text-danger">{save.error.message}</span>
+          <ErrorNotice error={save.error} retry={saveSkill} className="min-w-0 flex-1" />
         ) : isNew ? (
           'Not created yet'
         ) : changed ? (
@@ -460,17 +469,7 @@ function SkillEditor({
           type="button"
           className={`${solidButton} ml-auto`}
           disabled={!canSave || save.isPending}
-          onClick={() =>
-            save.mutate(
-              { ...edit, name: name.trim() },
-              {
-                onSuccess: (s) => {
-                  if (isNew) onCreated(s.id);
-                  else setBase(toDraft(s));
-                },
-              },
-            )
-          }
+          onClick={saveSkill}
         >
           {isNew ? 'Create skill' : 'Save skill'}
         </button>

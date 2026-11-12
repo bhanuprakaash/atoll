@@ -80,6 +80,7 @@ export function useNotifications(): Notifications {
               return [{ ...n, id, text: finishedText(n, n.data.status) }];
             if (n.type === 'mr_updated')
               return [{ ...n, id, text: mrText(n, n.data.url), detail: n.data.title }];
+            if (n.data.change.entity === 'allow') return [];
             return [{ ...n, id, text: changeText(n, n.data.change) }];
           }),
       );
@@ -103,7 +104,10 @@ export function useNotifications(): Notifications {
       if (notice.data.state === 'opened')
         add(notice, mrText(notice, notice.data.url), notice.data.title);
     });
-    on<Change>('platform_changed', (notice) => add(notice, changeText(notice, notice.data.change)));
+    on<Change>('platform_changed', (notice) => {
+      if (notice.data.change.entity !== 'allow')
+        add(notice, changeText(notice, notice.data.change));
+    });
     return () => {
       source.close();
       window.clearTimeout(timer);

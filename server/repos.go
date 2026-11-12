@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -63,7 +64,7 @@ func (a *api) pickRepoFolder(w http.ResponseWriter, r *http.Request) {
 		var exitErr *exec.ExitError
 		switch {
 		case errors.Is(err, exec.ErrNotFound):
-			fail(w, http.StatusNotImplemented, "No folder picker on this system. Type the repo path instead.")
+			fail(w, http.StatusNotImplemented, "No folder picker on this system.")
 		case !errors.As(err, &exitErr):
 			a.fail(w, r, err)
 		case runtime.GOOS == "linux" && exitErr.ExitCode() == 1,
@@ -170,8 +171,7 @@ func (a *api) startGitLab(w http.ResponseWriter, r *http.Request) {
 	}
 	dev, err := connection.StartDevice(r.Context(), a.http, body.InstanceURL)
 	if err != nil {
-		a.log.Warn("start GitLab sign-in", "error", err)
-		fail(w, http.StatusBadGateway, err.Error())
+		a.failSignIn(w, "start GitLab sign-in", body.InstanceURL, err)
 		return
 	}
 	a.writeDevice(w, r, store.KindGitLab, body.InstanceURL, existing, dev)
@@ -201,8 +201,7 @@ func (a *api) startGitHub(w http.ResponseWriter, r *http.Request) {
 	}
 	dev, err := connection.StartGitHubDevice(r.Context(), a.http)
 	if err != nil {
-		a.log.Warn("start GitHub sign-in", "error", err)
-		fail(w, http.StatusBadGateway, err.Error())
+		a.failSignIn(w, "start GitHub sign-in", connection.GitHubURL(), err)
 		return
 	}
 	a.writeDevice(w, r, store.KindGitHub, connection.GitHubInstance, existing, dev)
@@ -285,8 +284,11 @@ func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		a.log.Warn("poll sign-in", "connection_id", c.ID, "kind", c.Kind, "error", err)
-		fail(w, http.StatusBadGateway, err.Error())
+		instance := c.InstanceURL
+		if c.Kind == store.KindGitHub {
+			instance = connection.GitHubURL()
+		}
+		a.failSignIn(w, "poll sign-in "+c.ID, instance, err)
 		return
 	}
 	if err := save(); err != nil {
@@ -302,7 +304,7 @@ func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 		if c.Kind == store.KindGitHub {
 			name = "GitHub"
 		}
-		fail(w, http.StatusInternalServerError, "Reef couldn't save the "+name+" sign-in to the system keychain: "+err.Error())
+		failKeychain(w, "the "+name+" sign-in")
 		return
 	}
 	if err := a.st.SetConnectionStatus(r.Context(), c.ID, store.ConnectionConnected); err != nil {
@@ -313,6 +315,21 @@ func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 	delete(a.devices, c.ID)
 	a.mu.Unlock()
 	writeStatus(w, store.ConnectionConnected)
+}
+
+// failSignIn answers a sign-in call that failed: a provider that says the sign-in ended is
+// signed_out, any other failure is the instance not answering.
+func (a *api) failSignIn(w http.ResponseWriter, what, instance string, err error) {
+	a.log.Warn(what, "error", err)
+	if errors.Is(err, connection.ErrSignInEnded) {
+		failCode(w, http.StatusUnauthorized, "signed_out", "That sign-in expired or was refused.")
+		return
+	}
+	host := instance
+	if u, perr := url.Parse(instance); perr == nil && u.Host != "" {
+		host = u.Host
+	}
+	failCode(w, http.StatusBadGateway, "unreachable", "Reef couldn't reach "+host+".")
 }
 
 func writeStatus(w http.ResponseWriter, status string) {
