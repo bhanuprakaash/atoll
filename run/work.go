@@ -672,11 +672,11 @@ func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, gitHelp
 			return nil, gitHelper{}, err
 		}
 		return []string{
-				"OAUTH_TOKEN=" + token,
-				"GLAB_CONFIG_DIR=" + dir,
-				"GITLAB_HOST=" + c.InstanceURL,
-			}, gitHelper{c.InstanceURL, `!f() { test "$1" = get && echo username=oauth2 && ` +
-				`echo "password=$OAUTH_TOKEN"; }; f`, ssh}, nil
+			"OAUTH_TOKEN=" + token,
+			"GLAB_CONFIG_DIR=" + dir,
+			"GITLAB_HOST=" + c.InstanceURL,
+		}, gitHelper{c.InstanceURL, `!f() { test "$1" = get && echo username=oauth2 && ` +
+			`echo "password=$OAUTH_TOKEN"; }; f`, ssh}, nil
 	}
 	return nil, gitHelper{}, nil
 }
