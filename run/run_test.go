@@ -623,6 +623,162 @@ func TestRun_Approval(t *testing.T) {
 	})
 }
 
+func TestRun_ReplyRunUnreadable(t *testing.T) {
+	e := newEnv(t, &fakeSession{
+		script:   []provider.Event{{Kind: provider.KindApproval, ID: "p1", Name: "Write", Input: json.RawMessage(`{"a":1}`)}},
+		answered: make(chan struct{}),
+		release:  make(chan struct{}),
+	})
+	_, ru, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextAs[Approval](t, e, EventApproval)
+	if _, err := e.st.DB().ExecContext(t.Context(),
+		"UPDATE runs SET started_at = 'x' WHERE id = ?", ru.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.m.Reply(t.Context(), e.thread.ID, "not that")
+	if err != nil || got.Message.Text != "not that" || got.Run != nil || len(got.Answered) != 1 {
+		t.Errorf("Reply = %+v, %v; want the stored message, one answer and no error", got, err)
+	}
+	if _, err := e.m.Reply(t.Context(), e.thread.ID, "again"); !errors.Is(err, ErrNoApproval) {
+		t.Errorf("second Reply: %v, want ErrNoApproval", err)
+	}
+	<-e.sess.answered
+	close(e.sess.release)
+	e.next(t, EventRunFinished)
+}
+
+// canceledOnceHelperRuns is a context that ends once the boss has a second run token, which is
+// when the helper's run is stored: a request that dies after the delegate took effect.
+type canceledOnceHelperRuns struct {
+	context.Context
+	m    *Manager
+	seen *atomic.Bool
+}
+
+func (c canceledOnceHelperRuns) started() bool {
+	c.m.mu.Lock()
+	if len(c.m.tokens) > 1 {
+		c.seen.Store(true)
+	}
+	c.m.mu.Unlock()
+	return c.seen.Load()
+}
+
+func (c canceledOnceHelperRuns) Err() error {
+	if c.started() {
+		return context.Canceled
+	}
+	return nil
+}
+
+func (c canceledOnceHelperRuns) Done() <-chan struct{} {
+	if !c.started() {
+		return nil
+	}
+	done := make(chan struct{})
+	close(done)
+	return done
+}
+
+func TestRun_DelegateHelpersLineFails(t *testing.T) {
+	sent := make(chan struct{}, 1)
+	e := newEnv(t, &fakeSession{onSend: func(int) { sent <- struct{}{} }})
+	helper, err := e.st.CreateBot(t.Context(), store.Bot{Name: "Tester", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boss, err := e.st.Bot(t.Context(), e.thread.BotID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boss.Delegates = []string{helper.ID}
+	if _, err := e.st.UpdateBot(t.Context(), boss); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil); err != nil {
+		t.Fatal(err)
+	}
+	<-sent
+	e.m.mu.Lock()
+	token := slices.Collect(maps.Keys(e.m.tokens))[0]
+	e.m.mu.Unlock()
+
+	ctx := canceledOnceHelperRuns{Context: t.Context(), m: e.m, seen: &atomic.Bool{}}
+	h, err := e.m.Delegate(ctx, token, "Tester", "do it", "")
+	if err != nil || h.ThreadID == "" || h.Helpers != "" {
+		t.Fatalf("Delegate = %+v, %v; want the started helper without a helpers line", h, err)
+	}
+	if started := nextAs[HelperStarted](t, e, EventHelperStarted); started.ThreadID != h.ThreadID {
+		t.Errorf("helper_started for %q, want %q", started.ThreadID, h.ThreadID)
+	}
+	if hs, err := e.st.HelperThreads(t.Context(), e.thread.ID); err != nil || len(hs) != 1 || hs[0].Closed {
+		t.Errorf("helper threads = %+v, %v; want the one open helper", hs, err)
+	}
+}
+
+func TestRun_AllowInThreadNotSaved(t *testing.T) {
+	e := newEnv(t, &fakeSession{
+		script: []provider.Event{
+			{Kind: provider.KindApproval, ID: "p1", Name: "Bash", Input: json.RawMessage(`{"command":"go clean -cache"}`)},
+		},
+	})
+	if _, _, err := e.m.Send(t.Context(), e.thread.ID, "hello", nil); err != nil {
+		t.Fatal(err)
+	}
+	ap := nextAs[Approval](t, e, EventApproval)
+	failed, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := e.m.AnswerInThread(failed, ap.ID, true); err == nil {
+		t.Fatal("AnswerInThread with the save failing returned no error")
+	}
+	if _, open, _ := e.m.Active(e.thread.ID); len(open) != 1 || open[0].ID != ap.ID {
+		t.Errorf("Active lists %v after the failed save, want the approval still open", open)
+	}
+	e.sess.mu.Lock()
+	answers := slices.Clone(e.sess.answers)
+	e.sess.mu.Unlock()
+	if len(answers) != 0 {
+		t.Fatalf("provider answers %v after the failed save, want none", answers)
+	}
+	if err := e.m.AnswerInThread(t.Context(), ap.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	e.next(t, EventRunFinished)
+	if got, err := e.st.Changes(t.Context(), e.thread.ID); err != nil || len(got) != 1 {
+		t.Errorf("Changes = %+v, %v; want the one allow", got, err)
+	}
+	e.sess.mu.Lock()
+	defer e.sess.mu.Unlock()
+	if !slices.Equal(e.sess.answers, []bool{true}) {
+		t.Errorf("provider answers %v, want [true]", e.sess.answers)
+	}
+}
+
+func TestRun_AllowInThreadNotSavedRunEnded(t *testing.T) {
+	e := newEnv(t, &fakeSession{})
+	ended, end := context.WithCancel(t.Context())
+	end()
+	e.m.mu.Lock()
+	e.m.approvals["gone"] = open{
+		approval: Approval{ID: "gone", AllowInThread: true},
+		command:  "go clean -cache",
+		run:      &active{threadID: e.thread.ID, ctx: ended},
+		answer:   make(chan Decision, 1),
+	}
+	e.m.mu.Unlock()
+	if err := e.m.AnswerInThread(ended, "gone", true); err == nil {
+		t.Fatal("AnswerInThread with the save failing returned no error")
+	}
+	e.m.mu.Lock()
+	defer e.m.mu.Unlock()
+	if _, ok := e.m.approvals["gone"]; ok {
+		t.Error("approval of an ended run is open again after the failed save, want it dropped")
+	}
+}
+
 func TestRun_ApprovalEndedByProvider(t *testing.T) {
 	e := newEnv(t, &fakeSession{script: []provider.Event{
 		{Kind: provider.KindApproval, ID: "p1", Name: "Write", Input: json.RawMessage(`{"a":1}`)},
@@ -1002,6 +1158,10 @@ func TestCommandTarget(t *testing.T) {
 		{name: "timeout and cd", give: "cd x && timeout 540 make e2e", want: "make e2e"},
 		{name: "bash wrapper", give: `/bin/bash -lc "cd x && make check"`, want: "make check"},
 		{name: "bash wrapper quotes", give: `/bin/bash -lc "e() { gh pr view \"$1\"; }; e a"`, want: "gh pr"},
+		{name: "bash -ec wrapper", give: `bash -ec "make check"`, want: "make check"},
+		{name: "sh -xc wrapper", give: `/bin/sh -xc 'make check'`, want: "make check"},
+		{name: "wrapper wide spaces", give: `zsh  -lc  'make check'`, want: "make check"},
+		{name: "wrapper escaped quotes", give: `bash -lc "gh pr view \"1\""`, want: "gh pr"},
 		{name: "bash wrapper single quotes", give: `/bin/bash -lc 'ls -la'`, want: "ls"},
 	}
 	for _, tt := range tests {
@@ -1072,7 +1232,7 @@ func TestRun_SubscribeAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	ap := nextAs[Approval](t, e, EventApproval)
-	all, cancel := e.m.SubscribeAll()
+	open, all, cancel := e.m.SubscribeAll()
 	defer cancel()
 	if err := e.m.Answer(t.Context(), ap.ID, true); err != nil {
 		t.Fatal(err)
@@ -1080,6 +1240,9 @@ func TestRun_SubscribeAll(t *testing.T) {
 	<-e.sess.answered
 	close(e.sess.release)
 	var got []string
+	for _, ev := range open {
+		got = append(got, ev.Type+" "+ev.ThreadID)
+	}
 	for len(got) < 3 {
 		select {
 		case ev := <-all:

@@ -178,7 +178,8 @@ type (
 		// session had cost before this run.
 		usage        *provider.Usage
 		priorCostUSD float64
-		kind         string // of the wake the run answers; empty for a message
+		kind         string // of the wake the run answers; empty when any message is not a wake
+		msgs         []store.InboxItem
 	}
 
 	// Event is one event on a thread's stream. Data is one of the types below. ThreadID is the
@@ -324,26 +325,16 @@ func (m *Manager) SendNow(ctx context.Context, threadID, id string) (store.Run, 
 		return store.Run{}, store.ErrSent
 	}
 	_, run, err := m.sendHeld(ctx, items...)
+	if errors.Is(err, store.ErrNoneHeld) {
+		return store.Run{}, store.ErrSent
+	}
 	return run, err
 }
 
 func (m *Manager) send(ctx context.Context, items ...store.InboxItem) (store.Message, store.Run, error) {
 	threadID := items[0].ThreadID
-	texts := make([]string, len(items))
-	var images []provider.Image
-	kind := items[0].Kind
-	for i, it := range items {
-		texts[i] = it.Text
-		if it.Kind != kind {
-			kind = ""
-		}
-		for _, img := range it.Images {
-			images = append(images, provider.Image{Mime: img.Mime, Data: img.Data})
-		}
-	}
-	text := strings.Join(texts, "\n\n")
 	runCtx, cancel := context.WithCancel(m.ctx)
-	a := &active{threadID: threadID, kind: kind, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
+	a := &active{threadID: threadID, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		cancel()
@@ -359,35 +350,51 @@ func (m *Manager) send(ctx context.Context, items ...store.InboxItem) (store.Mes
 	m.wg.Add(1)
 	m.mu.Unlock()
 
-	msg, run, err := m.start(ctx, items)
+	msgs, run, err := m.start(ctx, items)
 	if err != nil {
 		m.drop(a)
 		cancel()
 		m.wg.Done()
 		return store.Message{}, store.Run{}, err
 	}
+	items = slices.DeleteFunc(slices.Clone(items), func(it store.InboxItem) bool {
+		return it.ID != "" && !slices.ContainsFunc(msgs, func(msg store.Message) bool { return msg.ID == it.ID })
+	})
+	texts := make([]string, len(items))
+	var images []provider.Image
+	kind := items[0].Kind
+	for i, it := range items {
+		texts[i] = it.Text
+		if it.Kind != kind {
+			kind = ""
+		}
+		for _, img := range it.Images {
+			images = append(images, provider.Image{Mime: img.Mime, Data: img.Data})
+		}
+	}
 	m.mu.Lock()
-	a.run = run
+	a.run, a.kind, a.msgs = run, kind, items
 	m.tokens[a.token] = a
 	m.mu.Unlock()
-	go m.execute(a, text, images)
-	return msg, run, nil
+	go m.execute(a, strings.Join(texts, "\n\n"), images)
+	return msgs[0], run, nil
 }
 
-// start refuses a closed thread, then stores the messages and their run.
-func (m *Manager) start(ctx context.Context, items []store.InboxItem) (store.Message, store.Run, error) {
+// start refuses a closed thread, then stores the messages and their run. It returns the messages
+// stored, which leave out a held message removed meanwhile.
+func (m *Manager) start(ctx context.Context, items []store.InboxItem) ([]store.Message, store.Run, error) {
 	t, err := m.cfg.Store.Thread(ctx, items[0].ThreadID)
 	if err != nil {
-		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
+		return nil, store.Run{}, fmt.Errorf("start run: %w", err)
 	}
 	if t.Closed {
-		return store.Message{}, store.Run{}, ErrClosed
+		return nil, store.Run{}, ErrClosed
 	}
-	msg, run, err := m.cfg.Store.StartRunFrom(ctx, items...)
+	msgs, run, err := m.cfg.Store.StartRunFrom(ctx, items...)
 	if err != nil {
-		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
+		return nil, store.Run{}, fmt.Errorf("start run: %w", err)
 	}
-	return msg, run, nil
+	return msgs, run, nil
 }
 
 // Available reports whether the provider is installed and signed in.
@@ -467,30 +474,26 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 	}
 }
 
-// SubscribeAll streams the notice events of every thread from now on, until cancel is called. It
-// starts with an approval event for each approval open now.
-func (m *Manager) SubscribeAll() (events <-chan Event, cancel func()) {
+// SubscribeAll streams the notice events of every thread from now on, until cancel is called.
+// approvals holds an approval event for each approval open now; events carries what follows them.
+func (m *Manager) SubscribeAll() (approvals []Event, events <-chan Event, cancel func()) {
 	ch := make(chan Event, _subscriberBuffer)
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		close(ch)
 		m.mu.Unlock()
-		return ch, func() {}
+		return nil, ch, func() {}
 	}
 	for threadID, a := range m.runs {
 		for _, o := range m.approvals {
-			if o.approval.RunID != a.run.ID {
-				continue
-			}
-			select {
-			case ch <- Event{Type: EventApproval, ThreadID: threadID, Data: o.approval}:
-			default:
+			if o.approval.RunID == a.run.ID {
+				approvals = append(approvals, Event{Type: EventApproval, ThreadID: threadID, Data: o.approval})
 			}
 		}
 	}
 	m.all[ch] = struct{}{}
 	m.mu.Unlock()
-	return ch, func() {
+	return approvals, ch, func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if _, ok := m.all[ch]; ok {
@@ -546,7 +549,8 @@ func (m *Manager) Answer(_ context.Context, id string, allow bool) error {
 
 // AnswerInThread allows the open approval id and every later ask for the same command in its
 // thread. It wraps ErrNotFound when none is open, and leaves the approval open and returns
-// ErrNotOffered when allow is false or the approval does not offer it.
+// ErrNotOffered when allow is false or the approval does not offer it. When saving the allow
+// fails it leaves the approval open and the command unanswered.
 func (m *Manager) AnswerInThread(ctx context.Context, id string, allow bool) error {
 	m.mu.Lock()
 	o, ok := m.approvals[id]
@@ -574,10 +578,15 @@ func (m *Manager) AnswerInThread(ctx context.Context, id string, allow bool) err
 			})
 		}
 	}
-	o.answer <- Decision{Allow: true}
 	if err != nil {
+		m.mu.Lock()
+		if m.runs[o.run.threadID] == o.run && o.run.ctx.Err() == nil {
+			m.approvals[id] = o
+		}
+		m.mu.Unlock()
 		return fmt.Errorf("record allow: %w", err)
 	}
+	o.answer <- Decision{Allow: true}
 	return nil
 }
 
@@ -994,7 +1003,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if rp.ID != "" && thread.Session == "" && thread.Worktree == "" {
 		behind = repo.BehindNote(a.ctx, rp.Path)
 	}
-	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd, behind, stale, a.kind)
+	prompt := messagePrompt(a.msgs, items, counts, thread, rp, cfg.Cwd, behind, stale)
 	waiting, err := m.cfg.Store.ThreadWaiting(a.ctx, thread.ID)
 	if err != nil {
 		return "", fmt.Errorf("load waiting items: %w", err)
@@ -1559,28 +1568,11 @@ var (
 	_headSHA          = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	_quoted           = regexp.MustCompile(`\$\([^)]*\)|"[^"]*"|'[^']*'`)
 	_heredoc          = regexp.MustCompile(`<<-?\s*['"]?(\w+)`)
-	_shellWrapper     = regexp.MustCompile(`(?s)^(?:\S*/)?(?:ba|z)?sh\s+-\w*c\s+(.*)$`)
 	_writeRedirect    = regexp.MustCompile(`^\d?>`)
 	_timeout          = regexp.MustCompile(`^\d+[smhd]?$`)
 	_leadingWords     = map[string]bool{"if": true, "elif": true, "while": true, "until": true, "then": true, "do": true, "else": true, "{": true, "!": true}
 	_noCommand        = map[string]bool{"for": true, "case": true, "select": true, "}": true, "done": true, "fi": true, "esac": true, "[": true, "[[": true}
 )
-
-// unwrapShell returns the script of a `bash -lc '...'` wrapper, else command itself.
-func unwrapShell(command string) string {
-	m := _shellWrapper.FindStringSubmatch(strings.TrimSpace(command))
-	if m == nil {
-		return command
-	}
-	script := strings.TrimSpace(m[1])
-	if n := len(script); n >= 2 && (script[0] == '"' || script[0] == '\'') && script[n-1] == script[0] {
-		script = script[1 : n-1]
-		if m[1][0] == '"' {
-			script = strings.ReplaceAll(script, `\"`, `"`)
-		}
-	}
-	return script
-}
 
 // stripHeredocs drops the text of heredocs: it is input, never a command.
 func stripHeredocs(command string) string {

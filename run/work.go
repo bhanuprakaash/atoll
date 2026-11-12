@@ -189,10 +189,11 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 			}
 		}
 	}
-	if err := m.cfg.Store.SetMR(ctx, a.threadID, url, _mrOpened, title); err != nil {
+	state, err := m.cfg.Store.SetMR(ctx, a.threadID, url, _mrOpened, title)
+	if err != nil {
 		return err
 	}
-	m.publish(a, EventMRUpdated, MRUpdated{RunID: a.run.ID, URL: url, State: _mrOpened, Title: title})
+	m.publish(a, EventMRUpdated, MRUpdated{RunID: a.run.ID, URL: url, State: state, Title: title})
 	return nil
 }
 

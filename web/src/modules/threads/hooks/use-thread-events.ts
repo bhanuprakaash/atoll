@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ToolKind } from '@/components/creature';
+import { setLost } from '@/lib/api-client';
 import { getRun } from '@/modules/threads/api/runs';
 import { getThread, markOpened } from '@/modules/threads/api/threads';
 import { toolLine } from '@/modules/threads/utils/tool-line';
@@ -40,12 +41,15 @@ export function useThreadEvents(threadId: string) {
     void opened();
     const source = new EventSource(`/api/threads/${threadId}/events`);
     const refresh = () => {
+      // Invalidating reuses a first read still on its way, which may say the run is running.
+      void queryClient
+        .cancelQueries({ queryKey: ['run'] })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['run'] }));
       const [messages] = [
         ['messages', threadId],
         ['thread', threadId],
         ['threads'],
         ['bots'],
-        ['run'],
         ['memory'],
         ['changes', threadId],
       ].map((queryKey) => queryClient.invalidateQueries({ queryKey }));
@@ -62,6 +66,7 @@ export function useThreadEvents(threadId: string) {
       });
     source.onopen = () => {
       setConnected(true);
+      setLost(false);
       const refreshed = refresh();
       if (reconnecting) {
         setRuns((prev) =>
@@ -98,6 +103,7 @@ export function useThreadEvents(threadId: string) {
     source.onerror = () => {
       reconnecting = true;
       setConnected(false);
+      if (source.readyState === EventSource.CONNECTING) setLost(true);
     };
     on<{ text: string }>('text', (d, run) => {
       const last = run.parts.at(-1);

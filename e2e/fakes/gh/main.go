@@ -222,6 +222,15 @@ func prReady(args []string) error {
 	if status != http.StatusOK {
 		return fmt.Errorf("gh: HTTP %d: %s", status, bytes.TrimSpace(body))
 	}
+	var reply struct {
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.Unmarshal(body, &reply); err != nil {
+		return fmt.Errorf("gh: decode GraphQL reply: %w", err)
+	}
+	if len(reply.Errors) > 0 {
+		return fmt.Errorf("GraphQL: %s (markPullRequestReadyForReview)", reply.Errors[0].Message)
+	}
 	return nil
 }
 

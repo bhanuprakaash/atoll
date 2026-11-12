@@ -251,12 +251,15 @@ func TestRun_StartWorkConcurrent(t *testing.T) {
 
 func TestRun_TrackMR(t *testing.T) {
 	tests := []struct {
-		name    string
-		give    string
-		wantErr string
+		name      string
+		give      string
+		stored    string
+		wantState string
+		wantErr   string
 	}{
-		{name: "https", give: "https://gitlab.example/g/p/-/merge_requests/1"},
-		{name: "http", give: "http://gitlab.example/g/p/-/merge_requests/1"},
+		{name: "https", give: "https://gitlab.example/g/p/-/merge_requests/1", wantState: "opened"},
+		{name: "keeps the stored state", give: "https://gitlab.example/g/p/-/merge_requests/1", stored: "merged", wantState: "merged"},
+		{name: "http", give: "http://gitlab.example/g/p/-/merge_requests/1", wantState: "opened"},
 		{name: "other scheme", give: "javascript://x/%0Aalert(1)", wantErr: "http(s)"},
 		{name: "option", give: "--web", wantErr: "http(s)"},
 		{name: "relative", give: "/g/p/-/merge_requests/1", wantErr: "http(s)"},
@@ -265,6 +268,13 @@ func TestRun_TrackMR(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newRepoEnv(t)
+			if tt.stored != "" {
+				if _, err := e.st.SetMR(t.Context(), e.thread.ID, tt.give, tt.stored, "T"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			events, cancel := e.m.Subscribe(e.thread.ID)
+			defer cancel()
 			var err error
 			e.run(t, func(token string) { err = e.m.TrackMR(t.Context(), token, tt.give, "T") })
 			if (err == nil) != (tt.wantErr == "") || err != nil && !strings.Contains(err.Error(), tt.wantErr) {
@@ -277,6 +287,72 @@ func TestRun_TrackMR(t *testing.T) {
 			if (th.MRURL == tt.give) != (tt.wantErr == "") {
 				t.Errorf("stored MR URL %q for %q", th.MRURL, tt.give)
 			}
+			if tt.wantErr != "" {
+				return
+			}
+			if th.MRState != tt.wantState {
+				t.Errorf("stored MR state %q, want %q", th.MRState, tt.wantState)
+			}
+			for {
+				select {
+				case ev := <-events:
+					if mr, ok := ev.Data.(MRUpdated); ok {
+						if mr.State != tt.wantState {
+							t.Errorf("MRUpdated state %q, want %q", mr.State, tt.wantState)
+						}
+						return
+					}
+				default:
+					t.Fatal("no mr_updated event")
+				}
+			}
 		})
+	}
+}
+
+// TestHiddenPaths_ClosedThreads proves the hidden paths of a repo the Bot lacks hold the folder of
+// each open thread on it and none of a closed thread's, which closing removed.
+func TestHiddenPaths_ClosedThreads(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	rp, err := st.CreateRepo(ctx, "proj", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := st.CreateBot(ctx, store.Bot{Name: "Ada", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := st.CreateBot(ctx, store.Bot{Name: "Bob", Provider: "claude", RepoAccess: store.RepoAccess{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	open, err := st.CreateThread(ctx, owner.ID, rp.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed, err := st.CreateThread(ctx, owner.ID, rp.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetClosed(ctx, closed.ID); err != nil {
+		t.Fatal(err)
+	}
+	m := New(Config{Store: st, DataDir: t.TempDir(), WorktreeRoot: t.TempDir()})
+	t.Cleanup(func() { _ = m.Close() })
+
+	paths, err := m.hiddenPaths(ctx, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(paths, m.threadDir(open.ID)) {
+		t.Errorf("hidden paths %q lack the open thread's folder %s", paths, m.threadDir(open.ID))
+	}
+	if slices.Contains(paths, m.threadDir(closed.ID)) {
+		t.Errorf("hidden paths %q hold the closed thread's folder %s, want none", paths, m.threadDir(closed.ID))
 	}
 }

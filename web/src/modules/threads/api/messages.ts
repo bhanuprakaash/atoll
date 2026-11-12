@@ -18,6 +18,9 @@ export type Message = {
   queued?: boolean;
   attachments: { id: string; mime: string }[];
   not_read: boolean;
+  run_status: Run['status'];
+  done: string;
+  blocked: string;
   answered_approvals?: { id: string; tool: string; input: unknown }[];
 };
 
@@ -118,7 +121,7 @@ export function useChangeQueued(threadId: string) {
       else if (text !== undefined) await api(path, { method: 'PATCH', body: { text } });
       else await api(path, { method: 'DELETE' });
     },
-    onSettled: () =>
+    onSuccess: () =>
       Promise.all(
         [
           ['messages', threadId],

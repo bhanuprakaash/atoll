@@ -70,7 +70,7 @@ export function ThreadLabel({ thread }: { thread: SidebarThread }) {
         <span className="flex-none text-xs text-ink">Needs you</span>
       )}
       {thread.state === 'waiting' && (
-        <span className="flex-none text-xs text-needs-ink">Waiting on you</span>
+        <span className="flex-none text-xs text-ink">Waiting on you</span>
       )}
       {thread.state === 'new' && <span className="flex-none text-xs text-kind">New</span>}
       {thread.state === 'running' && <Wave label="Running" />}
@@ -89,8 +89,8 @@ function ThreadMarker({ thread }: { thread: SidebarThread }) {
   if (thread.state === 'waiting')
     return (
       <>
-        <span className="flex-none text-xs text-needs-ink">Waiting on you</span>
-        <Dot className="bg-danger" />
+        <span className="flex-none text-xs text-ink">Waiting on you</span>
+        <Dot className="bg-accent" />
       </>
     );
   if (thread.state === 'new')

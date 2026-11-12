@@ -23,6 +23,7 @@ import (
 
 const (
 	_maxBackoff   = 15
+	_noCheckEvery = 5
 	_nameCut      = 60
 	_namesListed  = 5
 	_readTimeout  = 30 * time.Second
@@ -50,6 +51,8 @@ type (
 		baseETag string
 		fails    int
 		next     time.Time
+
+		noCheckPolls int
 	}
 
 	ghPull struct {
@@ -209,6 +212,8 @@ func short(sha string) string { return sha[:min(len(sha), 7)] }
 
 // readCI reads the checks of the head commit until its CI is reported, and sets in r the stored
 // result and, when CI finished, the wake. A finished result counts once seen on two reads in a row.
+// A head with no checks is recorded as such once two reads in a row found none, and is then read
+// again only every _noCheckEvery polls, so a check that appears later is still seen.
 func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, head, label string, r *store.MRRead) error {
 	var prev ciResult
 	if t.MRCI != "" {
@@ -217,8 +222,19 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, 
 	if prev.Head != "" && prev.Head != head {
 		r.DropCI = true
 	}
-	if head == "" || t.MRWoke == head {
+	if head == "" {
 		return nil
+	}
+	recheck := false
+	if t.MRWoke == head {
+		if prev.Head != head || !prev.none() {
+			return nil
+		}
+		ws := w.of(t)
+		if ws.noCheckPolls++; ws.noCheckPolls%_noCheckEvery != 0 {
+			return nil
+		}
+		recheck = true
 	}
 	res := ciResult{Head: head}
 	for _, route := range []string{"check-runs", "status"} {
@@ -246,6 +262,15 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, 
 		return err
 	}
 	r.CI = string(enc)
+	if res.none() {
+		if prev.Head == head && prev.none() {
+			r.Woke = head
+		}
+		return nil
+	}
+	if recheck {
+		r.Woke = ""
+	}
 	finished := res.Passed+res.Failed > 0 && res.Pending == 0
 	if !finished || t.MRWake && (prev.Head != head || !res.same(prev)) {
 		return nil
@@ -270,6 +295,8 @@ func (c *ciResult) add(name, outcome string) {
 		c.Pending++
 	}
 }
+
+func (c ciResult) none() bool { return c.Passed+c.Failed+c.Pending == 0 }
 
 func (c ciResult) same(o ciResult) bool {
 	return c.Passed == o.Passed && c.Failed == o.Failed && c.Pending == o.Pending && slices.Equal(c.Names, o.Names)

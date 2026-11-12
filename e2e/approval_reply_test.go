@@ -4,6 +4,8 @@ package e2e
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -113,6 +115,47 @@ func TestApprovalReply_YesIsNotAllow(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestApprovalReply_CodexSteerRefused: when Codex refuses the turn/steer that carries a reply's
+// text, the person learns it: the server logs the refusal with the run, and the run's end, which
+// the thread shows, says so.
+func TestApprovalReply_CodexSteerRefused(t *testing.T) {
+	t.Parallel()
+	const (
+		text    = "Push to a branch instead, never to HEAD."
+		refusal = "no active turn to steer"
+	)
+	m, s := start(t, "codex")
+	if err := os.WriteFile(filepath.Join(m.bin, "codex.steer.refuse"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	th := s.newThread(t, s.newBot(t, "Ada", "codex"))
+	ev := s.events(t, th)
+	r := s.send(t, th, commandPrompt(_push))
+	expectCard(t, ev, r.ID, _push)
+	s.reply(t, th, text)
+	got := s.finished(t, ev, r.ID)
+	steered := false
+	for _, c := range m.calls(t, "codex") {
+		for _, l := range c.stdin {
+			steered = steered || strings.Contains(l, `"turn/steer"`) && strings.Contains(l, text)
+		}
+	}
+	if !steered {
+		t.Fatalf("codex got no turn/steer with %q", text)
+	}
+	if !strings.Contains(got.Error, refusal) {
+		t.Errorf("run %s ended %q with error %q, want the refusal %q", r.ID, got.Status, got.Error, refusal)
+	}
+	eventually(t, 10*time.Second, "a server log line of the run with the refusal", func() bool {
+		for _, l := range strings.Split(s.log.String(), "\n") {
+			if strings.Contains(l, r.ID) && strings.Contains(l, refusal) {
+				return true
+			}
+		}
+		return false
+	})
 }
 
 // TestApprovalReply_HelperApprovalFromBossThread: a helper's approval shows in the boss thread, and

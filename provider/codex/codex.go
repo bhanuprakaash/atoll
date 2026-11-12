@@ -213,7 +213,7 @@ func (s *Session) Answer(id string, allow bool, reason string) error {
 	s.askMu.Lock()
 	a, ok := s.asks[id]
 	delete(s.asks, id)
-	steer := !allow && reason != "" && s.steered != a.turnID+"\x00"+reason
+	steer := ok && !allow && reason != "" && s.steered != a.turnID+"\x00"+reason
 	if steer {
 		s.steered = a.turnID + "\x00" + reason
 	}
@@ -465,7 +465,11 @@ func (s *Session) serverRequest(m message) bool {
 	}
 	id := string(m.ID)
 	s.askMu.Lock()
-	s.asks[id] = ask{id: m.ID, turnID: m.body().TurnID, elicitation: elicitation}
+	turnID := m.body().TurnID
+	if turnID == "" {
+		turnID = s.turnID
+	}
+	s.asks[id] = ask{id: m.ID, turnID: turnID, elicitation: elicitation}
 	s.askMu.Unlock()
 	input := m.Params
 	if name == "fileChange" {

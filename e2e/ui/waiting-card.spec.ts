@@ -1,7 +1,10 @@
 // The "Waiting on you" card: what waits on the person (a decision, a blocker, merge-ready PRs)
 // shows in the thread, the sidebar, the Bot row, a folded group and the island, once, and clears in
 // all of them together. Contract: e2e/waiting-card-contract.md.
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createServer, type Server } from 'node:http';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { expect, type Page, test } from '@playwright/test';
@@ -65,8 +68,8 @@ const composer = (page: Page) => page.getByRole('textbox', { name: 'Message' });
 const header = (page: Page) => page.locator('header');
 const ready = (page: Page) => card(page).getByRole('list', { name: 'Ready to merge' });
 
-// The database is the one the server runs on: what only the PR watcher writes (checks, head,
-// state) is set here, as the watcher would.
+// The database is the one the server runs on: what only the PR watcher writes (checks, head) is
+// set here, as the watcher would.
 function write(sql: string, ...args: (string | number)[]) {
   const db = new DatabaseSync(join(m.data, 'atoll.db'));
   try {
@@ -81,16 +84,12 @@ const checks = (url: string, head: string, passed: number, failed: number, names
     JSON.stringify({ head, passed, failed, pending: 0, names }),
     url,
   );
-const setState = (url: string, state: string) =>
-  write('UPDATE threads SET mr_state = ? WHERE mr_url = ?', state, url);
 const readyFor = (threadID: string, minutes: number) =>
   write(
     'UPDATE runs SET finished_at = ? WHERE thread_id = ?',
     (Date.now() - minutes * 60_000) * 1000,
     threadID,
   );
-const messageCount = async (threadID: string) =>
-  (await api(m, 'GET', `/api/threads/${threadID}/messages`)).length as number;
 
 test('a decision from finish_run is a Waiting on you card: the options as buttons, a free-text composer', async ({
   page,
@@ -340,26 +339,177 @@ test('a ready PR is a row: #n, title, checks, age and Open; the sidebar and the 
   ).toBeVisible();
 });
 
-for (const state of ['merged', 'closed']) {
-  test(`a ready PR leaves when it is ${state}, with no message from the Bot`, async ({ page }) => {
-    const pilot = await newBotAPI(m, 'Pilot');
-    const t = await thread(pilot, say.ready);
-    await open(page, pilot, t);
-    await expect(ready(page).getByRole('listitem')).toHaveCount(1);
-    await expect(sidebarRow(page, 'Pilot')).toContainText('Waiting on you');
-    const before = await messageCount(t.id);
-    const run = (await api(m, 'GET', `/api/threads/${t.id}`)).run_id;
+// The merge and the close go through the real PR watcher: GitHub is a local server it reads
+// (ATOLL_GITHUB_URL), and the Bot opens and tracks the PR with the fake gh (repo-github-ready).
+test.describe('a ready PR the watcher reads', () => {
+  let github: Server;
+  let githubURL = '';
+  let token = '';
+  let root = '';
+  let pull: { title: string; state: string; merged: boolean } | undefined;
+  const head = sha('a');
 
-    setState(pr(201), state);
-    await expect(card(page)).toHaveCount(0);
-    await expect(header(page)).not.toContainText('waiting on you');
-    await expect(sidebarRow(page, 'Pilot')).not.toContainText('Waiting on you');
-    await expect(threadTree(page, 'Pilot').locator('[data-marker="waiting"]')).toHaveCount(0);
-    await page.waitForTimeout(2_500);
-    expect(await messageCount(t.id)).toBe(before);
-    expect((await api(m, 'GET', `/api/threads/${t.id}`)).run_id).toBe(run);
+  test.beforeEach(async () => {
+    m.stop();
+    pull = undefined;
+    github = createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const json = (status: number, value: unknown) => {
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(value));
+        };
+        const url = req.url ?? '';
+        if (req.method === 'POST' && url === '/login/device/code') {
+          json(200, {
+            device_code: 'fixture-device-code',
+            user_code: 'ABCD-1234',
+            verification_uri: 'https://github.com/login/device',
+            expires_in: 900,
+            interval: 1,
+          });
+        } else if (req.method === 'POST' && url === '/login/oauth/access_token') {
+          token = 'fake-gho-ui-waiting-card';
+          json(200, {
+            access_token: token,
+            token_type: 'bearer',
+            scope: 'repo,read:org,workflow',
+          });
+        } else if (
+          ![`Bearer ${token}`, `token ${token}`].includes(req.headers.authorization ?? '')
+        ) {
+          json(401, { message: 'Bad credentials' });
+        } else if (req.method === 'GET' && url === '/user') {
+          json(200, { login: 'reef-fixture', id: 1 });
+        } else if (req.method === 'POST' && url === '/repos/octo/hello/pulls') {
+          pull = {
+            title: JSON.parse(body).title,
+            state: 'open',
+            merged: false,
+          };
+          json(201, { number: 1, html_url: `${githubURL}/octo/hello/pull/1` });
+        } else if (req.method === 'GET' && url === '/repos/octo/hello/pulls/1' && pull) {
+          json(200, {
+            number: 1,
+            ...pull,
+            base: { ref: 'main' },
+            head: { sha: head },
+          });
+        } else if (/^\/repos\/octo\/hello\/commits\/[0-9a-f]+\/check-runs/.test(url)) {
+          json(200, { total_count: 0, check_runs: [] });
+        } else if (/^\/repos\/octo\/hello\/commits\/[0-9a-f]+\/status/.test(url)) {
+          json(200, { state: 'pending', total_count: 0, statuses: [] });
+        } else {
+          json(404, { message: 'Not Found' });
+        }
+      });
+    });
+    await new Promise<void>((ok) => github.listen(0, '127.0.0.1', ok));
+    const addr = github.address();
+    githubURL = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
+    m = await startAtoll({
+      fakes: ['claude', 'gh'],
+      secretStore: true,
+      env: {
+        ATOLL_GITHUB_URL: githubURL,
+        ATOLL_GITHUB_MCP_URL: `${githubURL}/mcp/`,
+        ATOLL_REPO_POLL_INTERVAL: '200ms',
+      },
+    });
+    writeFileSync(join(m.bin, 'github-url'), githubURL);
+    root = mkdtempSync(join(tmpdir(), 'atoll-ui-waiting-card-'));
   });
-}
+  test.afterEach(() => {
+    github?.close();
+    if (root) rmSync(root, { recursive: true, force: true });
+  });
+
+  // pilot is a Bot with a repo on the fake GitHub and the GitHub connection.
+  async function pilot() {
+    const git = (dir: string, ...args: string[]) =>
+      execFileSync('git', args, {
+        cwd: dir,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: 'Fixture',
+          GIT_AUTHOR_EMAIL: 'fixture@example.test',
+          GIT_COMMITTER_NAME: 'Fixture',
+          GIT_COMMITTER_EMAIL: 'fixture@example.test',
+          GIT_CONFIG_NOSYSTEM: '1',
+        },
+      });
+    const bare = join(root, 'hello.git');
+    mkdirSync(bare);
+    git(bare, 'init', '--bare', '-b', 'main');
+    const path = join(root, 'hello');
+    mkdirSync(path);
+    git(path, 'init', '-b', 'main');
+    writeFileSync(join(path, 'answer.txt'), '41\n');
+    git(path, 'add', 'answer.txt');
+    git(path, 'commit', '-m', 'seed bug');
+    git(path, 'remote', 'add', 'origin', `${githubURL}/octo/hello.git`);
+    git(path, 'config', 'remote.origin.pushurl', bare);
+    git(path, 'push', bare, 'main');
+    const repo = await api(m, 'POST', '/api/repos', {
+      name: 'octo-hello',
+      path,
+    });
+    const start = await api(m, 'POST', '/api/connections/github/start');
+    await expect
+      .poll(async () => (await api(m, 'POST', `/api/connections/${start.id}/poll`)).status, {
+        intervals: [1_100],
+      })
+      .toBe('connected');
+    const bot = await newBotAPI(m, 'Pilot', 'claude', {
+      repo_access: [repo.id],
+      connections: [start.id],
+    });
+    return { bot, repo };
+  }
+
+  for (const [state, merged, wake, reply] of [
+    ['merged', true, `PR #1 merged into main at ${head.slice(0, 7)}`, 'Merge noted.'],
+    ['closed', false, 'PR #1 closed', 'Close noted.'],
+  ] as const) {
+    test(`a ready PR leaves when it is ${state}; the Reef wake and its run still happen`, async ({
+      page,
+    }) => {
+      const { bot, repo } = await pilot();
+      const url = `${githubURL}/octo/hello/pull/1`;
+      const t = await api(m, 'POST', `/api/bots/${bot.id}/threads`, {
+        repo_id: repo.id,
+        text: `Fix the seeded bug, open a PR and report it ready. READY=${JSON.stringify([{ url, sha: head }])}`,
+      });
+      await waitStatus(t.id, 'done');
+      await open(page, bot, t);
+      const row = ready(page).getByRole('listitem');
+      await expect(row).toHaveCount(1);
+      await expect(row).toContainText('#1');
+      await expect(row.getByRole('link', { name: 'Open' })).toHaveAttribute('href', url);
+      await expect(sidebarRow(page, 'Pilot')).toContainText('Waiting on you');
+      const run = (await api(m, 'GET', `/api/threads/${t.id}`)).run_id;
+
+      pull = { ...pull!, state: 'closed', merged };
+      await expect(card(page)).toHaveCount(0);
+      await expect(header(page)).not.toContainText('waiting on you');
+      await expect(sidebarRow(page, 'Pilot')).not.toContainText('Waiting on you');
+      await expect(threadTree(page, 'Pilot').locator('[data-marker="waiting"]')).toHaveCount(0);
+
+      await expect
+        .poll(async () => (await api(m, 'GET', `/api/threads/${t.id}`)).run_id)
+        .not.toBe(run);
+      await waitStatus(t.id, 'done');
+      const messages: { role: string; text: string; kind?: string; from_bot_id?: string }[] =
+        await api(m, 'GET', `/api/threads/${t.id}/messages`);
+      const wakes = messages.filter((x) => x.kind);
+      expect(wakes.map((x) => [x.kind, x.text, x.from_bot_id ?? ''])).toEqual([[state, wake, '']]);
+      expect(messages.at(-1)).toMatchObject({ role: 'bot', text: reply });
+      await expect(log(page)).toContainText(reply);
+      await expect(card(page)).toHaveCount(0);
+    });
+  }
+});
 
 test('a test PR reported ready as failing on main for the right reason says red on purpose; a bare red says red', async ({
   page,

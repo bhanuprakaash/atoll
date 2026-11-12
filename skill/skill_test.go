@@ -133,3 +133,44 @@ func TestCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestReadHomeRefs(t *testing.T) {
+	tests := []struct {
+		name        string
+		give        string
+		wantContent string
+		wantRefs    []string
+	}{
+		{"own folder ends the sentence", "See ~/.claude/skills/foo.\n", "See {{ATOLL_SKILL_DIR}}.\n", nil},
+		{"own folder then more text", "See ~/.claude/skills/foo. Next.\n", "See {{ATOLL_SKILL_DIR}}. Next.\n", nil},
+		{"own folder in parentheses", "(~/.claude/skills/foo.)\n", "({{ATOLL_SKILL_DIR}}.)\n", nil},
+		{"dotted name is another folder", "~/.claude/skills/foo.bar/x\n", "~/.claude/skills/foo.bar/x\n",
+			[]string{"~/.claude/skills/foo.bar/x"}},
+		{"tilde word is prose", "It takes ~half the time.\n", "It takes ~half the time.\n", nil},
+		{"existing user", "Run cd ~root now.\n", "Run cd ~root now.\n", []string{"~root"}},
+		{"existing user with path", "Read ~root/.ssh/id now.\n", "Read ~root/.ssh/id now.\n",
+			[]string{"~root/.ssh/id"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), ".claude", "skills", "foo")
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(tt.give), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := Read(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var refs []string
+			for _, r := range got.Refs {
+				refs = append(refs, r.Ref)
+			}
+			if got.Skill.Content != tt.wantContent || !reflect.DeepEqual(refs, tt.wantRefs) {
+				t.Errorf("Read = %q, refs %q, want %q, refs %q", got.Skill.Content, refs, tt.wantContent, tt.wantRefs)
+			}
+		})
+	}
+}

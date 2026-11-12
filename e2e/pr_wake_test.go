@@ -3,7 +3,6 @@ package e2e
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // Contract: pr-wake-contract.md.
@@ -14,7 +13,7 @@ func TestPRWake_MergedWakesTheBot(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			th := f.openPR(t, 1)
 			first := f.s.thread(t, th.ID).RunID
-			f.quiet(t, time.Second, "an open pull request", th, 0, 0)
+			f.quiet(t, 1, "an open pull request", th, 0, 0)
 
 			f.gh.setPull(1, "closed", true)
 			w := f.waitWake(t, th, 1)
@@ -60,7 +59,7 @@ func TestPRWake_CIFinishedWakesOnce(t *testing.T) {
 			f.gh.setChecks(sha,
 				[]fakeCheck{{"build", "completed", "success"}, {"lint", "completed", "skipped"}, {"unit", "in_progress", ""}},
 				[]fakeStatus{{"deploy/preview", "pending"}})
-			f.quiet(t, 2*time.Second, "CI with checks still pending", th, 0, 0)
+			f.quiet(t, 1, "CI with checks still pending", th, 0, 0)
 
 			f.gh.setChecks(sha,
 				[]fakeCheck{{"build", "completed", "success"}, {"lint", "completed", "skipped"}, {"unit", "completed", "failure"}},
@@ -68,24 +67,46 @@ func TestPRWake_CIFinishedWakesOnce(t *testing.T) {
 			w := f.waitWake(t, th, 1)
 
 			f.wantWake(t, th, w, "ci", "CI finished on PR #1: 2 passed, 2 failed (")
-			for _, name := range []string{`"unit"`, `"deploy/preview"`} {
-				if !strings.Contains(w.Text, name) {
-					t.Errorf("wake %q does not name the failed check %s", w.Text, name)
-				}
-			}
-			for _, passed := range []string{"build", "lint"} {
-				if strings.Contains(w.Text, passed) {
-					t.Errorf("wake %q names the passed check %s; passed checks are only counted", w.Text, passed)
-				}
+			if one, other := `CI finished on PR #1: 2 passed, 2 failed ("unit", "deploy/preview")`,
+				`CI finished on PR #1: 2 passed, 2 failed ("deploy/preview", "unit")`; w.Text != one && w.Text != other {
+				t.Errorf("wake %q, want %q up to the order of the names", w.Text, one)
 			}
 			f.wantReply(t, th, "CI noted.", first)
 			if got := f.mrState(t, th); got != "opened" {
 				t.Errorf("thread mr_state %q after CI finished, want opened", got)
 			}
 
-			f.quiet(t, 2*time.Second, "CI already reported", th, 1, 1)
+			f.quiet(t, 1, "CI already reported", th, 1, 1)
 			if got := len(f.wakes(t, th)); got != 1 {
 				t.Errorf("thread has %d wakes after the same CI result was read again, want 1", got)
+			}
+		})
+	}
+}
+
+// A check name is cleaned (no control characters, quotes or backslashes), cut at 60 characters and
+// quoted; the sentence names up to 5 failed checks, then how many more.
+func TestPRWake_CINamesAreCleanedAndCut(t *testing.T) {
+	for _, p := range _providers {
+		t.Run(p, func(t *testing.T) {
+			f := newPRWakeFixture(t, p)
+			th := f.openPR(t, 1)
+			long := strings.Repeat("x", 70)
+			f.gh.setChecks(headSHA(1), []fakeCheck{
+				{"lint", "completed", "success"},
+				{"bad \"name\"\\with\ttab\n", "completed", "failure"},
+				{long, "completed", "failure"},
+				{"c3", "completed", "failure"},
+				{"c4", "completed", "failure"},
+				{"c5", "completed", "failure"},
+				{"c6", "completed", "failure"},
+				{"c7", "completed", "timed_out"},
+			}, nil)
+			w := f.waitWake(t, th, 1)
+
+			want := `CI finished on PR #1: 1 passed, 7 failed ("bad namewithtab", "` + long[:60] + `", "c3", "c4", "c5", and 2 more)`
+			if w.Kind != "ci" || w.Text != want {
+				t.Errorf("wake %+v, want kind ci, text %q", w, want)
 			}
 		})
 	}
@@ -108,7 +129,7 @@ func TestPRWake_ClosedThreadIsNotWoken(t *testing.T) {
 				t.Fatalf("open thread's wake: %+v, want merged PR #2", w)
 			}
 
-			f.quiet(t, 2*time.Second, "closed thread", closed, 0, 1)
+			f.quiet(t, 2, "closed thread", closed, 0, 1)
 			if got := f.reefPrompts(t); len(got) != 1 || !strings.Contains(got[0], "PR #2 merged") {
 				t.Errorf("Reef prompts %q, want one, for PR #2", got)
 			}
@@ -126,15 +147,13 @@ func TestPRWake_OneWakePerEvent(t *testing.T) {
 
 			f.gh.setPull(1, "closed", true)
 			f.waitWake(t, th, 1)
-			reads := f.gh.pullReads(1)
 			f.gh.setTitle(1, "fix: renamed after the merge")
-			eventually(t, 30*time.Second, "the server reads the pull request again", func() bool { return f.gh.pullReads(1) >= reads+3 })
-			f.quiet(t, time.Second, "the same event read again", th, 1, 1)
+			f.quiet(t, 1, "the same event read again", th, 1, 1)
 
 			f.s.kill()
 			f.m.killFakes()
 			f.s = f.m.serve(t)
-			f.quiet(t, 2*time.Second, "after a restart", th, 1, 1)
+			f.quiet(t, 1, "after a restart", th, 1, 1)
 
 			if got := len(f.m.sessions(t, p)); got != 2 {
 				t.Errorf("%s ran %d times, want 2: the run that opened the pull request and one for the wake", p, got)

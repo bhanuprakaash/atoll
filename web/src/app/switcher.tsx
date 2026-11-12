@@ -170,9 +170,7 @@ export function Switcher({ onClose }: { onClose: () => void }) {
                     {row.kind === 'thread' && (
                       <span className="flex-none text-xs text-muted">{row.bot}</span>
                     )}
-                    {row.needsYou && (
-                      <span className="flex-none text-xs text-needs-ink">Needs you</span>
-                    )}
+                    {row.needsYou && <span className="flex-none text-xs text-ink">Needs you</span>}
                   </span>
                   {row.detail && (
                     <span className="truncate text-[12.5px] text-muted">{row.detail}</span>

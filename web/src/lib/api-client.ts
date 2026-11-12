@@ -18,7 +18,7 @@ export class ApiError extends Error {
 let lost = false;
 const listeners = new Set<() => void>();
 
-function setLost(next: boolean) {
+export function setLost(next: boolean) {
   if (lost === next) return;
   lost = next;
   listeners.forEach((listener) => listener());
@@ -46,12 +46,16 @@ function failure(status: number, text: string, method: string, path: string) {
   return new ApiError(status, 'internal', GENERIC, method, path);
 }
 
-async function request(path: string, init: { method?: string; body?: unknown } = {}) {
+// keepalive lets a request finish after the page unloads.
+type Init = { method?: string; body?: unknown; keepalive?: boolean };
+
+async function request(path: string, init: Init = {}) {
   const method = init.method ?? 'GET';
   let res: Response;
   try {
     res = await fetch(`/api${path}`, {
       method: init.method,
+      keepalive: init.keepalive,
       headers: init.body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
@@ -64,7 +68,7 @@ async function request(path: string, init: { method?: string; body?: unknown } =
   return res;
 }
 
-export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}) {
+export async function api<T>(path: string, init: Init = {}) {
   const res = await request(path, init);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }

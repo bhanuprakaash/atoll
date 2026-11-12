@@ -50,7 +50,7 @@ export function Composer({
   disabled: boolean;
   onSent: (run: Run) => void;
   context?: ReactNode;
-  onFirstSend?: (text: string, images: ImageInput[]) => void;
+  onFirstSend?: (text: string, images: ImageInput[], restore: () => void) => void;
   tray?: ReactNode;
 }) {
   const [text, setText] = useState('');
@@ -105,20 +105,23 @@ export function Composer({
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
     if (!canSend) return;
+    const restore = () => {
+      setText((now) => [text, now].filter(Boolean).join('\n'));
+      setImages((now) => [...images, ...now]);
+    };
+    setText('');
+    setImages([]);
     if (onFirstSend) {
-      onFirstSend(text, images);
-      setText('');
-      setImages([]);
+      onFirstSend(text, images, restore);
       return;
     }
     send.mutate(
       { text, images },
       {
         onSuccess: ({ run }) => {
-          setText((now) => (now === text ? '' : now));
-          setImages((now) => (now === images ? [] : now));
           if (run) onSent(run);
         },
+        onError: restore,
       },
     );
   };

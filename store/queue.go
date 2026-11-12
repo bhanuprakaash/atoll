@@ -42,24 +42,18 @@ func (s *Store) Enqueue(ctx context.Context, it InboxItem) (InboxItem, error) {
 // Queued lists the thread's held messages that show in its queue, oldest first, images without
 // their data.
 func (s *Store) Queued(ctx context.Context, threadID string) ([]InboxItem, error) {
-	items, err := s.inbox(ctx, "WHERE thread_id = ? AND queued = 1 ORDER BY rowid", threadID)
-	for i := range items {
-		for j := range items[i].Images {
-			items[i].Images[j].Data = nil
-		}
-	}
-	return items, err
+	return s.inbox(ctx, "NULL", "WHERE thread_id = ? AND queued = 1 ORDER BY rowid", threadID)
 }
 
 // UserInbox lists the messages the person sent to the thread that wait for a run, oldest first.
 func (s *Store) UserInbox(ctx context.Context, threadID string) ([]InboxItem, error) {
-	return s.inbox(ctx, "WHERE thread_id = ? AND from_user = 1 ORDER BY rowid", threadID)
+	return s.inbox(ctx, "data", "WHERE thread_id = ? AND from_user = 1 ORDER BY rowid", threadID)
 }
 
 // Held lists every message held for the thread in the order one run takes them: the person's
 // first, then the rest as they arrived. Images come with their data.
 func (s *Store) Held(ctx context.Context, threadID string) ([]InboxItem, error) {
-	return s.inbox(ctx, "WHERE thread_id = ? ORDER BY from_user DESC, rowid", threadID)
+	return s.inbox(ctx, "data", "WHERE thread_id = ? ORDER BY from_user DESC, rowid", threadID)
 }
 
 // EditQueued sets the text of a queued message. It wraps ErrNotFound for an id the thread has
@@ -141,8 +135,9 @@ func (s *Store) missingQueued(ctx context.Context, db dbConn, threadID, id strin
 	return fmt.Errorf("find message: %w", err)
 }
 
-// inbox reads the held messages that match where, with their images.
-func (s *Store) inbox(ctx context.Context, where string, args ...any) ([]InboxItem, error) {
+// inbox lists the held messages matching where, each with its images. imageData is the SQL that
+// gives an image's Data: its column, or NULL for a caller that does not need the bytes.
+func (s *Store) inbox(ctx context.Context, imageData, where string, args ...any) ([]InboxItem, error) {
 	items, err := query(ctx, s.db,
 		"SELECT id, thread_id, from_bot_id, text, kind, queued, from_user, created FROM inbox "+where,
 		func(r *sql.Rows) (it InboxItem, err error) {
@@ -156,7 +151,7 @@ func (s *Store) inbox(ctx context.Context, where string, args ...any) ([]InboxIt
 	}
 	for i := range items {
 		items[i].Images, err = query(ctx, s.db,
-			"SELECT id, mime, data FROM inbox_images WHERE inbox_id = ? ORDER BY rowid",
+			"SELECT id, mime, "+imageData+" FROM inbox_images WHERE inbox_id = ? ORDER BY rowid",
 			func(r *sql.Rows) (a Attachment, err error) { return a, r.Scan(&a.ID, &a.Mime, &a.Data) },
 			items[i].ID)
 		if err != nil {

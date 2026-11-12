@@ -345,23 +345,29 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	if err != nil {
 		return err
 	}
+	var w *os.File
 	if mcpConfig != nil {
-		r, w, err := os.Pipe()
+		var r *os.File
+		r, w, err = os.Pipe()
 		if err != nil {
 			return err
 		}
 		defer func() { _ = r.Close() }()
-		_, err = w.Write(mcpConfig)
-		if cerr := w.Close(); err == nil {
-			err = cerr
-		}
-		if err != nil {
-			return err
-		}
 		cmd.ExtraFiles = []*os.File{r}
 	}
 	if err := cmd.Start(); err != nil {
+		if w != nil {
+			_ = w.Close()
+		}
 		return fmt.Errorf("start claude: %w", err)
+	}
+	if w != nil {
+		// Not waited for: it ends when the child reads the config or exits, and a grandchild that
+		// holds fd 3 open could make a wait hang.
+		go func() {
+			_, _ = w.Write(mcpConfig)
+			_ = w.Close()
+		}()
 	}
 
 	s.cmd, s.stdin = cmd, stdin

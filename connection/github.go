@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/zalando/go-keyring"
+
+	"atoll/store"
 )
 
 const (
@@ -157,7 +159,7 @@ func SaveGitHubToken(id, token string) error {
 // GitHubToken loads the token from the OS secret store.
 func GitHubToken(id string) (string, error) {
 	token, err := keyring.Get("atoll", "github:"+id)
-	return token, readError(err)
+	return token, store.SecretReadError(err)
 }
 
 // GitHub answers 200 with an error field, and form-encoded unless asked for JSON.
@@ -170,7 +172,7 @@ func githubPost(ctx context.Context, c *http.Client, path string, form url.Value
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.Do(req)
 	if err != nil {
-		return fmt.Errorf("send OAuth request: %w", err)
+		return fmt.Errorf("send OAuth request: %w: %w", ErrUnreachable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {

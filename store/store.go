@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zalando/go-keyring"
 	"modernc.org/sqlite"
 )
 
@@ -36,6 +37,8 @@ var (
 	ErrPinLimit = errors.New("3 threads of this Bot are pinned")
 	// ErrSent is returned when a queued message has already been delivered.
 	ErrSent = errors.New("already sent")
+	// ErrNoneHeld is returned when every held message of a run to start was removed meanwhile.
+	ErrNoneHeld = errors.New("no held message is left")
 	// ErrEmpty is returned when a message would have neither text nor an image.
 	ErrEmpty = errors.New("text or an image is required")
 )
@@ -74,6 +77,15 @@ const ErrorSecretStore = "secret_store"
 // missing does not wrap it.
 var ErrSecretStore = errors.New("secret store unreachable")
 
+// SecretReadError marks a failed secret read as an unreachable store, unless the secret is only
+// missing.
+func SecretReadError(err error) error {
+	if err == nil || errors.Is(err, keyring.ErrNotFound) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrSecretStore, err)
+}
+
 // ErrorRateLimited is the error kind of a run a provider's usage limit stopped.
 const ErrorRateLimited = "rate_limited"
 
@@ -92,6 +104,9 @@ const (
 
 // _islandSeenKey is the setting that holds the island's seen time, in microseconds.
 const _islandSeenKey = "island_seen_at"
+
+// _titlesCleanedKey is the setting that marks the one cleaning of the titles stored before it.
+const _titlesCleanedKey = "titles_cleaned"
 
 // _maxPinnedThreads is how many open threads of one Bot may be pinned.
 const _maxPinnedThreads = 3
@@ -217,6 +232,11 @@ type (
 		Attachments []Attachment `json:"attachments"`
 		// NotRead is set on a user message whose run failed because a secret could not be read.
 		NotRead bool `json:"not_read"`
+		// RunStatus is the status of the message's run; Done and Blocked are the run's finish_run
+		// report, so a chat that folds status replies needs no request per run.
+		RunStatus string `json:"run_status"`
+		Done      string `json:"done"`
+		Blocked   string `json:"blocked"`
 		// Answered are the approvals this message denied by replying.
 		Answered []AnsweredApproval `json:"answered_approvals,omitempty"`
 	}
@@ -617,10 +637,11 @@ func (s *Store) MarkIslandSeen(ctx context.Context) error {
 	return s.SetSetting(ctx, _islandSeenKey, strconv.FormatInt(time.Now().UTC().UnixMicro(), 10))
 }
 
-// ThreadEvent is something that happened to a thread at At: a run that ended (Status, Error), or
-// an MR that opened (URL, Title).
+// ThreadEvent is something that happened to a thread at At: a run that ended (RunID, Status,
+// Error), or an MR that opened (URL, Title).
 type ThreadEvent struct {
 	ThreadID string
+	RunID    string
 	At       time.Time
 	Status   string
 	Error    string
@@ -631,12 +652,12 @@ type ThreadEvent struct {
 // FinishedRunsSince lists the runs that ended after since in a thread that is still open.
 func (s *Store) FinishedRunsSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
 	return query(ctx, s.db,
-		`SELECT r.thread_id, r.finished_at, r.status, r.error
+		`SELECT r.thread_id, r.id, r.finished_at, r.status, r.error
 		 FROM runs r JOIN threads t ON t.id = r.thread_id
 		 WHERE r.finished_at > ? AND r.status IN (?, ?, ?) AND t.closed = 0`,
 		func(r *sql.Rows) (e ThreadEvent, err error) {
 			var at int64
-			err = r.Scan(&e.ThreadID, &at, &e.Status, &e.Error)
+			err = r.Scan(&e.ThreadID, &e.RunID, &at, &e.Status, &e.Error)
 			e.At = time.UnixMicro(at).UTC()
 			return e, err
 		}, since.UnixMicro(), StatusDone, StatusFailed, StatusStopped)
@@ -746,9 +767,9 @@ func (s *Store) Threads(ctx context.Context, botID string) ([]Thread, error) {
 		scanThread, botID)
 }
 
-// ThreadIDsOnRepo lists the ids of the threads on the repo repoID.
+// ThreadIDsOnRepo lists the ids of the open threads on the repo repoID.
 func (s *Store) ThreadIDsOnRepo(ctx context.Context, repoID string) ([]string, error) {
-	return query(ctx, s.db, "SELECT id FROM threads WHERE repo_id = ? ORDER BY rowid",
+	return query(ctx, s.db, "SELECT id FROM threads WHERE repo_id = ? AND closed = 0 ORDER BY rowid",
 		func(r *sql.Rows) (string, error) {
 			var id string
 			return id, r.Scan(&id)
@@ -797,23 +818,27 @@ func (s *Store) RemoveWorktree(ctx context.Context, threadID, ref string) error 
 	return found(res, "thread", threadID)
 }
 
-// SetMR records the thread's MR and, for a new URL, its state. A repeat call with the URL the
-// thread has keeps the state and what the poll stored, so a re-track after a merge never wakes
-// twice.
-func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE threads SET
-		mr_changed_at = CASE WHEN mr_url = ?1 OR mr_state = ?2 THEN mr_changed_at ELSE ?5 END,
+// SetMR records the thread's MR and, for a new URL, its state, and returns the state it holds. A
+// repeat call with the URL the thread has keeps the state and what the poll stored, so a re-track
+// after a merge never wakes twice.
+func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) (string, error) {
+	var kept string
+	err := s.db.QueryRowContext(ctx, `UPDATE threads SET
+		mr_changed_at = CASE WHEN mr_url = ?1 THEN mr_changed_at ELSE ?5 END,
 		mr_state = CASE WHEN mr_url = ?1 THEN mr_state ELSE ?2 END,
 		mr_ci = CASE WHEN mr_url = ?1 THEN mr_ci ELSE '' END,
 		mr_woke = CASE WHEN mr_url = ?1 THEN mr_woke ELSE '' END,
 		mr_head = CASE WHEN mr_url = ?1 THEN mr_head ELSE '' END,
 		mr_base_woke = CASE WHEN mr_url = ?1 THEN mr_base_woke ELSE 0 END,
-		mr_url = ?1, mr_title = ?3, mr_wake = 1 WHERE id = ?4`,
-		url, state, title, threadID, time.Now().UTC().UnixMicro())
-	if err != nil {
-		return fmt.Errorf("set MR: %w", err)
+		mr_url = ?1, mr_title = ?3, mr_wake = 1 WHERE id = ?4 RETURNING mr_state`,
+		url, state, title, threadID, time.Now().UTC().UnixMicro()).Scan(&kept)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("thread %s: %w", threadID, ErrNotFound)
 	}
-	return found(res, "thread", threadID)
+	if err != nil {
+		return "", fmt.Errorf("set MR: %w", err)
+	}
+	return kept, nil
 }
 
 // StoreMR stores what a poll read and, with it, the wake it reports, in one transaction: a restart
@@ -913,7 +938,7 @@ type ThreadRun struct {
 // ThreadRuns lists every thread with its newest run, newest activity first. botID limits it to
 // one Bot; empty means every Bot.
 func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, error) {
-	return s.threadRuns(ctx,
+	return s.threadRuns(ctx, _allWaiting,
 		`polled AS MATERIALIZED (
 		   SELECT t.id AS thread_id, r.status, substr(r.reply, 1, 300) AS reply FROM threads t
 		   JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = t.id))`,
@@ -926,7 +951,7 @@ func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, erro
 // a live run and each Bot's newest thread with a run are read with their run; the rest have no
 // Status.
 func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
-	return s.threadRuns(ctx,
+	return s.threadRuns(ctx, _allWaiting,
 		`live AS MATERIALIZED (SELECT thread_id FROM runs WHERE status IN ('running', 'waiting')),
 		 polled AS MATERIALIZED (
 		   SELECT n.thread_id, r.status, substr(r.reply, 1, 300) AS reply
@@ -941,11 +966,12 @@ func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
 		             WHERE parent_thread_id != '' AND (closed = 0 OR id IN live))`)
 }
 
-// threadRuns reads the threads matching where, newest activity first. with defines the CTEs it
-// needs, among them polled(thread_id, status, reply): the threads whose newest run is read.
-func (s *Store) threadRuns(ctx context.Context, with, where string, args ...any) ([]ThreadRun, error) {
+// threadRuns reads the threads matching where, newest activity first. waiting defines the CTEs
+// of the waits, replies and tracked columns; with defines the others it needs, among them
+// polled(thread_id, status, reply): the threads whose newest run is read.
+func (s *Store) threadRuns(ctx context.Context, waiting, with, where string, args ...any) ([]ThreadRun, error) {
 	return query(ctx, s.db,
-		`WITH `+with+`, `+_waitingWith+`
+		`WITH `+with+`, `+waiting+`
 		 SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.branch, t.mr_url, t.closed, t.pinned_at IS NOT NULL,
 		        t.last_activity,
 		        t.last_heard > t.last_opened_at AND t.last_heard > t.created
@@ -1132,9 +1158,10 @@ func (s *Store) SetSession(ctx context.Context, threadID, session, provider stri
 }
 
 // StartRunFrom stores the items as messages of one running run, removing each held item that has
-// an ID, in one transaction. A held item's message keeps its ID and its images. It returns the
-// first message.
-func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) (Message, Run, error) {
+// an ID, in one transaction. A held item's message keeps its ID and its images. A held item that
+// was removed meanwhile is skipped; it returns ErrNoneHeld when none is left. It returns the
+// stored messages.
+func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) ([]Message, Run, error) {
 	threadID := items[0].ThreadID
 	r := Run{ID: newID(), ThreadID: threadID, Status: StatusRunning, StartedAt: time.Now().UTC(), Tools: map[string]int{}}
 	msgs := make([]Message, len(items))
@@ -1152,6 +1179,7 @@ func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) (Message, 
 			msgs[i].Attachments = append(msgs[i].Attachments, img)
 		}
 	}
+	stored := make([]Message, 0, len(msgs))
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx,
 			"INSERT INTO runs (id, thread_id, status, started_at) SELECT ?, id, ?, ? FROM threads WHERE id = ?",
@@ -1162,27 +1190,37 @@ func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) (Message, 
 		if err := found(res, "thread", threadID); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx,
-			"UPDATE threads SET last_activity = ?, title = CASE WHEN title = '' THEN ? ELSE title END WHERE id = ?",
-			time.Now().UTC().UnixMicro(), FirstWords(items[0].Text), threadID); err != nil {
-			return err
-		}
 		for i, it := range items {
 			if it.ID != "" {
-				if _, err := tx.ExecContext(ctx, "DELETE FROM inbox WHERE id = ?", it.ID); err != nil {
+				res, err := tx.ExecContext(ctx, "DELETE FROM inbox WHERE id = ?", it.ID)
+				if err != nil {
 					return fmt.Errorf("delete inbox item: %w", err)
+				}
+				n, err := res.RowsAffected()
+				if err != nil {
+					return fmt.Errorf("count rows: %w", err)
+				}
+				if n == 0 {
+					continue
 				}
 			}
 			if err := insertMessage(ctx, tx, msgs[i]); err != nil {
 				return err
 			}
+			stored = append(stored, msgs[i])
 		}
-		return nil
+		if len(stored) == 0 {
+			return ErrNoneHeld
+		}
+		_, err = tx.ExecContext(ctx,
+			"UPDATE threads SET last_activity = ?, title = CASE WHEN title = '' THEN ? ELSE title END WHERE id = ?",
+			time.Now().UTC().UnixMicro(), FirstWords(stored[0].Text), threadID)
+		return err
 	})
 	if err != nil {
-		return Message{}, Run{}, err
+		return nil, Run{}, err
 	}
-	return msgs[0], r, nil
+	return stored, r, nil
 }
 
 // AddReply stores text as the user's message in the thread, under run runID, with the approvals it
@@ -1219,7 +1257,7 @@ func (s *Store) AddReply(
 
 // OldestInbox returns the oldest held message; ok is false when none.
 func (s *Store) OldestInbox(ctx context.Context, threadID string) (it InboxItem, ok bool, err error) {
-	items, err := s.inbox(ctx, "WHERE thread_id = ? ORDER BY rowid LIMIT 1", threadID)
+	items, err := s.inbox(ctx, "data", "WHERE thread_id = ? ORDER BY rowid LIMIT 1", threadID)
 	if err != nil || len(items) == 0 {
 		return InboxItem{}, false, err
 	}
@@ -1456,11 +1494,11 @@ func (s *Store) FailUnfinished(
 			for i, w := range held {
 				wakes[i] = w.Wake
 			}
-			from := ""
+			from, kind := "", "restart"
 			if len(held) == 1 {
-				from = held[0].botID
+				from, kind = held[0].botID, ""
 			}
-			if err := insertInbox(ctx, tx, bossID, from, wake(wakes), ""); err != nil {
+			if err := insertInbox(ctx, tx, bossID, from, wake(wakes), kind); err != nil {
 				return err
 			}
 		}
@@ -1518,8 +1556,9 @@ func readWake(ctx context.Context, tx *sql.Tx, runID string) (w heldWake, ok boo
 func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error) {
 	return s.messages(ctx,
 		`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
-            CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
-            m.role = 'user' AND r.error_kind = 'secret_store'
+            CASE WHEN m.kind != '' AND m.created != 0 THEN m.created WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
+            m.role = 'user' AND m.kind = '' AND r.error_kind = 'secret_store',
+            r.status, coalesce(json_extract(r.report, '$.done'), ''), coalesce(json_extract(r.report, '$.blocked'), '')
          FROM messages m JOIN runs r ON r.id = m.run_id WHERE m.thread_id = ? ORDER BY m.rowid`,
 		threadID)
 }
@@ -1529,8 +1568,9 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 	if after != "" {
 		return s.messages(ctx,
 			`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
-                CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
-                m.role = 'user' AND r.error_kind = 'secret_store'
+                CASE WHEN m.kind != '' AND m.created != 0 THEN m.created WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
+                m.role = 'user' AND m.kind = '' AND r.error_kind = 'secret_store',
+                r.status, coalesce(json_extract(r.report, '$.done'), ''), coalesce(json_extract(r.report, '$.blocked'), '')
              FROM messages m JOIN runs r ON r.id = m.run_id
              WHERE m.thread_id = ? AND m.rowid > (
                  SELECT rowid FROM messages WHERE id = ? AND thread_id = ?
@@ -1538,10 +1578,12 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 			threadID, after, threadID)
 	}
 	return s.messages(ctx,
-		`SELECT id, thread_id, role, text, run_id, from_bot_id, kind, at, not_read FROM (
+		`SELECT id, thread_id, role, text, run_id, from_bot_id, kind, at, not_read, status, done, blocked FROM (
             SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
-                CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END AS at,
-                m.role = 'user' AND r.error_kind = 'secret_store' AS not_read,
+                CASE WHEN m.kind != '' AND m.created != 0 THEN m.created WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END AS at,
+                m.role = 'user' AND m.kind = '' AND r.error_kind = 'secret_store' AS not_read,
+                r.status AS status, coalesce(json_extract(r.report, '$.done'), '') AS done,
+                coalesce(json_extract(r.report, '$.blocked'), '') AS blocked,
                 m.rowid
             FROM messages m JOIN runs r ON r.id = m.run_id
             WHERE m.thread_id = ?
@@ -1557,7 +1599,7 @@ func (s *Store) messages(ctx context.Context, querySQL string, args ...any) ([]M
 	msgs, err := query(ctx, s.db, querySQL,
 		func(r *sql.Rows) (m Message, err error) {
 			var at int64
-			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &m.Kind, &at, &m.NotRead)
+			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &m.Kind, &at, &m.NotRead, &m.RunStatus, &m.Done, &m.Blocked)
 			if at != 0 {
 				m.CreatedAt = time.UnixMicro(at).UTC()
 			}
@@ -1695,7 +1737,7 @@ func CleanTitle(text string, source TitleSource) string {
 			words = words[:len(words)-1]
 		}
 	}
-	if len(words) > 0 {
+	if len(words) > 0 && (source != TitleStored || cut) {
 		words[len(words)-1] = strings.TrimRight(words[len(words)-1], ".,;:!?")
 	}
 	return strings.TrimSpace(strings.Join(words, " "))
@@ -1722,6 +1764,13 @@ func isTitleStopWord(word string) bool {
 }
 
 func cleanStoredTitles(ctx context.Context, db *sql.DB) error {
+	var done int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM settings WHERE key = ?", _titlesCleanedKey).Scan(&done); err != nil {
+		return err
+	}
+	if done > 0 {
+		return nil
+	}
 	rows, err := db.QueryContext(ctx, "SELECT id, title FROM threads")
 	if err != nil {
 		return err
@@ -1749,7 +1798,11 @@ func cleanStoredTitles(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
-	return nil
+	// A file with no thread has nothing stored to clean: the marker waits for the first launch that
+	// finds one.
+	_, err = db.ExecContext(ctx,
+		"INSERT INTO settings (key, value) SELECT ?, '1' WHERE EXISTS (SELECT 1 FROM threads)", _titlesCleanedKey)
+	return err
 }
 
 func insertInbox(ctx context.Context, db execer, threadID, fromBotID, text, kind string) error {
@@ -1801,8 +1854,8 @@ func (s *Store) ReadySHA(ctx context.Context, threadID, url string) (string, err
 
 func insertMessage(ctx context.Context, tx *sql.Tx, m Message) error {
 	_, err := tx.ExecContext(ctx,
-		"INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id, kind) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		m.ID, m.ThreadID, m.Role, m.Text, m.RunID, m.FromBotID, m.Kind)
+		"INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id, kind, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		m.ID, m.ThreadID, m.Role, m.Text, m.RunID, m.FromBotID, m.Kind, time.Now().UTC().UnixMicro())
 	if err != nil {
 		return fmt.Errorf("insert message: %w", err)
 	}

@@ -104,7 +104,7 @@ export function BotHeader({
             )
           )}
           {waitingOnYou > 0 && (
-            <span className="text-[13px] text-needs-ink">{waitingOnYou} waiting on you</span>
+            <span className="text-[13px] text-ink">{waitingOnYou} waiting on you</span>
           )}
           {waiting > 0 && (
             <span

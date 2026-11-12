@@ -184,7 +184,7 @@ func Token(ctx context.Context, c *http.Client, st *store.Store, s store.MCPServ
 	}
 	value, err := keyring.Get("atoll", tokensUser(s.ID))
 	if err != nil {
-		return "", fmt.Errorf("read sign-in of MCP server %s: %w", s.Name, readError(err))
+		return "", fmt.Errorf("read sign-in of MCP server %s: %w", s.Name, store.SecretReadError(err))
 	}
 	var tokens Tokens
 	if err := json.Unmarshal([]byte(value), &tokens); err != nil {
@@ -400,7 +400,7 @@ func saveTokens(id string, tokens Tokens) error {
 
 func deleteTokens(id string) error {
 	if err := keyring.Delete("atoll", tokensUser(id)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
-		return fmt.Errorf("delete sign-in of MCP server %s: %w: %w", id, ErrKeychain, err)
+		return fmt.Errorf("delete sign-in of MCP server %s: %w: %w", id, ErrKeychainRemove, err)
 	}
 	return nil
 }

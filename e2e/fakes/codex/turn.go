@@ -25,6 +25,7 @@ type (
 		never       bool   // approvalPolicy "never": nothing is asked, so everything asked is declined
 		guidance    string // the text of the last turn/steer, which a declined command then reports
 		resumed     bool
+		id          string // the turn going: the id its recording's turn/start answered
 	}
 
 	item struct {
@@ -307,15 +308,23 @@ func (t *turn) ask(req json.RawMessage, in *bufio.Scanner, log *fake.Log) (strin
 		var m message
 		if json.Unmarshal(in.Bytes(), &m) == nil && m.Method == "turn/steer" {
 			var p struct {
-				Input []struct {
+				ExpectedTurnID string `json:"expectedTurnId"`
+				Input          []struct {
 					Text string `json:"text"`
 				} `json:"input"`
 			}
-			if json.Unmarshal(m.Params, &p) == nil && len(p.Input) > 0 {
-				t.guidance = p.Input[0].Text
+			_ = json.Unmarshal(m.Params, &p)
+			switch {
+			case steerRefused():
+				reply(m.ID, nil, "no active turn to steer")
+			case p.ExpectedTurnID != t.id:
+				reply(m.ID, nil, fmt.Sprintf("expected active turn id `%s` but found `%s`", p.ExpectedTurnID, t.id))
+			default:
+				if len(p.Input) > 0 {
+					t.guidance = p.Input[0].Text
+				}
+				reply(m.ID, json.RawMessage(fmt.Sprintf(`{"turnId":%q}`, t.id)), "")
 			}
-			out, _ := json.Marshal(map[string]any{"id": m.ID, "result": map[string]string{"turnId": "01a1a5c4-e5fc-7687-865c-a5fd55e77da0"}})
-			fmt.Println(string(out))
 			continue
 		}
 		if json.Unmarshal(in.Bytes(), &m) != nil || m.Method != "" || string(m.ID) != string(r.ID) {
@@ -348,6 +357,17 @@ func (t *turn) ask(req json.RawMessage, in *bufio.Scanner, log *fake.Log) (strin
 	return "", fmt.Errorf("stdin closed while %s waited for an answer", r.Method)
 }
 
+// steerRefused reports whether <executable>.steer.refuse exists: while it does, every turn/steer
+// is refused as app-server refuses one that arrives after its turn ended.
+func steerRefused() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(exe + ".steer.refuse")
+	return err == nil
+}
+
 // commandUse runs each command the prompt names as app-server would: a commandExecution item
 // starts, Codex asks the client (offering the amendment it proposes for the command), then the item
 // completes. Nothing is executed. A later ask for a command the client allowed with an amendment
@@ -369,7 +389,7 @@ func (t *turn) commandUse(in *bufio.Scanner, log *fake.Log) (string, error) {
 		}
 		emit("item/started")
 		req, _ := json.Marshal(map[string]any{"id": 8000 + i + 1, "method": "item/commandExecution/requestApproval", "params": map[string]any{
-			"threadId": "01a1a5b5-3b2c-71f2-84d9-e7c08190f545", "turnId": "01a1a5c4-e5fc-7687-865c-a5fd55e77da0", "itemId": it["id"],
+			"threadId": "01a1a5b5-3b2c-71f2-84d9-e7c08190f545", "turnId": t.id, "itemId": it["id"],
 			"approvalId": nil, "reason": "Run the command outside the sandbox?", "command": wrapped, "cwd": t.cwd,
 			"commandActions":              it["commandActions"],
 			"proposedExecpolicyAmendment": strings.Fields(cmd),

@@ -147,49 +147,71 @@ for (const provider of ["claude", "codex"]) {
     expect(count(await live.innerText(), openingStart)).toBe(1);
 
     await expect(live).toContainText(closingStart);
-    const text = await live.innerText();
-    expect(text.indexOf(opening)).toBeLessThan(text.indexOf(closingStart));
     await expect(live.getByTestId("step")).toHaveCount(1);
+    const step = (await live.getByTestId("step").textContent())!.trim();
+    await page.reload();
+    await expect(live).toContainText(closingStart);
+    const text = await live.innerText();
+    expect(text.indexOf(opening)).toBeLessThan(text.indexOf(step));
+    expect(text.indexOf(step)).toBeLessThan(text.indexOf(closingStart));
+    await expect(live.getByTestId("step")).toHaveText(step);
+    expect(count(text, openingStart)).toBe(1);
+    expect(count(text, closingStart)).toBe(1);
     await expect(
       log.getByTestId("message").filter({ hasText: closing }),
     ).toHaveCount(1);
   });
-}
 
-test("a reconnect of the event stream does not draw the text twice", async ({
-  page,
-}) => {
-  const sockets = new Set<Socket>();
-  const target = new URL(m.url);
-  const proxy = createServer((client) => {
-    const upstream = connect(Number(target.port), target.hostname);
-    for (const s of [client, upstream]) {
-      sockets.add(s);
-      s.on("error", () => s.destroy());
-      s.on("close", () => sockets.delete(s));
+  test(`${provider}: a reconnect of the event stream does not draw the text twice`, async ({
+    page,
+  }) => {
+    const sockets = new Set<Socket>();
+    const target = new URL(m.url);
+    const proxy = createServer((client) => {
+      const upstream = connect(Number(target.port), target.hostname);
+      for (const s of [client, upstream]) {
+        sockets.add(s);
+        s.on("error", () => s.destroy());
+        s.on("close", () => sockets.delete(s));
+      }
+      client.pipe(upstream).pipe(client);
+    });
+    await new Promise<void>((ok) => proxy.listen(0, "127.0.0.1", ok));
+    try {
+      const bot = await newBotAPI(m, `Reconnector ${provider}`, provider);
+      const thread = await openThreadAPI(m, bot.id, narrate);
+      const via = `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`;
+      await page.goto(`${via}/bots/${bot.id}/threads/${thread.id}`);
+      const live = page
+        .getByRole("log", { name: "Messages" })
+        .getByTestId("live-text");
+      const reconnect = async () => {
+        for (const s of sockets) s.destroy();
+        await expect(page.getByText("Reconnecting")).toBeVisible();
+        await expect(page.getByText("Reconnecting")).toHaveCount(0);
+      };
+      await expect(live).toContainText(opening);
+      await reconnect();
+      await expect(live).toContainText(opening);
+      expect(count(await live.innerText(), openingStart)).toBe(1);
+
+      await expect(live).toContainText(closingStart);
+      await expect(live.getByTestId("step")).toHaveCount(1);
+      const step = (await live.getByTestId("step").textContent())!.trim();
+      await reconnect();
+      await expect(live).toContainText(closingStart);
+      const text = await live.innerText();
+      expect(text.indexOf(opening)).toBeLessThan(text.indexOf(step));
+      expect(text.indexOf(step)).toBeLessThan(text.indexOf(closingStart));
+      await expect(live.getByTestId("step")).toHaveText(step);
+      expect(count(text, openingStart)).toBe(1);
+      expect(count(text, closingStart)).toBe(1);
+    } finally {
+      for (const s of sockets) s.destroy();
+      proxy.close();
     }
-    client.pipe(upstream).pipe(client);
   });
-  await new Promise<void>((ok) => proxy.listen(0, "127.0.0.1", ok));
-  try {
-    const bot = await newBotAPI(m, "Reconnector");
-    const thread = await openThreadAPI(m, bot.id, narrate);
-    const via = `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`;
-    await page.goto(`${via}/bots/${bot.id}/threads/${thread.id}`);
-    const live = page
-      .getByRole("log", { name: "Messages" })
-      .getByTestId("live-text");
-    await expect(live).toContainText(opening);
-    for (const s of sockets) s.destroy();
-    await expect(page.getByText("Reconnecting")).toBeVisible();
-    await expect(page.getByText("Reconnecting")).toHaveCount(0);
-    await expect(live).toContainText(opening);
-    expect(count(await live.innerText(), openingStart)).toBe(1);
-  } finally {
-    for (const s of sockets) s.destroy();
-    proxy.close();
-  }
-});
+}
 
 test("scrolled up, streaming text and the run ending do not move the view", async ({
   page,
@@ -244,4 +266,23 @@ test("the sidebar row and the island keep the short verb and never show the text
     await expect(part).not.toContainText(openingStart);
     await expect(part).not.toContainText(closingStart);
   }
+});
+
+test("a reef-metrics fence still streaming shows Metrics… until it closes, then the component", async ({
+  page,
+}) => {
+  const bot = await newBotAPI(m, "Gauge");
+  const thread = await openThreadAPI(m, bot.id, "Stream the PR metrics live.");
+  await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
+  const log = page.getByRole("log", { name: "Messages" });
+  const live = log.getByTestId("live-text");
+
+  await expect(live).toContainText("Live numbers:");
+  await expect(live.getByText("Metrics…", { exact: true })).toBeVisible();
+  await expect(live).not.toContainText("Open PRs");
+  await expect(live.locator('[data-component="code"]')).toHaveCount(0);
+
+  await expect(live.locator('[data-component="metrics"]')).toHaveCount(1);
+  await expect(live.getByText("Metrics…")).toHaveCount(0);
+  await expect(log.locator('[data-component="metrics"]')).toHaveCount(1);
 });

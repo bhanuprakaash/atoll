@@ -1,34 +1,21 @@
-import { type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ErrorNotice } from '@/components/error-notice';
 import type { Run } from '@/modules/threads/api/messages';
 import { useRun } from '@/modules/threads/api/runs';
 import { messageTime } from '@/utils/time';
 
-const signedOutError = /sign.?in|authenticat|not logged in|login/i;
-const connectionSignIn = /needs sign-in/i;
+const sentence = (text: string) => `${text.replace(/\.$/, '')}.`;
 
-function reason(error: string) {
-  if (connectionSignIn.test(error)) return `${error.replace(/\.$/, '')}.`;
-  if (/keyring|keychain/i.test(error)) return "Reef couldn't reach the system keychain.";
-  if (signedOutError.test(error)) return "the provider isn't signed in.";
-  return 'something went wrong.';
-}
-
-export function FailedLine({
-  run,
-  botName,
-  replied,
-  newest,
-  retry,
-  signedOut,
-}: {
+type LineProps = {
   run: Run;
   botName: string;
   replied: boolean;
-  newest: boolean;
+  retryable: boolean;
   retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
-}) {
+};
+
+function Line({ run, botName, replied, retryable, retry, signedOut }: LineProps) {
   if (run.error_kind === 'rate_limited') {
     return (
       <p className="text-ink/80">
@@ -59,7 +46,7 @@ export function FailedLine({
         ) : (
           signedOut?.(run.provider)
         )}
-        {newest && run.error_kind !== 'secret_store' && (
+        {retryable && run.error_kind !== 'secret_store' && (
           <button
             type="button"
             onClick={() => retry(run.id)}
@@ -71,39 +58,61 @@ export function FailedLine({
       </div>
     );
   }
-  const plain =
-    run.error_kind === 'provider_off' ||
-    run.error_kind === 'needs_sign_in' ||
-    connectionSignIn.test(run.error);
+  const kind = run.error_kind;
+  const plain = kind === 'provider_off' || kind === 'needs_sign_in';
   const settings =
-    run.error_kind === 'provider_off' || (signedOutError.test(run.error) && !plain)
+    kind === 'provider_off' || kind === 'signed_out'
       ? '/settings/providers'
-      : run.error_kind === 'needs_sign_in'
+      : kind === 'needs_sign_in'
         ? '/settings/connections'
         : '';
+  const reason = plain
+    ? sentence(run.error)
+    : kind === 'signed_out'
+      ? "the provider isn't signed in."
+      : 'something went wrong.';
   return (
     <ErrorNotice
-      title={`${replied ? 'Run failed' : "Didn't run"}: ${plain ? `${run.error.replace(/\.$/, '')}.` : reason(run.error)}`}
+      title={`${replied ? 'Run failed' : "Didn't run"}: ${reason}`}
       details={run.error_detail || (plain ? '' : run.error)}
       actions={[
         ...(settings ? [{ label: 'Open settings', to: settings }] : []),
-        ...(newest ? [{ label: 'Retry', onClick: () => retry(run.id) }] : []),
+        ...(retryable ? [{ label: 'Retry', onClick: () => retry(run.id) }] : []),
       ]}
     />
+  );
+}
+
+export function FailedLine({
+  retry,
+  ...props
+}: Omit<LineProps, 'retry'> & { retry: (runId: string) => Promise<void> }) {
+  const [error, setError] = useState<unknown>(null);
+  return (
+    <>
+      <Line
+        {...props}
+        retry={(runId) => {
+          setError(null);
+          retry(runId).catch(setError);
+        }}
+      />
+      {error !== null && <ErrorNotice error={error} />}
+    </>
   );
 }
 
 export function FailedRun({
   id,
   botName,
-  newest,
+  retryable,
   retry,
   signedOut,
 }: {
   id: string;
   botName: string;
-  newest: boolean;
-  retry: (runId: string) => void;
+  retryable: boolean;
+  retry: (runId: string) => Promise<void>;
   signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
   const { data: run } = useRun(id);
@@ -113,7 +122,7 @@ export function FailedRun({
       run={run}
       botName={botName}
       replied={false}
-      newest={newest}
+      retryable={retryable}
       retry={retry}
       signedOut={signedOut}
     />

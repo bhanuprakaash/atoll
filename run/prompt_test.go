@@ -11,6 +11,7 @@ import (
 func TestMessagePrompt(t *testing.T) {
 	tests := []struct {
 		name   string
+		msgs   []store.InboxItem
 		items  []memory.Item
 		thread store.Thread
 		repo   store.Repo
@@ -25,10 +26,17 @@ func TestMessagePrompt(t *testing.T) {
 		{name: "first repo behind", repo: store.Repo{ID: "r", Name: "repo"}, behind: "local main is 1 commit behind origin/HEAD (abc1234); the checkout is at origin/HEAD", want: "Memory: repo 0, user 0, bot 0. Use recall.\n\nRepo: repo (r)\nWorktree: /cwd\nBranch: detached\nNote: local main is 1 commit behind origin/HEAD (abc1234); the checkout is at origin/HEAD\nBefore your first edit, call start_work and work in the path it returns. After you open the MR, call track_mr with its URL.\n\nMessage:\nhello"},
 		{name: "resumed stale checkout", thread: store.Thread{Session: "s"}, stale: "the checkout has local changes", want: "Note: the checkout has local changes\n\nMessage:\nhello"},
 		{name: "cut body", thread: store.Thread{Session: "s"}, items: []memory.Item{{ID: "a", Kind: "fact", Scope: "user", Body: strings.Repeat("x", 401)}}, want: "Memory items:\n- [a] fact (user): " + strings.Repeat("x", 400) + "…\n\nMessage:\nhello"},
+		{name: "wake", thread: store.Thread{Session: "s"}, msgs: []store.InboxItem{{Text: "PR #7 merged", Kind: "merged"}}, want: "Reef: PR #7 merged"},
+		{name: "person and wake", thread: store.Thread{Session: "s"}, msgs: []store.InboxItem{{Text: "hello"}, {Text: "CI finished", Kind: "ci"}}, want: "Message:\nhello\n\nReef: CI finished"},
+		{name: "wake between messages", thread: store.Thread{Session: "s"}, msgs: []store.InboxItem{{Text: "a"}, {Text: "CI finished", Kind: "ci"}, {Text: "b"}, {Text: "c"}}, want: "Message:\na\n\nReef: CI finished\n\nMessage:\nb\n\nc"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := messagePrompt("hello", tt.items, memory.Counts{}, tt.thread, tt.repo, "/cwd", tt.behind, tt.stale, ""); got != tt.want {
+			msgs := tt.msgs
+			if msgs == nil {
+				msgs = []store.InboxItem{{Text: "hello"}}
+			}
+			if got := messagePrompt(msgs, tt.items, memory.Counts{}, tt.thread, tt.repo, "/cwd", tt.behind, tt.stale); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})

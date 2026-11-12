@@ -32,6 +32,8 @@ var (
 	ErrSlowDown = fmt.Errorf("%w: slow down", ErrPending)
 	// ErrSignInEnded is wrapped when the provider says a sign-in expired or was refused.
 	ErrSignInEnded = errors.New("sign-in expired or refused")
+	// ErrUnreachable is wrapped when a sign-in request got no answer from the host.
+	ErrUnreachable = errors.New("host unreachable")
 	// ErrNeedsSignIn is returned when GitLab rejects a refresh token.
 	ErrNeedsSignIn = errors.New("GitLab needs sign-in")
 
@@ -39,14 +41,6 @@ var (
 )
 
 const _refreshBefore = 10 * time.Minute
-
-// readError marks a failed secret read as an unreachable store, unless the secret is only missing.
-func readError(err error) error {
-	if err == nil || errors.Is(err, keyring.ErrNotFound) {
-		return err
-	}
-	return fmt.Errorf("%w: %w", store.ErrSecretStore, err)
-}
 
 // Device is a started device-flow sign-in: the user enters UserCode at VerificationURI.
 type Device struct {
@@ -128,7 +122,7 @@ func UsableToken(ctx context.Context, c *http.Client, instance, id string) (stri
 	defer mu.Unlock()
 	value, err := keyring.Get("atoll", "gitlab:"+id)
 	if err != nil {
-		return "", readError(err)
+		return "", store.SecretReadError(err)
 	}
 	var tokens Tokens
 	if json.Unmarshal([]byte(value), &tokens) != nil {
@@ -205,7 +199,7 @@ func post(ctx context.Context, c *http.Client, instance, path string, form url.V
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := c.Do(req)
 	if err != nil {
-		return fmt.Errorf("send OAuth request: %w", err)
+		return fmt.Errorf("send OAuth request: %w: %w", ErrUnreachable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {

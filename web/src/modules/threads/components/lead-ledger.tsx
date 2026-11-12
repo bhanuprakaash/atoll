@@ -5,12 +5,13 @@ import { clockTime } from '@/utils/time';
 
 export type LedgerRow = {
   id: string;
-  handoff?: ReactNode;
+  note?: ReactNode;
   time?: string;
   name?: string;
   look?: CreatureLook;
   line?: string;
   state?: string;
+  reportFor?: string;
   mr?: { url: string; state: string; title: string };
   report?: ReactNode;
 };
@@ -24,9 +25,14 @@ export function LeadLedger({ rows, onToggle }: { rows: LedgerRow[]; onToggle: ()
   return (
     <ul aria-label="Updates" className="rounded-2xl border border-line px-3 py-1 text-[13.5px]">
       {rows.map((row) => (
-        <li key={row.id} className="text-muted">
-          {row.handoff ? (
-            <p className="flex h-[30px] items-center">{row.handoff}</p>
+        <li
+          key={row.id}
+          data-report-for={row.reportFor || undefined}
+          data-report-id={row.id}
+          className="text-muted"
+        >
+          {row.note ? (
+            <p className="flex h-[30px] items-center">{row.note}</p>
           ) : (
             <>
               <div className="flex h-[30px] items-center gap-2.5">

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMatch } from 'react-router';
-import { api } from '@/lib/api-client';
+import { useMarkIslandSeen } from '@/modules/threads/api/island';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 
 type About = {
@@ -21,13 +21,14 @@ export type Notifications = {
   dismiss: () => void;
   markSeen: () => void;
   markAllRead: () => void;
+  markAllReadError: unknown;
 };
 
 type MrUpdate = { url: string; state: string; title: string };
 type Change = { change: { entity: string; action: string; after: { name?: string } | null } };
 type Remembered = About & {
   type: 'run_finished' | 'mr_updated' | 'platform_changed';
-  at: number;
+  at: string;
   data: { status: string } & MrUpdate & Change;
 };
 
@@ -74,6 +75,7 @@ export function useNotifications(): Notifications {
       setEarlier(
         items
           .filter((n) => !isOn(n, screen.current))
+          .map((n) => ({ ...n, at: Date.parse(n.at) }))
           .flatMap((n) => {
             const id = seq.current++;
             if (n.type === 'run_finished')
@@ -120,11 +122,12 @@ export function useNotifications(): Notifications {
     () => setDismissed((prev) => [...prev, ...shown.current.map((a) => a.id)]),
     [],
   );
-  const markSeen = useCallback(() => void api('/island/seen', { method: 'POST' }), []);
-  const markAllRead = useCallback(
-    () => void api('/island/seen', { method: 'POST' }).then(() => setEarlier([])),
-    [],
-  );
+  const { mutate: markSeen } = useMarkIslandSeen();
+  const { mutate: postAllRead, error: markAllReadError } = useMarkIslandSeen();
+  const markAllRead = useCallback(() => {
+    setEarlier([]);
+    postAllRead();
+  }, [postAllRead]);
   return {
     needs,
     earlier,
@@ -133,5 +136,6 @@ export function useNotifications(): Notifications {
     dismiss,
     markSeen,
     markAllRead,
+    markAllReadError,
   };
 }

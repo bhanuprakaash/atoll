@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/user"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -27,6 +28,12 @@ const (
 	SkippedGit    = "git"
 	SkippedBinary = "binary"
 	SkippedOther  = "not a file"
+)
+
+// Reasons Read refuses a skill folder.
+var (
+	ErrNoSkillFile = errors.New("no SKILL.md")
+	ErrNotText     = errors.New("SKILL.md is not text")
 )
 
 const (
@@ -154,11 +161,14 @@ func Read(dir string, source ...string) (Import, error) {
 	}
 	skillPath := filepath.Join(dir, "SKILL.md")
 	data, _, err := readFile(skillPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Import{}, ErrNoSkillFile
+	}
 	if err != nil {
 		return Import{}, fmt.Errorf("read SKILL.md: %w", err)
 	}
 	if !isText(data) {
-		return Import{}, errors.New("SKILL.md is not text")
+		return Import{}, ErrNotText
 	}
 	content := string(data)
 	imp := Import{Skill: store.Skill{
@@ -270,7 +280,7 @@ func replaceForm(s, form string) (string, int) {
 		start := pos + i
 		end := start + len(form)
 		own := (form[0] != '~' && form[0] != '/' || startsWord(s, start)) &&
-			(end == len(s) || !strings.ContainsRune(_nameChars, rune(s[end])))
+			endsName(s, end)
 		out.WriteString(s[pos:start])
 		if own {
 			out.WriteString("{{ATOLL_SKILL_DIR}}")
@@ -287,6 +297,18 @@ func replaceForm(s, form string) (string, int) {
 	return out.String(), count
 }
 
+// endsName reports whether the name before s[end] is complete: no name character follows, or a
+// `.` follows that no path character comes after (a sentence's full stop).
+func endsName(s string, end int) bool {
+	if end == len(s) {
+		return true
+	}
+	if s[end] == '.' {
+		return end+1 == len(s) || strings.IndexByte(_pathChars, s[end+1]) < 0
+	}
+	return !strings.ContainsRune(_nameChars, rune(s[end]))
+}
+
 // startsWord reports whether no path character comes before s[i].
 func startsWord(s string, i int) bool {
 	return i == 0 || strings.IndexByte(_pathChars, s[i-1]) < 0
@@ -298,7 +320,8 @@ func homeRefs(file, content, home string) []HomeRef {
 	for n, line := range strings.Split(content, "\n") {
 		var spans [][]int
 		for _, loc := range _homeRef.FindAllStringIndex(line, -1) {
-			if line[loc[0]] != '~' || startsWord(line, loc[0]) && tildeEnds(line, loc) {
+			if line[loc[0]] != '~' || startsWord(line, loc[0]) && tildeEnds(line, loc) &&
+				knownUser(line[loc[0]+1:loc[1]]) {
 				spans = append(spans, loc)
 			}
 		}
@@ -318,6 +341,17 @@ func homeRefs(file, content, home string) []HomeRef {
 // tildeEnds reports whether a `~` match is more than a bare `~` or ends the word: `~5` and `~~` are not.
 func tildeEnds(line string, loc []int) bool {
 	return loc[1]-loc[0] > 1 || loc[1] == len(line) || strings.ContainsRune(" \t\r\f:)\"'", rune(line[loc[1]]))
+}
+
+// knownUser reports whether the text after a `~` names no user, or names an existing one: `~half`
+// is prose, `~root` is a home folder.
+func knownUser(rest string) bool {
+	name, _, _ := strings.Cut(rest, "/")
+	if name == "" || name == "+" || name == "-" {
+		return true
+	}
+	_, err := user.Lookup(name)
+	return err == nil
 }
 
 // absoluteRefs finds home as a whole path: no path character before it, and `/`, the end,

@@ -3,14 +3,17 @@
 // newest run. The raw error stays behind Details. Design: docs/design.md, chat lines.
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
+  api,
   type Machine,
   newBotAPI,
   prompts,
   recordText,
   seenText,
+  sendMessageAPI,
   sidebarRow,
   startAtoll,
 } from './atoll';
+import { red } from './image-fixture';
 
 let m: Machine;
 test.beforeAll(async () => {
@@ -99,4 +102,61 @@ test('only the newest failed run shows Retry, and it stays so after a reload', a
   await check();
   await page.reload();
   await check();
+});
+
+type Sent = { role: string; text: string; run_id: string; from_bot_id?: string; kind?: string };
+const userMessages = async (threadID: string): Promise<(Sent & { attachments: unknown[] })[]> =>
+  (await api(m, 'GET', `/api/threads/${threadID}/messages`)).filter(
+    (s: Sent) => s.role === 'user' && !s.from_bot_id && !s.kind,
+  );
+
+test('two queued messages that fail as one run show one line under the last, and Retry sends both in order', async ({
+  page,
+}) => {
+  const firstQueued = 'A first queued note that no recording plays.';
+  const secondQueued = 'A second queued note that no recording plays either.';
+  const bot = await newBotAPI(m, 'Pair');
+  const thread = await api(m, 'POST', `/api/bots/${bot.id}/threads`, {});
+  // The first run plays testdata/claude/queued-slow.jsonl: about 6 s, then done.
+  const slow = 'Take your time, then reply with just: ok';
+  await sendMessageAPI(m, thread.id, slow, 'running');
+  const image = { mime: 'image/png', data: Buffer.from(red.bytes).toString('base64') };
+  await api(m, 'POST', `/api/threads/${thread.id}/messages`, { text: firstQueued });
+  await api(m, 'POST', `/api/threads/${thread.id}/messages`, {
+    text: secondQueued,
+    images: [image],
+  });
+  let delivered: Sent[] = [];
+  await expect
+    .poll(
+      async () => {
+        delivered = (await userMessages(thread.id)).filter((s) => s.text !== slow);
+        return delivered.map((s) => s.text);
+      },
+      { timeout: 30_000 },
+    )
+    .toEqual([firstQueued, secondQueued]);
+  expect(delivered[1].run_id, 'both go out as one run').toBe(delivered[0].run_id);
+  await expect
+    .poll(async () => (await api(m, 'GET', `/api/runs/${delivered[0].run_id}`)).status)
+    .toBe('failed');
+
+  await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
+  const log = page.getByRole('log', { name: 'Messages' });
+  await expect(log.getByText(secondQueued)).toBeVisible();
+  await expect(log.getByText(anyLine)).toHaveCount(1);
+  await inOrder(log, [firstQueued, secondQueued, anyLineAt, 'Retry']);
+
+  const before = (await userMessages(thread.id)).length;
+  await log.getByRole('button', { name: 'Retry' }).click();
+  await expect
+    .poll(async () => {
+      const sent = (await userMessages(thread.id)).slice(before);
+      const text = sent.map((s) => s.text).join('\n');
+      return {
+        inOrder: text.includes(firstQueued) && text.indexOf(firstQueued) < text.indexOf(secondQueued),
+        images: sent.reduce((n, s) => n + s.attachments.length, 0),
+      };
+    })
+    .toEqual({ inOrder: true, images: 1 });
 });

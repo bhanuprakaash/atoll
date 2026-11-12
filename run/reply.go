@@ -71,7 +71,8 @@ func (m *Manager) Reply(ctx context.Context, threadID, text string) (Replied, er
 	if going != "" {
 		ru, err := m.cfg.Store.Run(ctx, going)
 		if err != nil {
-			return r, fmt.Errorf("read run %s: %w", going, err)
+			m.cfg.Log.Error("read run", "run_id", going, "error", err)
+			return r, nil
 		}
 		r.Run = &ru
 	}

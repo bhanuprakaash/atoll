@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -91,7 +92,7 @@ func (a *api) createRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := validateRepo(r.Context(), body); err != nil {
-		fail(w, http.StatusBadRequest, err.Error())
+		a.fail(w, r, err)
 		return
 	}
 	rp, err := a.st.CreateRepo(r.Context(), body.Name, body.Path)
@@ -171,7 +172,7 @@ func (a *api) startGitLab(w http.ResponseWriter, r *http.Request) {
 	}
 	dev, err := connection.StartDevice(r.Context(), a.http, body.InstanceURL)
 	if err != nil {
-		a.failSignIn(w, "start GitLab sign-in", body.InstanceURL, err)
+		a.failSignIn(w, r, "start GitLab sign-in", body.InstanceURL, err)
 		return
 	}
 	a.writeDevice(w, r, store.KindGitLab, body.InstanceURL, existing, dev)
@@ -201,7 +202,7 @@ func (a *api) startGitHub(w http.ResponseWriter, r *http.Request) {
 	}
 	dev, err := connection.StartGitHubDevice(r.Context(), a.http)
 	if err != nil {
-		a.failSignIn(w, "start GitHub sign-in", connection.GitHubURL(), err)
+		a.failSignIn(w, r, "start GitHub sign-in", connection.GitHubURL(), err)
 		return
 	}
 	a.writeDevice(w, r, store.KindGitHub, connection.GitHubInstance, existing, dev)
@@ -288,7 +289,7 @@ func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 		if c.Kind == store.KindGitHub {
 			instance = connection.GitHubURL()
 		}
-		a.failSignIn(w, "poll sign-in "+c.ID, instance, err)
+		a.failSignIn(w, r, "poll sign-in "+c.ID, instance, err)
 		return
 	}
 	if err := save(); err != nil {
@@ -304,7 +305,7 @@ func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 		if c.Kind == store.KindGitHub {
 			name = "GitHub"
 		}
-		failKeychain(w, "the "+name+" sign-in")
+		failKeychain(w, "Reef couldn't save the "+name+" sign-in to the system keychain.")
 		return
 	}
 	if err := a.st.SetConnectionStatus(r.Context(), c.ID, store.ConnectionConnected); err != nil {
@@ -318,18 +319,23 @@ func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 }
 
 // failSignIn answers a sign-in call that failed: a provider that says the sign-in ended is
-// signed_out, any other failure is the instance not answering.
-func (a *api) failSignIn(w http.ResponseWriter, what, instance string, err error) {
-	a.log.Warn(what, "error", err)
-	if errors.Is(err, connection.ErrSignInEnded) {
+// signed_out, a request the instance never answered is unreachable, and any other failure is
+// internal.
+func (a *api) failSignIn(w http.ResponseWriter, r *http.Request, what, instance string, err error) {
+	switch {
+	case errors.Is(err, connection.ErrSignInEnded):
+		a.log.Warn(what, "error", err)
 		failCode(w, http.StatusUnauthorized, "signed_out", "That sign-in expired or was refused.")
-		return
+	case errors.Is(err, connection.ErrUnreachable):
+		a.log.Warn(what, "error", err)
+		host := instance
+		if u, perr := url.Parse(instance); perr == nil && u.Host != "" {
+			host = u.Host
+		}
+		failCode(w, http.StatusBadGateway, "unreachable", "Reef couldn't reach "+host+".")
+	default:
+		a.fail(w, r, fmt.Errorf("%s: %w", what, err))
 	}
-	host := instance
-	if u, perr := url.Parse(instance); perr == nil && u.Host != "" {
-		host = u.Host
-	}
-	failCode(w, http.StatusBadGateway, "unreachable", "Reef couldn't reach "+host+".")
 }
 
 func writeStatus(w http.ResponseWriter, status string) {

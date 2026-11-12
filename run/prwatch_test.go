@@ -1,8 +1,16 @@
 package run
 
 import (
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"atoll/store"
 )
 
 func TestCIText(t *testing.T) {
@@ -40,5 +48,87 @@ func TestCloses(t *testing.T) {
 		if s := strings.Join(got, " "); s != tt.want {
 			t.Errorf("%q closes %q, want %q", tt.body, s, tt.want)
 		}
+	}
+}
+
+func TestReadCI_NoChecksStopsBeingRead(t *testing.T) {
+	var reads atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reads.Add(1)
+		_, _ = w.Write([]byte(`{"check_runs":[],"statuses":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	m := New(Config{Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	t.Cleanup(func() { _ = m.Close() })
+	w := &watcher{threads: map[string]*watched{}, paused: map[string]time.Time{}}
+
+	var th store.Thread
+	for i, want := range []struct {
+		reads int64
+		woke  string
+	}{{2, ""}, {2, "abc"}, {0, "abc"}} {
+		reads.Store(0)
+		r := store.MRRead{CI: th.MRCI, Woke: th.MRWoke}
+		if err := m.readCI(w, "c", "token", srv.URL, th, "abc", "PR #1", &r); err != nil {
+			t.Fatal(err)
+		}
+		if reads.Load() != want.reads || r.Woke != want.woke || r.WakeKind != "" {
+			t.Errorf("read %d: %d GitHub reads, woke %q, wake %q; want %d reads, woke %q, no wake",
+				i+1, reads.Load(), r.Woke, r.WakeKind, want.reads, want.woke)
+		}
+		th.MRCI, th.MRWoke = r.CI, r.Woke
+	}
+
+	reads.Store(0)
+	r := store.MRRead{CI: th.MRCI, Woke: th.MRWoke}
+	if err := m.readCI(w, "c", "token", srv.URL, th, "def", "PR #1", &r); err != nil {
+		t.Fatal(err)
+	}
+	if reads.Load() != 2 || !r.DropCI {
+		t.Errorf("new head: %d GitHub reads, DropCI %v; want 2 reads, DropCI true", reads.Load(), r.DropCI)
+	}
+}
+
+func TestReadCI_NoChecksReadAgainLater(t *testing.T) {
+	var reads atomic.Int64
+	var body atomic.Value
+	body.Store(`{"check_runs":[],"statuses":[]}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reads.Add(1)
+		_, _ = w.Write([]byte(body.Load().(string)))
+	}))
+	t.Cleanup(srv.Close)
+	m := New(Config{Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	t.Cleanup(func() { _ = m.Close() })
+	w := &watcher{threads: map[string]*watched{}, paused: map[string]time.Time{}}
+	th := store.Thread{ID: "t", MRURL: "https://github.test/o/r/pull/1", MRWake: true}
+	poll := func() store.MRRead {
+		t.Helper()
+		reads.Store(0)
+		r := store.MRRead{CI: th.MRCI, Woke: th.MRWoke}
+		if err := m.readCI(w, "c", "token", srv.URL, th, "abc", "PR #1", &r); err != nil {
+			t.Fatal(err)
+		}
+		th.MRCI, th.MRWoke = r.CI, r.Woke
+		return r
+	}
+	for range 2 {
+		poll()
+	}
+	if th.MRWoke != "abc" {
+		t.Fatalf("woke %q after two empty reads, want abc", th.MRWoke)
+	}
+	for i := 1; i < _noCheckEvery; i++ {
+		if poll(); reads.Load() != 0 {
+			t.Fatalf("poll %d read GitHub %d times, want none", i, reads.Load())
+		}
+	}
+
+	body.Store(`{"check_runs":[{"name":"build","status":"completed","conclusion":"success"}],"statuses":[]}`)
+	if r := poll(); reads.Load() != 2 || r.Woke != "" || r.WakeKind != "" {
+		t.Fatalf("slow poll: %d reads, woke %q, wake %q; want 2 reads, woke cleared, no wake", reads.Load(), r.Woke, r.WakeKind)
+	}
+	if r := poll(); reads.Load() != 2 || r.Woke != "abc" || r.WakeKind != "ci" {
+		t.Errorf("next poll: %d reads, woke %q, wake %q; want 2 reads, woke abc, wake ci", reads.Load(), r.Woke, r.WakeKind)
 	}
 }

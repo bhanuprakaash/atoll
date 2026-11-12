@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"atoll/e2e/fakes/fake"
 )
@@ -248,11 +250,17 @@ func TestNoRepoShell_UnchangedWhenNothingIsLacking(t *testing.T) {
 	// Chief and the title runs have no built-in tools, so a sandbox there only adds a start that can fail.
 	heySystem(t, s, "claude", chief(t, s).bot)
 	calls := m.calls(t, "claude")
-	for _, c := range append(slices.Clone(calls), m.titles(t, "claude")...) {
-		if toolsFlag(c) == "" {
-			if got := sandboxOf(t, c); got.Sandbox != nil || len(got.Permissions.Deny) != 0 {
-				t.Errorf("run with --tools \"\": sandbox %+v and deny %q, want neither", got.Sandbox, got.Permissions.Deny)
-			}
+	eventually(t, 30*time.Second, "a title run", func() bool { return len(m.titles(t, "claude")) > 0 })
+	for i, c := range append([]*call{calls[len(calls)-1]}, m.titles(t, "claude")...) {
+		what := "Chief's run"
+		if i > 0 {
+			what = "title run " + strconv.Itoa(i)
+		}
+		if got := toolsFlag(c); got != "" {
+			t.Errorf("%s: --tools %q, want \"\"", what, got)
+		}
+		if got := sandboxOf(t, c); got.Sandbox != nil || len(got.Permissions.Deny) != 0 {
+			t.Errorf("%s: sandbox %+v and deny %q, want neither", what, got.Sandbox, got.Permissions.Deny)
 		}
 	}
 }

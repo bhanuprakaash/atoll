@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { api, type Machine, newBotAPI, startAtoll } from './atoll';
+import { api, type Machine, newBotAPI, prompts, startAtoll } from './atoll';
+import { bossHandsOff, runStatus } from './helpers-fixture';
 
 test.use({
   locale: 'en-US',
@@ -65,12 +66,12 @@ class Script {
     return id;
   }
 
-  private message(thread: string, role: string, text: string, run: string, from = '') {
+  private message(thread: string, role: string, text: string, run: string, from = '', kind = '') {
     this.db
       .prepare(
-        'INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id, kind) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(randomUUID(), thread, role, text, run, from);
+      .run(randomUUID(), thread, role, text, run, from, kind);
   }
 
   // person is a message of the person's and the lead's answer to it.
@@ -88,7 +89,8 @@ class Script {
   }
 
   // wake is the end of a helper's run at minute and the lead's run it woke. created is when the
-  // helper's thread began: a handoff line stands after the last message before it.
+  // helper's thread began: a handoff line stands after the last message before it. merge is the
+  // helper's branch the lead is told to merge; running is the helpers line's other runs.
   wake(
     minute: number,
     helper: Name,
@@ -99,8 +101,11 @@ class Script {
       status?: 'done' | 'failed';
       error?: string;
       created?: number;
+      merge?: string;
+      running?: string[];
     },
-    lead?: { reply: string; report: Report },
+    // reef is a Reef wake line, e.g. a tracked PR that merged, that the same lead run took.
+    lead?: { reply: string; report: Report; reef?: [kind: string, text: string] },
   ) {
     const thread = randomUUID();
     this.threads[h.report.done] = thread;
@@ -137,8 +142,12 @@ class Script {
       lead?.report ?? { done: 'Noted.' },
       lead?.reply ?? '',
     );
-    // The text run/inbox.go WakeText builds.
-    const text =
+    // The text run/inbox.go WakeText builds, with HelpersLine of run/delegate.go.
+    const running = h.running ?? [];
+    const helpers = running.length
+      ? `Helpers: ${running.length} of 3 running (${running.join('; ')}). ${3 - running.length} free.`
+      : 'Helpers: 0 of 3 running. 3 free.';
+    const text = `${
       status === 'done'
         ? [
             `${helper} reported back from thread ${thread}.`,
@@ -148,9 +157,14 @@ class Script {
               const v = h.report[k.toLowerCase() as 'done'];
               return v ? [`${k}: ${v}`] : [];
             }),
-          ].join('\n')
-        : `${helper}'s run failed: ${h.error}\n(thread ${thread})`;
+            ...(h.merge ? [`Merge ${h.merge} into your branch.`] : []),
+          ]
+            .join('\n')
+            .trim()
+        : `${helper}'s run failed: ${h.error}\n(thread ${thread})`
+    }\n\n${helpers}`;
     this.message(this.boss, 'user', text, woken, this.bots[helper]);
+    if (lead?.reef) this.message(this.boss, 'user', lead.reef[1], woken, '', lead.reef[0]);
     if (lead?.reply) this.message(this.boss, 'bot', lead.reply, woken);
   }
 }
@@ -227,6 +241,7 @@ const helperOf: Name[] = ['Coder', 'Tester', 'Reviewer'];
 function threadA(s: Script) {
   s.person(19, kickoff, "On it. I'll hand the backlog to the team and tell you what needs you.");
   for (let i = 1; i <= 30; i++) {
+    const running = i % 2 ? [] : [`${helperOf[(i + 1) % 3]} on Check item-${pad(i + 1)}`];
     s.wake(
       20 + i,
       helperOf[i % 3],
@@ -236,6 +251,7 @@ function threadA(s: Script) {
             report: { done: 'Failed item-07' },
             status: 'failed',
             error: failure,
+            running,
           }
         : {
             reply: prose(i),
@@ -244,6 +260,7 @@ function threadA(s: Script) {
               i % 4 === 1
                 ? [`https://github.com/acme/app/pull/${200 + i}`, i % 8 === 1 ? 'merged' : 'opened']
                 : undefined,
+            running,
           },
       i === 30
         ? {
@@ -288,6 +305,8 @@ test.describe('30 helper reports and 1 decision', () => {
     await expect(log.getByTestId('message')).toHaveCount(5);
     await expect(log.getByText(/Full report item/)).toHaveCount(0);
     await expect(log.getByRole('link', { name: 'Open thread' })).toHaveCount(0);
+    await expect(log).not.toContainText('Helpers:');
+    await expect(log).not.toContainText('(thread ');
 
     const first = await box(you(page, kickoff));
     const last = await box(you(page, answer));
@@ -327,6 +346,15 @@ test.describe('30 helper reports and 1 decision', () => {
     // Every row is one line, the longest report too.
     await expect(rows.filter({ hasText: 'Checked item-12' })).toHaveCount(1);
     for (const row of await rows.all()) expect((await box(row)).height).toBeLessThanOrEqual(40);
+
+    // The failed row opens to its thread; open, it shows neither the helpers line nor the id.
+    await failed.getByRole('button').first().click();
+    await expect(ledger.getByRole('link', { name: 'Open thread' })).toHaveAttribute(
+      'href',
+      `/bots/${a.bots[helperOf[7 % 3]]}/threads/${a.threads['Failed item-07']}`,
+    );
+    await expect(log).not.toContainText('Helpers:');
+    await expect(log).not.toContainText('(thread ');
   });
 
   test('clicking a row opens the full report in place and clicking again folds it', async ({
@@ -433,7 +461,7 @@ test('a lead question and a helper blocked end a ledger; a handoff line joins it
     s.wake(
       25,
       'Tester',
-      { reply: prose(3), report: { done: done(3) } },
+      { reply: prose(3), report: { done: done(3) }, merge: 'fix/changelog--tester' },
       { reply: ack(3), report: { done: 'Noted item-03' } },
     );
     s.wake(27, 'Coder', {
@@ -460,6 +488,8 @@ test('a lead question and a helper blocked end a ledger; a handoff line joins it
     const after = lists.nth(1).getByRole('listitem');
     await expect(after).toHaveCount(2);
     await expect(after.nth(0)).toContainText(done(3));
+    await expect(after.nth(0)).not.toContainText('Merge');
+    await expect(log).not.toContainText('Helpers:');
     await expect(after.nth(1)).toContainText('Noted item-03');
 
     // The question is a message between the two blocks, a report with a real blocked one after both.
@@ -484,4 +514,144 @@ test('a lead question and a helper blocked end a ledger; a handoff line joins it
   } finally {
     b.m.stop();
   }
+});
+
+test('a Reef wake line joins the ledger, and the lead reply to the run that took it folds', async ({
+  page,
+}) => {
+  const merged = 'PR #1 merged into main at abc1234';
+  const c = await startLead((s) => {
+    s.person(19, 'Ship the changelog.', 'On it.');
+    s.wake(
+      21,
+      'Tester',
+      { reply: prose(1), report: { done: done(1) } },
+      { reply: ack(1), report: { done: 'Noted item-01' }, reef: ['merged', merged] },
+    );
+  });
+  try {
+    await open(page, c);
+    const lists = ledgers(page);
+    await expect(lists).toHaveCount(1);
+    await expect(lists).toContainText(merged);
+    await expect(messages(page).getByText(merged)).toHaveCount(1);
+    await expect(lists.getByRole('listitem').filter({ hasText: 'Noted item-01' })).toHaveCount(1);
+    await expect(messages(page).getByText(ack(1))).toHaveCount(0);
+  } finally {
+    c.m.stop();
+  }
+});
+
+// Wakes the real server posts when a helper's run ends other than done. realWake hands brief to
+// Tester from a new Poteto thread on m, has end end the helper's run, and waits for the wake and
+// the end of the lead's run it starts.
+async function realWake(
+  m: Machine,
+  page: Page,
+  brief: string,
+  end: (helper: string, tester: string) => Promise<void>,
+  tester: object = {},
+) {
+  const { bots, boss, helpers } = await bossHandsOff(m, page, [['Tester', brief]], {
+    Tester: tester,
+  });
+  // The run of the person's message; a helper that fails at once wakes the lead right after it.
+  const handoff = (await api(m, 'GET', `/api/threads/${boss}/messages`))[0].run_id;
+  const [helper, testerID] = [helpers[0].id, bots.Tester.id];
+  await end(helper, testerID);
+  await expect
+    .poll(
+      async () =>
+        (await api(m, 'GET', `/api/threads/${boss}/messages`)).some(
+          (s: { from_bot_id?: string }) => s.from_bot_id === testerID,
+        ),
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  await expect
+    .poll(
+      async () => {
+        const t = await api(m, 'GET', `/api/threads/${boss}`);
+        return t.run_id !== handoff && t.run_status !== 'running';
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  return { helper, tester: testerID };
+}
+
+// expectFolded checks the wake is one row of the lead's ledger, showing state, and opening to href,
+// with neither the helpers line nor the thread id in sight, folded or open.
+async function expectFolded(page: Page, state?: string, href?: string) {
+  // The lead's own reply to the wake (testdata/claude/wake.jsonl) is the ledger's other row.
+  const row = ledgers(page).getByRole('listitem').filter({ hasNotText: "Read Tester's message." });
+  await expect(row).toHaveCount(1);
+  if (state) await expect(row).toContainText(state);
+  const raw = async () =>
+    (
+      await messages(page)
+        .locator('[aria-label="Updates"], article[aria-label="Tester"], article[aria-label="Helper"]')
+        .allTextContents()
+    ).join('\n');
+  expect(await raw()).not.toMatch(/Helpers:|\(thread /);
+  if (!href) return;
+  await row.getByRole('button').first().click();
+  await expect(ledgers(page).getByRole('link', { name: 'Open thread' })).toHaveAttribute(
+    'href',
+    href,
+  );
+  expect(await raw()).not.toMatch(/Helpers:|\(thread /);
+}
+
+const hangBrief = `Watch the build. ${prompts.hang}`;
+
+test.describe('real wakes fold into the ledger', () => {
+  let m: Machine | undefined;
+  test.afterEach(() => {
+    m?.stop();
+    m = undefined;
+  });
+
+  test('a helper the person stopped is a Stopped row with an Open thread link', async ({
+    page,
+  }) => {
+    const own = (m = await startAtoll());
+    const { helper, tester } = await realWake(own, page, hangBrief, async (helper) => {
+      await expect.poll(() => runStatus(own, helper)).toBe('running');
+      const run = (await api(own, 'GET', `/api/threads/${helper}`)).run_id;
+      await api(own, 'POST', `/api/runs/${run}/stop`);
+    });
+    await expectFolded(page, 'Stopped', `/bots/${tester}/threads/${helper}`);
+  });
+
+  test('a helper whose run failed is a Failed row with an Open thread link', async ({ page }) => {
+    m = await startAtoll();
+    const { helper, tester } = await realWake(
+      m,
+      page,
+      `Look into the flake. ${prompts.none}`,
+      async () => {},
+    );
+    await expectFolded(page, 'Failed', `/bots/${tester}/threads/${helper}`);
+  });
+
+  test('a helper out of usage is a Failed row with an Open thread link', async ({ page }) => {
+    m = await startAtoll({ fakes: ['claude', 'codex'], signedIn: ['claude', 'codex'] });
+    m.limit('codex', new Date(Date.now() + 3 * 3600_000));
+    const { helper, tester } = await realWake(m, page, hangBrief, async () => {}, {
+      provider: 'codex',
+    });
+    await expectFolded(page, 'Failed', `/bots/${tester}/threads/${helper}`);
+  });
+
+  test('a helper whose Bot was deleted folds, with neither the helpers line nor its id', async ({
+    page,
+  }) => {
+    const own = (m = await startAtoll());
+    await realWake(own, page, hangBrief, async (helper, tester) => {
+      await expect.poll(() => runStatus(own, helper)).toBe('running');
+      await api(own, 'DELETE', `/api/bots/${tester}`);
+    });
+    await expectFolded(page);
+  });
 });

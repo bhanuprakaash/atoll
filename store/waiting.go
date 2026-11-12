@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // What waits on the person, by kind.
@@ -42,7 +43,8 @@ type Waiting struct {
 // ThreadWaiting lists what waits on the person in one thread.
 func (s *Store) ThreadWaiting(ctx context.Context, threadID string) ([]Waiting, error) {
 	// Only Waiting is read, so no thread has its run polled.
-	threads, err := s.threadRuns(ctx, "polled(thread_id, status, reply) AS (SELECT '', '', '' WHERE 0)", "t.id = ?", threadID)
+	threads, err := s.threadRuns(ctx, _oneWaiting, "polled(thread_id, status, reply) AS (SELECT '', '', '' WHERE 0)",
+		"t.id = ?", threadID, threadID)
 	if err != nil || len(threads) == 0 {
 		return nil, err
 	}
@@ -72,17 +74,18 @@ type tracker struct {
 	heads     []string
 }
 
-// _waitingWith defines the CTEs that read, once for all threads, the runs, the reply and the PRs
-// that waitingFrom needs. waits has one row per open thread that is not a helper's, with the
-// runs that hold an ask, a ready list or its newest report. NOT INDEXED reads runs in one pass:
-// the planner otherwise visits every thread's runs through runs_thread, which is twice as slow.
+// _waitingWith defines the CTEs that read the runs, the reply and the PRs that waitingFrom needs.
+// waits has one row per open thread that is not a helper's, with the runs that hold an ask, a
+// ready list or its newest report. For every thread, NOT INDEXED reads runs in one pass: the
+// planner otherwise visits every thread's runs through runs_thread, which is twice as slow. For
+// one thread, runs_thread finds its runs.
 const _waitingWith = `waits AS MATERIALIZED (
 		   SELECT thread_id, json_group_array(json_object(
 		            'rowid', rid, 'finished', finished_at, 'report', json(report))) AS runs
 		   FROM (SELECT r.thread_id, r.rowid AS rid, r.finished_at, r.report,
 		                r.rowid = max(r.rowid) OVER (PARTITION BY r.thread_id) AS newest
-		         FROM runs r NOT INDEXED JOIN threads t ON t.id = r.thread_id
-		         WHERE t.closed = 0 AND t.parent_thread_id = '' AND r.report IS NOT NULL)
+		         FROM runs r %s JOIN threads t ON t.id = r.thread_id
+		         WHERE t.closed = 0 AND t.parent_thread_id = '' AND r.report IS NOT NULL%s)
 		   WHERE newest
 		      OR json_extract(report, '$.ask') IS NOT NULL
 		      OR json_array_length(json_extract(report, '$.ready')) > 0
@@ -100,6 +103,11 @@ const _waitingWith = `waits AS MATERIALIZED (
 		         FROM waits w, json_each(w.runs) run, json_each(run.value, '$.report.ready') rd) u
 		   JOIN threads t3 ON t3.mr_url = u.url
 		   GROUP BY u.thread_id)`
+
+var (
+	_allWaiting = fmt.Sprintf(_waitingWith, "NOT INDEXED", "")
+	_oneWaiting = fmt.Sprintf(_waitingWith, "", " AND t.id = ?")
+)
 
 // waitingFrom derives one thread's items from the columns of _waitingWith: its runs as a JSON
 // array, the rowid of the newest run a person's message started, and the PRs of its ready lists
@@ -217,11 +225,12 @@ func waitingOf(runs []waitRun, replied int64, trackers map[string]*tracker) []Wa
 	return out
 }
 
-// RealBlocked says whether a report's blocked field names something that blocks: it is not empty
-// or a none-like word.
+// RealBlocked says whether a report's blocked field names something that blocks: after its
+// trailing punctuation is trimmed it is not empty or a none-like phrase.
 func RealBlocked(blocked string) bool {
-	switch strings.ToLower(strings.TrimSpace(blocked)) {
-	case "", "none", "nothing", "nothing.":
+	blocked = strings.TrimSpace(strings.TrimRightFunc(strings.TrimSpace(blocked), unicode.IsPunct))
+	switch strings.ToLower(blocked) {
+	case "", "nothing blocking", "nothing blocked", "none", "nothing", "n/a":
 		return false
 	}
 	return true

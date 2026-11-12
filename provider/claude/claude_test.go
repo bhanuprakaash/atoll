@@ -213,6 +213,34 @@ func TestStartKeepsSecretsOutOfArgvAndEnv(t *testing.T) {
 	}
 }
 
+func TestStartWritesMCPConfigLargerThanPipe(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "claude")
+	script := "#!/bin/sh\ncat /dev/fd/3 > " + dir + "/config\n"
+	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s := New()
+	big := strings.Repeat("x", 200<<10)
+	cfg := provider.Config{
+		Bin: bin, Dir: t.TempDir(), Cwd: t.TempDir(), MCPURL: "http://127.0.0.1:9/mcp/t0k",
+		MCPServers: []provider.UserMCPServer{{Name: "local", Command: "srv", Env: map[string]string{"TOKEN": big}}},
+	}
+	if err := s.Start(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Interrupt() })
+	for range s.Events() {
+	}
+	config, err := os.ReadFile(filepath.Join(dir, "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !json.Valid(config) || !strings.Contains(string(config), big) {
+		t.Errorf("config is %d bytes, want the whole 200 KB value", len(config))
+	}
+}
+
 func TestParse(t *testing.T) {
 	tests := []struct {
 		name string

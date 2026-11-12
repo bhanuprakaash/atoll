@@ -116,7 +116,7 @@ function BotRow({
               <span className="truncate text-[13px] text-ink">{bot.activity}</span>
             )}
             {bot.state !== 'needs_you' && waits && (
-              <span className="truncate text-[13px] text-needs-ink">Waiting on you</span>
+              <span className="truncate text-[13px] text-ink">Waiting on you</span>
             )}
           </span>
         </NavLink>

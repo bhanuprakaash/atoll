@@ -12,11 +12,12 @@ import (
 )
 
 var (
-	_shellWrap = regexp.MustCompile(`(?s)^(?:\S*/)?(?:bash|sh|zsh) -l?c (.+)$`)
-	_shortFlag = regexp.MustCompile(`^-[A-Za-z]+$`)
-	_safePath  = regexp.MustCompile(`^/[A-Za-z0-9._+@%=,:/-]*$`)
-	_separator = strings.NewReplacer(";", " ; ", "&", " ; ", "|", " ; ", "(", " ; ", ")", " ; ", "`", " ; ")
-	_ghReads   = []string{"view", "list", "status", "diff", "checks", "search", "browse", "watch", "download"}
+	_shellWrap   = regexp.MustCompile(`(?s)^(?:\S*/)?(?:ba|z)?sh\s+-\w*c\s+(.*)$`)
+	_shortFlag   = regexp.MustCompile(`^-[A-Za-z]+$`)
+	_safePath    = regexp.MustCompile(`^/[A-Za-z0-9._+@%=,:/-]*$`)
+	_separator   = strings.NewReplacer(";", " ; ", "&", " ; ", "|", " ; ", "(", " ; ", ")", " ; ", "`", " ; ")
+	_branchFlags = []string{"-b", "-B", "--orphan"}
+	_ghReads     = []string{"view", "list", "status", "diff", "checks", "search", "browse", "watch", "download"}
 )
 
 // commandText is the command of a command approval, Claude's Bash or Codex's commandExecution,
@@ -31,18 +32,29 @@ func commandText(tool string, input json.RawMessage) (string, bool) {
 	if json.Unmarshal(input, &in) != nil {
 		return "", false
 	}
-	text := strings.TrimSpace(in.Command)
-	if m := _shellWrap.FindStringSubmatch(text); m != nil && len(m[1]) >= 2 {
-		inner := m[1][1 : len(m[1])-1]
-		switch m[1][0] {
-		case '"':
-			text = inner
-		case '\'':
-			text = strings.ReplaceAll(inner, `'\''`, "'")
+	text := unwrapShell(in.Command)
+	return text, text != ""
+}
+
+// unwrapShell returns the script of a `bash -lc '...'` wrapper without its quotes, else command.
+// Quotes are dropped only when one quoted word is the whole script. The result is trimmed.
+func unwrapShell(command string) string {
+	text := strings.TrimSpace(command)
+	m := _shellWrap.FindStringSubmatch(text)
+	if m == nil {
+		return text
+	}
+	script := strings.TrimSpace(m[1])
+	if n := len(script); n >= 2 && script[n-1] == script[0] {
+		inner := script[1 : n-1]
+		switch {
+		case script[0] == '"' && !strings.Contains(strings.ReplaceAll(inner, `\"`, ""), `"`):
+			script = strings.ReplaceAll(inner, `\"`, `"`)
+		case script[0] == '\'' && !strings.Contains(strings.ReplaceAll(inner, `'\''`, ""), "'"):
+			script = strings.ReplaceAll(inner, `'\''`, "'")
 		}
 	}
-	text = strings.TrimSpace(text)
-	return text, text != ""
+	return strings.TrimSpace(script)
 }
 
 // allowRoots are the folders an rm -rf may delete inside: the tmp roots and the thread's worktree.
@@ -55,24 +67,39 @@ func allowRoots(thread store.Thread) []string {
 }
 
 // canAllowInThread reports whether Allow in this thread is offered for command: never for push or
-// delete, for an -rf that reaches anything but a plain absolute path inside roots, or for a gh
-// write.
+// delete, for an -rf that reaches anything but a plain absolute path inside roots, for a git
+// command that discards work, or for a gh write.
 func canAllowInThread(command string, roots []string) bool {
 	lower := strings.ToLower(command)
 	if strings.Contains(lower, "push") || strings.Contains(lower, "delete") {
 		return false
 	}
 	words := strings.Fields(_separator.Replace(command))
-	return (!recursiveForce(words) || allInside(words, roots)) && !ghWrite(words)
+	return (!recursiveForce(words) || allInside(words, roots)) && !ghWrite(words) && !gitDiscards(words)
 }
 
+// recursiveForce reports whether words hold both r and f: in one flag word, as --recursive and
+// --force, or across the flag words of one rm.
 func recursiveForce(words []string) bool {
 	long := map[string]bool{}
+	var rm, recursive, force bool
 	for _, w := range words {
-		switch lower := strings.ToLower(w); {
+		lower := strings.ToLower(w)
+		switch {
+		case w == ";":
+			rm, recursive, force = false, false, false
+		case commandWord(w) == "rm":
+			rm = true
 		case w == "--recursive" || w == "--force":
 			long[w] = true
-		case _shortFlag.MatchString(w) && strings.Contains(lower, "r") && strings.Contains(lower, "f"):
+			recursive, force = recursive || w == "--recursive", force || w == "--force"
+		case _shortFlag.MatchString(w):
+			if strings.Contains(lower, "r") && strings.Contains(lower, "f") {
+				return true
+			}
+			recursive, force = recursive || strings.Contains(lower, "r"), force || strings.Contains(lower, "f")
+		}
+		if rm && recursive && force {
 			return true
 		}
 	}
@@ -100,10 +127,77 @@ func inside(p, root string) bool {
 	return ok && root != "" && strings.Trim(rest, "/") != ""
 }
 
+// gitDiscards reports whether any git in words throws work away: clean with a force flag, reset
+// --hard, checkout of paths, of `.` or with a force flag, or restore.
+func gitDiscards(words []string) bool {
+	for i, w := range words {
+		if commandWord(w) != "git" {
+			continue
+		}
+		args := words[i+1:]
+		if end := slices.Index(args, ";"); end >= 0 {
+			args = args[:end]
+		}
+		for j := 0; j < len(args); j++ {
+			a := strings.Trim(args[j], `"'`)
+			if a == "-C" || a == "-c" || a == "--git-dir" || a == "--work-tree" {
+				j++
+				continue
+			}
+			if strings.HasPrefix(a, "-") {
+				continue
+			}
+			if gitDiscardsWith(a, args[j+1:]) {
+				return true
+			}
+			break
+		}
+	}
+	return false
+}
+
+func gitDiscardsWith(verb string, args []string) bool {
+	has := func(match func(string) bool) bool {
+		return slices.ContainsFunc(args, func(a string) bool { return match(strings.Trim(a, `"'`)) })
+	}
+	force := func(a string) bool {
+		return a == "--force" || _shortFlag.MatchString(a) && strings.Contains(a, "f")
+	}
+	switch verb {
+	case "restore":
+		return true
+	case "clean":
+		return has(force)
+	case "reset":
+		return has(func(a string) bool { return a == "--hard" })
+	case "checkout":
+		return has(func(a string) bool { return a == "--" || a == "." || force(a) }) || paths(args) > 1
+	}
+	return false
+}
+
+// paths counts the words of a checkout that are not flags, nor the value of a flag that names a
+// new branch: a revision and a path make two.
+func paths(args []string) int {
+	var n int
+	for i, a := range args {
+		a = strings.Trim(a, `"'`)
+		if !strings.HasPrefix(a, "-") && (i == 0 || !slices.Contains(_branchFlags, strings.Trim(args[i-1], `"'`))) {
+			n++
+		}
+	}
+	return n
+}
+
+// commandWord is w as a program name: unquoted, lower-case, without its folder.
+func commandWord(w string) string {
+	return path.Base(strings.ToLower(strings.Trim(w, `"'\`)))
+}
+
 // ghWrite reports whether any gh in words is not a read.
 func ghWrite(words []string) bool {
 	for i, w := range words {
-		if path.Base(strings.Trim(w, `"'`)) != "gh" {
+		if commandWord(w) != "gh" {
 			continue
 		}
 		args := words[i+1:]

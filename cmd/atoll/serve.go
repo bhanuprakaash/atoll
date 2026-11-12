@@ -28,8 +28,9 @@ const (
 )
 
 // serve runs the API, the MCP tools and the UI on addr until ctx ends. Its first line on w,
-// printed once it accepts requests, is "listening on <url>".
-func serve(ctx context.Context, args []string, w io.Writer) error {
+// printed once it accepts requests, is "listening on <url>". A non-empty token is the credential
+// every API request must carry.
+func serve(ctx context.Context, token string, args []string, w io.Writer) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:4317", "address to listen on")
 	exitOnStdinClose := fs.Bool("exit-on-stdin-close", false, "stop when standard input closes")
@@ -128,7 +129,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	})
 	pathDirs(ctx) // glab is found on the provider folders' PATH
 	runs.Start()
-	srv := &http.Server{Handler: server.New(st, mem, runs, log, providers), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: server.New(st, mem, runs, log, providers, token), ReadHeaderTimeout: 10 * time.Second}
 	var serveErr error
 	served := make(chan struct{})
 	go func() {

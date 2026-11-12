@@ -3,7 +3,8 @@
 // e2e/testdata/codex: a turn/start gets the recording whose prompt the input contains; one
 // recorded on a resumed thread only plays on a resumed thread. Like the real app-server it calls
 // the HTTP MCP servers of its config (mcp_servers.<name>.url) when a recording uses their tools,
-// and sends a recorded approval request unless approvalPolicy is "never". Methods no recording
+// and sends a recorded approval request unless approvalPolicy is "never". A turn/steer whose
+// expectedTurnId is not the turn going is refused, as app-server refuses it. Methods no recording
 // has get an empty result. Signed in means CODEX_HOME (default ~/.codex) holds auth.json; a
 // revoked one (fake.Refused) fails the next turn as the real app-server does. Every call is logged
 // to <executable>.log.
@@ -212,6 +213,13 @@ func serve(log *fake.Log, args []string) error {
 				reply(m.ID, nil, fmt.Sprintf("fake codex: no recording for prompt %q", prompt))
 				continue
 			}
+			var started struct {
+				Turn struct {
+					ID string `json:"id"`
+				} `json:"turn"`
+			}
+			_ = json.Unmarshal(rec.replies[m.Method], &started)
+			t.id = started.Turn.ID
 			reply(m.ID, rec.replies[m.Method], "")
 			if err := t.play(rec.turn, in, log); err != nil {
 				return err

@@ -13,7 +13,8 @@ import {
   startAtoll,
 } from './atoll';
 
-test.use({ locale: 'en-US', timezoneId: 'UTC' });
+const timeZone = 'Asia/Kolkata';
+test.use({ locale: 'en-US', timezoneId: timeZone });
 
 let m: Machine;
 test.beforeAll(async () => {
@@ -72,21 +73,21 @@ for (const c of cases) {
 
     const resetsAt = new Date(Math.floor((Date.now() + 90 * 60_000) / 1000) * 1000);
     m.limit(c.provider, resetsAt);
+    // The page's today is the reset's day, so the time is the clock alone.
+    await page.clock.setFixedTime(resetsAt);
     await open(bot.name);
     await recordText(page);
     await page.getByRole('textbox', { name: 'Message' }).fill(prompts.pong);
     await page.getByRole('button', { name: 'Send' }).click();
 
-    const clock = resetsAt
-      .toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        timeZone: 'UTC',
-      })
-      .replace(/\s/g, '\\s');
-    const line = log.getByText(
-      new RegExp(`^${c.bot} hit its ${c.label} limit; back at (Tomorrow\\s)?${clock}$`),
-    );
+    const clock = resetsAt.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone,
+    });
+    const back = (time: string) =>
+      log.getByText(`${c.bot} hit its ${c.label} limit; back at ${time}`, { exact: true });
+    const line = back(clock);
     await expect(line).toBeVisible();
     await expect(log.getByRole('button', { name: 'Retry' })).toHaveCount(0);
     await expect(log.getByText(/Run failed|Didn't run/)).toHaveCount(0);
@@ -98,9 +99,18 @@ for (const c of cases) {
     expect(run.error_kind).toBe('rate_limited');
     expect(new Date(run.resets_at).getTime()).toBe(resetsAt.getTime());
 
-    // The line comes from the run, so it is there again when the thread is reopened.
-    await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
-    await expect(line).toBeVisible();
-    await expect(log.getByRole('button', { name: 'Retry' })).toHaveCount(0);
+    // The line comes from the run, so it is there again when the thread is reopened, a day or
+    // three days before the reset.
+    const day = 24 * 60 * 60_000;
+    const weekday = resetsAt.toLocaleDateString('en-US', { weekday: 'short', timeZone });
+    for (const [before, time] of [
+      [day, `Tomorrow ${clock}`],
+      [3 * day, `${weekday} ${clock}`],
+    ] as const) {
+      await page.clock.setFixedTime(resetsAt.getTime() - before);
+      await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
+      await expect(back(time)).toBeVisible();
+      await expect(log.getByRole('button', { name: 'Retry' })).toHaveCount(0);
+    }
   });
 }

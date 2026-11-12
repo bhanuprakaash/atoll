@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { refuse } from '@/components/button';
 import { Creature, type CreatureLook } from '@/components/creature';
+import { ErrorNotice } from '@/components/error-notice';
 import { useAnswerApproval } from '@/modules/threads/api/approvals';
 import { approvalTarget, approvalVerb } from '@/modules/threads/components/approval-card';
 import { waitingText } from '@/modules/threads/components/waiting-card';
@@ -103,7 +104,7 @@ export function FinishedNotice({ notice, look }: { notice: EarlierNotice; look?:
 }
 
 export function NotificationList({
-  notifications: { needs, earlier, markAllRead },
+  notifications: { needs, earlier, markAllRead, markAllReadError },
   waiting,
   looks,
   onClose,
@@ -143,21 +144,19 @@ export function NotificationList({
       )}
       {waiting.length > 0 && (
         <>
-          <h3 className={`${heading} text-danger`}>Waiting on you</h3>
+          <h3 className={`${heading} text-muted`}>Waiting on you</h3>
           <ul aria-label="Waiting on you" className="flex flex-col gap-0.5">
             {waiting.map((n) => (
               <li
                 key={`${n.thread_id}:${n.item.kind}:${n.item.url ?? ''}`}
-                className="flex items-center gap-2.5 rounded-2xl bg-needs p-2"
+                className="flex items-center gap-2.5 rounded-2xl bg-box p-2"
               >
                 <Creature look={looks[n.bot_id]} state="needs_you" size={28} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13.5px]">
                     {n.bot_name} · {n.title}
                   </span>
-                  <span className="block truncate text-xs text-needs-ink">
-                    {waitingText(n.item)}
-                  </span>
+                  <span className="block truncate text-xs text-muted">{waitingText(n.item)}</span>
                 </span>
                 <Link
                   to={threadPath(n)}
@@ -207,6 +206,7 @@ export function NotificationList({
           </ul>
         </>
       )}
+      {!!markAllReadError && <ErrorNotice error={markAllReadError} className="px-2" />}
       {needs.length === 0 && waiting.length === 0 && earlier.length === 0 && (
         <p className="px-2 py-3 text-center text-[13px] text-muted">Nothing new</p>
       )}

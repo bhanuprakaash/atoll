@@ -51,7 +51,7 @@ func testBotsPollCost(t *testing.T, allOpen bool) {
 	t.Cleanup(func() { _ = st.Close() })
 	seedPoll(ctx, t, st, allOpen)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil)
+	h := New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil, "")
 
 	queries.Store(0)
 	took := make([]time.Duration, _pollRequests)
@@ -137,7 +137,7 @@ func TestBotsPoll_New(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil)
+	h := New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil, "")
 	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
 	if err != nil {
 		t.Fatal(err)
@@ -261,7 +261,7 @@ func TestBotsPoll_ClosedThreadApproval(t *testing.T) {
 		},
 	})
 	t.Cleanup(func() { _ = m.Close() })
-	h := New(st, nil, m, log, nil)
+	h := New(st, nil, m, log, nil, "")
 
 	bots := map[string]store.Bot{}
 	for _, name := range []string{"alone", "boss1", "helper1", "boss2", "helper2", "quiet"} {

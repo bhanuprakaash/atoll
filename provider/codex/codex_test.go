@@ -364,6 +364,65 @@ func TestSession_requestResolved(t *testing.T) {
 	}
 }
 
+func TestSession_AnswerSteers(t *testing.T) {
+	tests := []struct {
+		name, method, params string
+		open                 []string
+		answer               []string
+		wantSteers           int
+		wantKept             string
+		wantEnded            bool
+	}{
+		{name: "open approval", open: []string{"7"}, answer: []string{"7"}, wantSteers: 1, wantKept: "t1\x00no"},
+		{name: "two approvals, one steer", open: []string{"7", "8"}, answer: []string{"7", "8"}, wantSteers: 1, wantKept: "t1\x00no"},
+		{name: "ended approval records nothing", answer: []string{"9"}, wantEnded: true},
+		{
+			name: "elicitation carries the turn in progress", method: "mcpServer/elicitation/request",
+			params: `{"serverName":"x"}`, open: []string{"7"}, answer: []string{"7"}, wantSteers: 1, wantKept: "t1\x00no",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New()
+			s.turnID = "t1"
+			var stdin strings.Builder
+			s.stdin = &stdin
+			method, params := "item/commandExecution/requestApproval", `{"turnId":"t1"}`
+			if tt.method != "" {
+				method, params = tt.method, tt.params
+			}
+			for _, id := range tt.open {
+				s.serverRequest(message{ID: json.RawMessage(id), Method: method, Params: json.RawMessage(params)})
+				<-s.Events()
+			}
+			for _, id := range tt.answer {
+				err := s.Answer(id, false, "no")
+				if tt.wantEnded != errors.Is(err, provider.ErrApprovalEnded) || !tt.wantEnded && err != nil {
+					t.Fatalf("Answer(%s) = %v, want ended %v", id, err, tt.wantEnded)
+				}
+			}
+			got := strings.Count(stdin.String(), `"turn/steer"`)
+			if got != tt.wantSteers || got != strings.Count(stdin.String(), `"expectedTurnId":"t1"`) || s.steered != tt.wantKept {
+				t.Errorf("%d steers, steered %q; want %d on turn t1, %q\n%s", got, s.steered, tt.wantSteers, tt.wantKept, stdin.String())
+			}
+		})
+	}
+}
+
+func TestSession_SteerRefusedFailsTheTurn(t *testing.T) {
+	s := New()
+	reply := message{
+		ID: json.RawMessage(`"steer-t1"`),
+		Error: &struct {
+			Message string `json:"message"`
+		}{Message: "expected active turn id t1"},
+	}
+	go s.handle(reply)
+	if ev := <-s.Events(); ev.Kind != provider.KindError || ev.Text != "expected active turn id t1" {
+		t.Errorf("event %+v, want KindError with the refusal", ev)
+	}
+}
+
 func TestFileChangeApprovalDetails(t *testing.T) {
 	tests := []struct{ name, itemID, want string }{
 		{name: "matching item", itemID: "edit-1", want: `"changes":[{"path":"a.go","diff":"+line"}]`},

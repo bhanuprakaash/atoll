@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { quiet } from '@/components/button';
+import { ErrorNotice } from '@/components/error-notice';
 import { TextArea } from '@/components/text-field';
 import { ZoomImage } from '@/components/zoom-image';
 import { useChangeQueued, type Message } from '@/modules/threads/api/messages';
@@ -99,6 +100,7 @@ export function QueuedMessage({
             </>
           )}
         </div>
+        {change.isError && <ErrorNotice error={change.error} className="w-full" />}
       </article>
     </div>
   );

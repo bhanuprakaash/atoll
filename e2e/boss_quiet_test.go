@@ -66,11 +66,11 @@ func helpersEnd(t *testing.T, s *server, helpers ...string) {
 	}
 }
 
-// bossStill fails when the boss thread's latest run is not run: a run started for a report that
-// the wake window should still hold.
-func bossStill(t *testing.T, s *server, boss, run, why string) {
+// bossStill waits until at and fails when the boss thread's latest run is then not run: a run
+// started for a report that should still be held.
+func bossStill(t *testing.T, s *server, boss, run string, at time.Time, why string) {
 	t.Helper()
-	time.Sleep(3 * _pace)
+	time.Sleep(time.Until(at))
 	if th := getThread(t, s, boss); th.RunID != run {
 		t.Fatalf("boss thread %s started run %s (%s) after run %s, want no run %s", boss, th.RunID, th.RunStatus, run, why)
 	}
@@ -237,7 +237,8 @@ func TestBossQuiet_ReportsInWindowStartOneRun(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			t.Parallel()
-			m, s := startWindow(t, p, "12s")
+			const window = 12 * time.Second
+			m, s := startWindow(t, p, window.String())
 			poteto, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
 			setDelegates(t, s, poteto, tester)
 			boss := s.newThread(t, poteto)
@@ -245,11 +246,18 @@ func TestBossQuiet_ReportsInWindowStartOneRun(t *testing.T) {
 			ids, delegating := delegateTester(t, s, boss, ev, _reportPrompt, _reportPrompt, _reportPrompt)
 			order := []string{ids[1], ids[2], ids[0]}
 
-			for _, h := range order {
-				helpersEnd(t, s, h)
-				bossStill(t, s, boss.ID, delegating, "for a report inside the wake window")
-			}
+			before := time.Now()
+			helpersEnd(t, s, order[0])
+			held := time.Now()
+			helpersEnd(t, s, order[1:]...)
+			bossStill(t, s, boss.ID, delegating, held.Add(window-2*time.Second), "2 s before the wake window ends")
 			_, c, wake := woken(t, m, s, p, boss.ID, tester.ID, 3)
+			var times runTimes
+			s.do(t, "GET", "/api/runs/"+wake.ID, nil, &times, http.StatusOK)
+			if times.StartedAt.Before(before.Add(window)) {
+				t.Errorf("boss run started %v after the first report was held, want no run before the %v window ends",
+					times.StartedAt.Sub(before), window)
+			}
 			msgs := fromBot(t, s, boss.ID, tester.ID)
 			var runs []string
 			for _, msg := range bossMessages(t, s, boss.ID) {
@@ -289,7 +297,8 @@ func TestBossQuiet_PersonTakesHeldReports(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			t.Parallel()
-			m, s := startWindow(t, p, "6s")
+			const window = 6 * time.Second
+			m, s := startWindow(t, p, window.String())
 			poteto, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
 			setDelegates(t, s, poteto, tester)
 			boss := s.newThread(t, poteto)
@@ -297,7 +306,7 @@ func TestBossQuiet_PersonTakesHeldReports(t *testing.T) {
 			ids, delegating := delegateTester(t, s, boss, ev, _reportPrompt)
 			helpersEnd(t, s, ids[0])
 			held := time.Now()
-			bossStill(t, s, boss.ID, delegating, "for a report inside the wake window")
+			bossStill(t, s, boss.ID, delegating, held.Add(window-2*time.Second), "2 s before the wake window ends")
 
 			const ask = "Tester, how far along is it?"
 			run := s.send(t, boss, ask)
@@ -318,10 +327,7 @@ func TestBossQuiet_PersonTakesHeldReports(t *testing.T) {
 				t.Errorf("boss prompts %q, want one with the person's text, then Tester's header", prompts)
 			}
 
-			time.Sleep(time.Until(held.Add(6*time.Second + 2*time.Second)))
-			if th := getThread(t, s, boss.ID); th.RunID != run.ID {
-				t.Errorf("boss thread started run %s after the window, want the report already delivered with %s", th.RunID, run.ID)
-			}
+			bossStill(t, s, boss.ID, run.ID, held.Add(window+2*time.Second), "after the window: the report went with the person's message")
 		})
 	}
 }
@@ -344,16 +350,13 @@ func TestBossQuiet_StoppedRunStartsNone(t *testing.T) {
 			if r := settled(t, s, ids[0]); r.Status != "done" {
 				t.Fatalf("helper %s: status %q, error %q; want done", ids[0], r.Status, r.Error)
 			}
-			bossStill(t, s, boss.ID, busy.ID, "while the boss's run waits for its approval")
+			bossStill(t, s, boss.ID, busy.ID, time.Now().Add(4*_pace), "while the boss's run waits for its approval")
 
 			s.do(t, "POST", "/api/runs/"+busy.ID+"/stop", nil, nil, http.StatusNoContent)
 			if got := s.finished(t, ev, busy.ID); got.Status != "stopped" {
 				t.Fatalf("boss run after stop: status %q, want stopped", got.Status)
 			}
-			time.Sleep(4 * _pace)
-			if th := getThread(t, s, boss.ID); th.RunID != busy.ID {
-				t.Fatalf("boss thread started run %s after the user stopped %s, want none", th.RunID, busy.ID)
-			}
+			bossStill(t, s, boss.ID, busy.ID, time.Now().Add(4*_pace), "after the user stopped it")
 
 			const ask = "Tester, any news?"
 			run := s.send(t, boss, ask)
@@ -425,10 +428,7 @@ func TestBossQuiet_RestartWakesOnce(t *testing.T) {
 			if text.FromBotID != "" || text.RunID != wake.ID || wake.Status != "done" {
 				t.Errorf("restart message from_bot_id %q, run %q; boss run %s %q; want Reef's, one done run %s", text.FromBotID, text.RunID, wake.ID, wake.Status, text.RunID)
 			}
-			time.Sleep(4 * _pace)
-			if th := getThread(t, s, boss.ID); th.RunID != wake.ID {
-				t.Errorf("boss thread started run %s after the restart wake %s, want one run", th.RunID, wake.ID)
-			}
+			bossStill(t, s, boss.ID, wake.ID, time.Now().Add(4*_pace), "after the restart wake")
 			if got := promptsWith(t, m, p, ids[0]); len(got) != 1 {
 				t.Errorf("%d boss prompts name helper %s, want 1", len(got), ids[0])
 			}

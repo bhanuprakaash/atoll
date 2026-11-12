@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"unicode"
 
 	"atoll/memory"
 	"atoll/provider"
@@ -173,10 +172,7 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if strings.TrimSpace(rep.Done) == "" {
 			return failure("done is required."), nil
 		}
-		blocked := strings.TrimSpace(rep.Blocked)
-		blocked = strings.TrimSpace(strings.TrimRightFunc(blocked, unicode.IsPunct))
-		switch strings.ToLower(blocked) {
-		case "nothing blocking", "nothing blocked", "none", "nothing", "n/a":
+		if !store.RealBlocked(rep.Blocked) {
 			rep.Blocked = ""
 		}
 		if err := a.runs.Report(r.Context(), token, rep); err != nil {
@@ -407,10 +403,11 @@ func (a *api) jsonText(v any) (any, *rpcError) {
 }
 
 // withHelpers is the text result s, then the helpers line on a new line when the run lists delegate.
+// The tool has taken effect, so a line that cannot be read is left out.
 func (a *api) withHelpers(r *http.Request, token, s string) (any, *rpcError) {
 	line, err := a.runs.BossHelpers(r.Context(), token)
 	if err != nil {
-		return nil, a.toolError(err)
+		a.log.Error("helpers line", "err", err)
 	}
 	if line != "" {
 		s += "\n" + line

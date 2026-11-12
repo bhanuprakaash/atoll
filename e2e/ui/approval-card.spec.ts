@@ -1,5 +1,7 @@
 // The approval card: compact and quiet, answered by writing in the chat; red only for real danger.
 // Contract: e2e/approval-card-contract.md.
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
   api,
@@ -348,24 +350,29 @@ test('a folded group with a Bot that needs you shows no red', async ({ page }) =
 
 test('a closed MR is not red', async ({ page }) => {
   const bot = await newBotAPI(m, 'Pilot', 'claude', { look: 'whale' });
-  const thread = await openThreadAPI(m, bot.id, prompts.keep);
+  const url = 'https://github.com/o/r/pull/12';
+  const thread = await openThreadAPI(
+    m,
+    bot.id,
+    `Use MCP tools. [{"server":"atoll","tool":"track_mr","args":{"url":"${url}","title":"Closed change"}}]`,
+  );
   await waitStatus(thread.id, 'done');
-  await page.route(new RegExp(`/api/threads/${thread.id}$`), async (route) => {
-    const res = await route.fetch();
-    await route.fulfill({
-      response: res,
-      json: {
-        ...(await res.json()),
-        mr_url: 'https://github.com/o/r/pull/12',
-        mr_state: 'closed',
-        mr_title: 'Closed change',
-      },
-    });
+  // What the PR watcher writes for a closed PR, set in the server's database as it would.
+  const db = new DatabaseSync(join(m.data, 'atoll.db'));
+  try {
+    db.prepare('UPDATE threads SET mr_state = ? WHERE id = ?').run('closed', thread.id);
+  } finally {
+    db.close();
+  }
+  expect(await api(m, 'GET', `/api/threads/${thread.id}`)).toMatchObject({
+    mr_url: url,
+    mr_state: 'closed',
   });
   await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
   const chip = page.getByRole('link', { name: '#12' });
   await expect(chip).toBeVisible();
-  expect(await reds(chip)).toEqual([]);
+  await page.mouse.move(0, 0);
+  expect(await reds(page.locator('body'))).toEqual([]);
 });
 
 // Guard: a failure keeps its red, so the rule above is not met by removing red everywhere.

@@ -107,12 +107,13 @@ func TestSlots_WakeEndsWithHelpersLine(t *testing.T) {
 
 // TestSlots_ToolResultsCarryHelpersLine: delegate returns the line as the "helpers" field of its
 // JSON result (the new helper counts, a refusal keeps its text); continue and finish_run return
-// their usual text and the line on a new line. All three name every helper going.
+// their usual text and the line on a new line. All three name every helper going. A continue to a
+// helper still working is queued and has no line.
 func TestSlots_ToolResultsCarryHelpersLine(t *testing.T) {
 	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
-			_, s := start(t, p)
+			m, s := start(t, p)
 			poteto, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
 			setDelegates(t, s, poteto, tester)
 			boss := s.newThread(t, poteto)
@@ -144,8 +145,12 @@ func TestSlots_ToolResultsCarryHelpersLine(t *testing.T) {
 				t.Errorf("fourth delegate with three helpers running: %q, want %q (a refusal has no line)", lines[3], want)
 			}
 
-			got := useAtoll(t, s, boss, ev, continueCall(ids[0], _askPrompt), finishRunCall())
-			want := []string{"atoll/continue: Queued: Tester is working; it gets this when its run ends.", "atoll/finish_run: Report saved.", helpersLine(running...)}
+			s.do(t, "POST", "/api/runs/"+helperRunning(t, s, ids[2])+"/stop", nil, nil, http.StatusNoContent)
+			woken(t, m, s, p, boss.ID, tester.ID, 1)
+
+			got := useAtoll(t, s, boss, ev, continueCall(ids[0], _askPrompt), continueCall(ids[2], _hangPrompt), finishRunCall())
+			want := []string{"atoll/continue: Queued: Tester is working; it gets this when its run ends.",
+				"atoll/continue: Sent.", helpersLine(running...), "atoll/finish_run: Report saved.", helpersLine(running...)}
 			if strings.Join(got, "\n") != strings.Join(want, "\n") {
 				t.Errorf("continue and finish_run in the boss thread: reply %q, want %q", got, want)
 			}

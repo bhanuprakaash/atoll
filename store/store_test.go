@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -53,6 +55,8 @@ func TestCleanTitle(t *testing.T) {
 		{"first words trim when cut", "hey we have to bring the shell tests back.", store.TitleFirstWords, "hey we have to bring"},
 		{"stored exact six trims stop word", "Final review of #122 fix on", store.TitleStored, "Final review of #122 fix"},
 		{"stored other length stays", "What is this for", store.TitleStored, "What is this for"},
+		{"stored keeps punctuation when not cut", "Why is CI red?", store.TitleStored, "Why is CI red?"},
+		{"stored cut trims punctuation", "Review of the login loop bug.", store.TitleStored, "Review of the login loop bug"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -107,6 +111,46 @@ func TestStore_Open_CleansTitles(t *testing.T) {
 			t.Errorf("title %q after opening = %q, want %q", tt.old, thread.Title, tt.want)
 		}
 	}
+}
+
+func TestStore_Open_CleansTitlesOnce(t *testing.T) {
+	ctx := t.Context()
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopen := func(want string) {
+		t.Helper()
+		if err := st.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if st, err = store.Open(dir); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.Thread(ctx, thread.ID)
+		if err != nil || got.Title != want {
+			t.Fatalf("title after opening = %q, %v; want %q", got.Title, err, want)
+		}
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if err := st.SetTitle(ctx, thread.ID, "Why is CI red?"); err != nil {
+		t.Fatal(err)
+	}
+	reopen("Why is CI red?")
+	reopen("Why is CI red?")
+	if err := st.SetTitle(ctx, thread.ID, "Title: Login redirect loop"); err != nil {
+		t.Fatal(err)
+	}
+	reopen("Title: Login redirect loop")
 }
 
 func TestRepoAccess_JSON(t *testing.T) {
@@ -361,6 +405,123 @@ func TestStore_MessageTimestamps(t *testing.T) {
 	}
 }
 
+func TestStore_QuietLine(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, run, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: thread.ID, Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := store.RunResult{Status: store.StatusFailed, Error: "no secret", ErrorKind: store.ErrorSecretStore}
+	if err := st.FinishRun(ctx, run.ID, failed, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetMR(ctx, thread.ID, "https://example.test/pr/1", "open", "t"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	before := time.Now()
+	stored, err := st.StoreMR(ctx, thread.ID, store.MRRead{
+		URL: "https://example.test/pr/1", Prev: "open", State: "merged", Quiet: true, WakeKind: "merged", WakeText: "Merged.",
+	})
+	if err != nil || !stored {
+		t.Fatalf("StoreMR = %v, %v, want stored", stored, err)
+	}
+	all, err := st.Messages(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest, err := st.MessagePage(ctx, thread.ID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer, err := st.MessagePage(ctx, thread.ID, "", all[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, list := range map[string][]store.Message{"Messages": all, "latest page": latest} {
+		if len(list) != 2 {
+			t.Fatalf("%s = %d messages, want 2", name, len(list))
+		}
+	}
+	if len(newer) != 1 {
+		t.Fatalf("page after the first = %d messages, want 1", len(newer))
+	}
+	if !all[0].NotRead {
+		t.Errorf("the failed run's message has NotRead false, want true")
+	}
+	for name, m := range map[string]store.Message{"Messages": all[1], "latest page": latest[1], "after": newer[0]} {
+		if m.Text != "Merged." || m.NotRead || m.CreatedAt.Before(before.Truncate(time.Microsecond)) {
+			t.Errorf("%s: text %q, not read %v, time %v, want the merged line, not read false, time not before %v",
+				name, m.Text, m.NotRead, m.CreatedAt, before)
+		}
+	}
+}
+
+func TestStore_MessageRun(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, run, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: thread.ID, Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetReport(ctx, run.ID, store.Report{Done: "Checked it.", Blocked: "Need a key."}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	all, err := st.Messages(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest, err := st.MessagePage(ctx, thread.ID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer, err := st.MessagePage(ctx, thread.ID, "", all[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, list := range map[string][]store.Message{"Messages": all, "latest page": latest} {
+		if len(list) != 2 {
+			t.Fatalf("%s = %d messages, want 2", name, len(list))
+		}
+	}
+	if len(newer) != 1 {
+		t.Fatalf("page after the first = %d messages, want 1", len(newer))
+	}
+	for name, m := range map[string]store.Message{"Messages": all[1], "latest page": latest[1], "after": newer[0]} {
+		if m.RunStatus != store.StatusDone || m.Done != "Checked it." || m.Blocked != "Need a key." {
+			t.Errorf("%s: run %q done %q blocked %q, want done, %q, %q", name, m.RunStatus, m.Done, m.Blocked, "Checked it.", "Need a key.")
+		}
+	}
+}
+
 func TestStore_MessagePage(t *testing.T) {
 	ctx := t.Context()
 	st, err := store.Open(t.TempDir())
@@ -433,7 +594,7 @@ func TestStore_ThreadDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetMR(ctx, thread.ID, "https://gitlab.example/p/-/merge_requests/43", "merged", "Fix the wizard"); err != nil {
+	if _, err := st.SetMR(ctx, thread.ID, "https://gitlab.example/p/-/merge_requests/43", "merged", "Fix the wizard"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.RemoveWorktree(ctx, thread.ID, "refs/atoll/unfinished/test"); err != nil {
@@ -481,6 +642,47 @@ func TestStore_ThreadDetails(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStore_SetMR(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const first, second = "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2"
+	set := func(url, state, want string) {
+		t.Helper()
+		got, err := st.SetMR(ctx, thread.ID, url, state, "T")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("SetMR(%s, %s) = %q, want %q", url, state, got, want)
+		}
+	}
+	set(first, "opened", "opened")
+	since := time.Now()
+	time.Sleep(time.Millisecond)
+	set(second, "opened", "opened")
+	got, err := st.OpenedMRsSince(ctx, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].URL != second {
+		t.Errorf("OpenedMRsSince = %+v, want only %s", got, second)
+	}
+	set(first, "merged", "merged")
+	set(first, "opened", "merged")
 }
 
 func wakeFixture(t *testing.T) (*store.Store, store.Thread, store.Bot) {
@@ -562,8 +764,87 @@ func TestStore_FailUnfinished_OneWakePerBoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	held, err := st.Held(ctx, bt.ID)
-	if err != nil || len(held) != 1 || held[0].Text != "2" || held[0].FromBotID != "" {
-		t.Fatalf("held = %+v, %v; want one message of 2 runs from Reef", held, err)
+	if err != nil || len(held) != 1 || held[0].Text != "2" || held[0].FromBotID != "" || held[0].Kind != "restart" {
+		t.Fatalf("held = %+v, %v; want one restart message of 2 runs from Reef", held, err)
+	}
+}
+
+func TestStore_RestartWake_KeepsDecisionOpen(t *testing.T) {
+	ctx := context.Background()
+	st, bt, bot := wakeFixture(t)
+	_, ask, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: bt.ID, Text: "go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := store.Report{Ask: &store.Ask{Question: "Ship it?", Options: []string{"yes", "no"}}}
+	if err := st.SetReport(ctx, ask.ID, report); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishRun(ctx, ask.ID, store.RunResult{Status: store.StatusDone}, nil); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		th, err := st.CreateHelperThread(ctx, bt.ID, bot.ID, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.FailUnfinished(ctx, "restart", restartText); err != nil {
+		t.Fatal(err)
+	}
+	held, err := st.Held(ctx, bt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.StartRunFrom(ctx, held...); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.ThreadWaiting(ctx, bt.ID)
+	if err != nil || len(got) != 1 || got[0].Kind != store.WaitDecision || got[0].Question != "Ship it?" {
+		t.Fatalf("waiting = %+v, %v; want the open decision", got, err)
+	}
+}
+
+func TestRealBlocked(t *testing.T) {
+	for _, phrase := range []string{"nothing blocking", "nothing blocked", "none", "nothing", "n/a"} {
+		for _, suffix := range []string{"", ".", "!", " ."} {
+			for _, give := range []string{phrase + suffix, "  " + strings.ToUpper(phrase) + suffix + " "} {
+				if store.RealBlocked(give) {
+					t.Errorf("RealBlocked(%q) = true, want false", give)
+				}
+			}
+		}
+	}
+	for _, give := range []string{"", "...", " "} {
+		if store.RealBlocked(give) {
+			t.Errorf("RealBlocked(%q) = true, want false", give)
+		}
+	}
+	for _, give := range []string{"None of the tests ran: the CI token expired.", "GitLab sign-in expired."} {
+		if !store.RealBlocked(give) {
+			t.Errorf("RealBlocked(%q) = false, want true", give)
+		}
+	}
+}
+
+func TestStore_ThreadWaiting_StoredNoneLikeBlocked(t *testing.T) {
+	ctx := context.Background()
+	st, bt, _ := wakeFixture(t)
+	_, run, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: bt.ID, Text: "go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetReport(ctx, run.ID, store.Report{Done: "d", Blocked: "Nothing blocked."}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.ThreadWaiting(ctx, bt.ID); err != nil || len(got) != 0 {
+		t.Fatalf("waiting = %+v, %v; want nothing", got, err)
 	}
 }
 
@@ -600,7 +881,7 @@ func TestStore_Attachments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msg, _, err := st.StartRunFrom(ctx, store.InboxItem{
+	msgs, _, err := st.StartRunFrom(ctx, store.InboxItem{
 		ThreadID: thread.ID, Text: "look",
 		Images: []store.Attachment{{Mime: "image/png", Data: []byte("png")}},
 	})
@@ -614,7 +895,7 @@ func TestStore_Attachments(t *testing.T) {
 	if len(listed) != 1 || len(listed[0].Attachments) != 1 || listed[0].Attachments[0].Data != nil {
 		t.Fatalf("listed = %+v, want one message with one attachment and no bytes", listed)
 	}
-	got, err := st.Attachment(ctx, msg.Attachments[0].ID)
+	got, err := st.Attachment(ctx, msgs[0].Attachments[0].ID)
 	if err != nil || got.Mime != "image/png" || string(got.Data) != "png" {
 		t.Fatalf("attachment = %+v, %v", got, err)
 	}
@@ -879,9 +1160,9 @@ func TestStore_Queued(t *testing.T) {
 	if err != nil || len(items) != 2 {
 		t.Fatalf("UserInbox = %+v, %v; want 2", items, err)
 	}
-	msg, _, err := st.StartRunFrom(ctx, items...)
-	if err != nil || msg.ID != one.ID {
-		t.Fatalf("StartRunFrom = %+v, %v; want first message with id %s", msg, err, one.ID)
+	msgs, _, err := st.StartRunFrom(ctx, items...)
+	if err != nil || len(msgs) != 2 || msgs[0].ID != one.ID {
+		t.Fatalf("StartRunFrom = %+v, %v; want two messages, the first with id %s", msgs, err, one.ID)
 	}
 	for _, err := range []error{
 		st.DeleteQueued(ctx, th.ID, two.ID),
@@ -897,5 +1178,220 @@ func TestStore_Queued(t *testing.T) {
 	}
 	if rest, err := st.Queued(ctx, th.ID); err != nil || len(rest) != 0 {
 		t.Errorf("Queued after delivery = %+v, %v; want none", rest, err)
+	}
+}
+
+func TestStore_StartRunFromRemovedItem(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var held []store.InboxItem
+	for _, text := range []string{"one", "two"} {
+		it, err := st.Enqueue(ctx, store.InboxItem{ThreadID: th.ID, Text: text, Queued: true, FromUser: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		held = append(held, it)
+	}
+	if err := st.DeleteQueued(ctx, th.ID, held[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	msgs, started, err := st.StartRunFrom(ctx, held...)
+	if err != nil || len(msgs) != 1 || msgs[0].ID != held[1].ID {
+		t.Fatalf("StartRunFrom = %+v, %v; want only the message still held", msgs, err)
+	}
+	if listed, err := st.Messages(ctx, th.ID); err != nil || len(listed) != 1 || listed[0].Text != "two" {
+		t.Errorf("Messages = %+v, %v; want only two", listed, err)
+	}
+	if got, err := st.Thread(ctx, th.ID); err != nil || got.Title != "two" {
+		t.Errorf("title = %q, %v; want %q from the first stored message", got.Title, err, "two")
+	}
+
+	if err := st.DeleteQueued(ctx, th.ID, held[1].ID); !errors.Is(err, store.ErrSent) {
+		t.Fatalf("delete after delivery: %v, want ErrSent", err)
+	}
+	gone, err := st.Enqueue(ctx, store.InboxItem{ThreadID: th.ID, Text: "gone", Queued: true, FromUser: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteQueued(ctx, th.ID, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.StartRunFrom(ctx, gone); !errors.Is(err, store.ErrNoneHeld) {
+		t.Fatalf("StartRunFrom with nothing held: %v, want ErrNoneHeld", err)
+	}
+	if listed, err := st.Messages(ctx, th.ID); err != nil || len(listed) != 1 {
+		t.Errorf("Messages = %+v, %v; want the one stored message only", listed, err)
+	}
+	if latest, err := st.LatestRun(ctx, th.ID); err != nil || latest != started.ID {
+		t.Errorf("LatestRun = %q, %v; want %q: no run for nothing held", latest, err, started.ID)
+	}
+}
+
+// recordQueries opens a store that appends the text of every query it runs to the returned log.
+func recordQueries(t *testing.T) (*store.Store, *queryLog) {
+	t.Helper()
+	log := &queryLog{}
+	st, err := store.OpenWrapped(t.TempDir(), func(c driver.Connector) driver.Connector {
+		return recordingConnector{c, log}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st, log
+}
+
+type queryLog struct {
+	mu sync.Mutex
+	q  []string
+}
+
+func (l *queryLog) add(query string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.q = append(l.q, query)
+}
+
+func (l *queryLog) reset() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.q = nil
+}
+
+func (l *queryLog) all() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.q)
+}
+
+type recordingConnector struct {
+	driver.Connector
+	log *queryLog
+}
+
+func (c recordingConnector) Connect(ctx context.Context) (driver.Conn, error) {
+	conn, err := c.Connector.Connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return recordingConn{conn.(sqliteConn), c.log}, nil
+}
+
+type sqliteConn interface {
+	driver.Conn
+	driver.ConnBeginTx
+	driver.ConnPrepareContext
+	driver.ExecerContext
+	driver.QueryerContext
+	driver.Pinger
+	driver.SessionResetter
+	driver.Validator
+}
+
+type recordingConn struct {
+	sqliteConn
+	log *queryLog
+}
+
+func (c recordingConn) QueryContext(
+	ctx context.Context, query string, args []driver.NamedValue,
+) (driver.Rows, error) {
+	c.log.add(query)
+	return c.sqliteConn.QueryContext(ctx, query, args)
+}
+
+func TestStore_Queued_ReadsNoImageData(t *testing.T) {
+	ctx := t.Context()
+	st, log := recordQueries(t)
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	png := store.Attachment{Mime: "image/png", Data: []byte("png")}
+	it := store.InboxItem{ThreadID: th.ID, Text: "one", Queued: true, FromUser: true, Images: []store.Attachment{png}}
+	if _, err := st.Enqueue(ctx, it); err != nil {
+		t.Fatal(err)
+	}
+	log.reset()
+	queued, err := st.Queued(ctx, th.ID)
+	if err != nil || len(queued) != 1 || len(queued[0].Images) != 1 {
+		t.Fatalf("Queued = %+v, %v; want one message with its image", queued, err)
+	}
+	var images []string
+	for _, q := range log.all() {
+		if strings.Contains(q, "inbox_images") {
+			images = append(images, q)
+		}
+	}
+	want := "SELECT id, mime, NULL FROM inbox_images WHERE inbox_id = ? ORDER BY rowid"
+	if !slices.Equal(images, []string{want}) {
+		t.Errorf("Queued read images with %q, want only %q", images, want)
+	}
+}
+
+// TestStore_ThreadWaiting_ReadsOneThread proves, in the query's plan, that ThreadWaiting finds the
+// thread's runs by their thread instead of reading every run once.
+func TestStore_ThreadWaiting_ReadsOneThread(t *testing.T) {
+	ctx := t.Context()
+	st, log := recordQueries(t)
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.reset()
+	if _, err := st.ThreadWaiting(ctx, th.ID); err != nil {
+		t.Fatal(err)
+	}
+	queries := log.all()
+	if len(queries) != 1 {
+		t.Fatalf("ThreadWaiting ran %d queries, want 1", len(queries))
+	}
+	rows, err := st.DB().QueryContext(ctx, "EXPLAIN QUERY PLAN "+queries[0], th.ID, th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("plan: %q", plan)
+	var searched bool
+	for _, step := range plan {
+		if step == "SCAN r" || step == "SCAN m" {
+			t.Errorf("plan step %q reads every run or message, want a search by thread", step)
+		}
+		searched = searched || strings.Contains(step, "SEARCH r USING INDEX runs_thread (thread_id=?)")
+	}
+	if !searched {
+		t.Errorf("plan %q has no search of runs by thread", plan)
 	}
 }

@@ -194,11 +194,24 @@ test('the popover has a shortcut, arrow keys and Enter, and Stop on hover', asyn
 
   await page.goBack();
   await tray(page).getByRole('button', { name: 'Show', exact: true }).click();
+  const stops: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().endsWith('/stop')) stops.push(new URL(r.url()).pathname);
+  });
   const tester = helpers.find((h) => h.bot_id === bots.Tester.id)!;
   const row = rows.filter({ hasText: tester.title });
   await row.hover();
   await row.getByRole('button', { name: 'Stop' }).click();
   await expect.poll(() => runStatus(m, tester.id)).toBe('stopped');
+  await expect(
+    page
+      .getByRole('log', { name: 'Messages' })
+      .getByRole('list', { name: 'Updates' })
+      .getByRole('listitem')
+      .filter({ hasText: 'The user stopped Tester' }),
+  ).toContainText('Stopped');
+  const stopped = (await api(m, 'GET', `/api/threads/${tester.id}`)).run_id;
+  expect(stops).toEqual([`/api/runs/${stopped}/stop`]);
   const reviewer = helpers.find((h) => h.bot_id === bots.Reviewer.id)!;
   expect(await runStatus(m, reviewer.id)).toBe('running');
 });
@@ -298,8 +311,41 @@ test('a helper that reported stays in the tray until its report was on screen, t
   await page.reload();
   await reloaded;
   await expect(log.getByRole('article', { name: 'Tester' })).toContainText(reportReply);
-  await page.waitForTimeout(1_000);
+  // The hand-off line is drawn from the same helpers the tray reads.
+  await expect(log.getByText('Handed off to Tester', { exact: true })).toBeVisible();
   await expect(tray(page)).toHaveCount(0);
+});
+
+test('a helper whose report folded into the ledger leaves the tray once its row was on screen', async ({
+  page,
+}) => {
+  await makeBoss(m, ['Tester']);
+  await page.setViewportSize({ width: 1280, height: 520 });
+  await page.goto(m.url);
+  const context = 'Some context for the helpers. '.repeat(60);
+  // The helper plays testdata/claude/final-answer.jsonl: a done report with nothing blocked.
+  const brief = 'Check the build, then say what you found.';
+  const boss = await startThread(page, 'Poteto', delegate([['Tester', brief]], context));
+  const [helper] = await helperThreads(m, boss, 1);
+  const log = page.getByRole('log', { name: 'Messages' });
+  const region = tray(page);
+  await expect(log.getByText('Handed off to Tester', { exact: true })).toBeVisible();
+  expect(await log.evaluate((el) => el.scrollHeight > el.clientHeight + 100)).toBe(true);
+  await log.evaluate((el) => (el.scrollTop = 0));
+
+  await expect.poll(() => runStatus(m, helper.id), { timeout: 30_000 }).toBe('done');
+  const row = log
+    .getByRole('list', { name: 'Updates' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Checked the build: it is green.' });
+  await expect(row).toHaveCount(1);
+  await expect.poll(() => runStatus(m, boss), { timeout: 30_000 }).toBe('done');
+  expect(await inView(row), 'the row is below what the person is looking at').toBe(false);
+  await expect(region).toContainText('1 reported');
+
+  await log.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect(row).toBeInViewport();
+  await expect(region).toHaveCount(0);
 });
 
 test('a step never shows a raw shell fragment: a loop shows its first command', async ({

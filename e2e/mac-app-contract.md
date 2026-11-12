@@ -139,7 +139,7 @@ not tested.
   edit; once answered (Allow or Deny) the line leaves the log. `blocked` from `finish_run` shows
   `Blocked: <blocked>`. A stopped run shows `Stopped by you after <n>s`. A failed run with no reply
   shows `Didn't run: …` with a `button` "Retry" while it is the newest run. A dropped
-  connection shows "Reconnecting".
+  connection shows the app's one `role="status"` "Reconnecting", not a line in the log.
 - **Chips**: the MR is a `link` named with `!<iid>`, `href` the MR URL, showing its state
   ("Open"). A `group` "Thread context" in the composer shows repo, branch and MR. The composer
   shows `button` "Stop" instead of "Send" while a run goes. The memory chip keeps Slice 4's
@@ -221,7 +221,7 @@ no interrupted run remains running.
 
 1. **Sidecar restart** (Tauri). Open the built app with a thread open. Run
    `pkill -9 -f 'atoll serve'`. Within a few seconds `pgrep -f 'atoll serve'` shows a new PID, the
-   chat shows "Reconnecting" and then the thread again, and a new message gets a reply.
+   app shows "Reconnecting" and then the thread again, and a new message gets a reply.
 2. **Bundle and data**. `defaults read /Applications/Reef.app/Contents/Info.plist
    CFBundleIdentifier` names `atoll`. App data appears under
    `~/Library/Application Support/Atoll`.
