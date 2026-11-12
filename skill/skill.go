@@ -30,6 +30,12 @@ const (
 	SkippedOther  = "not a file"
 )
 
+// Reasons Read refuses a skill folder.
+var (
+	ErrNoSkillFile = errors.New("no SKILL.md")
+	ErrNotText     = errors.New("SKILL.md is not text")
+)
+
 const (
 	_tail      = "[^\\s`'\")\\]]*"
 	_nameChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
@@ -155,11 +161,14 @@ func Read(dir string, source ...string) (Import, error) {
 	}
 	skillPath := filepath.Join(dir, "SKILL.md")
 	data, _, err := readFile(skillPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Import{}, ErrNoSkillFile
+	}
 	if err != nil {
 		return Import{}, fmt.Errorf("read SKILL.md: %w", err)
 	}
 	if !isText(data) {
-		return Import{}, errors.New("SKILL.md is not text")
+		return Import{}, ErrNotText
 	}
 	content := string(data)
 	imp := Import{Skill: store.Skill{

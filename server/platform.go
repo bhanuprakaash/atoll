@@ -939,7 +939,12 @@ func (a *api) readImport(path string) (skill.Import, error) {
 		path = filepath.Join(home, rest)
 	}
 	imp, err := skill.Read(resolved, filepath.Clean(path))
-	if err != nil {
+	switch {
+	case errors.Is(err, skill.ErrNoSkillFile):
+		return skill.Import{}, ruleError("That folder has no SKILL.md. Pick the folder of a skill, the one that holds SKILL.md.")
+	case errors.Is(err, skill.ErrNotText):
+		return skill.Import{}, ruleError("SKILL.md in that folder is not plain text. Save it as a text file and try again.")
+	case err != nil:
 		return skill.Import{}, fmt.Errorf("%w: %w", errUnreadable, err)
 	}
 	return imp, nil

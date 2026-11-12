@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -75,6 +76,7 @@ func TestDesignedErrors(t *testing.T) {
 	t.Cleanup(gitlab.Close)
 	tests := []struct {
 		name, method, path, body, host string
+		folder                         string
 		wantStatus                     int
 		wantCode, wantError            string
 	}{
@@ -91,8 +93,18 @@ func TestDesignedErrors(t *testing.T) {
 			wantStatus: 400, wantCode: "invalid", wantError: "invalid skill: name is required",
 		},
 		{
+			name: "skill folder without SKILL.md", method: "POST", path: "/api/skills/{skill}/reimport", body: `{}`,
+			wantStatus: 400, wantCode: "invalid",
+			wantError: "That folder has no SKILL.md. Pick the folder of a skill, the one that holds SKILL.md.",
+		},
+		{
+			name: "skill folder with a binary SKILL.md", method: "POST", path: "/api/skills/{skill}/reimport", body: `{}`,
+			folder: "binary", wantStatus: 400, wantCode: "invalid",
+			wantError: "SKILL.md in that folder is not plain text. Save it as a text file and try again.",
+		},
+		{
 			name: "skill folder Reef cannot read", method: "POST", path: "/api/skills/{skill}/reimport", body: `{}`,
-			wantStatus: 400, wantCode: "invalid", wantError: "Reef couldn't read that skill folder.",
+			folder: "unreadable", wantStatus: 400, wantCode: "invalid", wantError: "Reef couldn't read that skill folder.",
 		},
 		{
 			name: "sign-in answered with an error", method: "POST", path: "/api/connections/gitlab/start",
@@ -109,7 +121,13 @@ func TestDesignedErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)
-			if err := os.MkdirAll(filepath.Join(home, ".claude", "skills", "gone"), 0o755); err != nil {
+			skills := filepath.Join(home, ".claude", "skills")
+			for _, dir := range []string{"gone", "binary", "unreadable/SKILL.md"} {
+				if err := os.MkdirAll(filepath.Join(skills, dir), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(skills, "binary", "SKILL.md"), []byte("a\x00b"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			h, st := newHandlerWith(t, nil)
@@ -118,9 +136,8 @@ func TestDesignedErrors(t *testing.T) {
 					"INSERT INTO repos VALUES ('r', 'r', '/repo'); UPDATE bots SET repo_access = '[]'"); err != nil {
 				t.Fatal(err)
 			}
-			sk, err := st.CreateSkill(t.Context(), store.Skill{
-				Name: "gone", Source: filepath.Join(home, ".claude", "skills", "gone"),
-			})
+			folder := cmp.Or(tt.folder, "gone")
+			sk, err := st.CreateSkill(t.Context(), store.Skill{Name: folder, Source: filepath.Join(skills, folder)})
 			if err != nil {
 				t.Fatal(err)
 			}
