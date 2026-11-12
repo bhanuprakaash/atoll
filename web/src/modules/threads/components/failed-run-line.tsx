@@ -10,14 +10,14 @@ export function FailedLine({
   run,
   botName,
   replied,
-  newest,
+  retryable,
   retry,
   signedOut,
 }: {
   run: Run;
   botName: string;
   replied: boolean;
-  newest: boolean;
+  retryable: boolean;
   retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
@@ -51,7 +51,7 @@ export function FailedLine({
         ) : (
           signedOut?.(run.provider)
         )}
-        {newest && run.error_kind !== 'secret_store' && (
+        {retryable && run.error_kind !== 'secret_store' && (
           <button
             type="button"
             onClick={() => retry(run.id)}
@@ -82,7 +82,7 @@ export function FailedLine({
       details={run.error_detail || (plain ? '' : run.error)}
       actions={[
         ...(settings ? [{ label: 'Open settings', to: settings }] : []),
-        ...(newest ? [{ label: 'Retry', onClick: () => retry(run.id) }] : []),
+        ...(retryable ? [{ label: 'Retry', onClick: () => retry(run.id) }] : []),
       ]}
     />
   );
@@ -91,13 +91,13 @@ export function FailedLine({
 export function FailedRun({
   id,
   botName,
-  newest,
+  retryable,
   retry,
   signedOut,
 }: {
   id: string;
   botName: string;
-  newest: boolean;
+  retryable: boolean;
   retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
@@ -108,7 +108,7 @@ export function FailedRun({
       run={run}
       botName={botName}
       replied={false}
-      newest={newest}
+      retryable={retryable}
       retry={retry}
       signedOut={signedOut}
     />

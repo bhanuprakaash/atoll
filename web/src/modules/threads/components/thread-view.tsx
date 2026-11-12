@@ -48,7 +48,7 @@ function RunResult({
   id,
   botName,
   time,
-  newest,
+  retryable,
   askedAbove,
   retry,
   signedOut,
@@ -56,7 +56,7 @@ function RunResult({
   id: string;
   botName: string;
   time?: string;
-  newest: boolean;
+  retryable: boolean;
   askedAbove?: boolean;
   retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
@@ -106,7 +106,7 @@ function RunResult({
           run={run}
           botName={botName}
           replied
-          newest={newest}
+          retryable={retryable}
           retry={retry}
           signedOut={signedOut}
         />
@@ -530,7 +530,7 @@ export function ThreadView({
   );
   const fromPerson = (m: Message) => m.role === 'user' && !m.from_bot_id && !m.kind;
   const fromUser = new Set(messages.filter(fromPerson).map((m) => m.run_id));
-  const lastOfRun = new Map(messages.filter(fromPerson).map((m) => [m.run_id, m.id]));
+  const lastOfRun = new Map(messages.filter((m) => m.role === 'user').map((m) => [m.run_id, m.id]));
   const statusReply = (m: Message) =>
     !!thread &&
     m.role === 'bot' &&
@@ -540,9 +540,9 @@ export function ThreadView({
     m.run_status === 'done' &&
     !realBlocked(m.blocked) &&
     !isQuestion(m.text);
-  const unanswered = (m: Message) => fromPerson(m) && !answered.has(m.run_id);
+  const unanswered = (m: Message) => m.role === 'user' && !answered.has(m.run_id);
   const asked = new Set(messages.filter(unanswered).map((m) => m.run_id));
-  const newest = (runId: string) => runId === thread?.run_id && !activeId;
+  const retryable = (runId: string) => runId === thread?.run_id && !activeId && fromUser.has(runId);
   const resend = async (list: Message[]) => {
     for (const message of list) {
       const images = await Promise.all(
@@ -700,7 +700,9 @@ export function ThreadView({
       report: <Markdown threadId={threadId}>{m.text}</Markdown>,
     };
   };
-  type Item = { rows: LedgerRow[]; day?: Date } | { message: Message; index: number; day?: Date };
+  type Item =
+    | { rows: LedgerRow[]; messages: Message[]; day?: Date }
+    | { message: Message; index: number; day?: Date };
   const items: Item[] = [];
   messages.forEach((m, index) => {
     const day = new Date(m.created_at);
@@ -719,9 +721,23 @@ export function ThreadView({
       row,
       ...(handoff ? [{ id: `handoff-${m.id}`, note: <>Handed off to {names(handoff)}</> }] : []),
     ];
-    if (last && 'rows' in last && !showDay) last.rows.push(...rows);
-    else items.push({ rows, day: newDay });
+    if (last && 'rows' in last && !showDay) {
+      last.rows.push(...rows);
+      last.messages.push(m);
+    } else items.push({ rows, messages: [m], day: newDay });
   });
+  const failure = (m: Message) =>
+    unanswered(m) &&
+    lastOfRun.get(m.run_id) === m.id && (
+      <FailedRun
+        key={m.id}
+        id={m.run_id}
+        botName={botName}
+        retryable={retryable(m.run_id)}
+        retry={retry}
+        signedOut={signedOut}
+      />
+    );
   const empty = messages.length === 0 && !activeId;
   const firstUserId = messages.find((m) => m.role === 'user')?.id;
   const loadOlder = () => {
@@ -795,6 +811,7 @@ export function ThreadView({
                 <Fragment key={item.rows[0].id}>
                   {separator}
                   <LeadLedger rows={item.rows} onToggle={holdScroll} />
+                  {item.messages.map(failure)}
                 </Fragment>
               );
             const { message: m, index } = item;
@@ -817,7 +834,7 @@ export function ThreadView({
                           id={m.run_id}
                           botName={botName}
                           time={m.created_at}
-                          newest={newest(m.run_id)}
+                          retryable={retryable(m.run_id)}
                           retry={retry}
                           signedOut={signedOut}
                         />
@@ -825,15 +842,7 @@ export function ThreadView({
                     )
                   }
                 />
-                {unanswered(m) && lastOfRun.get(m.run_id) === m.id && (
-                  <FailedRun
-                    id={m.run_id}
-                    botName={botName}
-                    newest={newest(m.run_id)}
-                    retry={retry}
-                    signedOut={signedOut}
-                  />
-                )}
+                {failure(m)}
                 {handoffs.has(m.id) && (
                   <p className="text-sm text-muted">Handed off to {names(handoffs.get(m.id)!)}</p>
                 )}
@@ -860,7 +869,7 @@ export function ThreadView({
                   <RunResult
                     id={id}
                     botName={botName}
-                    newest={newest(id)}
+                    retryable={retryable(id)}
                     askedAbove={asked.has(id)}
                     retry={retry}
                     signedOut={signedOut}
@@ -875,7 +884,7 @@ export function ThreadView({
               <RunResult
                 id={thread.run_id}
                 botName={botName}
-                newest={newest(thread.run_id)}
+                retryable={retryable(thread.run_id)}
                 askedAbove={asked.has(thread.run_id)}
                 retry={retry}
                 signedOut={signedOut}

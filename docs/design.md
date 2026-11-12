@@ -1780,9 +1780,11 @@ Voice
   `Didn't run: <reason>`, in plain words (an unknown cause reads `Didn't run: something went
   wrong.`), never the provider's raw error, which sits behind Details. The line stays in its thread
   in order after later runs start and after a reload. Retry shows only when that run is the
-  thread's newest; an older failed run keeps the line without Retry. Queued messages delivered as
-  one run share one line, under the last of them; Retry sends each of them again, in order, with
-  its images, and Resend sends only the message it sits on. A sign-in failure keeps its
+  thread's newest; an older failed run keeps the line without Retry. A run that only a Reef wake or
+  a helper's report started has no message of the person's: its line sits under the last of those
+  messages and has no Retry, as there is nothing of the person's to send again. Queued messages
+  delivered as one run share one line, under the last of them; Retry sends each of them again, in
+  order, with its images, and Resend sends only the message it sits on. A sign-in failure keeps its
   own line (Claude sign-in expired). *A failure that vanished once a newer run started made the
   message look ignored.*
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `·
