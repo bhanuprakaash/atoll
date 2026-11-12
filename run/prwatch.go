@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"atoll/connection"
+	"atoll/repo"
 	"atoll/store"
 )
 
@@ -25,7 +27,10 @@ const (
 	_namesListed  = 5
 	_readTimeout  = 30 * time.Second
 	_pauseDefault = time.Minute
+	_wakeBase     = "base"
 )
+
+var _waitsFor = regexp.MustCompile(`^Waits for #(\d+)`)
 
 type (
 	// watcher is what the poll keeps in memory: waits and ETags per thread, rate-limit pauses per
@@ -37,19 +42,26 @@ type (
 	}
 
 	watched struct {
-		url   string
-		etag  string
-		pull  ghPull
-		fails int
-		next  time.Time
+		url  string
+		etag string
+		pull ghPull
+		// base is the PR this draft waits for, read until it is merged.
+		base     ghPull
+		baseETag string
+		fails    int
+		next     time.Time
 	}
 
 	ghPull struct {
 		State  string `json:"state"`
 		Merged bool   `json:"merged"`
 		Title  string `json:"title"`
+		Draft  bool   `json:"draft"`
 		Body   string `json:"body"`
-		Head   struct {
+		Base   struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
+		Head struct {
 			SHA string `json:"sha"`
 		} `json:"head"`
 	}
@@ -86,7 +98,7 @@ func (w *watcher) of(t store.Thread) *watched {
 	return ws
 }
 
-func (m *Manager) checkGitHub(w *watcher, t store.Thread, bot store.Bot) error {
+func (m *Manager) checkGitHub(w *watcher, t store.Thread, bot store.Bot, rp store.Repo) error {
 	connID, token, err := m.watchToken(bot)
 	if err != nil || token == "" {
 		return err
@@ -122,10 +134,21 @@ func (m *Manager) checkGitHub(w *watcher, t store.Thread, bot store.Bot) error {
 	if title == "" {
 		title = ws.pull.Title
 	}
-	r := store.MRRead{State: state, Title: title, CI: t.MRCI, Woke: t.MRWoke}
+	r := store.MRRead{State: state, Title: title, CI: t.MRCI, Woke: t.MRWoke, Head: t.MRHead, BaseWoke: t.MRBaseWoke}
+	if ws.pull.Head.SHA != "" {
+		r.Head = ws.pull.Head.SHA
+	}
 	label := prLabel(t.MRURL)
-	if state == _mrOpened {
+	switch {
+	case state == _mrOpened:
 		if err := m.readCI(w, connID, token, api, t, ws.pull.Head.SHA, label, &r); err != nil {
+			return err
+		}
+		if err := m.readBase(w, connID, token, api, t, label, &r); err != nil {
+			return err
+		}
+	case state == _mrMerged && t.MRState != _mrMerged:
+		if err := m.mergedText(t, rp, label, ws.pull, &r); err != nil {
 			return err
 		}
 	}
@@ -137,6 +160,52 @@ func (m *Manager) checkGitHub(w *watcher, t store.Thread, bot store.Bot) error {
 	}
 	return m.update(t, label, r, note)
 }
+
+// mergedText sets the wake of a merge: where it went and at which commit, and the commit the Bot
+// called ready when that is another. A merge into a branch other than the default is a quiet line.
+func (m *Manager) mergedText(t store.Thread, rp store.Repo, label string, pull ghPull, r *store.MRRead) error {
+	base := cleanName(pull.Base.Ref)
+	r.WakeText = fmt.Sprintf("%s merged into %s at %s", label, base, short(pull.Head.SHA))
+	ready, err := m.cfg.Store.ReadySHA(m.ctx, t.ID, t.MRURL)
+	if err != nil {
+		return err
+	}
+	if ready != "" && ready != pull.Head.SHA {
+		r.WakeText += fmt.Sprintf(" (ready was %s)", short(ready))
+	}
+	if def := repo.DefaultBranch(m.ctx, rp.Path); def != "" && pull.Base.Ref != def {
+		r.Quiet = true
+	}
+	return nil
+}
+
+// readBase reads the PR that a draft waits for ("Waits for #n" starts its body) and, when that PR
+// is merged, sets the one wake of the draft's Bot.
+func (m *Manager) readBase(w *watcher, connID, token, api string, t store.Thread, label string, r *store.MRRead) error {
+	ws := w.of(t)
+	match := _waitsFor.FindStringSubmatch(ws.pull.Body)
+	if !ws.pull.Draft || match == nil || t.MRBaseWoke || !t.MRWake {
+		return nil
+	}
+	body, hdr, err := m.githubGet(w, connID, token, api+"/pulls/"+match[1], ws.baseETag)
+	if err != nil {
+		return err
+	}
+	if body != nil {
+		var base ghPull
+		if err := json.Unmarshal(body, &base); err != nil {
+			return fmt.Errorf("decode pull request %s: %w", match[1], err)
+		}
+		ws.base, ws.baseETag = base, hdr.Get("ETag")
+	}
+	if ws.base.State == "closed" && ws.base.Merged {
+		r.BaseWoke, r.WakeKind = true, _wakeBase
+		r.WakeText = fmt.Sprintf("PR #%s merged; %s was waiting for it", match[1], label)
+	}
+	return nil
+}
+
+func short(sha string) string { return sha[:min(len(sha), 7)] }
 
 // readCI reads the checks of the head commit until its CI is reported, and sets in r the stored
 // result and, when CI finished, the wake. A finished result counts once seen on two reads in a row.
@@ -232,10 +301,14 @@ func statusOutcome(state string) string {
 func (m *Manager) update(t store.Thread, label string, r store.MRRead, note string) error {
 	r.URL, r.Prev = t.MRURL, t.MRState
 	if label != "" && t.MRWake && r.State != t.MRState && (r.State == _mrMerged || r.State == _mrClosed) {
-		r.WakeKind, r.WakeText, r.DropCI = r.State, label+" "+r.State+note, true
+		r.WakeKind, r.DropCI = r.State, true
+		if r.WakeText == "" || r.State == _mrClosed {
+			r.WakeText = label + " " + r.State
+		}
+		r.WakeText += note
 	}
 	if t.MRWake && r.WakeKind == "" && r.State == t.MRState && r.Title == t.MRTitle && r.CI == t.MRCI &&
-		r.Woke == t.MRWoke && !r.DropCI {
+		r.Woke == t.MRWoke && r.Head == t.MRHead && !r.DropCI {
 		return nil
 	}
 	stored, err := m.cfg.Store.StoreMR(m.ctx, t.ID, r)
@@ -249,7 +322,7 @@ func (m *Manager) update(t store.Thread, label string, r store.MRRead, note stri
 		}
 		m.announce(t.ID, runID, EventMRUpdated, MRUpdated{RunID: runID, URL: t.MRURL, State: r.State, Title: r.Title})
 	}
-	if r.WakeKind != "" {
+	if r.WakeKind != "" && !r.Quiet {
 		m.cfg.Log.Info("wake bot", "thread_id", t.ID, "kind", r.WakeKind, "text", r.WakeText)
 		m.flushLog(t.ID)
 	}
@@ -373,7 +446,10 @@ func ciText(label string, c ciResult) string {
 	return fmt.Sprintf("%s, %d failed (%s)", text, c.Failed, strings.Join(names, ", "))
 }
 
-func quoteName(s string) string {
+func quoteName(s string) string { return `"` + cleanName(s) + `"` }
+
+// cleanName drops control characters, quotes and backslashes of s and cuts it.
+func cleanName(s string) string {
 	s = strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) || unicode.In(r, unicode.Zl, unicode.Zp) || r == '"' || r == '\\' {
 			return -1
@@ -383,5 +459,5 @@ func quoteName(s string) string {
 	if utf8.RuneCountInString(s) > _nameCut {
 		s = string([]rune(s)[:_nameCut])
 	}
-	return `"` + s + `"`
+	return s
 }

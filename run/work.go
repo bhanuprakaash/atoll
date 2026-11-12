@@ -99,7 +99,7 @@ func (m *Manager) SetWorktreeRoot(ctx context.Context, root string) error {
 // returns its path, branch and base. A thread that has a worktree gets that one back with an
 // empty base: no new branch was started.
 func (m *Manager) StartWork(
-	ctx context.Context, token, typ, slug string,
+	ctx context.Context, token, typ, slug, requestedBase string,
 ) (path, branch string, base repo.Base, err error) {
 	a, err := m.byToken(token)
 	if err != nil {
@@ -141,7 +141,7 @@ func (m *Manager) StartWork(
 	if err != nil {
 		return "", "", repo.Base{}, err
 	}
-	if path, branch, base, err = repo.Create(ctx, rp.Path, root, rp.Name, name); err != nil {
+	if path, branch, base, err = repo.Create(ctx, rp.Path, root, rp.Name, name, requestedBase); err != nil {
 		return "", "", repo.Base{}, err
 	}
 	createdPath, createdBranch := path, branch
@@ -268,6 +268,13 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 			return err
 		}
 	}
+	for i, w := range wakes {
+		line, err := m.helpersLine(ctx, w.ThreadID, "")
+		if err != nil {
+			return err
+		}
+		wakes[i].Text += "\n\n" + line
+	}
 	runIDs, err := m.cfg.Store.DeleteBot(ctx, botID, wakes)
 	if err != nil {
 		return err
@@ -365,7 +372,7 @@ func (m *Manager) stopQuietly(ctx context.Context, threadID string) (bool, error
 // release saves the unfinished work of the thread's worktree, removes the worktree and tells the
 // thread's subscribers. When the save fails nothing is removed.
 func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, reason string) error {
-	if err := m.checkWorktree(t.Worktree); err != nil {
+	if err := m.checkWorktree(t.Worktree, rp.Name); err != nil {
 		return err
 	}
 	runID, err := m.cfg.Store.LatestRun(ctx, t.ID)
@@ -393,7 +400,7 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	if !saved {
 		ref = ""
 	}
-	if err := m.checkWorktree(t.Worktree); err != nil {
+	if err := m.checkWorktree(t.Worktree, rp.Name); err != nil {
 		return err
 	}
 	if err := repo.Remove(ctx, rp.Path, t.Worktree); err != nil {
@@ -407,7 +414,7 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	return nil
 }
 
-func (m *Manager) checkWorktree(path string) error {
+func (m *Manager) checkWorktree(path, repoName string) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("inspect worktree: %w", err)
@@ -419,7 +426,11 @@ func (m *Manager) checkWorktree(path string) error {
 	if err != nil {
 		return err
 	}
-	root := filepath.Dir(filepath.Dir(path))
+	suffix := filepath.Join(repoName, filepath.Base(path))
+	root, ok := strings.CutSuffix(path, suffix)
+	if !ok || filepath.Join(root, suffix) != path {
+		return errors.New("refuse worktree outside its repo folder")
+	}
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
 		return err
@@ -454,7 +465,7 @@ func (m *Manager) reserve(threadID string) *active {
 // workdir is where the thread's runs work: its worktree; else, for a repo thread, a clean
 // checkout of the repo; else a folder of its own. A thread whose Bot lost its repo (rp is empty)
 // gets a folder that holds neither the checkout nor the worktree.
-func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, error) {
+func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, string, error) {
 	dir := m.threadDir(t.ID)
 	switch {
 	case t.RepoID != "" && rp.ID == "":
@@ -464,40 +475,41 @@ func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, error) {
 		if rp.ID != "" && t.WorktreeGitDir == "" && !errors.Is(statErr, os.ErrNotExist) {
 			common, err := repo.GitCommonDir(m.ctx, rp.Path)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			id, err := repo.WorktreeID(common, t.Worktree)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			if err := m.cfg.Store.SetGitDirs(m.ctx, t.ID, t.CheckoutGitDir, id); err != nil {
-				return "", err
+				return "", "", err
 			}
 		}
-		return t.Worktree, nil
+		return t.Worktree, "", nil
 	case rp.ID != "":
-		if err := repo.Checkout(m.ctx, rp.Path, dir); err != nil {
-			return "", err
+		note, err := repo.Checkout(m.ctx, rp.Path, dir, t.CheckoutGitDir)
+		if err != nil {
+			return "", "", err
 		}
 		if t.CheckoutGitDir == "" {
 			common, err := repo.GitCommonDir(m.ctx, rp.Path)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			id, err := repo.WorktreeID(common, dir)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			if err := m.cfg.Store.SetGitDirs(m.ctx, t.ID, id, t.WorktreeGitDir); err != nil {
-				return "", err
+				return "", "", err
 			}
 		}
-		return dir, nil
+		return dir, note, nil
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("create thread folder: %w", err)
+		return "", "", fmt.Errorf("create thread folder: %w", err)
 	}
-	return dir, nil
+	return dir, "", nil
 }
 
 // WorkDir is the folder the thread's runs work in: its worktree, else its own folder.
@@ -506,6 +518,54 @@ func (m *Manager) WorkDir(t store.Thread) string {
 		return t.Worktree
 	}
 	return m.threadDir(t.ID)
+}
+
+// hiddenPaths is where the repos the Bot lacks are: each repo, its worktree folder and the folder
+// of every thread on it (its read-only checkout), as known and with symlinks resolved.
+func (m *Manager) hiddenPaths(ctx context.Context, bot store.Bot) ([]string, error) {
+	repos, err := m.cfg.Store.Repos(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list repos: %w", err)
+	}
+	root, err := m.WorktreeRoot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, r := range repos {
+		if bot.RepoAccess.Allows(r.ID) {
+			continue
+		}
+		ids, err := m.cfg.Store.ThreadIDsOnRepo(ctx, r.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list threads of %s: %w", r.Name, err)
+		}
+		paths = append(paths, withResolved(r.Path)...)
+		paths = append(paths, withResolved(filepath.Join(root, r.Name))...)
+		for _, id := range ids {
+			paths = append(paths, withResolved(m.threadDir(id))...)
+		}
+	}
+	return paths, nil
+}
+
+// withResolved is path and, when it differs, path with symlinks resolved as far as it exists.
+func withResolved(path string) []string {
+	dir, rest := path, ""
+	for {
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			if full := filepath.Join(resolved, rest); full != path {
+				return []string{path, full}
+			}
+			break
+		}
+		if dir == filepath.Dir(dir) {
+			break
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+		dir = filepath.Dir(dir)
+	}
+	return []string{path}
 }
 
 func (m *Manager) threadDir(threadID string) string {
@@ -612,11 +672,11 @@ func (m *Manager) gitlabEnv(ctx context.Context, b store.Bot) ([]string, gitHelp
 			return nil, gitHelper{}, err
 		}
 		return []string{
-			"OAUTH_TOKEN=" + token,
-			"GLAB_CONFIG_DIR=" + dir,
-			"GITLAB_HOST=" + c.InstanceURL,
-		}, gitHelper{c.InstanceURL, `!f() { test "$1" = get && echo username=oauth2 && ` +
-			`echo "password=$OAUTH_TOKEN"; }; f`, ssh}, nil
+				"OAUTH_TOKEN=" + token,
+				"GLAB_CONFIG_DIR=" + dir,
+				"GITLAB_HOST=" + c.InstanceURL,
+			}, gitHelper{c.InstanceURL, `!f() { test "$1" = get && echo username=oauth2 && ` +
+				`echo "password=$OAUTH_TOKEN"; }; f`, ssh}, nil
 	}
 	return nil, gitHelper{}, nil
 }
@@ -747,7 +807,7 @@ func (m *Manager) check(w *watcher, t store.Thread) error {
 		return err
 	}
 	if RepoHost(m.ctx, rp.Path) == _hostGitHub {
-		return m.checkGitHub(w, t, bot)
+		return m.checkGitHub(w, t, bot, rp)
 	}
 	env, _, err := m.runEnv(m.ctx, bot, false)
 	if err != nil {
@@ -763,7 +823,7 @@ func (m *Manager) check(w *watcher, t store.Thread) error {
 	if t.MRTitle != "" {
 		title = t.MRTitle
 	}
-	if err := m.update(t, "", store.MRRead{State: state, Title: title, CI: t.MRCI, Woke: t.MRWoke}, ""); err != nil {
+	if err := m.update(t, "", store.MRRead{State: state, Title: title, CI: t.MRCI, Woke: t.MRWoke, Head: t.MRHead, BaseWoke: t.MRBaseWoke}, ""); err != nil {
 		return err
 	}
 	if state != _mrMerged {

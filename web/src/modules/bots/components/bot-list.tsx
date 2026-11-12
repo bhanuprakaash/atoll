@@ -67,6 +67,7 @@ function BotRow({
   const navigate = useNavigate();
   const pin = usePinBot(bot.id);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const selected = open.botId === bot.id && !open.threadId;
   const newThread = () => navigate(`/bots/${bot.id}/new`);
   return (
     <li>
@@ -77,10 +78,11 @@ function BotRow({
           event.preventDefault();
           setMenu({ x: event.clientX, y: event.clientY });
         }}
-        className={`group flex items-center rounded-card ${open.botId === bot.id ? 'bg-selected' : ''}`}
+        className={`group flex items-center rounded-card ${selected ? 'bg-selected' : ''}`}
       >
         <NavLink
           to={`/bots/${bot.id}`}
+          end={Boolean(open.threadId)}
           className="flex min-w-0 flex-1 items-center gap-3 px-2.5 py-[9px]"
         >
           <Creature look={bot.look} state={bot.state} size={36} />
