@@ -121,6 +121,7 @@ export function ThreadTree({
   onMore,
   onCloseThread,
   onRenameThread,
+  only,
 }: {
   bot: Pick<Bot, 'id' | 'name' | 'threads'>;
   selected: boolean;
@@ -130,10 +131,13 @@ export function ThreadTree({
   onMore: (botId: string) => void;
   onCloseThread: (threadId: string) => void;
   onRenameThread: (threadId: string, title: string) => void;
+  only?: SidebarThread[];
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number; thread: SidebarThread } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const { rows, more } = threadTree(bot.threads ?? [], openThreadId, unfolded);
+  const { rows, more } = only
+    ? { rows: only, more: null }
+    : threadTree(bot.threads ?? [], openThreadId, unfolded);
   if (rows.length === 0) return null;
   return (
     <>

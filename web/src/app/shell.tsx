@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { NavLink, Outlet, useLocation, useMatch, useNavigate, useSearchParams } from 'react-router';
 import { BotList } from '@/modules/bots/components/bot-list';
 import { Menu } from '@/components/menu';
+import { Switcher } from '@/app/switcher';
 import { ThreadsPopup } from '@/app/threads-popup';
 import { useSettings } from '@/modules/settings/api/settings';
 import { useNotifications } from '@/modules/threads/hooks/use-notifications';
+import { useTypeToCompose } from '@/modules/threads/hooks/use-type-to-compose';
 import { TextField } from '@/components/text-field';
 import { useCloseThread, useRenameThread } from '@/modules/threads/api/threads';
 import { inDesktopApp, useAppUpdate } from '@/lib/app-update';
@@ -119,6 +121,19 @@ export function Shell() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [botId, navigate]);
+  const [switching, setSwitching] = useState(false);
+  useTypeToCompose();
+  useEffect(() => {
+    const mac = navigator.userAgent.includes('Mac');
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'k' || event.altKey || event.shiftKey) return;
+      if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return;
+      event.preventDefault();
+      setSwitching(true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
   const { data: settings } = useSettings();
   const userName = settings?.user_name || 'User';
   const updateAvailable = Boolean(useAppUpdate().data?.available);
@@ -308,6 +323,7 @@ export function Shell() {
           ]}
         />
       )}
+      {switching && <Switcher onClose={() => setSwitching(false)} />}
       {threadsBot && (
         <ThreadsPopup
           botId={threadsBot}

@@ -827,6 +827,8 @@ type ThreadRun struct {
 	ThreadID       string
 	ParentThreadID string
 	Title          string
+	Branch         string
+	MRURL          string
 	Closed         bool
 	Pinned         bool
 	LastActivity   time.Time
@@ -871,7 +873,7 @@ func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
 func (s *Store) threadRuns(ctx context.Context, with, where string, args ...any) ([]ThreadRun, error) {
 	return query(ctx, s.db,
 		`WITH `+with+`
-		 SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.closed, t.pinned_at IS NOT NULL,
+		 SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.branch, t.mr_url, t.closed, t.pinned_at IS NOT NULL,
 		        t.last_activity,
 		        t.last_activity > t.last_opened_at AND t.last_activity > t.created
 		          AND coalesce(p.status, '') NOT IN ('running', 'waiting'),
@@ -882,7 +884,7 @@ func (s *Store) threadRuns(ctx context.Context, with, where string, args ...any)
 		 ORDER BY t.last_activity DESC, t.rowid DESC`,
 		func(r *sql.Rows) (tr ThreadRun, err error) {
 			var active int64
-			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &tr.Title, &tr.Closed,
+			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &tr.Title, &tr.Branch, &tr.MRURL, &tr.Closed,
 				&tr.Pinned, &active, &tr.Unseen, &tr.Status, &tr.Reply)
 			tr.LastActivity = time.UnixMicro(active).UTC()
 			return tr, err

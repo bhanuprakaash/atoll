@@ -57,17 +57,14 @@ func TestSidebar_Routes(t *testing.T) {
 		wantBody   string
 	}{
 		{"bots list marks the finished thread New", "GET", "/api/bots", "", 200,
-			`"threads":[{"id":"` + ids[0] + `","title":"hello there","state":"new","pinned":false},` +
-				`{"id":"` + ids[3] + `","title":"","state":"","pinned":false},` +
-				`{"id":"` + ids[2] + `","title":"","state":"","pinned":false},` +
-				`{"id":"` + ids[1] + `","title":"","state":"","pinned":false}]`},
+			`"threads":[{"id":"` + ids[0] + `","title":"hello there","state":"new","pinned":false,"branch":"","mr_url":"","last_activity":"`},
 		{"list has group_id and threads", "GET", "/api/bots", "", 200,
 			`"can_manage_platform":false,"group_id":"","threads":[{`},
 		{"one Bot has group_id and no threads", "GET", "/api/bots/" + bot.ID, "", 200,
 			`"can_manage_platform":false,"group_id":""}`},
 		{"open it", "POST", "/api/threads/" + ids[0] + "/opened", "", 204, ""},
 		{"opened clears New", "GET", "/api/bots", "", 200,
-			`{"id":"` + ids[0] + `","title":"hello there","state":"","pinned":false}`},
+			`{"id":"` + ids[0] + `","title":"hello there","state":"","pinned":false,`},
 		{"pin 1", "POST", pin(ids[0]), "", 204, ""},
 		{"pin 2", "POST", pin(ids[1]), `{}`, 204, ""},
 		{"pin 3", "POST", pin(ids[2]), "", 204, ""},
