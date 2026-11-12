@@ -116,7 +116,7 @@ func TestUndoChange_CreateBotStopsRun(t *testing.T) {
 			return sess, provider.Config{}, nil
 		}})
 	t.Cleanup(func() { _ = runs.Close() })
-	h := New(st, nil, runs, log, nil)
+	h := New(st, nil, runs, log, nil, "")
 	if _, _, err := runs.Send(ctx, thread.ID, "hi", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -155,13 +155,18 @@ func newHandler(t *testing.T) http.Handler {
 
 func newHandlerWith(t *testing.T, providers Providers) (http.Handler, *store.Store) {
 	t.Helper()
+	return newHandlerFor(t, providers, "")
+}
+
+func newHandlerFor(t *testing.T, providers Providers, token string) (http.Handler, *store.Store) {
+	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return New(st, nil, run.New(run.Config{Store: st, Log: log}), log, providers), st
+	return New(st, nil, run.New(run.Config{Store: st, Log: log}), log, providers, token), st
 }
 
 func serve(h http.Handler, method, path, body string) *httptest.ResponseRecorder {
@@ -230,8 +235,7 @@ func TestLocalOnly(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("ATOLL_TOKEN", tt.token)
-			h := newHandler(t)
+			h, _ := newHandlerFor(t, nil, tt.token)
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.path, nil)
 			req.Host = tt.host
 			if tt.origin != "" {
@@ -250,8 +254,7 @@ func TestLocalOnly(t *testing.T) {
 }
 
 func TestLocalOnly_TokenExchange(t *testing.T) {
-	t.Setenv("ATOLL_TOKEN", "secret")
-	h := newHandler(t)
+	h, _ := newHandlerFor(t, nil, "secret")
 	tests := []struct {
 		name       string
 		query      string
@@ -286,7 +289,7 @@ func TestGetSettings_DataDir(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := New(st, nil, run.New(run.Config{Store: st, Log: log, DataDir: "/data", WorktreeRoot: "/wt"}), log, nil)
+	h := New(st, nil, run.New(run.Config{Store: st, Log: log, DataDir: "/data", WorktreeRoot: "/wt"}), log, nil, "")
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/settings", nil)
 	req.Host = "127.0.0.1:4317"
 	rec := httptest.NewRecorder()

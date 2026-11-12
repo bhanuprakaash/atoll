@@ -994,7 +994,10 @@ Follow-ups, not filed:
       - `ATOLL_TOKEN` (the local API credential, passed by the desktop shell in env) is the same
         problem: it lets a Bot call the whole API. The first process reads it and hands it to the
         re-executed one on an inherited pipe (`ATOLL_TOKEN_FD`, not secret); the new process reads
-        and closes it before it listens and holds it in memory only.
+        and closes it before it listens and holds it in memory only: `main` hands it to the server
+        as a setting, never back to its env, so no child process (git, a folder picker) inherits
+        it. A pipe that cannot be read or is empty stops startup: Reef never serves without the
+        credential it was given.
       - Claude's `--mcp-config` is `/dev/fd/<n>`: a pipe holding the whole config with real URLs,
         header values and env values, written and closed before `claude` starts. The run's Reef MCP
         URL (with its token), the GitHub MCP bearer and every MCP server secret are then in no env

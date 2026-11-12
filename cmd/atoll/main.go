@@ -54,12 +54,13 @@ var _adapters = []adapter{
 }
 
 func main() {
-	if err := scrubEnv(); err != nil {
+	token, err := scrubEnv()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	err := run(ctx, os.Args[1:], os.Stdout)
+	err = run(ctx, token, os.Args[1:], os.Stdout)
 	stop()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -67,13 +68,13 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, args []string, w io.Writer) error {
+func run(ctx context.Context, token string, args []string, w io.Writer) error {
 	if len(args) == 0 {
 		_, err := fmt.Fprintln(w, "atoll")
 		return err
 	}
 	if args[0] == "serve" {
-		return serve(ctx, args[1:], w)
+		return serve(ctx, token, args[1:], w)
 	}
 	if len(args) < 2 || args[0] != "provider" {
 		return usage()

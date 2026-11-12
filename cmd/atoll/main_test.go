@@ -8,7 +8,7 @@ import (
 
 func TestRun(t *testing.T) {
 	var out bytes.Buffer
-	if err := run(context.Background(), nil, &out); err != nil {
+	if err := run(context.Background(), "", nil, &out); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := out.String(), "atoll\n"; got != want {

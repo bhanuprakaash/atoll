@@ -19,7 +19,7 @@ func TestSidebar_Routes(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil)
+	h := New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil, "")
 	bot, err := st.CreateBot(ctx, store.Bot{Name: "Ada", Persona: "p", Provider: "claude"})
 	if err != nil {
 		t.Fatal(err)

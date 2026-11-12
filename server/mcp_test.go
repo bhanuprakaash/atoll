@@ -23,7 +23,7 @@ func TestMCP(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := httptest.NewServer(New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil))
+	srv := httptest.NewServer(New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil, ""))
 	t.Cleanup(srv.Close)
 
 	tests := []struct {
@@ -138,7 +138,7 @@ func newPlatform(t *testing.T, providers Providers) platformEnv {
 		},
 	})
 	t.Cleanup(func() { _ = runs.Close() })
-	srv := httptest.NewServer(New(st, nil, runs, log, providers))
+	srv := httptest.NewServer(New(st, nil, runs, log, providers, "secret"))
 	t.Cleanup(srv.Close)
 	if _, _, err := runs.Send(ctx, thread.ID, "hi", nil); err != nil {
 		t.Fatal(err)
@@ -164,7 +164,6 @@ func (e platformEnv) call(t *testing.T, tool, args string) string {
 }
 
 func TestPlatform_EditBotUndo(t *testing.T) {
-	t.Setenv("ATOLL_TOKEN", "secret")
 	ctx := t.Context()
 	e := newPlatform(t, nil)
 	st, thread := e.st, e.thread
@@ -271,7 +270,7 @@ func TestMCP_FinishRunHelpersLineFails(t *testing.T) {
 		},
 	})
 	t.Cleanup(func() { _ = runs.Close() })
-	srv := httptest.NewServer(New(st, nil, runs, log, nil))
+	srv := httptest.NewServer(New(st, nil, runs, log, nil, ""))
 	t.Cleanup(srv.Close)
 	if _, _, err := runs.Send(ctx, thread.ID, "hi", nil); err != nil {
 		t.Fatal(err)

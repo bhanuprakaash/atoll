@@ -14,7 +14,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -49,6 +48,7 @@ type api struct {
 	http *http.Client
 
 	providers Providers // serves /api/providers; nil when there is none
+	token     string    // the credential an API request must carry; empty for none
 
 	mu      sync.Mutex
 	devices map[string]*device
@@ -65,12 +65,13 @@ type device struct {
 }
 
 // New returns the handler for the API, the MCP tools and the UI. providers, when not nil, serves
-// /api/providers.
+// /api/providers. A non-empty token is required of every API request.
 func New(
 	st *store.Store, mem *memory.Store, runs *run.Manager, log *slog.Logger, providers Providers,
+	token string,
 ) http.Handler {
 	a := &api{
-		st: st, mem: mem, runs: runs, log: log, providers: providers,
+		st: st, mem: mem, runs: runs, log: log, providers: providers, token: token,
 		http:    &http.Client{Timeout: _signInTimeout},
 		devices: map[string]*device{},
 		signIns: map[string]mcpserver.Pending{},
@@ -154,22 +155,21 @@ func New(
 // localOnly refuses an API or MCP request that is not for a local host, or that a page on
 // another origin sent: otherwise any web page could drive Bots, which run code.
 func (a *api) localOnly(next http.Handler) http.Handler {
-	token := os.Getenv("ATOLL_TOKEN")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		guarded := strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, MCPPath)
-		exchange := token != "" && r.Method == http.MethodGet && r.URL.Path == "/" &&
+		exchange := a.token != "" && r.Method == http.MethodGet && r.URL.Path == "/" &&
 			r.URL.Query().Has("token")
 		if (guarded || exchange) && (!isLocalHost(r.Host) || !sameOrigin(r)) {
 			fail(w, http.StatusForbidden, "forbidden")
 			return
 		}
 		if exchange {
-			if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("token")), []byte(token)) != 1 {
+			if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("token")), []byte(a.token)) != 1 {
 				fail(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
 			http.SetCookie(w, &http.Cookie{
-				Name: "atoll_token", Value: token, Path: "/",
+				Name: "atoll_token", Value: a.token, Path: "/",
 				HttpOnly: true, SameSite: http.SameSiteStrictMode,
 			})
 			w.Header().Set("Cache-Control", "no-store")
@@ -177,10 +177,10 @@ func (a *api) localOnly(next http.Handler) http.Handler {
 			http.Redirect(w, r, "/", http.StatusFound)
 			return
 		}
-		if token != "" && guarded {
+		if a.token != "" && guarded {
 			cookie, err := r.Cookie("atoll_token")
 			authenticated := err == nil &&
-				subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(token)) == 1
+				subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(a.token)) == 1
 			if !authenticated && strings.HasPrefix(r.URL.Path, MCPPath) {
 				_, _, _, err := a.runs.Source(strings.TrimPrefix(r.URL.Path, MCPPath))
 				authenticated = err == nil
