@@ -411,7 +411,9 @@ func TestClaudeIsolation_ToolsByKindOfRun(t *testing.T) {
 		sessions := m.sessions(t, "claude")
 		return sessions[len(sessions)-1]
 	}
-	if c := tools(chiefBot); toolsFlag(c) != "" || !strings.Contains(flagValue(c.argv, "--mcp-config"), `"atoll"`) || flagValue(c.argv, "--allowedTools") != "mcp__atoll" {
+	c := tools(chiefBot)
+	_, hasAtoll := mcpServersOf(t, "claude", c)["atoll"]
+	if toolsFlag(c) != "" || !hasAtoll || flagValue(c.argv, "--allowedTools") != "mcp__atoll" {
 		t.Errorf("Chief: --tools %q, want the empty value, with the atoll MCP config and --allowedTools mcp__atoll kept", toolsFlag(c))
 	}
 	for _, b := range []bot{keeper, s.newBot(t, "Plain", "claude")} {
