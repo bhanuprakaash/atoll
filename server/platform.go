@@ -365,6 +365,10 @@ func (a *api) reimportSkill(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if refused := refusal(imp); refused != nil {
+		write(w, http.StatusOK, refused)
+		return
+	}
 	res, _, _, err := a.importSkill(r.Context(), a.st, imp, in.Replace)
 	if err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
@@ -659,6 +663,9 @@ func (a *api) platformCall(
 	case provider.ToolImportSkill:
 		var res importResult
 		var prev, sk store.Skill
+		if refused := refusal(imp); refused != nil {
+			return a.jsonText(refused)
+		}
 		res, prev, sk, err = a.importSkill(ctx, st, imp, importArgs.Replace)
 		if err == nil && (res.Status == _importUnchanged || res.Status == _importConfirm) {
 			return a.jsonText(res)
@@ -880,6 +887,7 @@ const (
 	_importReplaced  = "replaced"
 	_importUnchanged = "unchanged"
 	_importConfirm   = "confirm"
+	_importRefused   = "refused"
 )
 
 // importResult is what import_skill answers: the paths it added, changed and removed against the
@@ -891,8 +899,16 @@ type importResult struct {
 	Changed   []string        `json:"changed"`
 	Removed   []string        `json:"removed"`
 	Skipped   []skill.Skipped `json:"skipped"`
-	HomePaths []string        `json:"home_paths"`
 	Warning   string          `json:"warning,omitempty"`
+	Rewritten []skill.Rewrite `json:"rewritten"`
+}
+
+// refusedImport is what import_skill answers when the skill refers to the owner's home: nothing is stored.
+type refusedImport struct {
+	Status string          `json:"status"`
+	Name   string          `json:"name"`
+	Reason string          `json:"reason"`
+	Refs   []skill.HomeRef `json:"refs"`
 }
 
 type importedSkill struct {
@@ -919,7 +935,10 @@ func (a *api) readImport(path string) (skill.Import, error) {
 	if err != nil {
 		return skill.Import{}, err
 	}
-	return skill.Read(resolved)
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		path = filepath.Join(home, rest)
+	}
+	return skill.Read(resolved, filepath.Clean(path))
 }
 
 func importPath(path, home string, folders []string) (string, error) {
@@ -992,6 +1011,22 @@ func readAgent(path string) (any, error) {
 	}, nil
 }
 
+// refusal answers an import whose files refer to the owner's home folder, or nil.
+func refusal(imp skill.Import) *refusedImport {
+	if len(imp.Refs) == 0 {
+		return nil
+	}
+	list := make([]string, len(imp.Refs))
+	for i, ref := range imp.Refs {
+		list[i] = fmt.Sprintf("%s:%d %s", ref.File, ref.Line, ref.Ref)
+	}
+	return &refusedImport{
+		Status: _importRefused, Name: imp.Skill.Name, Refs: imp.Refs,
+		Reason: fmt.Sprintf("skill %q refers to files in your home folder that a Bot cannot use: %s",
+			imp.Skill.Name, strings.Join(list, ", ")),
+	}
+}
+
 // importSkill puts the skill folder read by readImport into the library. It updates the skill
 // imported from the same folder, or a skill of the same name made in Reef, and asks for replace
 // before it overwrites edits made in Reef. It returns the stored skill before and after.
@@ -1002,7 +1037,7 @@ func (a *api) importSkill(
 	next.Imported = skill.Hash(next)
 	res = importResult{
 		Status: _importCreated, Added: []string{}, Changed: []string{}, Removed: []string{},
-		Skipped: orEmpty(imp.Skipped), HomePaths: orEmpty(imp.HomePaths),
+		Skipped: orEmpty(imp.Skipped), Rewritten: orEmpty(imp.Rewritten),
 	}
 	skills, err := st.Skills(ctx)
 	if err != nil {

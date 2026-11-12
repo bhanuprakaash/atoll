@@ -46,9 +46,11 @@ boolean}`; both are declared in the tool's input schema (the fake sends only dec
 
 It reads every regular file under the folder. Text files (valid UTF-8, no NUL byte) are taken. A
 `.git` folder is skipped whole, and so is any binary file; each is reported. `executable` is true
-when any execute bit is set on the source file. In SKILL.md only, `~/.claude/skills/<folder
-name>/` is replaced with nothing, so `S=~/.claude/skills/poteto-mode/scripts` becomes
-`S=scripts`; every other file is stored byte for byte. The source folder is never written: its
+when any execute bit is set on the source file. The skill's own folder in a home path is
+replaced with `{{ATOLL_SKILL_DIR}}` in SKILL.md and every text file, so
+`S=~/.claude/skills/poteto-mode/scripts` becomes `S={{ATOLL_SKILL_DIR}}/scripts`, and any other
+home path refuses the import ([skill-home-paths-contract.md](skill-home-paths-contract.md)); the
+rest of every file is stored byte for byte. The source folder is never written: its
 paths, modes, modification times and bytes are the same after. The skill's name is SKILL.md's
 frontmatter `name:`, else the folder's name. `source` is the absolute, cleaned folder path. An
 existing skill is the one with that `source`, else the one with that name.
@@ -61,7 +63,6 @@ The result is MCP text holding one JSON object:
   "skill": {"id": "", "name": "", "source": "", "files": [{"path": "", "executable": false}]},
   "added": [], "changed": [], "removed": [],
   "skipped": [{"path": ".git", "reason": "git"}, {"path": "assets/logo.png", "reason": "binary"}],
-  "home_paths": ["~/.reef-verify/<id>"],
   "warning": "..."
 }
 ```
@@ -73,8 +74,6 @@ The result is MCP text holding one JSON object:
   would revert it.
 - `skipped` has `.git` (reason `git`) once, not its files, and every binary by its path relative to
   the folder (reason `binary`).
-- `home_paths` are the `~/` paths left in the stored SKILL.md, once each, in order of first
-  appearance. A path is the run of non-space characters starting at `~/`.
 - `warning` only with `confirm`.
 
 Statuses:
@@ -100,7 +99,7 @@ pinned. This replaces the pinned words of [skill-import-contract.md](skill-impor
 
 The fixture under the temporary HOME is `~/.claude/skills/poteto-mode/`: SKILL.md (frontmatter
 `name: poteto-mode`; the line `` `S=~/.claude/skills/poteto-mode/scripts`. Always call scripts by
-that full path. ``; `~/.reef-verify/<id>` twice and `~/.poteto/state` once), `scripts/` with 10
+that full path. ``; `.reef-verify/<id>` twice and `.poteto/state` once, with no `~/`), `scripts/` with 10
 executable (0755) shell scripts, one of them `scripts/check` (`#!/bin/sh\necho check-ok\n`),
 `playbooks/` with 11 `.md` files (each naming `~/.claude/skills/poteto-mode/scripts/check`) and
 `references/improve-report.md`: SKILL.md and 22 files. The skip fixture is `~/.claude/skills/reef-snaps/`
@@ -125,8 +124,8 @@ exists.
 
 | Acceptance | Tests |
 | --- | --- |
-| Chief imports `~/.claude/skills/poteto-mode`: SKILL.md plus 22 files, `scripts/*` executable, Chief names what it skipped | `TestSkillFiles_ChiefImportsPotetoMode/{claude,codex}` (result, `GET /api/skills`, one change, Undo, `home_paths`); the skipped part in `TestSkillFiles_ImportSkipsBinariesAndGit` |
-| No `~/.claude` in SKILL.md, `S=scripts`; source folder byte-for-byte unchanged | `TestSkillFiles_ChiefImportsPotetoMode` (checksum of paths, modes, mtimes and bytes before and after) |
+| Chief imports `~/.claude/skills/poteto-mode`: SKILL.md plus 22 files, `scripts/*` executable, Chief names what it skipped | `TestSkillFiles_ChiefImportsPotetoMode/{claude,codex}` (result, `GET /api/skills`, one change, Undo); the skipped part in `TestSkillFiles_ImportSkipsBinariesAndGit` |
+| No `~/.claude` in SKILL.md, `S={{ATOLL_SKILL_DIR}}/scripts`; source folder byte-for-byte unchanged | `TestSkillFiles_ChiefImportsPotetoMode` (checksum of paths, modes, mtimes and bytes before and after) |
 | Bot runs the placed `scripts/check`, not `~/.claude`, on Claude and Codex | `TestSkillFiles_BotRunsPlacedScript/{claude,codex}` |
 | Placed modes (`scripts/*` 0555, rest 0444); run folder gone after the run | `TestSkillFiles_BotRunsPlacedScript` |
 | PNG and `.git` not stored, listed as skipped | `TestSkillFiles_ImportSkipsBinariesAndGit/{claude,codex}` |
