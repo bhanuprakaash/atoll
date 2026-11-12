@@ -54,6 +54,10 @@ var _adapters = []adapter{
 }
 
 func main() {
+	if err := scrubEnv(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	err := run(ctx, os.Args[1:], os.Stdout)
 	stop()
