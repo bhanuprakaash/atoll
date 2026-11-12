@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"unicode"
 
 	"atoll/memory"
 	"atoll/provider"
@@ -30,7 +31,7 @@ const _tools = `{"tools":[
 {"name":"start_work",
 "description":"Repo threads start in a clean read-only checkout. Call before your first edit in a repo thread. Makes this thread's worktree on a new branch type/slug and returns its path and branch as JSON. Change into that path for your edits. Calling it again returns the same worktree.",
 "inputSchema":{"type":"object",
-"properties":{"type":{"type":"string","enum":["feat","fix","chore","docs"]},"slug":{"type":"string"}},
+"properties":{"type":{"type":"string","enum":["feat","fix","chore","docs","test"]},"slug":{"type":"string"},"base":{"type":"string","description":"Optional plain branch name on origin, e.g. test/x"}},
 "required":["type","slug"]}},
 {"name":"track_mr",
 "description":"When the change is ready, commit, push, open a merge request, call this tool with its URL and title, and include the URL in your reply. Never merge.",
@@ -169,19 +170,29 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if err := json.Unmarshal(call.Arguments, &rep); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
+		if strings.TrimSpace(rep.Done) == "" {
+			return failure("done is required."), nil
+		}
+		blocked := strings.TrimSpace(rep.Blocked)
+		blocked = strings.TrimSpace(strings.TrimRightFunc(blocked, unicode.IsPunct))
+		switch strings.ToLower(blocked) {
+		case "nothing blocking", "none", "nothing", "n/a":
+			rep.Blocked = ""
+		}
 		if err := a.runs.Report(r.Context(), token, rep); err != nil {
 			return nil, a.toolError(err)
 		}
-		return text("Report saved."), nil
+		return a.withHelpers(r, token, "Report saved.")
 	case provider.ToolStartWork:
 		var in struct {
 			Type string `json:"type"`
 			Slug string `json:"slug"`
+			Base string `json:"base"`
 		}
 		if err := json.Unmarshal(call.Arguments, &in); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		path, branch, base, err := a.runs.StartWork(r.Context(), token, in.Type, in.Slug)
+		path, branch, base, err := a.runs.StartWork(r.Context(), token, in.Type, in.Slug, in.Base)
 		if errors.Is(err, run.ErrNoGitHubConnection) {
 			return failure(err.Error()), nil
 		}
@@ -281,11 +292,14 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if err := json.Unmarshal(call.Arguments, &in); err != nil || in.Thread == "" || in.Message == "" {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		err := a.runs.Continue(r.Context(), token, in.Thread, in.Message)
+		queuedFor, err := a.runs.Continue(r.Context(), token, in.Thread, in.Message)
 		if res, rpcErr := a.refusal(err); res != nil || rpcErr != nil {
 			return res, rpcErr
 		}
-		return text("Sent."), nil
+		if queuedFor != "" {
+			return text("Queued: " + queuedFor + " is working; it gets this when its run ends."), nil
+		}
+		return a.withHelpers(r, token, "Sent.")
 	case provider.ToolApprove:
 		var in struct {
 			ToolName  string          `json:"tool_name"`
@@ -386,6 +400,18 @@ func (a *api) jsonText(v any) (any, *rpcError) {
 		return nil, a.toolError(err)
 	}
 	return text(string(body)), nil
+}
+
+// withHelpers is the text result s, then the helpers line on a new line when the run lists delegate.
+func (a *api) withHelpers(r *http.Request, token, s string) (any, *rpcError) {
+	line, err := a.runs.BossHelpers(r.Context(), token)
+	if err != nil {
+		return nil, a.toolError(err)
+	}
+	if line != "" {
+		s += "\n" + line
+	}
+	return text(s), nil
 }
 
 func text(s string) any { return result(s, false) }
