@@ -122,7 +122,7 @@ func TestCloseThread_WorktreeRootChange(t *testing.T) {
 	var path string
 	e.run(t, func(token string) {
 		var err error
-		path, _, _, err = e.m.StartWork(t.Context(), token, "fix", "root")
+		path, _, _, err = e.m.StartWork(t.Context(), token, "fix", "root", "")
 		if err != nil {
 			t.Error(err)
 		}
@@ -148,7 +148,7 @@ func TestRun_RepoAccessRevoked(t *testing.T) {
 	var worktree string
 	e.run(t, func(token string) {
 		var err error
-		if worktree, _, _, err = e.m.StartWork(t.Context(), token, "feat", "x"); err != nil {
+		if worktree, _, _, err = e.m.StartWork(t.Context(), token, "feat", "x", ""); err != nil {
 			t.Error(err)
 		}
 	})
@@ -166,7 +166,7 @@ func TestRun_RepoAccessRevoked(t *testing.T) {
 	var startErr error
 	var shelf string
 	second := e.run(t, func(token string) {
-		_, _, _, startErr = e.m.StartWork(t.Context(), token, "feat", "y")
+		_, _, _, startErr = e.m.StartWork(t.Context(), token, "feat", "y", "")
 		sh, err := e.m.shelf(t.Context(), token)
 		if err != nil {
 			t.Error(err)
@@ -183,7 +183,7 @@ func TestRun_RepoAccessRevoked(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				item, _, err := e.m.Remember(t.Context(), token, "fact", "Use Go.", "", tt.scope, nil)
+				item, _, err := e.m.Remember(t.Context(), token, "fact", "Use Go.", "", tt.scope, "", nil)
 				if tt.wantErr != "" {
 					if !errors.Is(err, memory.ErrInvalid) || err.Error() != tt.wantErr {
 						t.Errorf("Remember = %v, want %q", err, tt.wantErr)
@@ -232,7 +232,7 @@ func TestRun_StartWorkConcurrent(t *testing.T) {
 		for i := range paths {
 			wg.Go(func() {
 				var err error
-				if paths[i], _, _, err = e.m.StartWork(t.Context(), token, "feat", "x"); err != nil {
+				if paths[i], _, _, err = e.m.StartWork(t.Context(), token, "feat", "x", ""); err != nil {
 					t.Error(err)
 				}
 			})

@@ -66,6 +66,11 @@
   --color-gitlab-dark: #e24329;
   --color-gitlab-light: #fca326;
   --color-gitlab-bg: #2b1a12;
+  --color-del-bg: #3a1d20;
+  --color-syn-comment: #7a7a80;
+  --color-syn-string: #a5d6a7;
+  --color-syn-number: #f5c76a;
+  --color-syn-keyword: #a9cbff;
   --color-sidebar-line: #2a2a2a;
   --color-sidebar: #131313;
   --color-brand-claude: #d97757;

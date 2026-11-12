@@ -159,3 +159,34 @@ func fillerWords(n int) string {
 	}
 	return strings.Join(words, " ")
 }
+
+func TestTickets(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	for _, bad := range []string{"7", "#", "#0", "#07", "#7a", "# 7", "#7\n"} {
+		if _, _, err := s.Remember(ctx, Note{Kind: KindFact, Body: "x", Scope: ScopeRepo, ScopeID: "r1", Ticket: bad}); err == nil {
+			t.Errorf("ticket %q saved", bad)
+		}
+	}
+	if _, _, err := s.Remember(ctx, Note{Kind: KindFact, Body: "x", Scope: ScopeBot, ScopeID: "b1", Ticket: "#7"}); err == nil {
+		t.Error("ticket on a bot item saved")
+	}
+	a := save(t, s, Note{Kind: KindFact, Body: "a", Scope: ScopeRepo, ScopeID: "r1", Ticket: "#7"})
+	b := save(t, s, Note{Kind: KindFact, Body: "b", Scope: ScopeRepo, ScopeID: "r1", Ticket: "#8"})
+	save(t, s, Note{Kind: KindFact, Body: "c", Scope: ScopeRepo, ScopeID: "r2", Ticket: "#7"})
+	if got, err := s.Tickets(ctx); err != nil || len(got) != 3 {
+		t.Fatalf("tickets = %v, err %v", got, err)
+	}
+	if err := s.RetireTicket(ctx, Ticket{RepoID: "r1", Number: "#7"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Read(ctx, a.ID); got.Status != StatusRetired || got.RetiredReason != ReasonIssueClosed {
+		t.Errorf("item of the closed issue = %+v", got)
+	}
+	if got, _ := s.Read(ctx, b.ID); got.Status != StatusAccepted || got.RetiredReason != "" {
+		t.Errorf("item of another issue = %+v", got)
+	}
+	if got, err := s.TicketItems(ctx, Ticket{RepoID: "r1", Number: "#7"}); err != nil || len(got) != 0 {
+		t.Errorf("accepted items of the retired ticket = %v, err %v", got, err)
+	}
+}

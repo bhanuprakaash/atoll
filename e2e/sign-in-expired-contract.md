@@ -48,8 +48,8 @@ that succeeds.
   thread.
 - Once signed in, the thread's `button` "Retry" sends the same message and the run completes.
 - The Providers page shows that provider "Not signed in" after the failed run.
-- A run that fails for any other reason keeps today's line, `Run failed: <error>` with Retry, and
-  has no Sign in again.
+- A run that fails for any other reason shows the `Didn't run: <reason>` line with Retry (design.md, chat lines),
+  and has no Sign in again.
 
 ## Acceptance mapping
 

@@ -73,6 +73,7 @@ export function useNotifications(): Notifications {
       'platform_changed',
       (notice) => {
         const { entity, action, after } = notice.data.change;
+        if (entity === 'allow') return;
         const verb = action === 'edit' ? 'edited' : entity === 'repo' ? 'registered' : 'created';
         const what = entity === 'bot' ? 'Bot' : entity;
         add(notice, `${notice.bot_name} ${verb} ${what} ${after?.name ?? ''}`.trim());
