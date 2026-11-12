@@ -60,6 +60,7 @@ type (
 		model    string            // the thread's model; owned by run
 		turnID   string            // the turn in progress; owned by run
 		usage    provider.Usage    // what this process's own turns used; owned by run
+		resetsAt time.Time         // reset of the full rate-limit window last reported; owned by run
 
 		askMu sync.Mutex
 		asks  map[string]ask
@@ -96,6 +97,10 @@ type (
 				OutputTokens      int `json:"outputTokens"`
 			} `json:"last"`
 		} `json:"tokenUsage"`
+		RateLimits struct {
+			Primary   *limitWindow `json:"primary"`
+			Secondary *limitWindow `json:"secondary"`
+		} `json:"rateLimits"`
 		Turn struct {
 			ID     string `json:"id"`
 			Status string `json:"status"`
@@ -104,6 +109,11 @@ type (
 				CodexErrorInfo any    `json:"codexErrorInfo"`
 			} `json:"error"`
 		} `json:"turn"`
+	}
+
+	limitWindow struct {
+		UsedPercent float64 `json:"usedPercent"`
+		ResetsAt    int64   `json:"resetsAt"`
 	}
 
 	// tail is an io.Writer that keeps the last 4 KB written to it.
@@ -469,6 +479,18 @@ func (s *Session) handle(m message) bool {
 		clear(s.notes)
 		clear(s.changes)
 		clear(s.tools)
+		s.resetsAt = time.Time{}
+	case "account/rateLimits/updated":
+		s.resetsAt = time.Time{}
+		limits := m.body().RateLimits
+		for _, w := range []*limitWindow{limits.Primary, limits.Secondary} {
+			if w == nil || w.UsedPercent < 100 || w.ResetsAt <= 0 {
+				continue
+			}
+			if at := time.Unix(w.ResetsAt, 0).UTC(); at.After(s.resetsAt) {
+				s.resetsAt = at
+			}
+		}
 	case "item/started":
 		var it struct {
 			ID     string `json:"id"`
@@ -528,6 +550,9 @@ func (s *Session) handle(m message) bool {
 	if !ok {
 		return true
 	}
+	if ev.Limited {
+		ev.ResetsAt = s.resetsAt
+	}
 	return s.emit(ev)
 }
 
@@ -572,11 +597,13 @@ func (m message) event() (ev provider.Event, ok bool) {
 	case m.Method == "item/started":
 		return toolCall(p.Item)
 	case m.Method == "turn/completed" && p.Turn.Status != "completed":
-		msg, signedOut := "turn "+p.Turn.Status, false
+		msg, info := "turn "+p.Turn.Status, any(nil)
 		if p.Turn.Error != nil {
-			msg, signedOut = p.Turn.Error.Message, p.Turn.Error.CodexErrorInfo == "unauthorized"
+			msg, info = p.Turn.Error.Message, p.Turn.Error.CodexErrorInfo
 		}
-		return provider.Event{Kind: provider.KindError, Text: msg, SignedOut: signedOut}, true
+		return provider.Event{
+			Kind: provider.KindError, Text: msg, SignedOut: info == "unauthorized", Limited: info == "usageLimitExceeded",
+		}, true
 	case m.Method == "turn/completed":
 		return provider.Event{Kind: provider.KindTurnEnd}, true
 	}

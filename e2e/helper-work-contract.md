@@ -35,6 +35,14 @@ via the fake `glab`'s `mr-state`) removes the boss's worktree and its helpers'. 
 first: `worktree_removed` on the helper thread's stream with `reason` `closed` or `merged` and
 `snapshot_ref` `refs/atoll/unfinished/<helper thread id>`, holding its tracked and untracked edits.
 
+## Failed delegate
+
+When delegate fails after the helper's worktree is made, Reef removes the worktree and its branch,
+but not one that has been swapped for a symlink to another worktree, or whose folder is under a
+symlink: it refuses, as for a thread's worktree, and the other worktree and its files survive. The
+test swaps the path from a `git` on the server's PATH as `git worktree add` ends, and makes the
+helper's title update fail with a database trigger.
+
 ## Fakes
 
 No fake code. The boss calls `start_work` (and `track_mr` with the fake MR URL) through the `mcp-use`
@@ -54,6 +62,9 @@ boss's merge.
 | Helper told not to push or open a PR; the wake names the branch to merge                              | `TestHelperWork_BranchesOffTheBoss/{claude,codex}`                                                                |
 | Boss without a worktree, or Chief: start_work from origin/HEAD, track_mr; GitHub needs the connection | `TestHelperWork_NoBossBranch/{claude,codex}`, `TestHelperWork_GitHubConnectionOnlyOwnBranch/{claude,codex}`       |
 | Closing the boss's thread or its MR merging removes helpers' worktrees, saving first                  | `TestHelperWork_CloseOrMergeRemovesHelpers/{claude,codex}`                                                        |
+
+`TestHelperWork_FailedDelegateKeepsOtherWorktrees/{claude,codex}/{leaf,parent}` covers a failed
+delegate (leaf symlink; symlink in a parent folder).
 
 Not covered here: a helper's own commit (the test commits for it), merge conflicts, the helper's
 worktree when the boss's MR merges on GitHub (not polled), and the wake text when the helper fails.
