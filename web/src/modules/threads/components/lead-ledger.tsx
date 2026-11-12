@@ -5,7 +5,7 @@ import { clockTime } from '@/utils/time';
 
 export type LedgerRow = {
   id: string;
-  handoff?: ReactNode;
+  note?: ReactNode;
   time?: string;
   name?: string;
   look?: CreatureLook;
@@ -31,8 +31,8 @@ export function LeadLedger({ rows, onToggle }: { rows: LedgerRow[]; onToggle: ()
           data-report-id={row.id}
           className="text-muted"
         >
-          {row.handoff ? (
-            <p className="flex h-[30px] items-center">{row.handoff}</p>
+          {row.note ? (
+            <p className="flex h-[30px] items-center">{row.note}</p>
           ) : (
             <>
               <div className="flex h-[30px] items-center gap-2.5">

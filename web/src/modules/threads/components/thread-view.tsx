@@ -189,7 +189,7 @@ function MessageLine({
   from?: Bots[string];
   brief: boolean;
   footer?: ReactNode;
-  resend: (runId: string) => void;
+  resend: (message: Message) => void;
 }) {
   const time = (
     <time className="text-xs text-muted" dateTime={message.created_at} data-testid="message-time">
@@ -269,7 +269,7 @@ function MessageLine({
           {message.not_read && (
             <>
               <span className="text-xs text-muted">Not read</span>
-              <button type="button" onClick={() => resend(message.run_id)} className={quiet}>
+              <button type="button" onClick={() => resend(message)} className={quiet}>
                 Resend
               </button>
             </>
@@ -528,9 +528,9 @@ export function ThreadView({
   const woken = new Set(
     messages.filter((m) => m.role === 'user' && fromHelper(m)).map((m) => m.run_id),
   );
-  const fromUser = new Set(
-    messages.filter((m) => m.role === 'user' && !m.from_bot_id).map((m) => m.run_id),
-  );
+  const fromPerson = (m: Message) => m.role === 'user' && !m.from_bot_id && !m.kind;
+  const fromUser = new Set(messages.filter(fromPerson).map((m) => m.run_id));
+  const lastOfRun = new Map(messages.filter(fromPerson).map((m) => [m.run_id, m.id]));
   const statusReply = (m: Message) =>
     !!thread &&
     m.role === 'bot' &&
@@ -542,25 +542,28 @@ export function ThreadView({
   const replyRuns = useQueries({
     queries: replyRunIds.map((id) => ({ queryKey: ['run', id], queryFn: () => getRun(id) })),
   });
-  const unanswered = (m: Message) => m.role === 'user' && !m.from_bot_id && !answered.has(m.run_id);
+  const unanswered = (m: Message) => fromPerson(m) && !answered.has(m.run_id);
   const asked = new Set(messages.filter(unanswered).map((m) => m.run_id));
   const newest = (runId: string) => runId === thread?.run_id && !activeId;
-  const retry = async (runId: string) => {
-    const message = messages.find((m) => m.role === 'user' && m.run_id === runId);
-    if (!message) return;
-    const images = await Promise.all(
-      message.attachments.map(async (a) => {
-        const blob = await fetchAttachment(a.id);
-        const url = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-        return { mime: a.mime, data: url.slice(url.indexOf(',') + 1) };
-      }),
-    );
-    send.mutate({ text: message.text, images }, { onSuccess: ({ run }) => run && begin(run.id) });
+  const resend = async (list: Message[]) => {
+    for (const message of list) {
+      const images = await Promise.all(
+        message.attachments.map(async (a) => {
+          const blob = await fetchAttachment(a.id);
+          const url = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+          return { mime: a.mime, data: url.slice(url.indexOf(',') + 1) };
+        }),
+      );
+      const { run } = await send.mutateAsync({ text: message.text, images });
+      if (run) begin(run.id);
+    }
   };
+  const retry = (runId: string) =>
+    resend(messages.filter((m) => fromPerson(m) && m.run_id === runId));
   const sendFirst = (text: string, images?: ImageInput[]) => {
     if (repoId && !thread?.repo_id)
       create.mutate(
@@ -654,7 +657,12 @@ export function ThreadView({
       setAwayFromLatest(!atLatest);
     });
   };
-  const ledgerRow = (m: Message): LedgerRow | null => {
+  const ledgerRow = (m: Message, joinsBlock: boolean): LedgerRow | null => {
+    if (m.kind) {
+      return joinsBlock
+        ? { id: m.id, note: <span className="truncate">Reef: {m.text}</span> }
+        : null;
+    }
     if (fromHelper(m)) {
       const report = helperReport(m.text);
       if (!report.state || report.blocked) return null;
@@ -706,8 +714,8 @@ export function ThreadView({
     const valid = Number.isFinite(day.getTime()) && day.getFullYear() > 1;
     const showDay = valid && (!previous || day.toDateString() !== previous.toDateString());
     const newDay = showDay ? day : undefined;
-    const row = ledgerRow(m);
     const last = items.at(-1);
+    const row = ledgerRow(m, !!last && 'rows' in last && !showDay);
     if (!row) {
       items.push({ message: m, index, day: newDay });
       return;
@@ -715,7 +723,7 @@ export function ThreadView({
     const handoff = handoffs.get(m.id);
     const rows = [
       row,
-      ...(handoff ? [{ id: `handoff-${m.id}`, handoff: <>Handed off to {names(handoff)}</> }] : []),
+      ...(handoff ? [{ id: `handoff-${m.id}`, note: <>Handed off to {names(handoff)}</> }] : []),
     ];
     if (last && 'rows' in last && !showDay) last.rows.push(...rows);
     else items.push({ rows, day: newDay });
@@ -804,7 +812,7 @@ export function ThreadView({
                   threadId={threadId}
                   from={bots[m.from_bot_id ?? '']}
                   brief={!!m.from_bot_id && m.from_bot_id === thread?.parent_bot_id}
-                  resend={retry}
+                  resend={(message) => void resend([message])}
                   footer={
                     m.role === 'bot' &&
                     messages[index + 1]?.run_id !== m.run_id && (
@@ -822,7 +830,7 @@ export function ThreadView({
                     )
                   }
                 />
-                {unanswered(m) && (
+                {unanswered(m) && lastOfRun.get(m.run_id) === m.id && (
                   <FailedRun
                     id={m.run_id}
                     botName={botName}
