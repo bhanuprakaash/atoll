@@ -180,9 +180,9 @@ test("a helper's report in the boss thread renders the same table", async ({ pag
     `Use MCP tools. [{"server":"atoll","tool":"delegate","args":{"bot":"Tester relay","brief":${escaped(brief)}}}]`,
   );
   await page.goto(`${m.url}/bots/${poteto.id}/threads/${boss.id}`);
-  const report = page.getByRole('log', { name: 'Messages' }).getByRole('article', {
-    name: 'Tester relay',
-  });
+  const ledger = page.getByRole('log', { name: 'Messages' }).getByRole('list', { name: 'Updates' });
+  await ledger.getByRole('button', { name: /Tester relay/ }).click();
+  const report = ledger.getByRole('listitem');
   const table = report.locator('[data-component="table"]');
   await expect(table).toHaveCount(1);
   await expect(table.getByRole('columnheader')).toHaveText(['Check', 'Result']);
