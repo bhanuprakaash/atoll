@@ -134,6 +134,7 @@ export async function startAtoll(opts: Options = {}): Promise<Machine> {
         PATH: `${bin}:/usr/bin:/bin`,
         ATOLL_DATA_DIR: data,
         ATOLL_PROVIDER_PATH: bin,
+        ATOLL_WAKE_WINDOW: '200ms',
         ...sessionEnv,
         ...env,
       },
