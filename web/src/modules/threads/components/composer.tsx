@@ -115,8 +115,8 @@ export function Composer({
       { text, images },
       {
         onSuccess: ({ run }) => {
-          setText('');
-          setImages([]);
+          setText((now) => (now === text ? '' : now));
+          setImages((now) => (now === images ? [] : now));
           if (run) onSent(run);
         },
       },
