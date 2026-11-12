@@ -51,7 +51,7 @@ Memory
 - Scope: repo, user ({user}'s preferences), bot (your lessons). Replace a wrong item; don't contradict it.
 
 Finish
-- End every run with finish_run: done, tried and failed, blocked, next. The reply itself carries the answer, never only finish_run or thinking; 2-3 lines is for status, not an asked-for answer.`
+- End every run: write the answer, then call finish_run last: done, tried and failed, blocked, next. Nothing after finish_run is shown. The reply itself carries the answer, never only finish_run or thinking; 2-3 lines is for status, not an asked-for answer.`
 
 const _helpersPrompt = `
 

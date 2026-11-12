@@ -1096,10 +1096,13 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	return reply, nil
 }
 
-// stream reads the turn's events until it ends and returns the reply: the text after the last tool
-// call. With showText false the turn's text is dropped.
+// stream reads the turn's events until it ends and returns the reply: the text after the last work
+// tool call, up to finish_run. Text after finish_run is the reply only when it was empty when
+// finish_run was called; otherwise that text is neither kept nor published. With showText false
+// the turn's text is dropped.
 func (m *Manager) stream(a *active, sess provider.Session, showText bool) (string, error) {
 	var reply strings.Builder
+	var frozen bool
 	var wg sync.WaitGroup
 	asks := map[string]context.CancelCauseFunc{}
 	failed := make(chan error, 1)
@@ -1121,7 +1124,7 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 			}
 			switch ev.Kind {
 			case provider.KindText:
-				if showText {
+				if showText && !frozen {
 					reply.WriteString(ev.Text)
 					m.publish(a, EventText, Text{RunID: a.run.ID, Text: ev.Text})
 				}
@@ -1132,10 +1135,15 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 					return "", fmt.Errorf("save session: %w", err)
 				}
 			case provider.KindToolCall:
-				reply.Reset()
 				name := ev.Name
 				if ev.Server != "" {
 					name = "mcp__" + ev.Server + "__" + name
+				}
+				if name == _atollTools+provider.ToolFinishRun {
+					frozen = reply.Len() > 0
+				} else {
+					reply.Reset()
+					frozen = false
 				}
 				kind, target := ToolKind(name, ev.Input)
 				if name == _atollTools+provider.ToolReadMemory && m.cfg.Memory != nil {
