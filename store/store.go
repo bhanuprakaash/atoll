@@ -232,6 +232,11 @@ type (
 		Attachments []Attachment `json:"attachments"`
 		// NotRead is set on a user message whose run failed because a secret could not be read.
 		NotRead bool `json:"not_read"`
+		// RunStatus is the status of the message's run; Done and Blocked are the run's finish_run
+		// report, so a chat that folds status replies needs no request per run.
+		RunStatus string `json:"run_status"`
+		Done      string `json:"done"`
+		Blocked   string `json:"blocked"`
 		// Answered are the approvals this message denied by replying.
 		Answered []AnsweredApproval `json:"answered_approvals,omitempty"`
 	}
@@ -1548,7 +1553,8 @@ func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error
 	return s.messages(ctx,
 		`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
             CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
-            m.role = 'user' AND r.error_kind = 'secret_store'
+            m.role = 'user' AND r.error_kind = 'secret_store',
+            r.status, coalesce(json_extract(r.report, '$.done'), ''), coalesce(json_extract(r.report, '$.blocked'), '')
          FROM messages m JOIN runs r ON r.id = m.run_id WHERE m.thread_id = ? ORDER BY m.rowid`,
 		threadID)
 }
@@ -1559,7 +1565,8 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 		return s.messages(ctx,
 			`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
                 CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
-                m.role = 'user' AND r.error_kind = 'secret_store'
+                m.role = 'user' AND r.error_kind = 'secret_store',
+                r.status, coalesce(json_extract(r.report, '$.done'), ''), coalesce(json_extract(r.report, '$.blocked'), '')
              FROM messages m JOIN runs r ON r.id = m.run_id
              WHERE m.thread_id = ? AND m.rowid > (
                  SELECT rowid FROM messages WHERE id = ? AND thread_id = ?
@@ -1567,10 +1574,12 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 			threadID, after, threadID)
 	}
 	return s.messages(ctx,
-		`SELECT id, thread_id, role, text, run_id, from_bot_id, kind, at, not_read FROM (
+		`SELECT id, thread_id, role, text, run_id, from_bot_id, kind, at, not_read, status, done, blocked FROM (
             SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
                 CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END AS at,
                 m.role = 'user' AND r.error_kind = 'secret_store' AS not_read,
+                r.status AS status, coalesce(json_extract(r.report, '$.done'), '') AS done,
+                coalesce(json_extract(r.report, '$.blocked'), '') AS blocked,
                 m.rowid
             FROM messages m JOIN runs r ON r.id = m.run_id
             WHERE m.thread_id = ?
@@ -1586,7 +1595,7 @@ func (s *Store) messages(ctx context.Context, querySQL string, args ...any) ([]M
 	msgs, err := query(ctx, s.db, querySQL,
 		func(r *sql.Rows) (m Message, err error) {
 			var at int64
-			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &m.Kind, &at, &m.NotRead)
+			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &m.Kind, &at, &m.NotRead, &m.RunStatus, &m.Done, &m.Blocked)
 			if at != 0 {
 				m.CreatedAt = time.UnixMicro(at).UTC()
 			}

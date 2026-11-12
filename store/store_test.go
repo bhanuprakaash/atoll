@@ -403,6 +403,58 @@ func TestStore_MessageTimestamps(t *testing.T) {
 	}
 }
 
+func TestStore_MessageRun(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, run, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: thread.ID, Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetReport(ctx, run.ID, store.Report{Done: "Checked it.", Blocked: "Need a key."}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	all, err := st.Messages(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest, err := st.MessagePage(ctx, thread.ID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer, err := st.MessagePage(ctx, thread.ID, "", all[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, list := range map[string][]store.Message{"Messages": all, "latest page": latest} {
+		if len(list) != 2 {
+			t.Fatalf("%s = %d messages, want 2", name, len(list))
+		}
+	}
+	if len(newer) != 1 {
+		t.Fatalf("page after the first = %d messages, want 1", len(newer))
+	}
+	for name, m := range map[string]store.Message{"Messages": all[1], "latest page": latest[1], "after": newer[0]} {
+		if m.RunStatus != store.StatusDone || m.Done != "Checked it." || m.Blocked != "Need a key." {
+			t.Errorf("%s: run %q done %q blocked %q, want done, %q, %q", name, m.RunStatus, m.Done, m.Blocked, "Checked it.", "Need a key.")
+		}
+	}
+}
+
 func TestStore_MessagePage(t *testing.T) {
 	ctx := t.Context()
 	st, err := store.Open(t.TempDir())

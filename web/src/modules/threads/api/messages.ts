@@ -18,6 +18,9 @@ export type Message = {
   queued?: boolean;
   attachments: { id: string; mime: string }[];
   not_read: boolean;
+  run_status: Run['status'];
+  done: string;
+  blocked: string;
   answered_approvals?: { id: string; tool: string; input: unknown }[];
 };
 

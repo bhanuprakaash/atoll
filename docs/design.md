@@ -1984,7 +1984,9 @@ Voice
     none-like, as the Blocked line decides; a boss reply to a wake (its run began with helper
     messages, not the person's) with no real `blocked` and no question, a question being a reply
     whose last line ends with `?`. *Reef does not guess intent: a status reply that ends in `?`
-    stays visible, the safe error.* A handoff line and a Reef wake line between folded events
+    stays visible, the safe error.* The run's `status`, `done` and `blocked` come with each
+    message in `GET /api/threads/{id}/messages` (`run_status`, `done`, `blocked`), so the chat
+    makes no request per reply. A handoff line and a Reef wake line between folded events
     join the block as lines.
   - Not folded: the person's messages; a boss reply to a message of the person's (they asked); a
     boss reply with a real `blocked` or a question; a helper's report with a real `blocked` (that

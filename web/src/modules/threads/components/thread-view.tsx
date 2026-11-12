@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
 import { quiet } from '@/components/button';
@@ -15,7 +15,7 @@ import {
   type Message,
   type Run,
 } from '@/modules/threads/api/messages';
-import { getRun, useRun, useStopRun } from '@/modules/threads/api/runs';
+import { useRun, useStopRun } from '@/modules/threads/api/runs';
 import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
 import { ErrorNotice } from '@/components/error-notice';
@@ -537,11 +537,9 @@ export function ThreadView({
     !m.from_bot_id &&
     woken.has(m.run_id) &&
     !fromUser.has(m.run_id) &&
+    m.run_status === 'done' &&
+    !realBlocked(m.blocked) &&
     !isQuestion(m.text);
-  const replyRunIds = [...new Set(messages.filter(statusReply).map((m) => m.run_id))];
-  const replyRuns = useQueries({
-    queries: replyRunIds.map((id) => ({ queryKey: ['run', id], queryFn: () => getRun(id) })),
-  });
   const unanswered = (m: Message) => fromPerson(m) && !answered.has(m.run_id);
   const asked = new Set(messages.filter(unanswered).map((m) => m.run_id));
   const newest = (runId: string) => runId === thread?.run_id && !activeId;
@@ -692,16 +690,12 @@ export function ThreadView({
       };
     }
     if (!statusReply(m)) return null;
-    const query = replyRuns[replyRunIds.indexOf(m.run_id)];
-    const run = query?.data;
-    if (query?.isError || (run && (run.status !== 'done' || realBlocked(run.report?.blocked))))
-      return null;
     return {
       id: m.id,
       time: m.created_at,
       name: botName,
       look,
-      line: run?.report?.done || firstLine(m.text),
+      line: m.done || firstLine(m.text),
       state: 'Done',
       report: <Markdown threadId={threadId}>{m.text}</Markdown>,
     };
@@ -814,6 +808,7 @@ export function ThreadView({
                   brief={!!m.from_bot_id && m.from_bot_id === thread?.parent_bot_id}
                   resend={(message) => void resend([message])}
                   footer={
+                    thread &&
                     m.role === 'bot' &&
                     messages[index + 1]?.run_id !== m.run_id && (
                       <>
