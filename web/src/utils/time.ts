@@ -13,3 +13,18 @@ export function relativeTime(value: string) {
   if (date >= start) return date.toLocaleDateString([], { weekday: 'short' });
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
+
+// messageTime is a message time: the clock today, else the day and the clock.
+export function messageTime(createdAt: string) {
+  const date = new Date(createdAt);
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfMessage = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const daysAgo = Math.round((startOfToday.getTime() - startOfMessage.getTime()) / 86_400_000);
+  const time = clockTime(createdAt);
+  if (daysAgo === 0) return time;
+  if (daysAgo === 1) return `Yesterday ${time}`;
+  if (daysAgo === -1) return `Tomorrow ${time}`;
+  if (Math.abs(daysAgo) < 7) return `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+  return `${date.getDate()} ${date.toLocaleDateString([], { month: 'short' })} ${time}`;
+}

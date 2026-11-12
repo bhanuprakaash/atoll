@@ -30,6 +30,8 @@ type MemoryItem struct {
 	SourceBotID    string `json:"source_bot_id"`
 	SourceThreadID string `json:"source_thread_id"`
 	SourceRunID    string `json:"source_run_id"`
+	Ticket         string `json:"ticket"`
+	RetiredReason  string `json:"retired_reason"`
 }
 
 // MemoryStep uses real MCP results for its reply; a canned answer cannot prove recall.

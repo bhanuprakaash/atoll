@@ -18,7 +18,7 @@ to import it (the `platform-skill-import` scenario), so the skill has a `source`
 
 Body `{"replace": bool}`. It re-reads the skill's `source` folder and answers `200` with the JSON
 `import_skill` returns (see the skill-files contract): `status` (`replaced`,
-`unchanged` or `confirm`; never `created`), `added`, `changed`, `removed`, `skipped`, `home_paths`, `warning`
+`unchanged`, `confirm` or `refused`; never `created`), `added`, `changed`, `removed`, `skipped`, `warning`
 only on `confirm`, `skill` absent on `confirm`. The tests compare it with what Chief's `import_skill`
 returns for the same folder and library: the two are equal.
 

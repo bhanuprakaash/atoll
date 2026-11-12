@@ -73,11 +73,12 @@ func TestChiefNoShell_ClaudeRunsWithoutTools(t *testing.T) {
 	s.do(t, "POST", "/api/bots", map[string]any{"name": "Plain", "persona": "Answers.", "provider": "claude", "repo_access": []string{}}, &plain, http.StatusCreated)
 	coder := s.newBot(t, "Coder", "claude")
 
-	lastArgv := func(b bot) []string {
+	lastCall := func(b bot) *call {
 		heySystem(t, s, "claude", b)
 		sessions := m.sessions(t, "claude")
-		return sessions[len(sessions)-1].argv
+		return sessions[len(sessions)-1]
 	}
+	lastArgv := func(b bot) []string { return lastCall(b).argv }
 	// tools is the value of --tools and whether the flag is there.
 	tools := func(argv []string) (string, bool) {
 		i := slices.Index(argv, "--tools")
@@ -89,11 +90,12 @@ func TestChiefNoShell_ClaudeRunsWithoutTools(t *testing.T) {
 
 	for _, mode := range _modes {
 		s.do(t, "PUT", "/api/bots/chief", map[string]string{"mode": mode}, nil, http.StatusOK)
-		argv := lastArgv(chiefBot)
+		run := lastCall(chiefBot)
+		argv := run.argv
 		if v, ok := tools(argv); !ok || v != "" {
 			t.Errorf("Chief on %s: --tools present %v with value %q, want present and empty; argv %q", mode, ok, v, argv)
 		}
-		if !strings.Contains(flagValue(argv, "--mcp-config"), `"atoll"`) || flagValue(argv, "--allowedTools") != "mcp__atoll" {
+		if _, ok := mcpServersOf(t, "claude", run)["atoll"]; !ok || flagValue(argv, "--allowedTools") != "mcp__atoll" {
 			t.Errorf("Chief on %s: want the atoll MCP config and --allowedTools mcp__atoll kept; argv %q", mode, argv)
 		}
 	}

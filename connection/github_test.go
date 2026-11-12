@@ -31,3 +31,16 @@ func TestOnGitHub_TestSeamPort(t *testing.T) {
 		t.Error("host and port must both match ATOLL_GITHUB_URL")
 	}
 }
+
+func TestGitHubRepo(t *testing.T) {
+	for _, remote := range []string{"https://github.com/octo/hello.git", "ssh://git@github.com/octo/hello", "git@github.com:octo/hello.git", "http://github.com/octo/hello/"} {
+		if o, n, ok := GitHubRepo(remote); !ok || o != "octo" || n != "hello" {
+			t.Errorf("GitHubRepo(%q) = %q, %q, %v", remote, o, n, ok)
+		}
+	}
+	for _, remote := range []string{"https://gitlab.example/octo/hello.git", "https://github.com/octo", "https://github.com/a/b/c", ""} {
+		if _, _, ok := GitHubRepo(remote); ok {
+			t.Errorf("GitHubRepo(%q) ok", remote)
+		}
+	}
+}
