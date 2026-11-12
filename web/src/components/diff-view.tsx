@@ -43,7 +43,7 @@ function parse(source: string): File[] {
 
 const _row: Record<Kind, string> = {
   add: 'bg-ok-bg text-ok',
-  del: 'bg-del-bg text-needs-ink',
+  del: 'bg-del-bg text-del',
   ctx: 'text-ink/80',
   hunk: 'bg-box text-muted',
 };
@@ -66,7 +66,7 @@ export function DiffView({ source }: { source: string }) {
               >
                 <span className="min-w-0 flex-1">{f.path}</span>
                 <span className="text-ok">+{f.add}</span>
-                <span className="text-needs-ink">-{f.del}</span>
+                <span className="text-muted">-{f.del}</span>
               </div>
             )}
             {f.rows.map((r, j) => (

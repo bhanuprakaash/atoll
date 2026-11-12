@@ -1557,9 +1557,10 @@ Voice
   sidebar's second line, the island's count and rows, a helper's line, the creature's pulse) is
   the light accent `#ECECEC`: a light dot, text in the main ink, neutral surfaces, never a red
   fill or border. Amber means blocked and the blue dot means New. An MR chip's dot is never red
-  (merged blue, open green, closed grey), and a diff's counts are muted. Brand and creature colours
-  are identity, not state. *Red on every waiting item taught the user to skim past red; the owner
-  wants it left for the moments that are really bad (#146).*
+  (merged blue, open green, closed grey), and a diff's counts are muted; its removed lines are a soft
+  pink ink (`--color-del`) on a dark red ground. Brand and creature colours are identity, not state.
+  *Red on every waiting item taught the user to skim past red; the owner wants it left for the
+  moments that are really bad (#146).*
 - Bot looks: 12, each the same soft pebble with one small sea trait at its edge, its own flat
   colour, two thin tick eyes and a slight tilt: jellyfish (Chief, as the logo; tentacles), whale
   (spout), shark (fin), penguin (belly), anglerfish (lure), pufferfish (spikes), octopus (arms),
@@ -1723,7 +1724,7 @@ Voice
   island opens the notification list: Needs you (Allow and Deny inline), then Waiting on you (an
   item of another thread: its question with Open thread, a blocker's text, a ready PR's row), then
   Earlier (finished runs, MRs opened, Chief's changes). Hover does not open it. A waiting item
-  never drops the island open or widens it: it adds to the red count on the pill, with the
+  never drops the island open or widens it: it adds to the count on the pill, with the
   approvals. *Conversation first: nothing forces an answer.*
 - The island remembers across a close of the app (server side, like the sidebar's New; browser
   storage is not used, so a new window or a cleared webview changes nothing). One timestamp,

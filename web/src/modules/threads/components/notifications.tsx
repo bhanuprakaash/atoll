@@ -143,21 +143,19 @@ export function NotificationList({
       )}
       {waiting.length > 0 && (
         <>
-          <h3 className={`${heading} text-danger`}>Waiting on you</h3>
+          <h3 className={`${heading} text-muted`}>Waiting on you</h3>
           <ul aria-label="Waiting on you" className="flex flex-col gap-0.5">
             {waiting.map((n) => (
               <li
                 key={`${n.thread_id}:${n.item.kind}:${n.item.url ?? ''}`}
-                className="flex items-center gap-2.5 rounded-2xl bg-needs p-2"
+                className="flex items-center gap-2.5 rounded-2xl bg-box p-2"
               >
                 <Creature look={looks[n.bot_id]} state="needs_you" size={28} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13.5px]">
                     {n.bot_name} · {n.title}
                   </span>
-                  <span className="block truncate text-xs text-needs-ink">
-                    {waitingText(n.item)}
-                  </span>
+                  <span className="block truncate text-xs text-muted">{waitingText(n.item)}</span>
                 </span>
                 <Link
                   to={threadPath(n)}
