@@ -58,7 +58,7 @@ function RunResult({
   time?: string;
   retryable: boolean;
   askedAbove?: boolean;
-  retry: (runId: string) => void;
+  retry: (runId: string) => Promise<void>;
   signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
   const { data: run } = useRun(id);
@@ -189,8 +189,9 @@ function MessageLine({
   from?: Bots[string];
   brief: boolean;
   footer?: ReactNode;
-  resend: (message: Message) => void;
+  resend: (message: Message) => Promise<void>;
 }) {
+  const [resendError, setResendError] = useState<unknown>(null);
   const time = (
     <time className="text-xs text-muted" dateTime={message.created_at} data-testid="message-time">
       {messageTime(message.created_at)}
@@ -269,13 +270,21 @@ function MessageLine({
           {message.not_read && (
             <>
               <span className="text-xs text-muted">Not read</span>
-              <button type="button" onClick={() => resend(message)} className={quiet}>
+              <button
+                type="button"
+                onClick={() => {
+                  setResendError(null);
+                  resend(message).catch(setResendError);
+                }}
+                className={quiet}
+              >
                 Resend
               </button>
             </>
           )}
           {time}
         </span>
+        {resendError !== null && <ErrorNotice error={resendError} />}
         {message.answered_approvals?.map((a) => (
           <p
             key={a.id}
@@ -823,7 +832,7 @@ export function ThreadView({
                   threadId={threadId}
                   from={bots[m.from_bot_id ?? '']}
                   brief={!!m.from_bot_id && m.from_bot_id === thread?.parent_bot_id}
-                  resend={(message) => void resend([message])}
+                  resend={(message) => resend([message])}
                   footer={
                     thread &&
                     m.role === 'bot' &&

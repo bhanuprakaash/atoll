@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ErrorNotice } from '@/components/error-notice';
 import type { Run } from '@/modules/threads/api/messages';
 import { useRun } from '@/modules/threads/api/runs';
@@ -6,21 +6,16 @@ import { messageTime } from '@/utils/time';
 
 const sentence = (text: string) => `${text.replace(/\.$/, '')}.`;
 
-export function FailedLine({
-  run,
-  botName,
-  replied,
-  retryable,
-  retry,
-  signedOut,
-}: {
+type LineProps = {
   run: Run;
   botName: string;
   replied: boolean;
   retryable: boolean;
   retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
-}) {
+};
+
+function Line({ run, botName, replied, retryable, retry, signedOut }: LineProps) {
   if (run.error_kind === 'rate_limited') {
     return (
       <p className="text-ink/80">
@@ -88,6 +83,25 @@ export function FailedLine({
   );
 }
 
+export function FailedLine({
+  retry,
+  ...props
+}: Omit<LineProps, 'retry'> & { retry: (runId: string) => Promise<void> }) {
+  const [error, setError] = useState<unknown>(null);
+  return (
+    <>
+      <Line
+        {...props}
+        retry={(runId) => {
+          setError(null);
+          retry(runId).catch(setError);
+        }}
+      />
+      {error !== null && <ErrorNotice error={error} />}
+    </>
+  );
+}
+
 export function FailedRun({
   id,
   botName,
@@ -98,7 +112,7 @@ export function FailedRun({
   id: string;
   botName: string;
   retryable: boolean;
-  retry: (runId: string) => void;
+  retry: (runId: string) => Promise<void>;
   signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
   const { data: run } = useRun(id);

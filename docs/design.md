@@ -1784,7 +1784,8 @@ Voice
   a helper's report started has no message of the person's: its line sits under the last of those
   messages and has no Retry, as there is nothing of the person's to send again. Queued messages
   delivered as one run share one line, under the last of them; Retry sends each of them again, in
-  order, with its images, and Resend sends only the message it sits on. A sign-in failure keeps its
+  order, with its images, and Resend sends only the message it sits on; one that fails stops there
+  and shows its error beside the line or message it sits on. A sign-in failure keeps its
   own line (Claude sign-in expired). *A failure that vanished once a newer run started made the
   message look ignored.*
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `·
