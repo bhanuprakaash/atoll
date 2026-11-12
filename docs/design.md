@@ -1182,8 +1182,9 @@ Follow-ups, not filed:
       variables and are not refused (the character after `$HOME` is not a letter, digit or `_`).
     - The whole `$HOME` / `~` class counts, not only those forms: `${HOME` followed by any operator
       (`${HOME:-x}`, `${HOME%/}`, `${HOME#x}`, `${HOME/a/b}`), a bare `~` that starts a word (`cd ~`,
-      a line ending in `~`), `~user/...`, `~+` and `~-`. The same preceded-character exemptions apply
-      (`https://x/~/a`, `a~/b`, `a~` are not references). `~5` and `~3 minutes` are not either.
+      a line ending in `~`), `~user` or `~user/...` for an existing user, `~+` and `~-`. The same
+      preceded-character exemptions apply (`https://x/~/a`, `a~/b`, `a~` are not references). `~5`,
+      `~3 minutes` and `~half` (no such user) are not either.
     - Dynamic forms (`$(echo ~)`, `HO""ME`, a `~` and `/` split by a line break) are out of scope:
       the scan guards honest mistakes, not a boundary.
     - An absolute home path has boundaries: it counts only when the next character is `/`, the end,
@@ -1197,7 +1198,8 @@ Follow-ups, not filed:
       `.codex/skills/<folder>` (the root it was imported from), or the resolved folder's absolute
       path.
     - The name must end there: the next character is `/` or not a letter, digit, `.`, `_` or `-`,
-      so `~/.claude/skills/x-v2` is not the folder `x`.
+      so `~/.claude/skills/x-v2` is not the folder `x`. A `.` with no path character after it is
+      a full stop, not part of the name: `See ~/.claude/skills/x.` is the folder `x`.
     - It becomes `{{ATOLL_SKILL_DIR}}`: `~/.claude/skills/x/scripts/run.sh` is stored as
       `{{ATOLL_SKILL_DIR}}/scripts/run.sh`. A stored skill holds no own-folder home path.
     - A relative path would be wrong for scripts: a Bot's cwd is the repo worktree.
