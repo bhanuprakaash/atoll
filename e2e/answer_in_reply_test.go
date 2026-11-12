@@ -57,6 +57,9 @@ func TestPrompt_ReplyCarriesAnswerRule(t *testing.T) {
 				if !said(finish, []string{"finish_run"}, []string{"answer"}, []string{"never", "not", "n't"}) || !said(finish, []string{"thinking"}, []string{"never", "not", "n't"}) {
 					t.Errorf("%s: Finish does not say the answer is never only in finish_run or thinking:\n%s", name, finish)
 				}
+				if !said(finish, []string{"finish_run"}, []string{"after"}, []string{"show", "seen", "kept", "stored"}) {
+					t.Errorf("%s: Finish does not say the reply comes before finish_run and nothing after it is shown:\n%s", name, finish)
+				}
 				if n := strings.Count(system, "2-3"); n != 1 {
 					t.Errorf("%s: system prompt says 2-3 %d times, want once (core only):\n%s", name, n, system)
 				}

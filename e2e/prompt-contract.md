@@ -107,6 +107,7 @@ sentence.
 | The reply carries the answer | `reply` or `response`; `answer`; `itself`, `in full`, `carries`, `holds`, `contains` or `includes` |
 | 2-3 lines is for status, not an asked-for answer | `2-3`; `status`, `progress`, `what you did` or `what was done`; `answer`; `not`, `never` or `n't` |
 | The answer is never only in finish_run or thinking | `finish_run`; `answer`; `not`, `never` or `n't`; and `thinking`; `not`, `never` or `n't` |
+| The reply comes before finish_run; nothing after it is shown | `finish_run`; `after`; `show`, `seen`, `kept` or `stored` |
 
 - `2-3` appears once in the whole system prompt, so Chief's ask-first block has no special
   exemption (no `exempt` anywhere), and Chief's platform block stays at most 2000 bytes.
@@ -115,7 +116,7 @@ sentence.
 
 | Acceptance | Test |
 | --- | --- |
-| Every Bot's core says the reply holds the answer; 2-3 lines is for status; one rule, no Chief exemption | `TestPrompt_ReplyCarriesAnswerRule/{claude,codex}` |
+| Every Bot's core says the reply holds the answer and comes before finish_run; 2-3 lines is for status; one rule, no Chief exemption | `TestPrompt_ReplyCarriesAnswerRule/{claude,codex}` |
 
 Real-provider only: "What are this repo's product principles?" gets the principles in the visible
 reply.
