@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api-client';
 import type { ImageInput, Message, Run } from '@/modules/threads/api/messages';
+import type { Waiting } from '@/types/waiting';
 
 export type Thread = {
   id: string;
@@ -42,6 +43,7 @@ export const getThread = (threadId: string) =>
         input: unknown;
         allow_in_thread?: boolean;
       }[];
+      waiting: Waiting[];
     }
   >(`/threads/${threadId}`);
 

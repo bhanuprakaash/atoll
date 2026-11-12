@@ -99,10 +99,9 @@ export function useSendMessage(threadId: string) {
       ),
     onSuccess: () =>
       Promise.all(
-        [
-          ['messages', threadId],
-          ['thread', threadId],
-        ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+        [['messages', threadId], ['thread', threadId], ['bots']].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
       ),
   });
 }

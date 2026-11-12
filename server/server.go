@@ -475,21 +475,27 @@ func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	waiting, err := a.st.ThreadWaiting(r.Context(), t.ID)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
 	queued, err := a.st.Queued(r.Context(), t.ID)
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	waiting := make([]store.Message, len(queued))
+	queuedMsgs := make([]store.Message, len(queued))
 	for i, it := range queued {
-		waiting[i] = queuedMessage(it)
+		queuedMsgs[i] = queuedMessage(it)
 	}
 	write(w, http.StatusOK, struct {
 		threadSummary
 		ActiveRun *store.Run      `json:"active_run"`
 		Approvals []run.Approval  `json:"approvals"`
+		Waiting   []store.Waiting `json:"waiting"`
 		Queued    []store.Message `json:"queued"`
-	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals), Queued: waiting})
+	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals), Waiting: orEmpty(waiting), Queued: queuedMsgs})
 }
 
 func (a *api) patchThread(w http.ResponseWriter, r *http.Request) {

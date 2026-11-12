@@ -73,6 +73,7 @@ function BotRow({
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const selected = open.botId === bot.id && !open.threadId;
   const newThread = () => navigate(`/bots/${bot.id}/new`);
+  const waits = bot.threads?.some((t) => t.state === 'waiting');
   return (
     <li>
       <div
@@ -105,7 +106,7 @@ function BotRow({
                 {bot.id !== 'chief' && <PinButton bot={bot} />}
               </span>
             </span>
-            {bot.state === 'working' && (
+            {bot.state === 'working' && !waits && (
               <span className="flex items-center gap-1.5 text-[13px] text-muted">
                 <span className="truncate">{bot.activity}</span>
                 <Wave />
@@ -113,6 +114,9 @@ function BotRow({
             )}
             {bot.state === 'needs_you' && (
               <span className="truncate text-[13px] text-ink">{bot.activity}</span>
+            )}
+            {bot.state !== 'needs_you' && waits && (
+              <span className="truncate text-[13px] text-needs-ink">Waiting on you</span>
             )}
           </span>
         </NavLink>
@@ -242,7 +246,9 @@ export function BotList({
     />
   );
   const needsYou = (members: Bot[]) =>
-    members.some((bot) => bot.threads?.some((thread) => thread.state === 'needs_you'));
+    members.some((bot) =>
+      bot.threads?.some((thread) => thread.state === 'needs_you' || thread.state === 'waiting'),
+    );
   const moveTo = (groupId: string | null) => (botId: string) => setGroup.mutate({ botId, groupId });
   return (
     <div className="flex flex-col gap-0.5">

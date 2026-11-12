@@ -300,6 +300,13 @@ type (
 		Blocked string    `json:"blocked"`
 		Next    string    `json:"next"`
 		Ready   []ReadyPR `json:"ready,omitempty"`
+		Ask     *Ask      `json:"ask,omitempty"`
+	}
+
+	// Ask is a decision only the person can make: a question and 2 to 4 options.
+	Ask struct {
+		Question string   `json:"question"`
+		Options  []string `json:"options"`
 	}
 
 	// ReadyPR is a PR the Bot called ready, at the head commit it saw. Changed is set on read: a
@@ -307,6 +314,7 @@ type (
 	ReadyPR struct {
 		URL     string `json:"url"`
 		SHA     string `json:"sha"`
+		Note    string `json:"note,omitempty"`
 		Changed bool   `json:"changed"`
 	}
 )
@@ -897,6 +905,8 @@ type ThreadRun struct {
 	Unseen         bool
 	Status         string
 	Reply          string
+	// Waiting is what waits on the person in the thread.
+	Waiting []Waiting
 }
 
 // ThreadRuns lists every thread with its newest run, newest activity first. botID limits it to
@@ -934,21 +944,30 @@ func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
 // needs, among them polled(thread_id, status, reply): the threads whose newest run is read.
 func (s *Store) threadRuns(ctx context.Context, with, where string, args ...any) ([]ThreadRun, error) {
 	return query(ctx, s.db,
-		`WITH `+with+`
+		`WITH `+with+`, `+_waitingWith+`
 		 SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.branch, t.mr_url, t.closed, t.pinned_at IS NOT NULL,
 		        t.last_activity,
 		        t.last_activity > t.last_opened_at AND t.last_activity > t.created
 		          AND coalesce(p.status, '') NOT IN ('running', 'waiting'),
-		        coalesce(p.status, ''), coalesce(p.reply, '')
+		        coalesce(p.status, ''), coalesce(p.reply, ''),
+		        coalesce(w.runs, ''), coalesce(rp.replied, 0), coalesce(tk.trackers, '')
 		 FROM threads t
 		 LEFT JOIN polled p ON p.thread_id = t.id
+		 LEFT JOIN waits w ON w.thread_id = t.id
+		 LEFT JOIN replies rp ON rp.thread_id = t.id
+		 LEFT JOIN tracked tk ON tk.thread_id = t.id
 		 WHERE `+where+`
 		 ORDER BY t.last_activity DESC, t.rowid DESC`,
 		func(r *sql.Rows) (tr ThreadRun, err error) {
-			var active int64
+			var active, replied int64
+			var runs, trackers string
 			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &tr.Title, &tr.Branch, &tr.MRURL, &tr.Closed,
-				&tr.Pinned, &active, &tr.Unseen, &tr.Status, &tr.Reply)
+				&tr.Pinned, &active, &tr.Unseen, &tr.Status, &tr.Reply, &runs, &replied, &trackers)
+			if err != nil {
+				return tr, err
+			}
 			tr.LastActivity = time.UnixMicro(active).UTC()
+			tr.Waiting, err = waitingFrom(runs, replied, trackers)
 			return tr, err
 		}, args...)
 }

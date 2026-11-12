@@ -25,6 +25,7 @@ import { HelpersRegion } from '@/modules/threads/components/helpers-region';
 import { FailedLine, FailedRun } from '@/modules/threads/components/failed-run-line';
 import { LeadLedger, type LedgerRow } from '@/modules/threads/components/lead-ledger';
 import { chatText, LiveRun } from '@/modules/threads/components/live-run';
+import { WaitingCard } from '@/modules/threads/components/waiting-card';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 import { MrChip } from '@/modules/threads/components/mr-chip';
 import {
@@ -926,6 +927,11 @@ export function ThreadView({
             </div>
           )}
           <HelpersRegion helpers={helpers} bots={bots} />
+          <WaitingCard
+            threadId={threadId}
+            items={thread?.waiting ?? []}
+            onSent={(run) => begin(run.id)}
+          />
           {boss ? (
             <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
               <p className="flex-1">{`${boss} is handling this thread. Talk to ${boss} to change it.`}</p>
