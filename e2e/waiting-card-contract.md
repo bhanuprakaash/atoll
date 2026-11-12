@@ -27,8 +27,13 @@ Answers (`Behind a flag`, `Canary first, please.`, `I reconnected it.`, `The tes
 recording with no `ask` and `blocked` empty.
 
 What only the PR watcher writes is set in `atoll.db` while the server runs, as the watcher would:
-`threads.mr_ci` (`{head, passed, failed, pending, names}`), `threads.mr_head`, `threads.mr_state`,
-and `runs.finished_at` (to make a ready PR 2 hours old). Everything else comes from the real flow.
+`threads.mr_ci` (`{head, passed, failed, pending, names}`), `threads.mr_head` and
+`runs.finished_at` (to make a ready PR 2 hours old). Everything else comes from the real flow.
+
+A merge or close goes through the real watcher: GitHub is a local server (`ATOLL_GITHUB_URL`), the
+Bot has a repo on it and the GitHub connection, and plays `repo-github-ready` (opens PR 1 with the
+fake `gh`, tracks it, reports it ready at its head). The test then merges or closes PR 1 there; the
+wake plays `pr-wake-merged` / `pr-wake-closed` (`Merge noted.`, `Close noted.`).
 
 ## What the page shows
 
@@ -49,7 +54,9 @@ and `runs.finished_at` (to make a ready PR 2 hours old). Everything else comes f
   `Open thread`. An item never drops the island open.
 - An option button posts its text as the person's message (`article` `You`), the same as the
   composer. The card and every marker go when the message is stored.
-- A ready PR leaves when `mr_state` is `merged` or `closed`, with no message and no run.
+- A ready PR leaves when the watcher reads it `merged` or `closed`. The Reef wake still comes, one
+  message of `kind` `merged` (`PR #1 merged into main at <short head>`) or `closed` (`PR #1
+  closed`), and its run answers in the thread.
 
 ## Acceptance mapping
 
@@ -62,7 +69,7 @@ and `runs.finished_at` (to make a ready PR 2 hours old). Everything else comes f
 | Blocked stays for what only the user can fix | `a real blocked keeps its Blocked line and is a row of the card; a reply closes it` (and the first test: a question has no Blocked line) |
 | `docs/design.md` updated, with the prompt line | docs PR #320; the prompt line is in `testdata/golden/system.txt` (`TestMemory_PromptGoldenAndBudget`, which also holds the 500-token budget) |
 | A ready PR is a row `#n title · green · age` with Open; the sidebar and island count it | `a ready PR is a row…` |
-| The row clears on `merged` or `closed` without a message from the Bot | `a ready PR leaves when it is merged`, `… closed` |
+| The row clears on `merged` or `closed`; the Reef wake and its run still happen | `a ready PR leaves when it is merged; the Reef wake and its run still happen`, `… closed; …` |
 | A test PR reported ready with the line shows `red on purpose` | `a test PR reported ready as failing on main for the right reason says red on purpose…` |
 | Two ready PRs and one decision: 3 waiting on you; answering leaves 2 | `two ready PRs and one decision make 3 waiting on you…` |
 | #295: the row names the sha and says `changed since ready` | `a ready PR says changed since ready…` |
@@ -72,6 +79,6 @@ and `runs.finished_at` (to make a ready PR 2 hours old). Everything else comes f
 - The look: red dot for Needs you and Waiting on you, amber for a blocker, a quiet hairline card.
 - A reply that only ends in `?` (no `ask`) shows no card: nothing to assert before the feature.
 - The lead's ledger (#180): a decision reply stays a message there; that rule has its own spec.
-- The real PR watcher feeding checks and state (#163): its own tests; here its output is written
-  to the database.
+- The real PR watcher feeding checks and head (#163): its own tests; here that output is written
+  to the database. Merged and closed come from the watcher.
 - A live round: the prompt line makes the Bot ask once with `ask`; only a real round shows it does.

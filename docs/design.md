@@ -272,7 +272,8 @@ after a failed undo counts a Bot that is already gone as removed.
   the composer are one path (*a reply in chat resolves whatever waits*). A wake, a helper's report
   or a later report does not close a decision; a later report without a real `blocked` closes a
   blocker. A ready PR is not closed by a reply: it leaves when a thread tracking its URL has
-  `mr_state` `merged` or `closed`, whoever changed it, with no message from the Bot. A ready PR no
+  `mr_state` `merged` or `closed`, whoever changed it; the merge or close still wakes the tracking
+  thread's Bot, as any tracked PR does (Repos and worktrees). A ready PR no
   thread tracks cannot be read, so it leaves with the person's next message. A run that starts
   while a decision is open ends its prompt with `Open question for the person (do not ask it
   again): <question>`. *One card, updated; the Bot is told it exists.*
