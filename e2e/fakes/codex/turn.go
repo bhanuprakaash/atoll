@@ -22,7 +22,8 @@ type (
 		cwd         string
 		servers     map[string]*fake.MCP
 		prompt      map[string]bool
-		never       bool // approvalPolicy "never": nothing is asked, so everything asked is declined
+		never       bool   // approvalPolicy "never": nothing is asked, so everything asked is declined
+		guidance    string // the text of the last turn/steer, which a declined command then reports
 		resumed     bool
 	}
 
@@ -304,6 +305,19 @@ func (t *turn) ask(req json.RawMessage, in *bufio.Scanner, log *fake.Log) (strin
 			return "", err
 		}
 		var m message
+		if json.Unmarshal(in.Bytes(), &m) == nil && m.Method == "turn/steer" {
+			var p struct {
+				Input []struct {
+					Text string `json:"text"`
+				} `json:"input"`
+			}
+			if json.Unmarshal(m.Params, &p) == nil && len(p.Input) > 0 {
+				t.guidance = p.Input[0].Text
+			}
+			out, _ := json.Marshal(map[string]any{"id": m.ID, "result": map[string]string{"turnId": "01a1a5c4-e5fc-7687-865c-a5fd55e77da0"}})
+			fmt.Println(string(out))
+			continue
+		}
 		if json.Unmarshal(in.Bytes(), &m) != nil || m.Method != "" || string(m.ID) != string(r.ID) {
 			continue
 		}
@@ -369,7 +383,8 @@ func (t *turn) commandUse(in *bufio.Scanner, log *fake.Log) (string, error) {
 		text := "ran"
 		it["status"], it["exitCode"], it["durationMs"], it["aggregatedOutput"] = "completed", 0, 31, ""
 		if answer != "allow" {
-			text, it["status"], it["exitCode"], it["durationMs"], it["aggregatedOutput"] = "denied", "declined", nil, nil, nil
+			text, it["status"], it["exitCode"], it["durationMs"], it["aggregatedOutput"] = fake.DeniedText(t.guidance), "declined", nil, nil, nil
+			t.guidance = ""
 		}
 		emit("item/completed")
 		lines = append(lines, fake.CommandLine(cmd, text))

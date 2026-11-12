@@ -375,7 +375,7 @@ func (p *player) commandUse() (string, error) {
 		time.Sleep(fake.Pace)
 		text, isErr := "ran", false
 		if answer != "allow" {
-			text, isErr = "denied", true
+			text, isErr = fake.DeniedText(p.denied[use.ID]), true
 		}
 		result := map[string]any{"type": "tool_result", "tool_use_id": use.ID, "content": []map[string]string{{"type": "text", "text": text}}}
 		if isErr {
