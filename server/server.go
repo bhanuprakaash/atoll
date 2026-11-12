@@ -138,6 +138,7 @@ func New(
 	mux.HandleFunc("POST /api/threads/{id}/messages/{mid}/send", a.sendQueued)
 	mux.HandleFunc("GET /api/threads/{id}/events", a.events)
 	mux.HandleFunc("GET /api/events", a.notices)
+	mux.HandleFunc("POST /api/island/seen", a.markIslandSeen)
 	mux.HandleFunc("GET /api/threads/{id}/file", a.threadFile)
 	mux.HandleFunc("GET /api/attachments/{id}", a.getAttachment)
 	mux.HandleFunc("GET /api/runs/{id}", a.getRun)
@@ -702,11 +703,17 @@ func (a *api) events(w http.ResponseWriter, r *http.Request) {
 	a.stream(w, r, events, func(ev run.Event) (any, bool) { return ev.Data, true })
 }
 
+// sseEvent is one server-sent event.
+type sseEvent struct {
+	Type string
+	Data any
+}
+
 // stream writes events as server-sent events until the client goes or events closes. data gives
-// an event's payload, or false to skip it.
+// an event's payload, or false to skip it. The lead events are written first.
 func (a *api) stream(
 	w http.ResponseWriter, r *http.Request, events <-chan run.Event,
-	data func(run.Event) (any, bool),
+	data func(run.Event) (any, bool), lead ...sseEvent,
 ) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -714,6 +721,15 @@ func (a *api) stream(
 	rc := http.NewResponseController(w)
 	if rc.Flush() != nil {
 		return
+	}
+	for _, ev := range lead {
+		line, err := json.Marshal(ev.Data)
+		if err == nil {
+			_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, line)
+		}
+		if err != nil || rc.Flush() != nil {
+			return
+		}
 	}
 	ping := time.NewTicker(_pingEvery)
 	defer ping.Stop()

@@ -90,6 +90,9 @@ const (
 	ConnectionNeedsSignIn = "needs_sign_in"
 )
 
+// _islandSeenKey is the setting that holds the island's seen time, in microseconds.
+const _islandSeenKey = "island_seen_at"
+
 // _maxPinnedThreads is how many open threads of one Bot may be pinned.
 const _maxPinnedThreads = 3
 
@@ -587,6 +590,63 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 	return nil
 }
 
+// IslandSeenAt is when the user last read the island's Earlier list. Migration 022 starts it at the
+// time the file first ran that version.
+func (s *Store) IslandSeenAt(ctx context.Context) (time.Time, error) {
+	value, err := s.Setting(ctx, _islandSeenKey)
+	if err != nil {
+		return time.Time{}, err
+	}
+	micros, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read setting %s: %w", _islandSeenKey, err)
+	}
+	return time.UnixMicro(micros).UTC(), nil
+}
+
+// MarkIslandSeen sets the island's seen time to now.
+func (s *Store) MarkIslandSeen(ctx context.Context) error {
+	return s.SetSetting(ctx, _islandSeenKey, strconv.FormatInt(time.Now().UTC().UnixMicro(), 10))
+}
+
+// ThreadEvent is something that happened to a thread at At: a run that ended (Status, Error), or
+// an MR that opened (URL, Title).
+type ThreadEvent struct {
+	ThreadID string
+	At       time.Time
+	Status   string
+	Error    string
+	URL      string
+	Title    string
+}
+
+// FinishedRunsSince lists the runs that ended after since in a thread that is still open.
+func (s *Store) FinishedRunsSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
+	return query(ctx, s.db,
+		`SELECT r.thread_id, r.finished_at, r.status, r.error
+		 FROM runs r JOIN threads t ON t.id = r.thread_id
+		 WHERE r.finished_at > ? AND r.status IN (?, ?, ?) AND t.closed = 0`,
+		func(r *sql.Rows) (e ThreadEvent, err error) {
+			var at int64
+			err = r.Scan(&e.ThreadID, &at, &e.Status, &e.Error)
+			e.At = time.UnixMicro(at).UTC()
+			return e, err
+		}, since.UnixMicro(), StatusDone, StatusFailed, StatusStopped)
+}
+
+// OpenedMRsSince lists the threads whose MR is open and became so after since.
+func (s *Store) OpenedMRsSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
+	return query(ctx, s.db,
+		`SELECT id, mr_changed_at, mr_url, mr_title FROM threads
+		 WHERE mr_state = 'opened' AND mr_changed_at > ?`,
+		func(r *sql.Rows) (e ThreadEvent, err error) {
+			var at int64
+			err = r.Scan(&e.ThreadID, &at, &e.URL, &e.Title)
+			e.At = time.UnixMicro(at).UTC()
+			return e, err
+		}, since.UnixMicro())
+}
+
 // CreateConnection stores a new pending connection of kind to instanceURL.
 func (s *Store) CreateConnection(ctx context.Context, kind, instanceURL string) (Connection, error) {
 	c := Connection{ID: newID(), Kind: kind, InstanceURL: instanceURL, Status: ConnectionPending}
@@ -734,13 +794,14 @@ func (s *Store) RemoveWorktree(ctx context.Context, threadID, ref string) error 
 // twice.
 func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE threads SET
+		mr_changed_at = CASE WHEN mr_url = ?1 OR mr_state = ?2 THEN mr_changed_at ELSE ?5 END,
 		mr_state = CASE WHEN mr_url = ?1 THEN mr_state ELSE ?2 END,
 		mr_ci = CASE WHEN mr_url = ?1 THEN mr_ci ELSE '' END,
 		mr_woke = CASE WHEN mr_url = ?1 THEN mr_woke ELSE '' END,
 		mr_head = CASE WHEN mr_url = ?1 THEN mr_head ELSE '' END,
 		mr_base_woke = CASE WHEN mr_url = ?1 THEN mr_base_woke ELSE 0 END,
 		mr_url = ?1, mr_title = ?3, mr_wake = 1 WHERE id = ?4`,
-		url, state, title, threadID)
+		url, state, title, threadID, time.Now().UTC().UnixMicro())
 	if err != nil {
 		return fmt.Errorf("set MR: %w", err)
 	}
@@ -753,9 +814,10 @@ func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) e
 func (s *Store) StoreMR(ctx context.Context, threadID string, r MRRead) (bool, error) {
 	stored := false
 	err := s.tx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE threads SET mr_state = ?, mr_title = ?, mr_ci = ?, mr_woke = ?, mr_head = ?, mr_base_woke = ?, mr_wake = 1
+		res, err := tx.ExecContext(ctx, `UPDATE threads SET mr_state = ?, mr_title = ?, mr_ci = ?, mr_woke = ?, mr_head = ?, mr_base_woke = ?, mr_wake = 1,
+			mr_changed_at = CASE WHEN mr_state = ? THEN mr_changed_at ELSE ? END
 			WHERE id = ? AND mr_url = ? AND mr_state = ? AND closed = 0`,
-			r.State, r.Title, r.CI, r.Woke, r.Head, r.BaseWoke, threadID, r.URL, r.Prev)
+			r.State, r.Title, r.CI, r.Woke, r.Head, r.BaseWoke, r.State, time.Now().UTC().UnixMicro(), threadID, r.URL, r.Prev)
 		if err != nil {
 			return fmt.Errorf("store MR: %w", err)
 		}

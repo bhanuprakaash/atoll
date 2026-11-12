@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMatch } from 'react-router';
+import { api } from '@/lib/api-client';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 
 type About = {
@@ -18,9 +19,31 @@ export type Notifications = {
   drop?: ApprovalNotice;
   widened?: EarlierNotice;
   dismiss: () => void;
+  markSeen: () => void;
+  markAllRead: () => void;
+};
+
+type MrUpdate = { url: string; state: string; title: string };
+type Change = { change: { entity: string; action: string; after: { name?: string } | null } };
+type Remembered = About & {
+  type: 'run_finished' | 'mr_updated' | 'platform_changed';
+  at: number;
+  data: { status: string } & MrUpdate & Change;
 };
 
 const widenedMs = 4000;
+
+const finishedText = (notice: About, status: string) =>
+  `${notice.bot_name} ${status === 'failed' ? 'failed' : 'finished'} ${notice.title}`;
+
+const mrText = (notice: About, url: string) =>
+  `${notice.bot_name} opened ${mrRef(url) ?? 'a merge request'}`;
+
+function changeText(notice: About, { entity, action, after }: Change['change']) {
+  const verb = action === 'edit' ? 'edited' : entity === 'repo' ? 'registered' : 'created';
+  const what = entity === 'bot' ? 'Bot' : entity;
+  return `${notice.bot_name} ${verb} ${what} ${after?.name ?? ''}`.trim();
+}
 
 const isOn = (notice: About, threadId?: string) =>
   notice.thread_id === threadId || notice.parent_thread_id === threadId;
@@ -46,6 +69,22 @@ export function useNotifications(): Notifications {
       return item;
     };
     source.onopen = () => setApprovals([]);
+    source.addEventListener('earlier', (e) => {
+      const items: Remembered[] = JSON.parse((e as MessageEvent<string>).data);
+      setEarlier(
+        items
+          .filter((n) => !isOn(n, screen.current))
+          .flatMap((n) => {
+            const id = seq.current++;
+            if (n.type === 'run_finished')
+              return [{ ...n, id, text: finishedText(n, n.data.status) }];
+            if (n.type === 'mr_updated')
+              return [{ ...n, id, text: mrText(n, n.data.url), detail: n.data.title }];
+            if (n.data.change.entity === 'allow') return [];
+            return [{ ...n, id, text: changeText(n, n.data.change) }];
+          }),
+      );
+    });
     on<{ id: string; tool: string; input: unknown }>('approval', ({ data, ...about }) =>
       setApprovals((prev) =>
         prev.some((a) => a.id === data.id) ? prev : [{ ...about, ...data }, ...prev],
@@ -54,31 +93,21 @@ export function useNotifications(): Notifications {
     on<{ id: string }>('approval_closed', ({ data }) =>
       setApprovals((prev) => prev.filter((a) => a.id !== data.id)),
     );
-    on<unknown>('run_finished', (notice) => {
-      const item = add(notice, `${notice.bot_name} finished ${notice.title}`);
+    on<{ status: string }>('run_finished', (notice) => {
+      const item = add(notice, finishedText(notice, notice.data.status));
       if (!item) return;
       setWidened(item);
       window.clearTimeout(timer);
       timer = window.setTimeout(() => setWidened(undefined), widenedMs);
     });
-    on<{ url: string; state: string; title: string }>('mr_updated', (notice) => {
+    on<MrUpdate>('mr_updated', (notice) => {
       if (notice.data.state === 'opened')
-        add(
-          notice,
-          `${notice.bot_name} opened ${mrRef(notice.data.url) ?? 'a merge request'}`,
-          notice.data.title,
-        );
+        add(notice, mrText(notice, notice.data.url), notice.data.title);
     });
-    on<{ change: { entity: string; action: string; after: { name?: string } | null } }>(
-      'platform_changed',
-      (notice) => {
-        const { entity, action, after } = notice.data.change;
-        if (entity === 'allow') return;
-        const verb = action === 'edit' ? 'edited' : entity === 'repo' ? 'registered' : 'created';
-        const what = entity === 'bot' ? 'Bot' : entity;
-        add(notice, `${notice.bot_name} ${verb} ${what} ${after?.name ?? ''}`.trim());
-      },
-    );
+    on<Change>('platform_changed', (notice) => {
+      if (notice.data.change.entity !== 'allow')
+        add(notice, changeText(notice, notice.data.change));
+    });
     return () => {
       source.close();
       window.clearTimeout(timer);
@@ -91,11 +120,18 @@ export function useNotifications(): Notifications {
     () => setDismissed((prev) => [...prev, ...shown.current.map((a) => a.id)]),
     [],
   );
+  const markSeen = useCallback(() => void api('/island/seen', { method: 'POST' }), []);
+  const markAllRead = useCallback(
+    () => void api('/island/seen', { method: 'POST' }).then(() => setEarlier([])),
+    [],
+  );
   return {
     needs,
     earlier,
     drop: needs.find((a) => a.parent_thread_id !== onScreen && !dismissed.includes(a.id)),
     widened: widened && !isOn(widened, onScreen) ? widened : undefined,
     dismiss,
+    markSeen,
+    markAllRead,
   };
 }
