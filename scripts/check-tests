@@ -23,7 +23,7 @@ git diff -M --name-status "$base" HEAD | while IFS=$tab read -r status path new;
 	esac
 done >"$files"
 
-grep -E '^(\.github/workflows/|scripts/check-tests$)' "$files" | sed 's/$/: changes the test guard or CI config/' >>"$found" || true
+grep -E '^(\.github/workflows/|scripts/check-tests$|scripts/docs-only$)' "$files" | sed 's/$/: changes the test guard or CI config/' >>"$found" || true
 if grep -q '^e2e/' "$files" && grep -qv '^e2e/' "$files"; then
 	sed 's|$|: e2e/ and other files change in one PR|' "$files" >>"$found"
 fi

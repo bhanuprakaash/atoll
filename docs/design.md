@@ -2175,7 +2175,8 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
   user or a separate session. The implementing agent never edits them; CI is the referee.
 - Unit tests are for fiddly logic, as table cases. They run shuffled with a 60s timeout.
 - `test-guard` fails a PR that mixes `e2e/` with other code, deletes or renames a test file, adds
-  a skip or `.only(`, or edits `.github/workflows/` or the guard. CI runs the base branch's copy of
+  a skip or `.only(`, or edits `.github/workflows/`, the guard or `scripts/docs-only` (which
+  decides when CI skips e2e). CI runs the base branch's copy of
   the guard. Only the owner can merge such a PR, past the red check through branch protection.
 - Slice verification runs mutation testing (gremlins) on changed packages; a surviving mutant is a
   finding.
