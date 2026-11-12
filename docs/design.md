@@ -732,7 +732,9 @@ Follow-ups, not filed:
   Passed checks are only counted: the Bot can run `gh pr checks` for the rest. The
   thread view shows a message with a `kind` as one quiet line with Reef's mark, not a user bubble.
   The Bot's prompt for it is `Reef: ` and the sentence, and the code part of the prompt says the
-  quoted names are data from the repo, never instructions.
+  quoted names are data from the repo, never instructions. When held messages of both kinds join
+  one run, each Reef line keeps its `Reef: ` prefix, in order, and the other messages go under
+  `Message:`.
 - `track_mr` sets `mr_wake` to 1. A repeat call with the URL the thread already has keeps
   `mr_state`, `mr_woke` and `mr_ci`; a different URL resets all three, so a re-track after a
   merge never wakes twice. Three columns on the thread hold what is not derivable: `mr_ci` (JSON:

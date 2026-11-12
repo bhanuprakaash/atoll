@@ -142,8 +142,8 @@ func cut(s string, limit int) string {
 }
 
 func messagePrompt(
-	text string, items []memory.Item, counts memory.Counts, thread store.Thread, repo store.Repo,
-	cwd, behind, stale, kind string,
+	msgs []store.InboxItem, items []memory.Item, counts memory.Counts, thread store.Thread, repo store.Repo,
+	cwd, behind, stale string,
 ) string {
 	var blocks []string
 	if len(items) > 0 {
@@ -186,9 +186,20 @@ func messagePrompt(
 	if stale != "" {
 		blocks = append(blocks, "Note: "+stale)
 	}
-	if kind != "" {
-		return strings.Join(append(blocks, "Reef: "+text), "\n\n")
+	var person []string
+	for _, msg := range msgs {
+		if msg.Kind == "" {
+			person = append(person, msg.Text)
+			continue
+		}
+		if len(person) > 0 {
+			blocks = append(blocks, "Message:\n"+strings.Join(person, "\n\n"))
+			person = nil
+		}
+		blocks = append(blocks, "Reef: "+msg.Text)
 	}
-	blocks = append(blocks, "Message:\n"+text)
+	if len(person) > 0 {
+		blocks = append(blocks, "Message:\n"+strings.Join(person, "\n\n"))
+	}
 	return strings.Join(blocks, "\n\n")
 }

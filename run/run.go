@@ -178,7 +178,8 @@ type (
 		// session had cost before this run.
 		usage        *provider.Usage
 		priorCostUSD float64
-		kind         string // of the wake the run answers; empty for a message
+		kind         string // of the wake the run answers; empty when any message is not a wake
+		msgs         []store.InboxItem
 	}
 
 	// Event is one event on a thread's stream. Data is one of the types below. ThreadID is the
@@ -343,7 +344,7 @@ func (m *Manager) send(ctx context.Context, items ...store.InboxItem) (store.Mes
 	}
 	text := strings.Join(texts, "\n\n")
 	runCtx, cancel := context.WithCancel(m.ctx)
-	a := &active{threadID: threadID, kind: kind, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
+	a := &active{threadID: threadID, kind: kind, msgs: items, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		cancel()
@@ -994,7 +995,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if rp.ID != "" && thread.Session == "" && thread.Worktree == "" {
 		behind = repo.BehindNote(a.ctx, rp.Path)
 	}
-	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd, behind, stale, a.kind)
+	prompt := messagePrompt(a.msgs, items, counts, thread, rp, cfg.Cwd, behind, stale)
 	waiting, err := m.cfg.Store.ThreadWaiting(a.ctx, thread.ID)
 	if err != nil {
 		return "", fmt.Errorf("load waiting items: %w", err)
