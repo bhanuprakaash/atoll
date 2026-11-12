@@ -343,6 +343,14 @@ func Remove(ctx context.Context, repoPath, dir string) error {
 	return nil
 }
 
+// Prune drops git's records of worktrees of repoPath whose folder is gone.
+func Prune(ctx context.Context, repoPath string) error {
+	if _, err := git(context.WithoutCancel(ctx), repoPath, nil, "worktree", "prune"); err != nil {
+		return fmt.Errorf("prune worktrees: %w", err)
+	}
+	return nil
+}
+
 // DeleteBranch force-deletes branch of repoPath.
 func DeleteBranch(ctx context.Context, repoPath, branch string) error {
 	if _, err := git(context.WithoutCancel(ctx), repoPath, nil, "branch", "-D", branch); err != nil {

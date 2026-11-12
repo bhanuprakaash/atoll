@@ -373,6 +373,9 @@ func (m *Manager) stopQuietly(ctx context.Context, threadID string) (bool, error
 // release saves the unfinished work of the thread's worktree, removes the worktree and tells the
 // thread's subscribers. When the save fails nothing is removed.
 func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, reason string) error {
+	if _, err := os.Lstat(t.Worktree); errors.Is(err, fs.ErrNotExist) {
+		return m.releaseMissing(ctx, t, rp, reason)
+	}
 	if err := m.checkWorktree(t.Worktree, rp.Name); err != nil {
 		return err
 	}
@@ -412,6 +415,24 @@ func (m *Manager) release(ctx context.Context, t store.Thread, rp store.Repo, re
 	}
 	m.announce(t.ID, runID, EventWorktreeRemoved,
 		WorktreeRemoved{RunID: runID, Path: t.Worktree, Reason: reason, SnapshotRef: ref})
+	return nil
+}
+
+// releaseMissing records a worktree that was deleted outside Reef as removed: there is nothing to
+// save.
+func (m *Manager) releaseMissing(ctx context.Context, t store.Thread, rp store.Repo, reason string) error {
+	runID, err := m.cfg.Store.LatestRun(ctx, t.ID)
+	if err != nil {
+		return err
+	}
+	if err := repo.Prune(ctx, rp.Path); err != nil {
+		return err
+	}
+	if err := m.cfg.Store.RemoveWorktree(ctx, t.ID, ""); err != nil {
+		return err
+	}
+	m.announce(t.ID, runID, EventWorktreeRemoved,
+		WorktreeRemoved{RunID: runID, Path: t.Worktree, Reason: reason})
 	return nil
 }
 
