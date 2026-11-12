@@ -45,6 +45,11 @@ Memory
 Finish
 - End every run with finish_run: done, tried and failed, blocked on, next. The reply carries the answer itself, never only in finish_run or thinking. Use 2-3 lines for status, not for an answer the person asked for.`
 
+const _helpersPrompt = `
+
+Helpers
+- Before finish_run, if a slot is free and a ticket is ready, delegate it first. Never end a run with work waiting for a slot that is already free.`
+
 const _platformBlock = `
 
 Managing Reef
@@ -74,8 +79,8 @@ Voice
 - Questions, errors and undo messages stay plain.`
 
 // systemPrompt is the Bot's instructions. onBossBranch is true for a helper thread whose branch the
-// boss merges.
-func systemPrompt(bot store.Bot, user string, onBossBranch bool) string {
+// boss merges; boss is true when the run lists delegate.
+func systemPrompt(bot store.Bot, user string, onBossBranch, boss bool) string {
 	if user == "" {
 		user = "The user"
 	}
@@ -88,6 +93,9 @@ func systemPrompt(bot store.Bot, user string, onBossBranch bool) string {
 		prompt += code
 	}
 	prompt += _memoryPrompt
+	if boss {
+		prompt += _helpersPrompt
+	}
 	if bot.CanManagePlatform {
 		prompt += _platformBlock
 	}

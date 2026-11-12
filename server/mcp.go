@@ -182,7 +182,7 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if err := a.runs.Report(r.Context(), token, rep); err != nil {
 			return nil, a.toolError(err)
 		}
-		return text("Report saved."), nil
+		return a.withHelpers(r, token, "Report saved.")
 	case provider.ToolStartWork:
 		var in struct {
 			Type string `json:"type"`
@@ -299,7 +299,7 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if queuedFor != "" {
 			return text("Queued: " + queuedFor + " is working; it gets this when its run ends."), nil
 		}
-		return text("Sent."), nil
+		return a.withHelpers(r, token, "Sent.")
 	case provider.ToolApprove:
 		var in struct {
 			ToolName  string          `json:"tool_name"`
@@ -400,6 +400,18 @@ func (a *api) jsonText(v any) (any, *rpcError) {
 		return nil, a.toolError(err)
 	}
 	return text(string(body)), nil
+}
+
+// withHelpers is the text result s, then the helpers line on a new line when the run lists delegate.
+func (a *api) withHelpers(r *http.Request, token, s string) (any, *rpcError) {
+	line, err := a.runs.BossHelpers(r.Context(), token)
+	if err != nil {
+		return nil, a.toolError(err)
+	}
+	if line != "" {
+		s += "\n" + line
+	}
+	return text(s), nil
 }
 
 func text(s string) any { return result(s, false) }

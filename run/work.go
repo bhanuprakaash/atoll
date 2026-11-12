@@ -268,6 +268,13 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 			return err
 		}
 	}
+	for i, w := range wakes {
+		line, err := m.helpersLine(ctx, w.ThreadID, "")
+		if err != nil {
+			return err
+		}
+		wakes[i].Text += "\n\n" + line
+	}
 	runIDs, err := m.cfg.Store.DeleteBot(ctx, botID, wakes)
 	if err != nil {
 		return err
