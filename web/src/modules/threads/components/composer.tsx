@@ -111,13 +111,17 @@ export function Composer({
       setImages([]);
       return;
     }
+    setText('');
+    setImages([]);
     send.mutate(
       { text, images },
       {
         onSuccess: ({ run }) => {
-          setText((now) => (now === text ? '' : now));
-          setImages((now) => (now === images ? [] : now));
           if (run) onSent(run);
+        },
+        onError: () => {
+          setText((now) => text + now);
+          setImages((now) => [...images, ...now]);
         },
       },
     );
