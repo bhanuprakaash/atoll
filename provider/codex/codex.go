@@ -57,6 +57,9 @@ type (
 		changes  map[string]json.RawMessage
 		tools    map[string]string // server to its last started MCP tool, which names an elicitation
 		notes    map[string]bool   // commentary agent message items of the turn; owned by run
+		model    string            // the thread's model; owned by run
+		turnID   string            // the turn in progress; owned by run
+		usage    provider.Usage    // what this process's own turns used; owned by run
 		resetsAt time.Time         // reset of the full rate-limit window last reported; owned by run
 
 		askMu sync.Mutex
@@ -85,11 +88,21 @@ type (
 		ServerName string          `json:"serverName"`
 		RequestID  json.RawMessage `json:"requestId"`
 		Item       json.RawMessage `json:"item"`
+		TurnID     string          `json:"turnId"`
+		TokenUsage struct {
+			Last struct {
+				InputTokens       int `json:"inputTokens"`
+				CachedInputTokens int `json:"cachedInputTokens"`
+				CacheWriteTokens  int `json:"cacheWriteInputTokens"`
+				OutputTokens      int `json:"outputTokens"`
+			} `json:"last"`
+		} `json:"tokenUsage"`
 		RateLimits struct {
 			Primary   *limitWindow `json:"primary"`
 			Secondary *limitWindow `json:"secondary"`
 		} `json:"rateLimits"`
 		Turn struct {
+			ID     string `json:"id"`
 			Status string `json:"status"`
 			Error  *struct {
 				Message        string `json:"message"`
@@ -339,6 +352,7 @@ func (s *Session) handshake(method string, params map[string]any, skillDir strin
 		return fmt.Errorf("%s: %w", method, err)
 	}
 	var thread struct {
+		Model  string `json:"model"`
 		Thread struct {
 			ID string `json:"id"`
 		} `json:"thread"`
@@ -346,7 +360,7 @@ func (s *Session) handshake(method string, params map[string]any, skillDir strin
 	if err := json.Unmarshal(res, &thread); err != nil {
 		return fmt.Errorf("%s result: %w", method, err)
 	}
-	s.threadID = thread.Thread.ID
+	s.threadID, s.model = thread.Thread.ID, thread.Model
 	return nil
 }
 
@@ -460,6 +474,7 @@ func (s *Session) serverRequest(m message) bool {
 func (s *Session) handle(m message) bool {
 	switch m.Method {
 	case "turn/started":
+		s.turnID = m.body().Turn.ID
 		s.msgID, s.wrote = "", false
 		clear(s.notes)
 		clear(s.changes)
@@ -505,6 +520,24 @@ func (s *Session) handle(m message) bool {
 			return false
 		}
 		s.msgID, s.wrote = itemID, true
+	case "thread/tokenUsage/updated":
+		// A resume first replays an update of the thread's earlier turn.
+		if p := m.body(); s.turnID != "" && p.TurnID == s.turnID {
+			last := p.TokenUsage.Last
+			s.usage.Calls++
+			s.usage.InputTokens += last.InputTokens - last.CachedInputTokens
+			s.usage.CacheReadTokens += last.CachedInputTokens
+			s.usage.CacheWriteTokens += last.CacheWriteTokens
+			s.usage.OutputTokens += last.OutputTokens
+		}
+	case "turn/completed":
+		if s.usage.Calls > 0 {
+			u := s.usage
+			u.Model = s.model
+			if !s.emit(provider.Event{Kind: provider.KindUsage, Usage: &u}) {
+				return false
+			}
+		}
 	case "serverRequest/resolved":
 		id := string(m.body().RequestID)
 		s.askMu.Lock()

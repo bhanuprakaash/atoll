@@ -106,7 +106,8 @@ type (
 	}
 
 	// Bot is a configured agent. Provider is "claude" or "codex". Connections are the ids of the
-	// connections it may use.
+	// connections it may use. Cost24hUSD is what its runs that ended in the last 24 hours cost; only
+	// Bots fills it.
 	Bot struct {
 		ID                string     `json:"id"`
 		Name              string     `json:"name"`
@@ -119,6 +120,7 @@ type (
 		State             string     `json:"state,omitempty"`
 		Activity          string     `json:"activity,omitempty"`
 		LastActivity      *time.Time `json:"last_activity,omitempty"`
+		Cost24hUSD        *float64   `json:"cost_24h_usd,omitempty"`
 		RepoAccess        RepoAccess `json:"repo_access"`
 		Connections       []string   `json:"connections"`
 		Skills            []string   `json:"skills"`
@@ -158,8 +160,8 @@ type (
 	}
 
 	// Thread is a chat with one Bot. Session is the provider session its runs resume; empty
-	// until the first run starts one. The repo, branch, worktree and MR fields are empty until
-	// set.
+	// until the first run starts one. SessionCostUSD is what that session has cost in total as its
+	// last run reported it. The repo, branch, worktree and MR fields are empty until set.
 	Thread struct {
 		ID              string     `json:"id"`
 		BotID           string     `json:"bot_id"`
@@ -167,6 +169,7 @@ type (
 		Title           string     `json:"title"`
 		Session         string     `json:"-"`
 		SessionProvider string     `json:"-"`
+		SessionCostUSD  float64    `json:"-"`
 		RepoID          string     `json:"repo_id"`
 		Branch          string     `json:"branch"`
 		Worktree        string     `json:"worktree"`
@@ -254,6 +257,19 @@ type (
 		StartedAt  time.Time      `json:"started_at"`
 		FinishedAt time.Time      `json:"finished_at"`
 		Tools      map[string]int `json:"tools"`
+		Usage      *Usage         `json:"usage"`
+	}
+
+	// Usage is what one run used; it counts that run only. CostUSD is nil when the provider
+	// reports no price.
+	Usage struct {
+		Model            string   `json:"model"`
+		Calls            int      `json:"calls"`
+		InputTokens      int      `json:"input_tokens"`
+		OutputTokens     int      `json:"output_tokens"`
+		CacheReadTokens  int      `json:"cache_read_tokens"`
+		CacheWriteTokens int      `json:"cache_write_tokens"`
+		CostUSD          *float64 `json:"cost_usd,omitempty"`
 	}
 
 	// Report is what the provider passed to finish_run, exactly.
@@ -287,7 +303,7 @@ const (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake, mr_head, mr_base_woke"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake, mr_head, mr_base_woke, session_cost_usd"
 	_messagePageSize = 50
 )
 
@@ -414,9 +430,21 @@ func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
 // first.
 func (s *Store) Bots(ctx context.Context) ([]Bot, error) {
 	return query(ctx, s.db,
-		"SELECT "+_botColumns+", pinned_at IS NOT NULL, coalesce(group_id, '') FROM bots "+
+		"SELECT "+_botColumns+", pinned_at IS NOT NULL, coalesce(group_id, ''), c.cost FROM bots "+
+			`LEFT JOIN (SELECT t.bot_id, sum(r.cost_usd) AS cost FROM runs r
+			            JOIN threads t ON t.id = r.thread_id
+			            WHERE r.cost_usd IS NOT NULL AND r.finished_at >= ? GROUP BY t.bot_id) c
+			 ON c.bot_id = bots.id `+
 			"WHERE removed = 0 "+
-			"ORDER BY id = 'chief' DESC, pinned_at IS NULL, pinned_at, rowid", scanBot)
+			"ORDER BY id = 'chief' DESC, pinned_at IS NULL, pinned_at, rowid",
+		func(r *sql.Rows) (Bot, error) {
+			var cost sql.NullFloat64
+			b, err := scanBotWith(r, &cost)
+			if cost.Valid {
+				b.Cost24hUSD = &cost.Float64
+			}
+			return b, err
+		}, time.Now().Add(-24*time.Hour).UnixMicro())
 }
 
 // SetPinned pins the Bot with id, or unpins it. Pinning a pinned Bot keeps its place.
@@ -1081,12 +1109,12 @@ func (s *Store) InboxThreads(ctx context.Context) ([]string, error) {
 // Run returns the run with id.
 func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 	var r Run
-	var report sql.NullString
+	var report, usage sql.NullString
 	var started, finished int64
 	var tools string
 	err := s.db.QueryRowContext(ctx,
-		"SELECT id, thread_id, status, reply, error, error_kind, resets_at, provider, report, started_at, finished_at, tools FROM runs WHERE id = ?", id).
-		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &r.ErrorKind, &r.ResetsAt, &r.Provider, &report, &started, &finished, &tools)
+		"SELECT id, thread_id, status, reply, error, error_kind, resets_at, provider, report, started_at, finished_at, tools, usage FROM runs WHERE id = ?", id).
+		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &r.ErrorKind, &r.ResetsAt, &r.Provider, &report, &started, &finished, &tools, &usage)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("run %s: %w", id, ErrNotFound)
 	}
@@ -1105,6 +1133,11 @@ func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 	if report.Valid {
 		if err := json.Unmarshal([]byte(report.String), &r.Report); err != nil {
 			return Run{}, fmt.Errorf("decode report of run %s: %w", id, err)
+		}
+	}
+	if usage.Valid {
+		if err := json.Unmarshal([]byte(usage.String), &r.Usage); err != nil {
+			return Run{}, fmt.Errorf("decode usage of run %s: %w", id, err)
 		}
 	}
 	if r.Report != nil {
@@ -1167,6 +1200,10 @@ type RunResult struct {
 	ErrorKind string
 	ResetsAt  time.Time // when the provider's usage limit resets, if it said
 	Provider  string    // the provider the run used
+	// Usage is what the run used, nil when the provider reported nothing. SessionCostUSD is what
+	// the session has cost in total after it, nil when the provider reports no price.
+	Usage          *Usage
+	SessionCostUSD *float64
 }
 
 // Wake is a finished helper run with what the boss's message is made of.
@@ -1198,14 +1235,24 @@ func (s *Store) FinishRun(
 		if !res.ResetsAt.IsZero() {
 			resetsAt = res.ResetsAt.UTC().Format(time.RFC3339)
 		}
+		var usage sql.NullString
+		var cost *float64
+		if res.Usage != nil {
+			body, err := json.Marshal(res.Usage)
+			if err != nil {
+				return fmt.Errorf("encode usage: %w", err)
+			}
+			usage, cost = sql.NullString{String: string(body), Valid: true}, res.Usage.CostUSD
+		}
 		_, err = tx.ExecContext(ctx,
-			"UPDATE runs SET status = ?, reply = ?, error = ?, error_kind = ?, resets_at = ?, provider = ?, finished_at = ? WHERE id = ?",
-			res.Status, res.Reply, res.Error, res.ErrorKind, resetsAt, res.Provider, time.Now().UTC().UnixMicro(), runID)
+			"UPDATE runs SET status = ?, reply = ?, error = ?, error_kind = ?, resets_at = ?, provider = ?, usage = ?, cost_usd = ?, finished_at = ? WHERE id = ?",
+			res.Status, res.Reply, res.Error, res.ErrorKind, resetsAt, res.Provider, usage, cost, time.Now().UTC().UnixMicro(), runID)
 		if err != nil {
 			return fmt.Errorf("finish run: %w", err)
 		}
-		_, err = tx.ExecContext(ctx, "UPDATE threads SET last_activity = ? WHERE id = ?",
-			time.Now().UTC().UnixMicro(), threadID)
+		_, err = tx.ExecContext(ctx,
+			"UPDATE threads SET last_activity = ?, session_cost_usd = coalesce(?, session_cost_usd) WHERE id = ?",
+			time.Now().UTC().UnixMicro(), res.SessionCostUSD, threadID)
 		if err != nil {
 			return fmt.Errorf("touch thread: %w", err)
 		}
@@ -1586,7 +1633,8 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	var closedAt sql.NullInt64
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
 		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
-		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir, &t.MRCI, &t.MRWoke, &wake, &t.MRHead, &baseWoke)
+		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir, &t.MRCI, &t.MRWoke, &wake, &t.MRHead, &baseWoke,
+		&t.SessionCostUSD)
 	if err != nil {
 		return Thread{}, err
 	}
@@ -1603,12 +1651,15 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	return t, nil
 }
 
-func scanBot(r *sql.Rows) (Bot, error) {
+func scanBot(r *sql.Rows) (Bot, error) { return scanBotWith(r) }
+
+// scanBotWith also scans the columns after a Bot's into extra.
+func scanBotWith(r *sql.Rows, extra ...any) (Bot, error) {
 	var b Bot
 	var access sql.NullString
 	var conns, skills, mcp, delegates string
-	err := r.Scan(&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills,
-		&b.CanManagePlatform, &b.Look, &b.Model, &mcp, &b.Mode, &delegates, &b.Pinned, &b.GroupID)
+	err := r.Scan(append([]any{&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills,
+		&b.CanManagePlatform, &b.Look, &b.Model, &mcp, &b.Mode, &delegates, &b.Pinned, &b.GroupID}, extra...)...)
 	if err != nil {
 		return Bot{}, err
 	}

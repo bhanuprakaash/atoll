@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -156,7 +157,11 @@ type (
 		calls    map[string]chan struct{} // closed once the tool call with that id is published
 		tool     ToolCall
 		shown    []string // memory ids the run's memory tools returned
-		kind     string   // of the wake the run answers; empty for a message
+		// usage and priorCostUSD are the run goroutine's: the provider's last report, and what the
+		// session had cost before this run.
+		usage        *provider.Usage
+		priorCostUSD float64
+		kind         string // of the wake the run answers; empty for a message
 	}
 
 	// Event is one event on a thread's stream. Data is one of the types below. ThreadID is the
@@ -635,6 +640,7 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	quiet := a.quiet
 	m.mu.Unlock()
 	res.Provider = a.bot.Provider
+	res.Usage, res.SessionCostUSD = a.usageResult()
 	var wake func(store.Wake) string
 	if !quiet {
 		wake = m.wakeText(a.threadID)
@@ -669,6 +675,25 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 			m.flushLog(a.threadID)
 		}
 	}
+}
+
+// usageResult is what the run used, and what the session has cost in total. A session's cost
+// carries into its next process, so the run's own cost is the total less what came before.
+func (a *active) usageResult() (*store.Usage, *float64) {
+	u := a.usage
+	if u == nil {
+		return nil, nil
+	}
+	used := &store.Usage{
+		Model: u.Model, Calls: u.Calls, InputTokens: u.InputTokens, OutputTokens: u.OutputTokens,
+		CacheReadTokens: u.CacheReadTokens, CacheWriteTokens: u.CacheWriteTokens,
+	}
+	if u.SessionCostUSD == nil {
+		return used, nil
+	}
+	cost := math.Round((*u.SessionCostUSD-a.priorCostUSD)*1e6) / 1e6
+	used.CostUSD = &cost
+	return used, u.SessionCostUSD
 }
 
 // wakeText makes the wake text of a helper run on threadID, with the helpers line of its boss: the
@@ -780,6 +805,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if thread.Session != "" && thread.SessionProvider != bot.Provider {
 		thread.Session = ""
 		notice = "Provider changed to " + bot.Provider + "; starting a fresh session.\n\n"
+	}
+	if thread.Session != "" {
+		a.priorCostUSD = thread.SessionCostUSD
 	}
 	m.mu.Lock()
 	a.bot = bot
@@ -998,6 +1026,8 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 					reply.WriteString(ev.Text)
 					m.publish(a, EventText, Text{RunID: a.run.ID, Text: ev.Text})
 				}
+			case provider.KindUsage:
+				a.usage = ev.Usage
 			case provider.KindSession:
 				if err := m.cfg.Store.SetSession(a.ctx, a.threadID, ev.SessionID, a.bot.Provider); err != nil {
 					return "", fmt.Errorf("save session: %w", err)

@@ -80,6 +80,7 @@ type (
 		Type      string `json:"type"`
 		Subtype   string `json:"subtype"`
 		SessionID string `json:"session_id"`
+		Model     string `json:"model"`
 		Event     struct {
 			Type  string `json:"type"`
 			Delta struct {
@@ -88,6 +89,7 @@ type (
 			} `json:"delta"`
 		} `json:"event"`
 		Message struct {
+			ID      string `json:"id"`
 			Content []struct {
 				Type  string          `json:"type"`
 				ID    string          `json:"id"`
@@ -95,11 +97,19 @@ type (
 				Input json.RawMessage `json:"input"`
 			} `json:"content"`
 		} `json:"message"`
-		IsError        bool     `json:"is_error"`
-		Result         string   `json:"result"`
-		Errors         []string `json:"errors"`
-		Error          string   `json:"error"`
-		APIError       string   `json:"api_error"`
+		IsError bool     `json:"is_error"`
+		Result  string   `json:"result"`
+		Errors  []string `json:"errors"`
+		Error   string   `json:"error"`
+		// TotalCostUSD and Usage: the cost is the session's, the tokens the process's.
+		TotalCostUSD *float64 `json:"total_cost_usd"`
+		Usage        struct {
+			InputTokens      int `json:"input_tokens"`
+			OutputTokens     int `json:"output_tokens"`
+			CacheReadTokens  int `json:"cache_read_input_tokens"`
+			CacheWriteTokens int `json:"cache_creation_input_tokens"`
+		} `json:"usage"`
+		APIError       string `json:"api_error"`
 		APIErrorParams struct {
 			RateLimitInfo rateLimitInfo `json:"rate_limit_info"`
 		} `json:"api_error_params"`
@@ -112,10 +122,13 @@ type (
 	}
 
 	// state is what parse keeps between lines. A message that starts after text in the same turn
-	// has its first text delta begin a new paragraph.
+	// has its first text delta begin a new paragraph. model and calls (the distinct assistant
+	// message ids) last the whole process.
 	state struct {
 		wrote, breakNext, signedOut, limited bool
 		resetsAt                             time.Time
+		model                                string
+		calls                                map[string]bool
 	}
 
 	// tail keeps the last 4 KB written to it, for claude's stderr.
@@ -552,10 +565,17 @@ func parse(line []byte, st *state) []provider.Event {
 	switch l.Type {
 	case "system":
 		if l.Subtype == "init" {
+			st.model = l.Model
 			return []provider.Event{{Kind: provider.KindSession, SessionID: l.SessionID}}
 		}
 	case "assistant":
 		st.signedOut = st.signedOut || l.Error == "authentication_failed"
+		if l.Message.ID != "" {
+			if st.calls == nil {
+				st.calls = map[string]bool{}
+			}
+			st.calls[l.Message.ID] = true
+		}
 		if l.Error == "rate_limit" && l.APIError == "usage_limit_reached" {
 			st.limited = true
 			st.setReset(l.APIErrorParams.RateLimitInfo)
@@ -587,18 +607,24 @@ func parse(line []byte, st *state) []provider.Event {
 		}
 	case "result":
 		wrote, prev := st.wrote, *st
-		*st = state{}
+		var evs []provider.Event
+		if u := (provider.Usage{
+			Model: st.model, Calls: len(st.calls), InputTokens: l.Usage.InputTokens,
+			OutputTokens: l.Usage.OutputTokens, CacheReadTokens: l.Usage.CacheReadTokens,
+			CacheWriteTokens: l.Usage.CacheWriteTokens, SessionCostUSD: l.TotalCostUSD,
+		}); u.Calls > 0 || u.SessionCostUSD != nil {
+			evs = append(evs, provider.Event{Kind: provider.KindUsage, Usage: &u})
+		}
+		*st = state{model: st.model, calls: st.calls}
 		if l.IsError {
 			text := strings.Join(append([]string{l.Result}, l.Errors...), "\n")
-			return []provider.Event{{
-				Kind: provider.KindError, Text: strings.TrimSpace(text),
-				SignedOut: prev.signedOut, Limited: prev.limited, ResetsAt: prev.resetsAt,
-			}}
+			return append(evs, provider.Event{Kind: provider.KindError, Text: strings.TrimSpace(text), SignedOut: prev.signedOut,
+				Limited: prev.limited, ResetsAt: prev.resetsAt})
 		}
 		if !wrote && l.Result != "" {
-			return []provider.Event{{Kind: provider.KindText, Text: l.Result}, {Kind: provider.KindTurnEnd}}
+			evs = append(evs, provider.Event{Kind: provider.KindText, Text: l.Result})
 		}
-		return []provider.Event{{Kind: provider.KindTurnEnd}}
+		return append(evs, provider.Event{Kind: provider.KindTurnEnd})
 	}
 	return nil
 }

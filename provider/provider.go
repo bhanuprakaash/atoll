@@ -145,6 +145,7 @@ const (
 	KindToolCall    // ID, Server, Name and Input: a tool call started
 	KindApproval    // ID, Name and Input: the provider waits for Answer(ID, ...)
 	KindApprovalEnd // ID: the provider ended the request without an Answer
+	KindUsage       // Usage: what the process used so far; it comes before the turn's end
 )
 
 // Event is one step of a session.
@@ -159,6 +160,21 @@ type Event struct {
 	SignedOut bool
 	Limited   bool
 	ResetsAt  time.Time // when Limited, the provider's reset time; zero if it gave none
+	Usage     *Usage
+}
+
+// Usage is what one provider process used, over all its turns. Tokens are the process's only,
+// never the resumed session's past.
+type Usage struct {
+	Model            string
+	Calls            int
+	InputTokens      int
+	OutputTokens     int
+	CacheReadTokens  int
+	CacheWriteTokens int
+	// SessionCostUSD is what the whole session has cost so far, including runs before this process;
+	// nil when the provider reports no price.
+	SessionCostUSD *float64
 }
 
 // Env returns the parent environment without the variables that carry a provider's credentials or

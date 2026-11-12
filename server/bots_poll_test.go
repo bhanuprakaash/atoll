@@ -90,7 +90,7 @@ func testBotsPollCost(t *testing.T, allOpen bool) {
 // cost of the reads is hidden until there are thousands of threads.
 func perThreadRunsReads(ctx context.Context, t *testing.T, db *sql.DB, query string) []string {
 	t.Helper()
-	rows, err := db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+query)
+	rows, err := db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+query, make([]any, strings.Count(query, "?"))...)
 	if err != nil {
 		t.Fatal(err)
 	}

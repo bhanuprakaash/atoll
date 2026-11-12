@@ -33,6 +33,7 @@ import {
 } from '@/modules/threads/utils/helper-report';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 import { clockTime, messageTime } from '@/utils/time';
+import { usageLine } from '@/utils/usage';
 
 const chatText = 'text-base leading-[1.65] tracking-normal';
 
@@ -85,6 +86,7 @@ function RunResult({
       `Worked ${duration(run)}`,
     run.status === 'done' && parts.join(', '),
     run.status === 'stopped' && `Stopped by you after ${duration(run)}`,
+    run.usage && usageLine(run.usage),
   ].filter(Boolean);
   return (
     <div className="flex flex-col gap-6 text-sm text-muted">
