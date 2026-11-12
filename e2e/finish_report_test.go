@@ -62,7 +62,7 @@ func TestFinishRun_BlockedNothingIsEmpty(t *testing.T) {
 			b := s.newBot(t, "Ada", p)
 			for _, blocked := range []string{
 				"Nothing blocking", "None", "nothing", "n/a",
-				"NONE.", "Nothing blocking.", "N/A!", "  none  ", "Nothing Blocking...",
+				"NONE.", "Nothing blocking.", "N/A!", "  none  ", "Nothing Blocking...", "Nothing blocked.",
 			} {
 				args, _ := json.Marshal(report{Done: "Checked the build.", Tried: "none", Blocked: blocked, Next: "none"})
 				r, answer := finishRun(t, s, b, string(args))

@@ -126,11 +126,13 @@ test('two helpers of one Bot are two creatures and, in the popover, two rows wit
 test('Show opens a popover over the chat that does not move it; Esc and an outside click close it', async ({
   page,
 }) => {
-  await bossHandsOff(m, page, [
+  const { boss } = await bossHandsOff(m, page, [
     ['Tester', hang('Poll cost flake')],
     ['Reviewer', hang('Sidebar rail')],
   ]);
   const log = page.getByRole('log', { name: 'Messages' });
+  await expect.poll(() => runStatus(m, boss)).toBe('done');
+  await expect(log.getByRole('status')).toHaveCount(0);
   const region = tray(page);
   const show = region.getByRole('button', { name: 'Show', exact: true });
   const [logBefore, trayBefore] = [await box(log), await box(region)];
