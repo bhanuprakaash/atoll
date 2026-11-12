@@ -7,7 +7,15 @@ import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { expectDesigned, notice } from './designed';
-import { api, type Machine, newBotAPI, prompts, sidebarRow, startAtoll } from './atoll';
+import {
+  api,
+  type Machine,
+  newBotAPI,
+  prompts,
+  sendMessageAPI,
+  sidebarRow,
+  startAtoll,
+} from './atoll';
 
 let m: Machine;
 test.beforeAll(async () => {
@@ -201,6 +209,30 @@ test('losing the server shows one Reconnecting notice, not an error per request'
 
     await own.restart();
     await expect(page.getByText('Reconnecting')).toHaveCount(0, { timeout: 30_000 });
+  } finally {
+    own.stop();
+  }
+});
+
+test('losing the server with a thread open shows one Reconnecting notice', async ({ page }) => {
+  const own = await startAtoll();
+  try {
+    const bot = await newBotAPI(own, 'Tide');
+    const thread = await api(own, 'POST', `/api/bots/${bot.id}/threads`, {});
+    await sendMessageAPI(own, thread.id, prompts.pong);
+    await page.goto(`${own.url}/bots/${bot.id}/threads/${thread.id}`);
+    await expect(
+      page.getByRole('log', { name: 'Messages' }).getByText('pong', { exact: true }),
+    ).toBeVisible();
+    await page.getByRole('textbox', { name: /^Message/ }).fill('still there?');
+    const send = page.getByRole('button', { name: 'Send' });
+    await expect(send).toBeEnabled();
+    own.kill();
+
+    // Both signals of a lost server: the app's notice and the thread's own stream.
+    await expect(page.getByRole('status').filter({ hasText: 'Reconnecting' })).toHaveCount(1);
+    await expect(send).toBeDisabled();
+    await expect(page.getByText('Reconnecting')).toHaveCount(1);
   } finally {
     own.stop();
   }

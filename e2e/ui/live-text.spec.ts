@@ -245,3 +245,22 @@ test("the sidebar row and the island keep the short verb and never show the text
     await expect(part).not.toContainText(closingStart);
   }
 });
+
+test("a reef-metrics fence still streaming shows Metrics… until it closes, then the component", async ({
+  page,
+}) => {
+  const bot = await newBotAPI(m, "Gauge");
+  const thread = await openThreadAPI(m, bot.id, "Stream the PR metrics live.");
+  await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
+  const log = page.getByRole("log", { name: "Messages" });
+  const live = log.getByTestId("live-text");
+
+  await expect(live).toContainText("Live numbers:");
+  await expect(live.getByText("Metrics…", { exact: true })).toBeVisible();
+  await expect(live).not.toContainText("Open PRs");
+  await expect(live.locator('[data-component="code"]')).toHaveCount(0);
+
+  await expect(live.locator('[data-component="metrics"]')).toHaveCount(1);
+  await expect(live.getByText("Metrics…")).toHaveCount(0);
+  await expect(log.locator('[data-component="metrics"]')).toHaveCount(1);
+});
