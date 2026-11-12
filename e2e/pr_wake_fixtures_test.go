@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,7 +19,10 @@ type prFixture struct {
 	state  string
 	merged bool
 	title  string
+	draft  bool
+	base   string
 	body   string
+	head   string // empty: headSHA(n)
 }
 
 // issueFixture is what the fake GitHub says about an issue: open until a test closes it.
@@ -37,9 +41,19 @@ type prWatch struct {
 	runs     map[string][]fakeCheck
 	statuses map[string][]fakeStatus
 	reads    map[int]int
+	drafts   map[int]bool // whether the pull request was created as a draft
+	calls    []string     // what the Bots' gh did to pull requests: create, edit and ready, in order
 	issues   map[int]*issueFixture
 	issueGet map[int]int
 	issue304 map[int]int
+}
+
+// headOf is the head commit of the pull request: its own once a test pushed, else headSHA.
+func (pr *prFixture) headOf(n int) string {
+	if pr.head != "" {
+		return pr.head
+	}
+	return headSHA(n)
 }
 
 // headSHA is the head commit of pull request n: the same for as long as no test pushes.
@@ -54,6 +68,26 @@ func (g *fakeGitHub) setPull(n int, state string, merged bool) {
 		pr := g.pr(n)
 		pr.state, pr.merged = state, merged
 	})
+}
+
+// setHead pushes a new head commit to pull request n.
+func (g *fakeGitHub) setHead(n int, sha string) {
+	g.set(func() { g.pr(n).head = sha })
+}
+
+// prCalls is what the Bots' gh did to pull requests so far, in order: `create #2 base=<b> draft=<bool>`,
+// `edit #2 base=<b>` and `ready #2`.
+func (g *fakeGitHub) prCalls() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return slices.Clone(g.watch.calls)
+}
+
+// isDraft is whether pull request n is a draft now.
+func (g *fakeGitHub) isDraft(n int) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.pr(n).draft
 }
 
 // setTitle changes the title of pull request n, so the next read is a new reply with a new ETag.
@@ -158,7 +192,8 @@ func (g *fakeGitHub) pr(n int) *prFixture {
 		if n < 1 || n > len(g.pulls) {
 			return nil
 		}
-		g.watch.prs[n] = &prFixture{state: "open", title: g.pulls[n-1].Title}
+		p := g.pulls[n-1]
+		g.watch.prs[n] = &prFixture{state: "open", title: p.Title, draft: g.watch.drafts[n], base: p.Base, body: p.Body}
 	}
 	return g.watch.prs[n]
 }
@@ -188,7 +223,8 @@ func (g *fakeGitHub) getPull(w http.ResponseWriter, r *http.Request) {
 		g.watch.reads[n]++
 		if pr := g.pr(n); pr != nil {
 			body, _ = json.Marshal(map[string]any{"number": n, "state": pr.state, "merged": pr.merged, "title": pr.title,
-				"body": pr.body, "head": map[string]string{"sha": headSHA(n)}})
+				"draft": pr.draft, "body": pr.body, "base": map[string]string{"ref": pr.base},
+				"head": map[string]string{"sha": pr.headOf(n)}})
 		}
 	})
 	w.Header().Set("Content-Type", "application/json")
@@ -205,6 +241,62 @@ func (g *fakeGitHub) getPull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = w.Write(body)
+}
+
+// editPull is PATCH /repos/{owner}/{repo}/pulls/{number}: only the base is taken.
+func (g *fakeGitHub) editPull(w http.ResponseWriter, r *http.Request) {
+	if g.reject(w, r) {
+		return
+	}
+	n, _ := strconv.Atoi(r.PathValue("number"))
+	var in struct{ Base string }
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	found := false
+	g.set(func() {
+		if pr := g.pr(n); pr != nil && in.Base != "" {
+			pr.base, found = in.Base, true
+			g.watch.calls = append(g.watch.calls, fmt.Sprintf("edit #%d base=%s", n, in.Base))
+		}
+	})
+	w.Header().Set("Content-Type", "application/json")
+	if !found {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = fmt.Fprint(w, `{"message":"Validation Failed"}`)
+		return
+	}
+	_, _ = fmt.Fprint(w, `{}`)
+}
+
+// graphQL is POST /graphql for the one mutation `gh pr ready` sends, markPullRequestReadyForReview,
+// with the pull request's node id PR_<owner>/<repo>#<number>.
+func (g *fakeGitHub) graphQL(w http.ResponseWriter, r *http.Request) {
+	if g.reject(w, r) {
+		return
+	}
+	var in struct {
+		Query     string
+		Variables struct {
+			Input struct {
+				PullRequestID string `json:"pullRequestId"`
+			}
+		}
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	_, num, _ := strings.Cut(in.Variables.Input.PullRequestID, "#")
+	n, _ := strconv.Atoi(num)
+	ok := false
+	g.set(func() {
+		if pr := g.pr(n); pr != nil && strings.Contains(in.Query, "markPullRequestReadyForReview") {
+			pr.draft, ok = false, true
+			g.watch.calls = append(g.watch.calls, fmt.Sprintf("ready #%d", n))
+		}
+	})
+	w.Header().Set("Content-Type", "application/json")
+	if !ok {
+		_, _ = fmt.Fprint(w, `{"errors":[{"message":"Could not resolve to a PullRequest"}]}`)
+		return
+	}
+	_, _ = fmt.Fprint(w, `{"data":{"markPullRequestReadyForReview":{"pullRequest":{"isDraft":false}}}}`)
 }
 
 // checkRuns is GET /repos/{owner}/{repo}/commits/{sha}/check-runs.

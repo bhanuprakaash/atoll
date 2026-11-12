@@ -200,6 +200,17 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
+		case "repo-github-stack":
+			var err error
+			if repoReply, err = fake.StackStep(t.servers["atoll"], t.userMessage); err != nil {
+				return err
+			}
+			continue
+		case "github-base-merged":
+			if err := fake.BaseMergedStep(t.userMessage, t.cwd); err != nil {
+				return err
+			}
+			continue
 		case "logins-probe":
 			var err error
 			if repoReply, err = fake.LoginsProbe(); err != nil {
@@ -250,7 +261,7 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 			continue
 		}
 		encoded, _ := json.Marshal(repoReply)
-		out := json.RawMessage(strings.ReplaceAll(string(e.Msg), "$REPO_REPLY", string(encoded[1:len(encoded)-1])))
+		out := json.RawMessage(strings.ReplaceAll(strings.ReplaceAll(string(e.Msg), "$REPO_REPLY", string(encoded[1:len(encoded)-1])), `"$READY"`, fake.ReadyArg(t.userMessage)))
 		var m message
 		_ = json.Unmarshal(out, &m)
 		var p itemParams

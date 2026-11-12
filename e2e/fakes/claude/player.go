@@ -200,6 +200,18 @@ func (p *player) play(lines []string) error {
 				return err
 			}
 			continue
+		case "repo-github-stack":
+			var err error
+			if repoReply, err = fake.StackStep(p.servers["atoll"], p.userMessage); err != nil {
+				return err
+			}
+			continue
+		case "github-base-merged":
+			cwd, _ := os.Getwd()
+			if err := fake.BaseMergedStep(p.userMessage, cwd); err != nil {
+				return err
+			}
+			continue
 		case "logins-probe":
 			var err error
 			if repoReply, err = fake.LoginsProbe(); err != nil {
@@ -256,6 +268,7 @@ func (p *player) play(lines []string) error {
 		}
 		encoded, _ := json.Marshal(repoReply)
 		s = strings.ReplaceAll(s, "$REPO_REPLY", string(encoded[1:len(encoded)-1]))
+		s = strings.ReplaceAll(s, `"$READY"`, fake.ReadyArg(p.userMessage))
 		var m map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(s), &m); err != nil {
 			return err

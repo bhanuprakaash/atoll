@@ -109,7 +109,7 @@ func TestPRWake_ClosedThreadIsNotWoken(t *testing.T) {
 			}
 
 			f.quiet(t, 2*time.Second, "closed thread", closed, 0, 1)
-			if got := f.reefPrompts(t); len(got) != 1 || !strings.HasSuffix(got[0], "PR #2 merged") {
+			if got := f.reefPrompts(t); len(got) != 1 || !strings.Contains(got[0], "PR #2 merged") {
 				t.Errorf("Reef prompts %q, want one, for PR #2", got)
 			}
 		})
