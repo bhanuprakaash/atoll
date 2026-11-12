@@ -401,6 +401,16 @@ after a failed undo counts a Bot that is already gone as removed.
   `delegate` that fails part way removes the helper worktree, branch and thread it made.
 - Helpers show in the boss's thread (App and UI). What the person need not act on folds into a
   ledger there (App and UI, the lead's ledger).
+- The helpers line: the boss sees its free helper slots, so an idle slot is not left behind a
+  queue. Reef computes one line from the boss thread's helper runs going (the limit is the 3 above):
+  `Helpers: 1 of 3 running (Tester on Review #184). 2 free.`, each running helper as `{Bot} on
+  {thread title}`, oldest thread first, joined with `; `; with none going, `Helpers: 0 of 3
+  running. 3 free.` It ends every wake message, after a blank line (the helper whose run just ended
+  is not counted), and follows `Sent.` (`continue`) and `Report saved.` (`finish_run`) on a new
+  line, and is the `helpers` field of `delegate`'s result (the new helper counts). `finish_run`
+  gets it only in a run that lists `delegate`; refusals keep their text. A wake held while the boss's
+  run goes keeps the line it was posted with; the results of the boss's own calls are always
+  current.
 
 ## Repos and worktrees
 
@@ -1181,6 +1191,10 @@ after a failed undo counts a Bot that is already gone as removed.
   Bot. The code part (How you work, with the branch rule) goes to a Bot whose repo access is All or
   a non-empty list. The platform block (Managing Reef) goes to a Bot with "Can manage the platform".
   The code part sits between How you talk and Memory; the platform block sits after Finish.
+- A Bot with a non-empty delegate list, in a thread that is not a helper thread (the runs that list
+  `delegate`), also gets a Helpers part after Finish. It says: `Before finish_run, if a slot is free
+  and a ticket is ready, delegate it first.` and not to end a run with work waiting for a slot that
+  is already free. The part is Reef's, not the persona: a Bot's persona is the user's text.
 - The platform block holds the Reef guide (so Chief answers without reading a file), the ask-first
   rule for creates and Chief's voice. The ask-first rule overrides the core's "ask only when two
   real readings". The voice lives here,
