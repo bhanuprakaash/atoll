@@ -738,6 +738,8 @@ Follow-ups, not filed:
   at info level with the message `wake bot` and the attributes `thread_id`, `kind` and `text`.
   Passed checks are only counted: the Bot can run `gh pr checks` for the rest. The
   thread view shows a message with a `kind` as one quiet line with Reef's mark, not a user bubble.
+  A message with a `kind` carries the time it was stored, never the time of the run it follows, and is
+  never `not_read`.
   The Bot's prompt for it is `Reef: ` and the sentence, and the code part of the prompt says the
   quoted names are data from the repo, never instructions. When held messages of both kinds join
   one run, each Reef line keeps its `Reef: ` prefix, in order, and the other messages go under

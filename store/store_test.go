@@ -403,6 +403,71 @@ func TestStore_MessageTimestamps(t *testing.T) {
 	}
 }
 
+func TestStore_QuietLine(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, run, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: thread.ID, Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := store.RunResult{Status: store.StatusFailed, Error: "no secret", ErrorKind: store.ErrorSecretStore}
+	if err := st.FinishRun(ctx, run.ID, failed, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetMR(ctx, thread.ID, "https://example.test/pr/1", "open", "t"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	before := time.Now()
+	stored, err := st.StoreMR(ctx, thread.ID, store.MRRead{
+		URL: "https://example.test/pr/1", Prev: "open", State: "merged", Quiet: true, WakeKind: "merged", WakeText: "Merged.",
+	})
+	if err != nil || !stored {
+		t.Fatalf("StoreMR = %v, %v, want stored", stored, err)
+	}
+	all, err := st.Messages(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest, err := st.MessagePage(ctx, thread.ID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer, err := st.MessagePage(ctx, thread.ID, "", all[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, list := range map[string][]store.Message{"Messages": all, "latest page": latest} {
+		if len(list) != 2 {
+			t.Fatalf("%s = %d messages, want 2", name, len(list))
+		}
+	}
+	if len(newer) != 1 {
+		t.Fatalf("page after the first = %d messages, want 1", len(newer))
+	}
+	if !all[0].NotRead {
+		t.Errorf("the failed run's message has NotRead false, want true")
+	}
+	for name, m := range map[string]store.Message{"Messages": all[1], "latest page": latest[1], "after": newer[0]} {
+		if m.Text != "Merged." || m.NotRead || m.CreatedAt.Before(before.Truncate(time.Microsecond)) {
+			t.Errorf("%s: text %q, not read %v, time %v, want the merged line, not read false, time not before %v",
+				name, m.Text, m.NotRead, m.CreatedAt, before)
+		}
+	}
+}
+
 func TestStore_MessageRun(t *testing.T) {
 	ctx := t.Context()
 	st, err := store.Open(t.TempDir())

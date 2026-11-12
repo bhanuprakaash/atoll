@@ -1557,8 +1557,8 @@ func readWake(ctx context.Context, tx *sql.Tx, runID string) (w heldWake, ok boo
 func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error) {
 	return s.messages(ctx,
 		`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
-            CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
-            m.role = 'user' AND r.error_kind = 'secret_store',
+            CASE WHEN m.kind != '' AND m.created != 0 THEN m.created WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
+            m.role = 'user' AND m.kind = '' AND r.error_kind = 'secret_store',
             r.status, coalesce(json_extract(r.report, '$.done'), ''), coalesce(json_extract(r.report, '$.blocked'), '')
          FROM messages m JOIN runs r ON r.id = m.run_id WHERE m.thread_id = ? ORDER BY m.rowid`,
 		threadID)
@@ -1569,8 +1569,8 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 	if after != "" {
 		return s.messages(ctx,
 			`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
-                CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
-                m.role = 'user' AND r.error_kind = 'secret_store',
+                CASE WHEN m.kind != '' AND m.created != 0 THEN m.created WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
+                m.role = 'user' AND m.kind = '' AND r.error_kind = 'secret_store',
                 r.status, coalesce(json_extract(r.report, '$.done'), ''), coalesce(json_extract(r.report, '$.blocked'), '')
              FROM messages m JOIN runs r ON r.id = m.run_id
              WHERE m.thread_id = ? AND m.rowid > (
@@ -1581,8 +1581,8 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 	return s.messages(ctx,
 		`SELECT id, thread_id, role, text, run_id, from_bot_id, kind, at, not_read, status, done, blocked FROM (
             SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
-                CASE WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END AS at,
-                m.role = 'user' AND r.error_kind = 'secret_store' AS not_read,
+                CASE WHEN m.kind != '' AND m.created != 0 THEN m.created WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END AS at,
+                m.role = 'user' AND m.kind = '' AND r.error_kind = 'secret_store' AS not_read,
                 r.status AS status, coalesce(json_extract(r.report, '$.done'), '') AS done,
                 coalesce(json_extract(r.report, '$.blocked'), '') AS blocked,
                 m.rowid
@@ -1855,8 +1855,8 @@ func (s *Store) ReadySHA(ctx context.Context, threadID, url string) (string, err
 
 func insertMessage(ctx context.Context, tx *sql.Tx, m Message) error {
 	_, err := tx.ExecContext(ctx,
-		"INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id, kind) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		m.ID, m.ThreadID, m.Role, m.Text, m.RunID, m.FromBotID, m.Kind)
+		"INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id, kind, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		m.ID, m.ThreadID, m.Role, m.Text, m.RunID, m.FromBotID, m.Kind, time.Now().UTC().UnixMicro())
 	if err != nil {
 		return fmt.Errorf("insert message: %w", err)
 	}
