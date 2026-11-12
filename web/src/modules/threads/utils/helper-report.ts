@@ -1,8 +1,12 @@
-const none = ['none', 'nothing', 'nothing.'];
+const none = ['', 'nothing blocking', 'nothing blocked', 'none', 'nothing', 'n/a'];
 
 export const realBlocked = (blocked?: string | null) => {
-  const text = blocked?.trim();
-  return text && !none.includes(text.toLowerCase()) ? text : '';
+  const text = blocked?.trim() ?? '';
+  const bare = text
+    .replace(/\p{P}+$/u, '')
+    .trim()
+    .toLowerCase();
+  return none.includes(bare) ? '' : text;
 };
 
 export const isQuestion = (text: string) => text.trim().split('\n').at(-1)?.trimEnd().endsWith('?');

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"unicode"
 
 	"atoll/memory"
 	"atoll/provider"
@@ -173,10 +172,7 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		if strings.TrimSpace(rep.Done) == "" {
 			return failure("done is required."), nil
 		}
-		blocked := strings.TrimSpace(rep.Blocked)
-		blocked = strings.TrimSpace(strings.TrimRightFunc(blocked, unicode.IsPunct))
-		switch strings.ToLower(blocked) {
-		case "nothing blocking", "nothing blocked", "none", "nothing", "n/a":
+		if !store.RealBlocked(rep.Blocked) {
 			rep.Blocked = ""
 		}
 		if err := a.runs.Report(r.Context(), token, rep); err != nil {

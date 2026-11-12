@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // What waits on the person, by kind.
@@ -217,11 +218,12 @@ func waitingOf(runs []waitRun, replied int64, trackers map[string]*tracker) []Wa
 	return out
 }
 
-// RealBlocked says whether a report's blocked field names something that blocks: it is not empty
-// or a none-like word.
+// RealBlocked says whether a report's blocked field names something that blocks: after its
+// trailing punctuation is trimmed it is not empty or a none-like phrase.
 func RealBlocked(blocked string) bool {
-	switch strings.ToLower(strings.TrimSpace(blocked)) {
-	case "", "none", "nothing", "nothing.":
+	blocked = strings.TrimSpace(strings.TrimRightFunc(strings.TrimSpace(blocked), unicode.IsPunct))
+	switch strings.ToLower(blocked) {
+	case "", "nothing blocking", "nothing blocked", "none", "nothing", "n/a":
 		return false
 	}
 	return true

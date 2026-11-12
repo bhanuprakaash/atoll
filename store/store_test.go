@@ -606,6 +606,46 @@ func TestStore_RestartWake_KeepsDecisionOpen(t *testing.T) {
 	}
 }
 
+func TestRealBlocked(t *testing.T) {
+	for _, phrase := range []string{"nothing blocking", "nothing blocked", "none", "nothing", "n/a"} {
+		for _, suffix := range []string{"", ".", "!", " ."} {
+			for _, give := range []string{phrase + suffix, "  " + strings.ToUpper(phrase) + suffix + " "} {
+				if store.RealBlocked(give) {
+					t.Errorf("RealBlocked(%q) = true, want false", give)
+				}
+			}
+		}
+	}
+	for _, give := range []string{"", "...", " "} {
+		if store.RealBlocked(give) {
+			t.Errorf("RealBlocked(%q) = true, want false", give)
+		}
+	}
+	for _, give := range []string{"None of the tests ran: the CI token expired.", "GitLab sign-in expired."} {
+		if !store.RealBlocked(give) {
+			t.Errorf("RealBlocked(%q) = false, want true", give)
+		}
+	}
+}
+
+func TestStore_ThreadWaiting_StoredNoneLikeBlocked(t *testing.T) {
+	ctx := context.Background()
+	st, bt, _ := wakeFixture(t)
+	_, run, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: bt.ID, Text: "go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetReport(ctx, run.ID, store.Report{Done: "d", Blocked: "Nothing blocked."}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.ThreadWaiting(ctx, bt.ID); err != nil || len(got) != 0 {
+		t.Fatalf("waiting = %+v, %v; want nothing", got, err)
+	}
+}
+
 func TestStore_HelperRunWake_NoBoss(t *testing.T) {
 	ctx := context.Background()
 	st, bt, bot := wakeFixture(t)
