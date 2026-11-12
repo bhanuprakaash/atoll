@@ -1214,6 +1214,9 @@ func TestStore_StartRunFromRemovedItem(t *testing.T) {
 	if listed, err := st.Messages(ctx, th.ID); err != nil || len(listed) != 1 || listed[0].Text != "two" {
 		t.Errorf("Messages = %+v, %v; want only two", listed, err)
 	}
+	if got, err := st.Thread(ctx, th.ID); err != nil || got.Title != "two" {
+		t.Errorf("title = %q, %v; want %q from the first stored message", got.Title, err, "two")
+	}
 
 	if err := st.DeleteQueued(ctx, th.ID, held[1].ID); !errors.Is(err, store.ErrSent) {
 		t.Fatalf("delete after delivery: %v, want ErrSent", err)

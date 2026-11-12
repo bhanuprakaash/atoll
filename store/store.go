@@ -1189,11 +1189,6 @@ func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) ([]Message
 		if err := found(res, "thread", threadID); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx,
-			"UPDATE threads SET last_activity = ?, title = CASE WHEN title = '' THEN ? ELSE title END WHERE id = ?",
-			time.Now().UTC().UnixMicro(), FirstWords(items[0].Text), threadID); err != nil {
-			return err
-		}
 		for i, it := range items {
 			if it.ID != "" {
 				res, err := tx.ExecContext(ctx, "DELETE FROM inbox WHERE id = ?", it.ID)
@@ -1216,7 +1211,10 @@ func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) ([]Message
 		if len(stored) == 0 {
 			return ErrNoneHeld
 		}
-		return nil
+		_, err = tx.ExecContext(ctx,
+			"UPDATE threads SET last_activity = ?, title = CASE WHEN title = '' THEN ? ELSE title END WHERE id = ?",
+			time.Now().UTC().UnixMicro(), FirstWords(stored[0].Text), threadID)
+		return err
 	})
 	if err != nil {
 		return nil, Run{}, err
