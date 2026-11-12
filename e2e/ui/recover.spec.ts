@@ -1,4 +1,4 @@
-// Slice 6: when the server dies the chat says it is reconnecting; served again on the same
+// Slice 6: when the server dies the app says it is reconnecting; served again on the same
 // address, the open thread recovers and takes the next message. (The Tauri shell restarting a
 // killed sidecar is in mac-app-contract.md, "Only you can check".)
 import { expect, test } from '@playwright/test';
@@ -32,9 +32,10 @@ test('the open thread recovers after the server is killed and served again', asy
   await expect(log.getByText('ok', { exact: true })).toBeVisible();
 
   m.kill();
-  await expect(log.getByText('Reconnecting')).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Reconnecting' })).toHaveCount(1);
+  await expect(page.getByText('Reconnecting')).toHaveCount(1);
   await m.restart();
-  await expect(log.getByText('Reconnecting')).toHaveCount(0, {
+  await expect(page.getByText('Reconnecting')).toHaveCount(0, {
     timeout: 20_000,
   });
   await expect(log.getByRole('article', { name: 'You' })).toHaveText(prompts.keep);
