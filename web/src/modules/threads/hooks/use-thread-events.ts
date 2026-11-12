@@ -100,7 +100,7 @@ export function useThreadEvents(threadId: string) {
     source.onerror = () => {
       reconnecting = true;
       setConnected(false);
-      setLost(true);
+      if (source.readyState === EventSource.CONNECTING) setLost(true);
     };
     on<{ text: string }>('text', (d, run) => {
       const last = run.parts.at(-1);
