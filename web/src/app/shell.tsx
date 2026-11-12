@@ -124,10 +124,9 @@ export function Shell() {
   const [switching, setSwitching] = useState(false);
   useTypeToCompose();
   useEffect(() => {
-    const mac = navigator.userAgent.includes('Mac');
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'k' || event.altKey || event.shiftKey) return;
-      if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return;
+      if (!(isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return;
       event.preventDefault();
       setSwitching(true);
     };
