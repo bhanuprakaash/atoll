@@ -2,6 +2,7 @@
 
 # web/node_modules ships Go files; keep them out of every Go command.
 GO_DIRS = $(shell go list -f '{{.Dir}}' ./... | grep -v /node_modules/)
+GOFMT = $(shell go env GOROOT)/bin/gofmt
 
 PNPM_VERSION = $(shell sed -n 's/.*"packageManager": "pnpm@\([^"]*\)".*/\1/p' web/package.json)
 PNPM = $(if $(shell command -v pnpm),pnpm,$(error pnpm not found; install it with: npm i -g pnpm@$(PNPM_VERSION)))
@@ -9,11 +10,11 @@ PNPM = $(if $(shell command -v pnpm),pnpm,$(error pnpm not found; install it wit
 check: fmt lint vet typecheck test
 
 fmt: web/node_modules
-	@files=$$(gofmt -l $(GO_DIRS)); [ -z "$$files" ] || { echo "not gofmt-ed: $$files"; exit 1; }
+	@files=$$($(GOFMT) -l $(GO_DIRS)); [ -z "$$files" ] || { echo "not gofmt-ed: $$files"; exit 1; }
 	cd web && $(PNPM) exec prettier --check .
 
 format: web/node_modules
-	gofmt -w $(GO_DIRS)
+	$(GOFMT) -w $(GO_DIRS)
 	cd web && $(PNPM) exec prettier --write .
 
 lint: web/node_modules
