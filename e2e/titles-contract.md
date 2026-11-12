@@ -27,3 +27,14 @@ preface, and the title session's prompt does not hold the preface.
 ## Call logs
 
 `machine.calls` leaves title sessions out; `machine.titles` returns only them.
+
+## Label prefixes and cut titles
+
+Rules are in design.md, Chat (thread titles). `TestTitles_AnswerRules` gives the title session raw
+answers (`fake.TitleAnswer`) for both providers: a leading `Title:`, `Conversation title:`,
+`Thread title:`, `Chat title:` or `Status line:` (any case, optionally in `**`) is dropped before
+the six-word cut; another colon stays; a cut answer loses trailing stop words and an uncut one
+keeps its last word; an answer with nothing left leaves the first-words title.
+`TestTitles_FirstWordsRules` covers the first-words title (the title session fails): cut on stop
+words, labels kept. `TestTitles_LaunchCleansStoredTitles` writes titles into the database, restarts
+the server and expects labels dropped and six-word titles cut on a stop word trimmed.

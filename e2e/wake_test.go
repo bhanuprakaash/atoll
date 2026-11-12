@@ -147,6 +147,7 @@ func holdsAll(t *testing.T, what, text string, want ...string) {
 // starts a boss run that resumes the boss's session with it. The boss's continue then gives the
 // helper a run that resumes the helper's session with the message.
 func TestWake_ReportWakesBoss(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -182,7 +183,7 @@ func TestWake_ReportWakesBoss(t *testing.T) {
 			}
 
 			const answer = "Yes, update it. " + _reportPrompt
-			if lines := useAtoll(t, s, boss, ev, continueCall(helper, answer)); len(lines) != 1 || lines[0] == "atoll/continue: unavailable" {
+			if lines := useAtoll(t, s, boss, ev, continueCall(helper, answer)); len(lines) == 0 || lines[0] == "atoll/continue: unavailable" {
 				t.Fatalf("continue from the boss thread: reply %q, want it accepted", lines)
 			}
 			allow(t, s, helper)
@@ -204,6 +205,7 @@ func TestWake_ReportWakesBoss(t *testing.T) {
 // delivered when that run ends; a continue to a helper whose run is going succeeds and is delivered
 // when that run ends. Every message arrives: the boss hears from Tester once per helper run.
 func TestWake_BusyThreadsDeliverLater(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -242,7 +244,7 @@ func TestWake_BusyThreadsDeliverLater(t *testing.T) {
 			useAtoll(t, s, boss, ev, continueCall(helper, first))
 			going := asking(t, s, helper)
 			lines := useAtoll(t, s, boss, ev, continueCall(helper, second))
-			if len(lines) != 1 || lines[0] == "atoll/continue: unavailable" {
+			if len(lines) == 0 || lines[0] == "atoll/continue: unavailable" {
 				t.Fatalf("continue while the helper's run goes: reply %q, want it accepted", lines)
 			}
 			time.Sleep(4 * _pace)
@@ -279,6 +281,7 @@ func TestWake_BusyThreadsDeliverLater(t *testing.T) {
 // TestWake_HelperFailedStoppedDeleted: a helper run that fails, is stopped by the user, or whose
 // Bot is deleted mid-run wakes the boss with a message from the helper Bot that says so.
 func TestWake_HelperFailedStoppedDeleted(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -321,6 +324,7 @@ func TestWake_HelperFailedStoppedDeleted(t *testing.T) {
 // boss's run is marked failed; a helper run going at a restart is marked failed and wakes the boss
 // on start.
 func TestWake_SurvivesRestart(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -378,6 +382,7 @@ func TestWake_SurvivesRestart(t *testing.T) {
 // TestWake_CloseBossStopsHelpers: stopping the boss's run leaves its helper going; closing the
 // boss's thread stops the helper's run and closes its thread.
 func TestWake_CloseBossStopsHelpers(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)

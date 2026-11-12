@@ -65,6 +65,7 @@ func noPlatformChange(t *testing.T, s *server, c chiefRun) {
 }
 
 func TestChiefNoShell_ClaudeRunsWithoutTools(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	chiefBot := chief(t, s).bot
 	var keeper, plain bot
@@ -72,11 +73,12 @@ func TestChiefNoShell_ClaudeRunsWithoutTools(t *testing.T) {
 	s.do(t, "POST", "/api/bots", map[string]any{"name": "Plain", "persona": "Answers.", "provider": "claude", "repo_access": []string{}}, &plain, http.StatusCreated)
 	coder := s.newBot(t, "Coder", "claude")
 
-	lastArgv := func(b bot) []string {
+	lastCall := func(b bot) *call {
 		heySystem(t, s, "claude", b)
 		sessions := m.sessions(t, "claude")
-		return sessions[len(sessions)-1].argv
+		return sessions[len(sessions)-1]
 	}
+	lastArgv := func(b bot) []string { return lastCall(b).argv }
 	// tools is the value of --tools and whether the flag is there.
 	tools := func(argv []string) (string, bool) {
 		i := slices.Index(argv, "--tools")
@@ -88,11 +90,12 @@ func TestChiefNoShell_ClaudeRunsWithoutTools(t *testing.T) {
 
 	for _, mode := range _modes {
 		s.do(t, "PUT", "/api/bots/chief", map[string]string{"mode": mode}, nil, http.StatusOK)
-		argv := lastArgv(chiefBot)
+		run := lastCall(chiefBot)
+		argv := run.argv
 		if v, ok := tools(argv); !ok || v != "" {
 			t.Errorf("Chief on %s: --tools present %v with value %q, want present and empty; argv %q", mode, ok, v, argv)
 		}
-		if !strings.Contains(flagValue(argv, "--mcp-config"), `"atoll"`) || flagValue(argv, "--allowedTools") != "mcp__atoll" {
+		if _, ok := mcpServersOf(t, "claude", run)["atoll"]; !ok || flagValue(argv, "--allowedTools") != "mcp__atoll" {
 			t.Errorf("Chief on %s: want the atoll MCP config and --allowedTools mcp__atoll kept; argv %q", mode, argv)
 		}
 	}
@@ -105,6 +108,7 @@ func TestChiefNoShell_ClaudeRunsWithoutTools(t *testing.T) {
 }
 
 func TestChiefNoShell_CodexChiefStillRuns(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "codex")
 	b := chief(t, s)
 	if b.Provider != "codex" {
@@ -114,6 +118,7 @@ func TestChiefNoShell_CodexChiefStillRuns(t *testing.T) {
 }
 
 func TestChiefNoShell_ImportAgent(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	agents := filepath.Join(m.home, ".claude", "agents")
 	file := filepath.Join(agents, "lagoon.md")
@@ -181,6 +186,7 @@ func TestChiefNoShell_ImportAgent(t *testing.T) {
 }
 
 func TestChiefNoShell_ImportAgentThroughSymlinkedFolder(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	dotfiles := filepath.Join(t.TempDir(), "dotfiles-agents")
 	writeFile(t, filepath.Join(dotfiles, "lagoon.md"), "---\nname: lagoon\n---\nHi.\n")
@@ -198,6 +204,7 @@ func TestChiefNoShell_ImportAgentThroughSymlinkedFolder(t *testing.T) {
 }
 
 func TestChiefNoShell_ImportAgentOnlyForPlatformBots(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	writeFile(t, filepath.Join(m.home, ".claude", "agents", "lagoon.md"), "---\nname: lagoon\n---\nHi.\n")
 	if _, _, failed := chiefTool(t, s, "import_agent", map[string]any{"path": "~/.claude/agents/lagoon.md"}); failed {
@@ -212,6 +219,7 @@ func TestChiefNoShell_ImportAgentOnlyForPlatformBots(t *testing.T) {
 }
 
 func TestChiefNoShell_ImportSkillOnlyFromSkillFolders(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	skill := func(dir, name string) string {
 		path := filepath.Join(dir, name)
@@ -270,6 +278,7 @@ func TestChiefNoShell_ImportSkillOnlyFromSkillFolders(t *testing.T) {
 }
 
 func TestChiefNoShell_PromptNamesImportAgent(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -290,6 +299,7 @@ func TestChiefNoShell_PromptNamesImportAgent(t *testing.T) {
 }
 
 func TestChiefNoShell_ChiefStillDoesItsJob(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	repoPath := t.TempDir()
 	gitIn(t, repoPath, "init", "-b", "main")
@@ -327,6 +337,7 @@ func TestChiefNoShell_ChiefStillDoesItsJob(t *testing.T) {
 }
 
 func TestChiefNoShell_ImportAgentForAnyPlatformBot(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	writeFile(t, filepath.Join(m.home, ".claude", "agents", "lagoon.md"), "---\nname: lagoon\n---\nHi.\n")
 	var keeper bot
@@ -344,6 +355,7 @@ func TestChiefNoShell_ImportAgentForAnyPlatformBot(t *testing.T) {
 }
 
 func TestChiefNoShell_ReimportRefusedOutsideSkillFolders(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	root := filepath.Join(m.home, ".claude", "skills", "greet")
 	writeFile(t, filepath.Join(root, "SKILL.md"), "---\nname: greet\ndescription: Greets.\n---\nHello.\n")
@@ -379,6 +391,7 @@ func TestChiefNoShell_ReimportRefusedOutsideSkillFolders(t *testing.T) {
 }
 
 func TestChiefNoShell_ChiefProvider(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t, "claude", "codex")
 	m.signIn(t, "claude")
 	m.signIn(t, "codex")

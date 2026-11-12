@@ -21,6 +21,7 @@ func said(text string, groups ...[]string) bool {
 }
 
 func TestPrompt_ReplyCarriesAnswerRule(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)

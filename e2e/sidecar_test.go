@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+// Serial: freeAddr frees its port before atoll binds it, and a parallel test could take it first.
 func TestServe_ExitsWhenStdinCloses(t *testing.T) {
 	m := newMachine(t)
 	addr := freeAddr(t)
@@ -32,6 +33,7 @@ func TestServe_ExitsWhenStdinCloses(t *testing.T) {
 }
 
 func TestServe_ReportsAddressAlreadyInUse(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -56,6 +58,7 @@ func TestServe_ReportsAddressAlreadyInUse(t *testing.T) {
 }
 
 func TestServe_SIGTERMLeavesNoRunningRunAfterRestart(t *testing.T) {
+	t.Parallel()
 	m, s := start(t, "claude")
 	th := s.newThread(t, s.newBot(t, "Ada", "claude"))
 	events := s.events(t, th)

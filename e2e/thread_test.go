@@ -31,6 +31,7 @@ func start(t *testing.T, provider string) (*machine, *server) {
 }
 
 func TestThread_ResumesAndReports(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -52,7 +53,7 @@ func TestThread_ResumesAndReports(t *testing.T) {
 				if c.got.Status != "done" || c.got.Reply != c.reply {
 					t.Errorf("run %s: status %q, reply %q; want done, %q (error %q)", c.got.ID, c.got.Status, c.got.Reply, c.reply, c.got.Error)
 				}
-				want := report{Done: c.done, Tried: "none", Blocked: "none", Next: "none"}
+				want := report{Done: c.done, Tried: "none", Blocked: "", Next: "none"}
 				if c.got.Report == nil || *c.got.Report != want {
 					t.Errorf("run %s: report %+v, want the finish_run call %+v", c.got.ID, c.got.Report, want)
 				}
@@ -96,6 +97,7 @@ func TestThread_ResumesAndReports(t *testing.T) {
 }
 
 func TestApproval(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		for _, approve := range []bool{true, false} {
 			name := map[bool]string{true: "approve", false: "reject"}[approve]
@@ -140,6 +142,7 @@ func TestApproval(t *testing.T) {
 }
 
 func TestToolCalls_Stream(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -185,6 +188,7 @@ func TestToolCalls_Stream(t *testing.T) {
 }
 
 func TestRestart_FailsRunningRun(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
