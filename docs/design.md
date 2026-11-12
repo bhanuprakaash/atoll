@@ -1748,9 +1748,10 @@ Voice
   title with nothing left is no title: the first-words one stays. The first-words title follows
   rule 2 and not rule 1: it is the user's own words. On launch Reef cleans the stored titles the
   same way, once and without a provider call: a label is dropped, and a title of exactly six
-  words ending on one of those words loses them (a title the user set that falls in the same
-  class is cleaned too). It is not a run, shows no status line and never
-  touches the thread's provider session; when it fails, the first-words title stays. The user can
+  words ending on one of those words loses them, then its trailing punctuation; a stored title
+  that is not cut keeps its punctuation. The setting `titles_cleaned` marks that it ran; it is
+  set by the first launch that finds a thread. Titles the user sets later are not cleaned. It is
+  not a run, shows no status line and never touches the thread's provider session; when it fails, the first-words title stays. The user can
   set a title (`PATCH /api/threads/{id}`), and a user title is never replaced. *Six words cut
   mid-thought ("hey we have to bring the"); one cheap call per thread is worth a title that says
   what the thread is about. Titles read as titles: a label is the model describing its job, and

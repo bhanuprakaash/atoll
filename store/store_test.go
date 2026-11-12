@@ -53,6 +53,8 @@ func TestCleanTitle(t *testing.T) {
 		{"first words trim when cut", "hey we have to bring the shell tests back.", store.TitleFirstWords, "hey we have to bring"},
 		{"stored exact six trims stop word", "Final review of #122 fix on", store.TitleStored, "Final review of #122 fix"},
 		{"stored other length stays", "What is this for", store.TitleStored, "What is this for"},
+		{"stored keeps punctuation when not cut", "Why is CI red?", store.TitleStored, "Why is CI red?"},
+		{"stored cut trims punctuation", "Review of the login loop bug.", store.TitleStored, "Review of the login loop bug"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -107,6 +109,46 @@ func TestStore_Open_CleansTitles(t *testing.T) {
 			t.Errorf("title %q after opening = %q, want %q", tt.old, thread.Title, tt.want)
 		}
 	}
+}
+
+func TestStore_Open_CleansTitlesOnce(t *testing.T) {
+	ctx := t.Context()
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopen := func(want string) {
+		t.Helper()
+		if err := st.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if st, err = store.Open(dir); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.Thread(ctx, thread.ID)
+		if err != nil || got.Title != want {
+			t.Fatalf("title after opening = %q, %v; want %q", got.Title, err, want)
+		}
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if err := st.SetTitle(ctx, thread.ID, "Why is CI red?"); err != nil {
+		t.Fatal(err)
+	}
+	reopen("Why is CI red?")
+	reopen("Why is CI red?")
+	if err := st.SetTitle(ctx, thread.ID, "Title: Login redirect loop"); err != nil {
+		t.Fatal(err)
+	}
+	reopen("Title: Login redirect loop")
 }
 
 func TestRepoAccess_JSON(t *testing.T) {

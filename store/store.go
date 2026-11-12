@@ -93,6 +93,9 @@ const (
 // _islandSeenKey is the setting that holds the island's seen time, in microseconds.
 const _islandSeenKey = "island_seen_at"
 
+// _titlesCleanedKey is the setting that marks the one cleaning of the titles stored before it.
+const _titlesCleanedKey = "titles_cleaned"
+
 // _maxPinnedThreads is how many open threads of one Bot may be pinned.
 const _maxPinnedThreads = 3
 
@@ -1695,7 +1698,7 @@ func CleanTitle(text string, source TitleSource) string {
 			words = words[:len(words)-1]
 		}
 	}
-	if len(words) > 0 {
+	if len(words) > 0 && (source != TitleStored || cut) {
 		words[len(words)-1] = strings.TrimRight(words[len(words)-1], ".,;:!?")
 	}
 	return strings.TrimSpace(strings.Join(words, " "))
@@ -1722,6 +1725,13 @@ func isTitleStopWord(word string) bool {
 }
 
 func cleanStoredTitles(ctx context.Context, db *sql.DB) error {
+	var done int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM settings WHERE key = ?", _titlesCleanedKey).Scan(&done); err != nil {
+		return err
+	}
+	if done > 0 {
+		return nil
+	}
 	rows, err := db.QueryContext(ctx, "SELECT id, title FROM threads")
 	if err != nil {
 		return err
@@ -1749,7 +1759,11 @@ func cleanStoredTitles(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
-	return nil
+	// A file with no thread has nothing stored to clean: the marker waits for the first launch that
+	// finds one.
+	_, err = db.ExecContext(ctx,
+		"INSERT INTO settings (key, value) SELECT ?, '1' WHERE EXISTS (SELECT 1 FROM threads)", _titlesCleanedKey)
+	return err
 }
 
 func insertInbox(ctx context.Context, db execer, threadID, fromBotID, text, kind string) error {
