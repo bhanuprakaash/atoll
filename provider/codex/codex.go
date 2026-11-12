@@ -57,13 +57,19 @@ type (
 		changes  map[string]json.RawMessage
 		tools    map[string]string // server to its last started MCP tool, which names an elicitation
 		notes    map[string]bool   // commentary agent message items of the turn; owned by run
+		model    string            // the thread's model; owned by run
+		turnID   string            // the turn in progress; owned by run
+		usage    provider.Usage    // what this process's own turns used; owned by run
+		resetsAt time.Time         // reset of the full rate-limit window last reported; owned by run
 
-		askMu sync.Mutex
-		asks  map[string]ask
+		askMu   sync.Mutex
+		asks    map[string]ask
+		steered string // turn and text of the last steer, so several refusals send it once
 	}
 
 	ask struct {
-		id json.RawMessage
+		id     json.RawMessage
+		turnID string
 		// elicitation: MCP elicitations answer {action}, other requests {decision}.
 		elicitation bool
 	}
@@ -83,14 +89,33 @@ type (
 		ItemID     string          `json:"itemId"`
 		ServerName string          `json:"serverName"`
 		RequestID  json.RawMessage `json:"requestId"`
+		TurnID     string          `json:"turnId"`
 		Item       json.RawMessage `json:"item"`
-		Turn       struct {
+		TokenUsage struct {
+			Last struct {
+				InputTokens       int `json:"inputTokens"`
+				CachedInputTokens int `json:"cachedInputTokens"`
+				CacheWriteTokens  int `json:"cacheWriteInputTokens"`
+				OutputTokens      int `json:"outputTokens"`
+			} `json:"last"`
+		} `json:"tokenUsage"`
+		RateLimits struct {
+			Primary   *limitWindow `json:"primary"`
+			Secondary *limitWindow `json:"secondary"`
+		} `json:"rateLimits"`
+		Turn struct {
+			ID     string `json:"id"`
 			Status string `json:"status"`
 			Error  *struct {
 				Message        string `json:"message"`
 				CodexErrorInfo any    `json:"codexErrorInfo"`
 			} `json:"error"`
 		} `json:"turn"`
+	}
+
+	limitWindow struct {
+		UsedPercent float64 `json:"usedPercent"`
+		ResetsAt    int64   `json:"resetsAt"`
 	}
 
 	// tail is an io.Writer that keeps the last 4 KB written to it.
@@ -182,14 +207,26 @@ func (s *Session) Send(_ context.Context, prompt string, images []provider.Image
 // Events streams events until codex exits, then closes the channel.
 func (s *Session) Events() <-chan provider.Event { return s.events }
 
-// Answer replies to the approval request with id. It is safe to call while run reads.
-func (s *Session) Answer(id string, allow bool) error {
+// Answer replies to the approval request with id. A refusal with a reason steers the turn with
+// the reason first. It is safe to call while run reads.
+func (s *Session) Answer(id string, allow bool, reason string) error {
 	s.askMu.Lock()
 	a, ok := s.asks[id]
 	delete(s.asks, id)
+	steer := !allow && reason != "" && s.steered != a.turnID+"\x00"+reason
+	if steer {
+		s.steered = a.turnID + "\x00" + reason
+	}
 	s.askMu.Unlock()
 	if !ok {
 		return fmt.Errorf("no open approval request %s: %w", id, provider.ErrApprovalEnded)
+	}
+	var steerErr error
+	if steer {
+		steerErr = s.write(map[string]any{"id": "steer-" + a.turnID, "method": "turn/steer", "params": map[string]any{
+			"threadId": s.threadID, "expectedTurnId": a.turnID,
+			"input": []map[string]string{{"type": "text", "text": reason}},
+		}})
 	}
 	reply, answer := "decision", "decline"
 	if a.elicitation {
@@ -198,7 +235,7 @@ func (s *Session) Answer(id string, allow bool) error {
 	if allow {
 		answer = "accept"
 	}
-	return s.write(map[string]any{"id": a.id, "result": map[string]string{reply: answer}})
+	return errors.Join(steerErr, s.write(map[string]any{"id": a.id, "result": map[string]string{reply: answer}}))
 }
 
 // Interrupt stops codex, waits for it, and closes Events. Codex gets SIGTERM so it can stop the
@@ -329,6 +366,7 @@ func (s *Session) handshake(method string, params map[string]any, skillDir strin
 		return fmt.Errorf("%s: %w", method, err)
 	}
 	var thread struct {
+		Model  string `json:"model"`
 		Thread struct {
 			ID string `json:"id"`
 		} `json:"thread"`
@@ -336,7 +374,7 @@ func (s *Session) handshake(method string, params map[string]any, skillDir strin
 	if err := json.Unmarshal(res, &thread); err != nil {
 		return fmt.Errorf("%s result: %w", method, err)
 	}
-	s.threadID = thread.Thread.ID
+	s.threadID, s.model = thread.Thread.ID, thread.Model
 	return nil
 }
 
@@ -427,7 +465,7 @@ func (s *Session) serverRequest(m message) bool {
 	}
 	id := string(m.ID)
 	s.askMu.Lock()
-	s.asks[id] = ask{id: m.ID, elicitation: elicitation}
+	s.asks[id] = ask{id: m.ID, turnID: m.body().TurnID, elicitation: elicitation}
 	s.askMu.Unlock()
 	input := m.Params
 	if name == "fileChange" {
@@ -450,10 +488,23 @@ func (s *Session) serverRequest(m message) bool {
 func (s *Session) handle(m message) bool {
 	switch m.Method {
 	case "turn/started":
+		s.turnID = m.body().Turn.ID
 		s.msgID, s.wrote = "", false
 		clear(s.notes)
 		clear(s.changes)
 		clear(s.tools)
+		s.resetsAt = time.Time{}
+	case "account/rateLimits/updated":
+		s.resetsAt = time.Time{}
+		limits := m.body().RateLimits
+		for _, w := range []*limitWindow{limits.Primary, limits.Secondary} {
+			if w == nil || w.UsedPercent < 100 || w.ResetsAt <= 0 {
+				continue
+			}
+			if at := time.Unix(w.ResetsAt, 0).UTC(); at.After(s.resetsAt) {
+				s.resetsAt = at
+			}
+		}
 	case "item/started":
 		var it struct {
 			ID     string `json:"id"`
@@ -483,6 +534,24 @@ func (s *Session) handle(m message) bool {
 			return false
 		}
 		s.msgID, s.wrote = itemID, true
+	case "thread/tokenUsage/updated":
+		// A resume first replays an update of the thread's earlier turn.
+		if p := m.body(); s.turnID != "" && p.TurnID == s.turnID {
+			last := p.TokenUsage.Last
+			s.usage.Calls++
+			s.usage.InputTokens += last.InputTokens - last.CachedInputTokens
+			s.usage.CacheReadTokens += last.CachedInputTokens
+			s.usage.CacheWriteTokens += last.CacheWriteTokens
+			s.usage.OutputTokens += last.OutputTokens
+		}
+	case "turn/completed":
+		if s.usage.Calls > 0 {
+			u := s.usage
+			u.Model = s.model
+			if !s.emit(provider.Event{Kind: provider.KindUsage, Usage: &u}) {
+				return false
+			}
+		}
 	case "serverRequest/resolved":
 		id := string(m.body().RequestID)
 		s.askMu.Lock()
@@ -494,6 +563,9 @@ func (s *Session) handle(m message) bool {
 	ev, ok := m.event()
 	if !ok {
 		return true
+	}
+	if ev.Limited {
+		ev.ResetsAt = s.resetsAt
 	}
 	return s.emit(ev)
 }
@@ -539,11 +611,13 @@ func (m message) event() (ev provider.Event, ok bool) {
 	case m.Method == "item/started":
 		return toolCall(p.Item)
 	case m.Method == "turn/completed" && p.Turn.Status != "completed":
-		msg, signedOut := "turn "+p.Turn.Status, false
+		msg, info := "turn "+p.Turn.Status, any(nil)
 		if p.Turn.Error != nil {
-			msg, signedOut = p.Turn.Error.Message, p.Turn.Error.CodexErrorInfo == "unauthorized"
+			msg, info = p.Turn.Error.Message, p.Turn.Error.CodexErrorInfo
 		}
-		return provider.Event{Kind: provider.KindError, Text: msg, SignedOut: signedOut}, true
+		return provider.Event{
+			Kind: provider.KindError, Text: msg, SignedOut: info == "unauthorized", Limited: info == "usageLimitExceeded",
+		}, true
 	case m.Method == "turn/completed":
 		return provider.Event{Kind: provider.KindTurnEnd}, true
 	}

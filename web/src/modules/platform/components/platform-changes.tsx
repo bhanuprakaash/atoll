@@ -83,6 +83,25 @@ function By({
   );
 }
 
+function Check() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="flex-none"
+    >
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  );
+}
+
 function NewBotRow({
   change,
   look,
@@ -382,6 +401,15 @@ export function PlatformChanges({
   return (
     <ul className="flex flex-col gap-2">
       {[...groups].map(([key, group]) => {
+        if (key === 'allow/create')
+          return group.map((change) => (
+            <li key={change.id} role="region" aria-label="Platform change">
+              <Fold
+                icon={<Check />}
+                summary={`Allowed \`${change.after?.command}\` for this thread`}
+              />
+            </li>
+          ));
         const botName = botNames[group[0].source_bot_id];
         if (key === 'bot/create')
           return (

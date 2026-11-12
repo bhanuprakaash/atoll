@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/zalando/go-keyring"
+
+	"atoll/store"
 )
 
 const (
@@ -37,6 +39,14 @@ var (
 )
 
 const _refreshBefore = 10 * time.Minute
+
+// readError marks a failed secret read as an unreachable store, unless the secret is only missing.
+func readError(err error) error {
+	if err == nil || errors.Is(err, keyring.ErrNotFound) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", store.ErrSecretStore, err)
+}
 
 // Device is a started device-flow sign-in: the user enters UserCode at VerificationURI.
 type Device struct {
@@ -118,7 +128,7 @@ func UsableToken(ctx context.Context, c *http.Client, instance, id string) (stri
 	defer mu.Unlock()
 	value, err := keyring.Get("atoll", "gitlab:"+id)
 	if err != nil {
-		return "", err
+		return "", readError(err)
 	}
 	var tokens Tokens
 	if json.Unmarshal([]byte(value), &tokens) != nil {

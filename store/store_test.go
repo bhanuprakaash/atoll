@@ -39,6 +39,75 @@ func TestStore_Open_Private(t *testing.T) {
 	}
 }
 
+func TestCleanTitle(t *testing.T) {
+	tests := []struct {
+		name   string
+		text   string
+		source store.TitleSource
+		want   string
+	}{
+		{"generated strips label before cutting", "Status line: One two three four five six seven", store.TitleGenerated, "One two three four five six"},
+		{"generated removes repeated stop words", "On the of and to in a for", store.TitleGenerated, ""},
+		{"first words keep label", "Status: why does login loop on settings page", store.TitleFirstWords, "Status: why does login loop"},
+		{"first words trim when cut", "hey we have to bring the shell tests back.", store.TitleFirstWords, "hey we have to bring"},
+		{"stored exact six trims stop word", "Final review of #122 fix on", store.TitleStored, "Final review of #122 fix"},
+		{"stored other length stays", "What is this for", store.TitleStored, "What is this for"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := store.CleanTitle(tt.text, tt.source); got != tt.want {
+				t.Errorf("CleanTitle(%q, %v) = %q, want %q", tt.text, tt.source, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStore_Open_CleansTitles(t *testing.T) {
+	ctx := t.Context()
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct{ old, want string }{
+		{"Conversation title: Login redirect loop", "Login redirect loop"},
+		{"Final review of #122 fix on", "Final review of #122 fix"},
+		{"What is this for", "What is this for"},
+	}
+	var ids []string
+	for _, tt := range tests {
+		thread, err := st.CreateThread(ctx, bot.ID, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.SetTitle(ctx, thread.ID, tt.old); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, thread.ID)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	for i, tt := range tests {
+		thread, err := st.Thread(ctx, ids[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if thread.Title != tt.want {
+			t.Errorf("title %q after opening = %q, want %q", tt.old, thread.Title, tt.want)
+		}
+	}
+}
+
 func TestRepoAccess_JSON(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -723,5 +792,75 @@ func TestStore_Groups(t *testing.T) {
 	}
 	if got := names(); got != "B,C" {
 		t.Errorf("groups %q after delete, want B,C", got)
+	}
+}
+
+func TestStore_Queued(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	png := store.Attachment{Mime: "image/png", Data: []byte("png")}
+	one, err := st.Enqueue(ctx, store.InboxItem{ThreadID: th.ID, Text: "one", Queued: true, FromUser: true, Images: []store.Attachment{png}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Enqueue(ctx, store.InboxItem{ThreadID: th.ID, Text: "wake", FromBotID: bot.ID}); err != nil {
+		t.Fatal(err)
+	}
+	two, err := st.Enqueue(ctx, store.InboxItem{ThreadID: th.ID, Text: "two", Queued: true, FromUser: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Attachment(ctx, one.Images[0].ID); err != nil {
+		t.Errorf("queued image not served: %v", err)
+	}
+
+	queued, err := st.Queued(ctx, th.ID)
+	if err != nil || len(queued) != 2 || queued[0].ID != one.ID || queued[1].ID != two.ID || queued[0].Images[0].Data != nil {
+		t.Fatalf("Queued = %+v, %v; want one, two without the wake or image bytes", queued, err)
+	}
+	if _, err := st.EditQueued(ctx, th.ID, two.ID, ""); !errors.Is(err, store.ErrEmpty) {
+		t.Errorf("empty edit: %v, want ErrEmpty", err)
+	}
+	if got, err := st.EditQueued(ctx, th.ID, one.ID, ""); err != nil || got.Text != "" {
+		t.Errorf("edit to no text with an image: %+v, %v", got, err)
+	}
+	if err := st.DeleteQueued(ctx, th.ID, "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("delete unknown: %v, want ErrNotFound", err)
+	}
+
+	items, err := st.UserInbox(ctx, th.ID)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("UserInbox = %+v, %v; want 2", items, err)
+	}
+	msg, _, err := st.StartRunFrom(ctx, items...)
+	if err != nil || msg.ID != one.ID {
+		t.Fatalf("StartRunFrom = %+v, %v; want first message with id %s", msg, err, one.ID)
+	}
+	for _, err := range []error{
+		st.DeleteQueued(ctx, th.ID, two.ID),
+		st.CheckQueued(ctx, th.ID, one.ID),
+		func() error { _, err := st.EditQueued(ctx, th.ID, one.ID, "late"); return err }(),
+	} {
+		if !errors.Is(err, store.ErrSent) {
+			t.Errorf("after delivery: %v, want ErrSent", err)
+		}
+	}
+	if _, err := st.Attachment(ctx, one.Images[0].ID); err != nil {
+		t.Errorf("image lost on delivery: %v", err)
+	}
+	if rest, err := st.Queued(ctx, th.ID); err != nil || len(rest) != 0 {
+		t.Errorf("Queued after delivery = %+v, %v; want none", rest, err)
 	}
 }

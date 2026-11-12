@@ -35,6 +35,10 @@ func run() error {
 		return apiUser()
 	case strings.HasPrefix(args, "pr create "):
 		return prCreate(os.Args[3:])
+	case strings.HasPrefix(args, "pr ready "):
+		return prReady(os.Args[3:])
+	case strings.HasPrefix(args, "pr edit "):
+		return prEdit(os.Args[3:])
 	}
 	return fmt.Errorf("unsupported gh argv %q", os.Args[1:])
 }
@@ -140,20 +144,25 @@ func apiUser() error {
 	return nil
 }
 
-// prCreate is `gh pr create --head <branch> [--base <branch>] --title <t> [--body <b>]`, the flags
-// a Bot uses. Like gh it opens the pull request in the repo named by the origin of the current
+// prCreate is `gh pr create --head <branch> [--base <branch>] --title <t> [--body <b>] [--draft]`, the
+// flags a Bot uses. Like gh it opens the pull request in the repo named by the origin of the current
 // directory (the last two path segments of its URL), against base main when --base is absent, and
-// prints the pull request's URL.
+// prints the pull request's URL. --draft opens it as a draft.
 func prCreate(args []string) error {
-	in := map[string]string{"base": "main"}
-	for i := 0; i < len(args); i += 2 {
+	in := map[string]any{"base": "main"}
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--draft" {
+			in["draft"] = true
+			continue
+		}
 		key, ok := strings.CutPrefix(args[i], "--")
 		if !ok || i+1 == len(args) || !strings.Contains(" head base title body ", " "+key+" ") {
 			return fmt.Errorf("unsupported gh pr create argv %q", args)
 		}
-		in[key] = args[i+1]
+		i++
+		in[key] = args[i]
 	}
-	if in["head"] == "" || in["title"] == "" {
+	if in["head"] == nil || in["title"] == nil {
 		return errors.New("gh: pr create needs --head and --title")
 	}
 	origin, err := exec.Command("git", "remote", "get-url", "origin").Output()
@@ -178,5 +187,59 @@ func prCreate(args []string) error {
 		return fmt.Errorf("gh: no html_url in %q", body)
 	}
 	fmt.Println(pr.URL)
+	return nil
+}
+
+// repoPath is "owner/repo" of the origin of the current directory, as gh reads it.
+func repoPath() (string, error) {
+	origin, err := exec.Command("git", "remote", "get-url", "origin").Output()
+	if err != nil {
+		return "", fmt.Errorf("gh: no git remote origin here: %w", err)
+	}
+	parts := strings.FieldsFunc(strings.TrimSuffix(strings.TrimSpace(string(origin)), ".git"), func(r rune) bool { return r == '/' || r == ':' })
+	if len(parts) < 2 {
+		return "", fmt.Errorf("gh: cannot read owner/repo from origin %q", origin)
+	}
+	return parts[len(parts)-2] + "/" + parts[len(parts)-1], nil
+}
+
+// prReady is `gh pr ready <number>`: like gh it calls the GraphQL mutation markPullRequestReadyForReview
+// with the pull request's node id, here PR_<owner>/<repo>#<number>.
+func prReady(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("unsupported gh pr ready argv %q", args)
+	}
+	repo, err := repoPath()
+	if err != nil {
+		return err
+	}
+	query := "mutation PullRequestReadyForReview($input: MarkPullRequestReadyForReviewInput!) { markPullRequestReadyForReview(input: $input) { pullRequest { isDraft } } }"
+	body, status, err := githubAPI(http.MethodPost, "/graphql", map[string]any{"query": query,
+		"variables": map[string]any{"input": map[string]string{"pullRequestId": "PR_" + repo + "#" + args[0]}}})
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("gh: HTTP %d: %s", status, bytes.TrimSpace(body))
+	}
+	return nil
+}
+
+// prEdit is `gh pr edit <number> --base <branch>`: a PATCH of the pull request's base.
+func prEdit(args []string) error {
+	if len(args) != 3 || args[1] != "--base" {
+		return fmt.Errorf("unsupported gh pr edit argv %q", args)
+	}
+	repo, err := repoPath()
+	if err != nil {
+		return err
+	}
+	body, status, err := githubAPI(http.MethodPatch, "/repos/"+repo+"/pulls/"+args[0], map[string]string{"base": args[2]})
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("gh: HTTP %d: %s", status, bytes.TrimSpace(body))
+	}
 	return nil
 }

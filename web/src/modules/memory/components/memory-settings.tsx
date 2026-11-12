@@ -70,7 +70,7 @@ function MemoryRow({
       </RowText>
       <Tag>{item.kind}</Tag>
       {item.status === 'retired' ? (
-        <Tag>Retired</Tag>
+        <Tag>{item.retired_reason ? `Retired · ${item.retired_reason}` : 'Retired'}</Tag>
       ) : (
         <button
           type="button"

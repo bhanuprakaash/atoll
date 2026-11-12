@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -36,6 +37,8 @@ var (
 	ErrClosed = errors.New("thread is closed")
 	// ErrNotFound is wrapped when an approval id or run token matches nothing open.
 	ErrNotFound = errors.New("not found")
+	// ErrNotOffered is returned when Allow in this thread answers an approval that does not offer it.
+	ErrNotOffered = errors.New("allow in this thread is not offered for this approval")
 	// ErrNoGitHubConnection means the Bot has no GitHub connection.
 	ErrNoGitHubConnection = errors.New("this repo is on GitHub and this Bot has no GitHub connection: " +
 		"give this Bot the GitHub connection in its settings, then ask again")
@@ -61,9 +64,10 @@ const (
 const (
 	// A slow SSE client must not stall the run: its channel holds this many events and the
 	// subscriber is closed when it is full, so the client reconnects.
-	_subscriberBuffer = 64
-	_stopReason       = "Atoll stopped while the run was going"
-	_atollTools       = "mcp__" + provider.MCPServer + "__"
+	_subscriberBuffer  = 64
+	_stopReason        = "Atoll stopped while the run was going"
+	_secretStoreReason = "Reef can't reach its secret store. Restart Reef, or unlock it, then send again."
+	_atollTools        = "mcp__" + provider.MCPServer + "__"
 	// _callWait bounds how long Ask waits for its tool call to come through the provider's
 	// stdout, which races the permission prompt arriving over HTTP.
 	_callWait = 2 * time.Second
@@ -133,7 +137,16 @@ type (
 	// open is an approval waiting for the user; answer takes its one answer.
 	open struct {
 		approval Approval
-		answer   chan bool
+		command  string
+		run      *active
+		answer   chan Decision
+	}
+
+	// Decision is the user's answer to an approval. Reason is what a reply told the provider
+	// instead; it is empty for a plain Allow or Deny.
+	Decision struct {
+		Allow  bool
+		Reason string
 	}
 
 	// active is a run in progress. The Manager's mu guards log and open.
@@ -155,6 +168,11 @@ type (
 		calls    map[string]chan struct{} // closed once the tool call with that id is published
 		tool     ToolCall
 		shown    []string // memory ids the run's memory tools returned
+		// usage and priorCostUSD are the run goroutine's: the provider's last report, and what the
+		// session had cost before this run.
+		usage        *provider.Usage
+		priorCostUSD float64
+		kind         string // of the wake the run answers; empty for a message
 	}
 
 	// Event is one event on a thread's stream. Data is one of the types below. ThreadID is the
@@ -184,10 +202,11 @@ type (
 
 	// Approval is a step that waits for the user; ID is what Answer takes.
 	Approval struct {
-		RunID string          `json:"run_id"`
-		ID    string          `json:"id"`
-		Tool  string          `json:"tool"`
-		Input json.RawMessage `json:"input"`
+		RunID         string          `json:"run_id"`
+		ID            string          `json:"id"`
+		Tool          string          `json:"tool"`
+		Input         json.RawMessage `json:"input"`
+		AllowInThread bool            `json:"allow_in_thread"`
 	}
 
 	// ApprovalClosed says an approval is no longer open.
@@ -232,22 +251,89 @@ func New(cfg Config) *Manager {
 	}
 }
 
-// Send stores text and images as the user's message and starts a run for it. It returns ErrBusy
-// when the thread has a run going and wraps store.ErrNotFound for an unknown thread.
+// Send stores text and images as the user's message and starts a run for it. When the thread's
+// run is going it queues the message instead (the message has Queued set, the run is zero) and
+// logs it. It wraps store.ErrNotFound for an unknown thread.
 func (m *Manager) Send(
 	ctx context.Context, threadID, text string, images []store.Attachment,
 ) (store.Message, store.Run, error) {
 	msg, run, err := m.send(ctx, store.InboxItem{ThreadID: threadID, Text: text, Images: images})
-	if err != nil && !errors.Is(err, ErrBusy) {
-		m.flushLog(threadID)
+	if !errors.Is(err, ErrBusy) {
+		if err != nil {
+			m.flushLog(threadID)
+		}
+		return msg, run, err
 	}
-	return msg, run, err
+	it, err := m.cfg.Store.Enqueue(ctx, store.InboxItem{
+		ThreadID: threadID, Text: text, Images: images, Queued: true, FromUser: true,
+	})
+	if err != nil {
+		return store.Message{}, store.Run{}, err
+	}
+	m.cfg.Log.Info("queued", "thread_id", threadID, "message_id", it.ID)
+	// The run may have ended after send saw it going and before the message was stored.
+	m.flushLog(threadID)
+	return store.Message{
+		ID: it.ID, ThreadID: threadID, Role: store.RoleUser, Text: text, CreatedAt: it.CreatedAt,
+		Queued: true, Attachments: it.Images,
+	}, store.Run{}, nil
 }
 
-func (m *Manager) send(ctx context.Context, it store.InboxItem) (store.Message, store.Run, error) {
-	threadID, text := it.ThreadID, it.Text
+// EditQueued sets the text of the thread's queued message id; see store.EditQueued for the errors.
+func (m *Manager) EditQueued(ctx context.Context, threadID, id, text string) (store.InboxItem, error) {
+	m.inboxMu.Lock()
+	defer m.inboxMu.Unlock()
+	return m.cfg.Store.EditQueued(ctx, threadID, id, text)
+}
+
+// RemoveQueued removes the thread's queued message id.
+func (m *Manager) RemoveQueued(ctx context.Context, threadID, id string) error {
+	m.inboxMu.Lock()
+	defer m.inboxMu.Unlock()
+	return m.cfg.Store.DeleteQueued(ctx, threadID, id)
+}
+
+// SendNow stops the thread's run, if one is going, and starts the one run of the person's queued
+// messages. It returns store.ErrSent when message id is no longer queued.
+func (m *Manager) SendNow(ctx context.Context, threadID, id string) (store.Run, error) {
+	if err := m.cfg.Store.CheckQueued(ctx, threadID, id); err != nil {
+		return store.Run{}, err
+	}
+	if runID, _, ok := m.Active(threadID); ok {
+		if err := m.Stop(ctx, runID); err != nil && !errors.Is(err, ErrBusy) {
+			return store.Run{}, err
+		}
+	}
+	m.inboxMu.Lock()
+	defer m.inboxMu.Unlock()
+	items, err := m.cfg.Store.UserInbox(ctx, threadID)
+	if err != nil {
+		return store.Run{}, err
+	}
+	if !slices.ContainsFunc(items, func(it store.InboxItem) bool { return it.ID == id }) {
+		return store.Run{}, store.ErrSent
+	}
+	_, run, err := m.sendHeld(ctx, items...)
+	return run, err
+}
+
+func (m *Manager) send(ctx context.Context, items ...store.InboxItem) (store.Message, store.Run, error) {
+	threadID := items[0].ThreadID
+	texts := make([]string, len(items))
+	var images []provider.Image
+	kind := items[0].Kind
+	for i, it := range items {
+		texts[i] = it.Text
+		if it.Kind != kind {
+			kind = ""
+		}
+		for _, img := range it.Images {
+			images = append(images, provider.Image{Mime: img.Mime, Data: img.Data})
+		}
+	}
+	text := strings.Join(texts, "\n\n")
 	runCtx, cancel := context.WithCancel(m.ctx)
-	a := &active{threadID: threadID, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
+	a := &active{threadID: threadID, kind: kind, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		cancel()
@@ -263,7 +349,7 @@ func (m *Manager) send(ctx context.Context, it store.InboxItem) (store.Message, 
 	m.wg.Add(1)
 	m.mu.Unlock()
 
-	msg, run, err := m.start(ctx, it)
+	msg, run, err := m.start(ctx, items)
 	if err != nil {
 		m.drop(a)
 		cancel()
@@ -274,24 +360,20 @@ func (m *Manager) send(ctx context.Context, it store.InboxItem) (store.Message, 
 	a.run = run
 	m.tokens[a.token] = a
 	m.mu.Unlock()
-	images := make([]provider.Image, len(msg.Attachments))
-	for i, att := range msg.Attachments {
-		images[i] = provider.Image{Mime: att.Mime, Data: att.Data}
-	}
 	go m.execute(a, text, images)
 	return msg, run, nil
 }
 
-// start refuses a closed thread, then stores the message and its run.
-func (m *Manager) start(ctx context.Context, it store.InboxItem) (store.Message, store.Run, error) {
-	t, err := m.cfg.Store.Thread(ctx, it.ThreadID)
+// start refuses a closed thread, then stores the messages and their run.
+func (m *Manager) start(ctx context.Context, items []store.InboxItem) (store.Message, store.Run, error) {
+	t, err := m.cfg.Store.Thread(ctx, items[0].ThreadID)
 	if err != nil {
 		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
 	}
 	if t.Closed {
 		return store.Message{}, store.Run{}, ErrClosed
 	}
-	msg, run, err := m.cfg.Store.StartRunFrom(ctx, it)
+	msg, run, err := m.cfg.Store.StartRunFrom(ctx, items...)
 	if err != nil {
 		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
 	}
@@ -448,7 +530,44 @@ func (m *Manager) Answer(_ context.Context, id string, allow bool) error {
 	if !ok {
 		return fmt.Errorf("approval %s: %w", id, ErrNotFound)
 	}
-	o.answer <- allow
+	o.answer <- Decision{Allow: allow}
+	return nil
+}
+
+// AnswerInThread allows the open approval id and every later ask for the same command in its
+// thread. It wraps ErrNotFound when none is open, and leaves the approval open and returns
+// ErrNotOffered when allow is false or the approval does not offer it.
+func (m *Manager) AnswerInThread(ctx context.Context, id string, allow bool) error {
+	m.mu.Lock()
+	o, ok := m.approvals[id]
+	offered := ok && allow && o.approval.AllowInThread
+	if offered {
+		delete(m.approvals, id)
+	}
+	m.mu.Unlock()
+	switch {
+	case !ok:
+		return fmt.Errorf("approval %s: %w", id, ErrNotFound)
+	case !offered:
+		return ErrNotOffered
+	}
+	after, err := json.Marshal(map[string]string{"command": o.command})
+	if err == nil {
+		var c store.Change
+		c, err = m.cfg.Store.RecordChange(ctx, store.Change{
+			Entity: store.EntityAllow, EntityID: id, Action: store.ActionCreate, After: after,
+			SourceBotID: o.run.bot.ID, SourceThreadID: o.run.threadID, SourceRunID: o.run.run.ID,
+		})
+		if err == nil {
+			m.publish(o.run, EventPlatformChanged, PlatformChanged{
+				SourceBotID: c.SourceBotID, ThreadID: c.SourceThreadID, RunID: c.SourceRunID, Change: c,
+			})
+		}
+	}
+	o.answer <- Decision{Allow: true}
+	if err != nil {
+		return fmt.Errorf("record allow: %w", err)
+	}
 	return nil
 }
 
@@ -457,6 +576,14 @@ func (m *Manager) Report(ctx context.Context, token string, r store.Report) erro
 	a, err := m.byToken(token)
 	if err != nil {
 		return err
+	}
+	for i, p := range r.Ready {
+		switch {
+		case p.URL == "":
+			return RefusedError(fmt.Sprintf("ready entry %d: url is empty; nothing saved", i+1))
+		case !_headSHA.MatchString(p.SHA):
+			return RefusedError(fmt.Sprintf("ready entry %d: sha must be the PR's 40-hex head commit; nothing saved", i+1))
+		}
 	}
 	if err := m.cfg.Store.SetReport(ctx, a.run.ID, r); err != nil {
 		return fmt.Errorf("report run %s: %w", a.run.ID, err)
@@ -469,19 +596,19 @@ func (m *Manager) Report(ctx context.Context, token string, r store.Report) erro
 // follows the tool call toolUseID on the thread's stream.
 func (m *Manager) Ask(
 	ctx context.Context, token, toolUseID, tool string, input json.RawMessage,
-) (bool, error) {
+) (Decision, error) {
 	a, err := m.byToken(token)
 	if err != nil {
-		return false, err
+		return Decision{}, err
 	}
 	if strings.HasPrefix(tool, _atollTools) {
-		return true, nil
+		return Decision{Allow: true}, nil
 	}
 	select {
 	case <-m.called(a, toolUseID):
 	case <-time.After(_callWait):
 	case <-ctx.Done():
-		return false, ctx.Err()
+		return Decision{}, ctx.Err()
 	}
 	return m.approve(ctx, a, tool, input)
 }
@@ -541,6 +668,12 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 		res = store.RunResult{Status: store.StatusFailed, Error: err.Error()}
 		if m.ctx.Err() != nil {
 			res.Error = _stopReason
+		} else if errors.Is(err, store.ErrSecretStore) {
+			res.Error, res.ErrorKind = _secretStoreReason, store.ErrorSecretStore
+			m.cfg.Log.Warn("secret store unreachable", "run_id", a.run.ID,
+				"error_kind", res.ErrorKind, "error", err)
+		} else if limit := (*provider.LimitError)(nil); errors.As(err, &limit) {
+			res.ErrorKind, res.ResetsAt = store.ErrorRateLimited, limit.ResetsAt
 		} else if errors.Is(err, provider.ErrOff) {
 			res.ErrorKind = store.ErrorProviderOff
 		} else if errors.Is(err, connection.ErrNeedsSignIn) || errors.Is(err, connection.ErrGitHubNeedsSignIn) {
@@ -560,9 +693,10 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	quiet := a.quiet
 	m.mu.Unlock()
 	res.Provider = a.bot.Provider
-	wake := WakeText
-	if quiet {
-		wake = nil
+	res.Usage, res.SessionCostUSD = a.usageResult()
+	var wake func(store.Wake) string
+	if !quiet {
+		wake = m.wakeText(a.threadID)
 	}
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
@@ -594,6 +728,40 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 			m.flushLog(a.threadID)
 		}
 	}
+}
+
+// usageResult is what the run used, and what the session has cost in total. A session's cost
+// carries into its next process, so the run's own cost is the total less what came before.
+func (a *active) usageResult() (*store.Usage, *float64) {
+	u := a.usage
+	if u == nil {
+		return nil, nil
+	}
+	used := &store.Usage{
+		Model: u.Model, Calls: u.Calls, InputTokens: u.InputTokens, OutputTokens: u.OutputTokens,
+		CacheReadTokens: u.CacheReadTokens, CacheWriteTokens: u.CacheWriteTokens,
+	}
+	if u.SessionCostUSD == nil {
+		return used, nil
+	}
+	cost := math.Round((*u.SessionCostUSD-a.priorCostUSD)*1e6) / 1e6
+	used.CostUSD = &cost
+	return used, u.SessionCostUSD
+}
+
+// wakeText makes the wake text of a helper run on threadID, with the helpers line of its boss: the
+// helper whose run ended is not counted.
+func (m *Manager) wakeText(threadID string) func(store.Wake) string {
+	ctx := context.Background()
+	line := ""
+	t, err := m.cfg.Store.Thread(ctx, threadID)
+	if err == nil && t.ParentThreadID != "" {
+		line, err = m.helpersLine(ctx, t.ParentThreadID, threadID)
+	}
+	if err != nil {
+		m.cfg.Log.Error("count helpers", "thread_id", threadID, "error", err)
+	}
+	return func(w store.Wake) string { return WakeText(w, line) }
 }
 
 func (m *Manager) codexAutoCache(botID string) (string, []string, error) {
@@ -691,6 +859,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		thread.Session = ""
 		notice = "Provider changed to " + bot.Provider + "; starting a fresh session.\n\n"
 	}
+	if thread.Session != "" {
+		a.priorCostUSD = thread.SessionCostUSD
+	}
 	m.mu.Lock()
 	a.bot = bot
 	m.mu.Unlock()
@@ -701,6 +872,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		return "", fmt.Errorf("launch %s: %w", bot.Provider, err)
 	}
 	skillDir := filepath.Join(cfg.Dir, "runs", a.run.ID)
+	if !skill.Safe(skillDir) {
+		skillDir = safeSkillDir(a.run.ID)
+	}
 	defer func() {
 		if err := os.RemoveAll(skillDir); err != nil {
 			m.cfg.Log.Warn("remove skill dir", "run_id", a.run.ID, "error", err)
@@ -718,9 +892,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		}
 		rp.Host = RepoHost(a.ctx, rp.Path)
 	}
-	if cfg.Cwd, err = m.workdir(thread, rp); err != nil {
+	cwd, stale, err := m.workdir(thread, rp)
+	if err != nil {
 		return "", err
 	}
+	cfg.Cwd = cwd
 	user, err := m.cfg.Store.Setting(a.ctx, "user_name")
 	if err != nil {
 		return "", fmt.Errorf("load user name: %w", err)
@@ -728,6 +904,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	cfg.Model = bot.Model
 	cfg.Mode = bot.Mode
 	cfg.NoShell = bot.ID == "chief" && bot.Provider == "claude"
+	if bot.Provider == "claude" && !cfg.NoShell {
+		if cfg.HiddenPaths, err = m.hiddenPaths(a.ctx, bot); err != nil {
+			return "", err
+		}
+	}
 	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
 		if cfg.WritableRoots, err = m.codexAutoRoots(a.ctx, thread, rp); err != nil {
 			return "", err
@@ -741,7 +922,8 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		}
 		onBossBranch = boss.Branch != "" && strings.HasPrefix(thread.Branch, boss.Branch+"--")
 	}
-	cfg.SystemPrompt = systemPrompt(bot, user, onBossBranch)
+	cfg.SystemPrompt = systemPrompt(bot, user, onBossBranch,
+		len(bot.Delegates) > 0 && thread.ParentThreadID == "")
 	skills := make([]store.Skill, 0, len(bot.Skills))
 	for _, id := range bot.Skills {
 		sk, err := m.cfg.Store.Skill(a.ctx, id)
@@ -761,7 +943,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	}
 	var items []memory.Item
 	var counts memory.Counts
-	if m.cfg.Memory != nil {
+	if m.cfg.Memory != nil && a.kind == "" {
 		shelf := memory.Shelf{RepoID: rp.ID, BotID: thread.BotID}
 		var seen map[string]bool
 		if thread.Session != "" {
@@ -780,7 +962,11 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			return "", fmt.Errorf("select memory: %w", err)
 		}
 	}
-	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd)
+	var behind string
+	if rp.ID != "" && thread.Session == "" && thread.Worktree == "" {
+		behind = repo.BehindNote(a.ctx, rp.Path)
+	}
+	prompt := messagePrompt(text, items, counts, thread, rp, cfg.Cwd, behind, stale, a.kind)
 	var githubToken string
 	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {
@@ -864,8 +1050,8 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	return reply, nil
 }
 
-// stream reads the turn's events until it ends and returns the reply. With showText false the
-// turn's text is dropped.
+// stream reads the turn's events until it ends and returns the reply: the text after the last tool
+// call. With showText false the turn's text is dropped.
 func (m *Manager) stream(a *active, sess provider.Session, showText bool) (string, error) {
 	var reply strings.Builder
 	var wg sync.WaitGroup
@@ -893,11 +1079,14 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 					reply.WriteString(ev.Text)
 					m.publish(a, EventText, Text{RunID: a.run.ID, Text: ev.Text})
 				}
+			case provider.KindUsage:
+				a.usage = ev.Usage
 			case provider.KindSession:
 				if err := m.cfg.Store.SetSession(a.ctx, a.threadID, ev.SessionID, a.bot.Provider); err != nil {
 					return "", fmt.Errorf("save session: %w", err)
 				}
 			case provider.KindToolCall:
+				reply.Reset()
 				name := ev.Name
 				if ev.Server != "" {
 					name = "mcp__" + ev.Server + "__" + name
@@ -935,9 +1124,9 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 				ctx, cancel := context.WithCancelCause(a.ctx)
 				asks[ev.ID] = cancel
 				wg.Go(func() {
-					allow, err := m.approve(ctx, a, ev.Name, ev.Input)
+					d, err := m.approve(ctx, a, ev.Name, ev.Input)
 					if err == nil {
-						if err = sess.Answer(ev.ID, allow); err != nil {
+						if err = sess.Answer(ev.ID, d.Allow, d.Reason); err != nil {
 							err = fmt.Errorf("answer approval: %w", err)
 						}
 					}
@@ -960,6 +1149,9 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 				if ev.SignedOut {
 					return "", fmt.Errorf("%w: %s", provider.ErrSignedOut, ev.Text)
 				}
+				if ev.Limited {
+					return "", &provider.LimitError{Text: ev.Text, ResetsAt: ev.ResetsAt}
+				}
 				return "", errors.New(ev.Text)
 			}
 		}
@@ -969,30 +1161,55 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 // approve opens an approval and blocks until it is answered, ctx ends or the Manager closes.
 func (m *Manager) approve(
 	ctx context.Context, a *active, tool string, input json.RawMessage,
-) (bool, error) {
+) (Decision, error) {
+	command, isCommand := commandText(tool, input)
+	if isCommand && m.allowedInThread(ctx, a.threadID, command) {
+		return Decision{Allow: true}, nil
+	}
 	id := randHex(8)
-	answer := make(chan bool, 1) // Answer must not wait for the run to read
+	answer := make(chan Decision, 1) // Answer must not wait for the run to read
 	ap := Approval{RunID: a.run.ID, ID: id, Tool: tool, Input: input}
+	if isCommand {
+		if thread, err := m.cfg.Store.Thread(ctx, a.threadID); err == nil {
+			ap.AllowInThread = canAllowInThread(command, allowRoots(thread))
+		}
+	}
 	a.statusMu.Lock()
 	m.mu.Lock()
-	m.approvals[id] = open{approval: ap, answer: answer}
+	m.approvals[id] = open{approval: ap, command: command, run: a, answer: answer}
 	a.open++
 	m.mu.Unlock()
 	err := m.cfg.Store.SetStatus(ctx, a.run.ID, store.StatusWaiting)
 	a.statusMu.Unlock()
 	defer m.resume(ctx, a, id)
 	if err != nil {
-		return false, fmt.Errorf("approval %s: %w", id, err)
+		return Decision{}, fmt.Errorf("approval %s: %w", id, err)
 	}
 	m.publish(a, EventApproval, ap)
 	select {
-	case allow := <-answer:
-		return allow, nil
+	case d := <-answer:
+		return d, nil
 	case <-ctx.Done():
-		return false, fmt.Errorf("approval %s: %w", id, ctx.Err())
+		return Decision{}, fmt.Errorf("approval %s: %w", id, ctx.Err())
 	case <-a.ctx.Done():
-		return false, fmt.Errorf("approval %s: %w", id, a.ctx.Err())
+		return Decision{}, fmt.Errorf("approval %s: %w", id, a.ctx.Err())
 	}
+}
+
+// allowedInThread reports whether the user chose Allow in this thread for command.
+func (m *Manager) allowedInThread(ctx context.Context, threadID, command string) bool {
+	changes, err := m.cfg.Store.Changes(ctx, threadID)
+	if err != nil {
+		m.cfg.Log.Warn("read thread allows", "thread_id", threadID, "error", err)
+		return false
+	}
+	return slices.ContainsFunc(changes, func(c store.Change) bool {
+		var after struct {
+			Command string `json:"command"`
+		}
+		return c.Entity == store.EntityAllow && json.Unmarshal(c.After, &after) == nil &&
+			after.Command == command
+	})
 }
 
 // resume closes approval id and sets the run back to running once none is open.
@@ -1179,6 +1396,8 @@ func ToolVerb(name, kind string) string {
 			return "Remembering"
 		case provider.ToolFinishRun:
 			return "Wrapping up"
+		case provider.ToolDelegate, provider.ToolContinue:
+			return "Handing off"
 		}
 		if kind == "platform" && strings.HasPrefix(strings.TrimPrefix(name, _atollTools), "list_") {
 			return "Looking around"
@@ -1239,7 +1458,7 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 		if v.Desc != "" {
 			return "command", v.Desc
 		}
-		return "command", commandTarget(v.Command)
+		return "command", CommandTarget(v.Command)
 	case "fileChange":
 		if len(v.Changes) > 0 {
 			return "edit", filepath.Base(v.Changes[0].Path)
@@ -1268,6 +1487,8 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 			return "memory", v.Topic
 		case provider.ToolStartWork, provider.ToolTrackMR:
 			return "work", ""
+		case provider.ToolDelegate, provider.ToolContinue:
+			return "platform", ""
 		default:
 			return "platform", v.Name
 		}
@@ -1286,27 +1507,97 @@ var (
 	_backgroundOutput = regexp.MustCompile(`/tasks/[^\s;&|"']*\.output\b`)
 	_plainWord        = regexp.MustCompile(`^[A-Za-z][\w-]*$`)
 	_assignment       = regexp.MustCompile(`^\w+=`)
+	_headSHA          = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	_quoted           = regexp.MustCompile(`\$\([^)]*\)|"[^"]*"|'[^']*'`)
+	_heredoc          = regexp.MustCompile(`<<-?\s*['"]?(\w+)`)
+	_shellWrapper     = regexp.MustCompile(`(?s)^(?:\S*/)?(?:ba|z)?sh\s+-\w*c\s+(.*)$`)
+	_writeRedirect    = regexp.MustCompile(`^\d?>`)
+	_timeout          = regexp.MustCompile(`^\d+[smhd]?$`)
+	_leadingWords     = map[string]bool{"if": true, "elif": true, "while": true, "until": true, "then": true, "do": true, "else": true, "{": true, "!": true}
+	_noCommand        = map[string]bool{"for": true, "case": true, "select": true, "}": true, "done": true, "fi": true, "esac": true, "[": true, "[[": true}
 )
 
-func commandWords(command string) []string {
-	command = _quoted.ReplaceAllString(command, "_")
-	for _, part := range strings.FieldsFunc(command, func(r rune) bool { return r == ';' || r == '&' || r == '\n' }) {
-		fields := strings.Fields(part)
-		for len(fields) > 0 && _assignment.MatchString(fields[0]) {
-			fields = fields[1:]
-		}
-		if len(fields) > 0 && fields[0] != "cd" {
-			if fields[0] == "_" {
-				return nil
-			}
-			return fields
+// unwrapShell returns the script of a `bash -lc '...'` wrapper, else command itself.
+func unwrapShell(command string) string {
+	m := _shellWrapper.FindStringSubmatch(strings.TrimSpace(command))
+	if m == nil {
+		return command
+	}
+	script := strings.TrimSpace(m[1])
+	if n := len(script); n >= 2 && (script[0] == '"' || script[0] == '\'') && script[n-1] == script[0] {
+		script = script[1 : n-1]
+		if m[1][0] == '"' {
+			script = strings.ReplaceAll(script, `\"`, `"`)
 		}
 	}
-	return nil
+	return script
 }
 
-func commandTarget(command string) string {
+// stripHeredocs drops the text of heredocs: it is input, never a command.
+func stripHeredocs(command string) string {
+	var out []string
+	end := ""
+	for _, line := range strings.Split(command, "\n") {
+		if end != "" {
+			if strings.TrimSpace(line) == end {
+				end = ""
+			}
+			continue
+		}
+		out = append(out, line)
+		if m := _heredoc.FindStringSubmatch(line); m != nil {
+			end = m[1]
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// commandWords returns the words of the first real command: past cd, assignments, a leading
+// timeout, function definitions, loop headers and a cat that only writes a file (which is the
+// answer only when nothing else runs).
+func commandWords(command string) []string {
+	command = _quoted.ReplaceAllString(stripHeredocs(unwrapShell(command)), "_")
+	var write []string
+	for _, part := range strings.FieldsFunc(command, func(r rune) bool { return r == ';' || r == '&' || r == '|' || r == '\n' }) {
+		fields := strings.Fields(part)
+		for len(fields) > 0 {
+			head := fields[0]
+			switch {
+			case _assignment.MatchString(head), _leadingWords[head]:
+				fields = fields[1:]
+			case len(fields) > 1 && strings.HasPrefix(fields[1], "()"):
+				fields = fields[2:]
+			case strings.HasSuffix(head, "()") || strings.Contains(head, "(){"):
+				fields = fields[1:]
+			case head == "timeout" && len(fields) > 1 && _timeout.MatchString(fields[1]):
+				fields = fields[2:]
+			case strings.HasPrefix(head, "("):
+				fields[0] = strings.TrimLeft(head, "(")
+				if fields[0] == "" {
+					fields = fields[1:]
+				}
+			default:
+				goto first
+			}
+		}
+	first:
+		if len(fields) == 0 || fields[0] == "cd" || _noCommand[fields[0]] {
+			continue
+		}
+		if fields[0] == "cat" && len(fields) > 1 && _writeRedirect.MatchString(fields[1]) {
+			write = fields[:1]
+			continue
+		}
+		if fields[0] == "_" {
+			return nil
+		}
+		return fields
+	}
+	return write
+}
+
+// CommandTarget is a command's program and plain first argument: "make e2e".
+func CommandTarget(command string) string {
 	fields := commandWords(command)
 	if len(fields) == 0 {
 		return ""
@@ -1332,4 +1623,14 @@ func shortMemory(body string) string {
 		return string(runes[:80]) + "…"
 	}
 	return string(runes)
+}
+
+// safeSkillDir is a run's skill folder under the temp folder, for a data dir whose path a shell
+// would split or expand (macOS `Application Support`): skill scripts write the placed path unquoted.
+func safeSkillDir(runID string) string {
+	root := os.TempDir()
+	if !skill.Safe(root) {
+		root = "/tmp"
+	}
+	return filepath.Join(root, "atoll-run-"+runID)
 }

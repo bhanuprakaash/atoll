@@ -21,6 +21,8 @@ import {
 } from '@/app/settings-page';
 import { Shell } from '@/app/shell';
 import { ReconnectingNotice } from '@/components/reconnecting-notice';
+import { Gone } from '@/components/gone';
+import { ApiError } from '@/lib/api-client';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { useSetBotGroup } from '@/modules/bots/api/groups';
 import { NewBotForm } from '@/modules/bots/components/new-bot-form';
@@ -40,7 +42,7 @@ import { ModelSelect } from '@/modules/providers/components/model-select';
 import { useRepos } from '@/modules/repos/api/repos';
 import { ReposSettings } from '@/modules/repos/components/repos-settings';
 import { useSkills } from '@/modules/skills/api/skills';
-import { useCreateThread, useThread } from '@/modules/threads/api/threads';
+import { useCreateThread, useThread, useThreads } from '@/modules/threads/api/threads';
 import { DraftThread, ThreadView } from '@/modules/threads/components/thread-view';
 
 const queryClient = new QueryClient();
@@ -90,7 +92,8 @@ function NewBotPage() {
 
 function ThreadPage() {
   const { threadId = '', botId = '' } = useParams();
-  const { data: thread } = useThread(threadId);
+  const { data: thread, error } = useThread(threadId);
+  const { data: threads } = useThreads(botId);
   const { data: repos = [] } = useRepos();
   const { data: bots = [] } = useBots();
   const { data: connections = [] } = useConnections();
@@ -103,6 +106,16 @@ function ThreadPage() {
   const allowed = allowedRepos(bot, repos);
   const lostRepo =
     thread?.repo_id && bot && !allowed.some((r) => r.id === thread.repo_id) ? repoName : undefined;
+  if (error instanceof ApiError && error.status === 404) {
+    const latest = threads?.[0];
+    return (
+      <Gone
+        title="This thread is gone"
+        to={latest ? `/bots/${botId}/threads/${latest.id}` : `/bots/${botId}/new`}
+        link={latest || !threads ? 'Open the newest thread' : 'New thread'}
+      />
+    );
+  }
   return (
     <ThreadView
       key={threadId}
