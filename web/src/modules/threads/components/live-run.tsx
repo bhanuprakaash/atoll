@@ -8,6 +8,23 @@ import { toolVerb } from '@/modules/threads/utils/tool-line';
 
 export const chatText = 'text-base leading-[1.65] tracking-normal';
 
+const fenceNames: Record<string, string> = { 'reef-metrics': 'Metrics', 'reef-kv': 'Details' };
+
+// openFence finds a reef- fence the text has not closed yet: what comes before it and the
+// component's name.
+function openFence(text: string) {
+  let open: { at: number; tag: string } | undefined;
+  let at = 0;
+  for (const line of text.split('\n')) {
+    const fence = /^ {0,3}```(.*)$/.exec(line);
+    if (fence && !open) open = { at, tag: fence[1].trim() };
+    else if (fence && !fence[1].trim()) open = undefined;
+    at += line.length + 1;
+  }
+  const name = open && fenceNames[open.tag];
+  return open && name ? { before: text.slice(0, open.at), name } : undefined;
+}
+
 export function LiveRun({
   id,
   threadId,
@@ -55,20 +72,24 @@ export function LiveRun({
       )}
       {shown.length > 0 && (
         <div data-testid="live-text" className="flex flex-col gap-3">
-          {shown.map((part, i) =>
-            'text' in part ? (
+          {shown.map((part, i) => {
+            if (!('text' in part))
+              return (
+                part.step &&
+                i !== lastStep && (
+                  <p key={i} data-testid="step" className="text-sm text-muted">
+                    {part.step}
+                  </p>
+                )
+              );
+            const open = run.finished ? undefined : openFence(part.text);
+            return (
               <div key={i} className={chatText}>
-                <Markdown threadId={threadId}>{part.text}</Markdown>
+                <Markdown threadId={threadId}>{open ? open.before : part.text}</Markdown>
+                {open && <p className="text-sm text-muted">{open.name}…</p>}
               </div>
-            ) : (
-              part.step &&
-              i !== lastStep && (
-                <p key={i} data-testid="step" className="text-sm text-muted">
-                  {part.step}
-                </p>
-              )
-            ),
-          )}
+            );
+          })}
         </div>
       )}
       {run.approvals.map((a) => (

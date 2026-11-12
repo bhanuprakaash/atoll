@@ -912,7 +912,6 @@ export function ThreadView({
               {thread.snapshot_ref && ' · unfinished work saved'}
             </p>
           )}
-          {!connected && <p className="text-sm text-muted">Reconnecting</p>}
         </div>
       </div>
       {!empty && (

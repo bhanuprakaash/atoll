@@ -1848,7 +1848,8 @@ Voice
   chain. `provider_off` is also a run's `error_kind` (the CLI missing, or not signed in at
   start); with `signed_out` and `secret_store` it picks the reason of the run line. An unknown
   route or method is `not_found`. Losing the server is not an error of any request: the app shows
-  one `Reconnecting` notice (`role="status"`), on every page, until the server answers again, and
+  one `Reconnecting` notice (`role="status"`), on every page, from a request the server never answered or
+  an open thread's event stream that dropped, until the server answers again, and
   the requests that failed meanwhile show nothing of their own. *One notice per failed request
   looked like ten bugs for one cause.* The gone pages (a deleted Bot or thread) are the full-page
   form of `not_found`: a sentence and one link, no Details, since nothing failed.

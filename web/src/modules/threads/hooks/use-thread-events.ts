@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ToolKind } from '@/components/creature';
+import { setLost } from '@/lib/api-client';
 import { getRun } from '@/modules/threads/api/runs';
 import { getThread, markOpened } from '@/modules/threads/api/threads';
 import { toolLine } from '@/modules/threads/utils/tool-line';
@@ -62,6 +63,7 @@ export function useThreadEvents(threadId: string) {
       });
     source.onopen = () => {
       setConnected(true);
+      setLost(false);
       const refreshed = refresh();
       if (reconnecting) {
         setRuns((prev) =>
@@ -98,6 +100,7 @@ export function useThreadEvents(threadId: string) {
     source.onerror = () => {
       reconnecting = true;
       setConnected(false);
+      setLost(true);
     };
     on<{ text: string }>('text', (d, run) => {
       const last = run.parts.at(-1);

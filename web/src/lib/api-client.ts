@@ -18,7 +18,7 @@ export class ApiError extends Error {
 let lost = false;
 const listeners = new Set<() => void>();
 
-function setLost(next: boolean) {
+export function setLost(next: boolean) {
   if (lost === next) return;
   lost = next;
   listeners.forEach((listener) => listener());
