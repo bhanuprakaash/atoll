@@ -143,12 +143,12 @@ func TestQueue_UserMessageWhileRunGoes(t *testing.T) {
 			if got := s.run(t, first.ID); got.Status != "done" {
 				t.Errorf("first run %s: status %q, error %q; want done", got.ID, got.Status, got.Error)
 			}
-			if got := userPrompts(t, m, p, _askPrompt); len(got) != 1 {
-				t.Errorf("the provider got the queued message in %d prompts %q, want 1", len(got), got)
-			}
 			next := queueOf(t, s, th.ID)
 			if r := s.finished(t, ev, next.RunID); r.Status != "done" {
 				t.Errorf("run %s for the queued message: status %q, error %q; want done", r.ID, r.Status, r.Error)
+			}
+			if got := userPrompts(t, m, p, _askPrompt); len(got) != 1 {
+				t.Errorf("the provider got the queued message in %d prompts %q, want 1", len(got), got)
 			}
 			var delivered *queuedMessage
 			for _, um := range userMessages(t, s, th.ID) {
@@ -182,13 +182,13 @@ func TestQueue_SeveralArriveInOrderAsOneRun(t *testing.T) {
 			eventually(t, 30*time.Second, "both queued messages delivered", func() bool {
 				return len(queueOf(t, s, th.ID).Queued) == 0 && queueOf(t, s, th.ID).RunID != first.ID
 			})
+			run := queueOf(t, s, th.ID).RunID
+			s.finished(t, ev, run)
 			want := _askPrompt + "\n\n" + _thenText
 			got := userPrompts(t, m, p, _askPrompt, _thenText)
 			if len(got) != 1 || !strings.Contains(got[0], want) {
 				t.Errorf("provider prompts holding the queued messages %q, want exactly one holding %q", got, want)
 			}
-			run := queueOf(t, s, th.ID).RunID
-			s.finished(t, ev, run)
 			var ids, runs []string
 			for _, um := range userMessages(t, s, th.ID) {
 				if um.Text == _askPrompt || um.Text == _thenText {
@@ -306,9 +306,9 @@ func TestQueue_BossContinueToBusyHelper(t *testing.T) {
 			boss := s.newThread(t, poteto)
 			ev := s.events(t, boss)
 
-			helper := delegated(t, useAtoll(t, s, boss, ev, delegateCall("Tester", _reportPrompt, ""))[0])
-			going := asking(t, s, helper)
-			answer := "Yes, update it. " + _reportPrompt
+			helper := delegated(t, useAtoll(t, s, boss, ev, delegateCall("Tester", _slowPrompt, ""))[0])
+			going := getThread(t, s, helper)
+			answer := _askPrompt
 			lines := useAtoll(t, s, boss, ev, continueCall(helper, answer))
 			if len(lines) != 1 || !strings.HasPrefix(lines[0], "atoll/continue: Queued") {
 				t.Fatalf("continue while the helper's run goes: reply %q, want a line starting %q", lines, "atoll/continue: Queued")
@@ -323,18 +323,16 @@ func TestQueue_BossContinueToBusyHelper(t *testing.T) {
 				t.Errorf("the continue reached the provider while the helper's run %s goes", going.RunID)
 			}
 
-			allow(t, s, helper)
 			eventually(t, 30*time.Second, "a helper run after "+going.RunID+" for the queued continue", func() bool {
 				return getThread(t, s, helper).RunID != going.RunID
 			})
 			if got := queuedTexts(t, s, helper); len(got) != 0 {
 				t.Errorf("helper thread queued %q after delivery, want none", got)
 			}
-			allow(t, s, helper)
+			settled(t, s, helper)
 			if sessionWith(t, m, p, answer) == nil {
 				t.Errorf("no %s session got the queued continue %q after the helper's run ended", p, answer)
 			}
-			settled(t, s, helper)
 		})
 	}
 }
