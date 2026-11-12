@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"strings"
 
 	"atoll/repo"
@@ -149,7 +151,7 @@ func (m *Manager) startHelper(
 }
 
 // abandonHelper undoes a delegate that failed: it closes the helper thread, if one was made, and
-// removes the worktree and branch.
+// removes the worktree and branch. Closing the thread removes the worktree too.
 func (m *Manager) abandonHelper(ctx context.Context, rp store.Repo, h Handoff, path string) {
 	ctx = context.WithoutCancel(ctx)
 	if h.ThreadID != "" {
@@ -160,13 +162,15 @@ func (m *Manager) abandonHelper(ctx context.Context, rp store.Repo, h Handoff, p
 	if path == "" {
 		return
 	}
-	if err := m.checkWorktree(path, rp.Name); err != nil {
-		m.cfg.Log.Error("remove helper worktree", "path", path, "error", err)
-		return
-	}
-	if err := repo.Remove(ctx, rp.Path, path); err != nil {
-		m.cfg.Log.Error("remove helper worktree", "path", path, "error", err)
-		return
+	if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
+		if err := m.checkWorktree(path, rp.Name); err != nil {
+			m.cfg.Log.Error("remove helper worktree", "path", path, "error", err)
+			return
+		}
+		if err := repo.Remove(ctx, rp.Path, path); err != nil {
+			m.cfg.Log.Error("remove helper worktree", "path", path, "error", err)
+			return
+		}
 	}
 	if err := repo.DeleteBranch(ctx, rp.Path, h.Branch); err != nil {
 		m.cfg.Log.Error("delete helper branch", "branch", h.Branch, "error", err)
