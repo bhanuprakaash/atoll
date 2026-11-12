@@ -16,6 +16,8 @@ export type MemoryItem = {
   replaced_by: string;
   created_at: string;
   retired_at: string | null;
+  ticket: string;
+  retired_reason: string;
 };
 
 export function useMemory() {
