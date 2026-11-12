@@ -249,6 +249,33 @@ after a failed undo counts a Bot that is already gone as removed.
     starts the one run of the thread's queued messages now, and answers `202 {run}`; `409`
     `already sent` once delivered. A person's plain Stop leaves queued messages queued: they stay
     editable and removable, and the same route sends them (UI: Send now).
+- What waits on the person (#147). Three kinds of item, all derived from the thread's runs and the
+  PRs its threads track, none stored of its own; a helper thread has none (its reports reach the
+  boss as wakes), and items are listed per thread in `waiting` on `GET /api/bots` and
+  `GET /api/threads/{id}`:
+  - A decision. `finish_run` takes an optional `ask`: `{question, options}`, the question one
+    non-empty line of at most 300 characters and 2 to 4 different options, each non-empty and at
+    most 60 characters. Anything else is a tool error naming the field and nothing is stored; the
+    run's `report.ask` repeats it. A thread has one decision: its newest `ask`. A later `ask`
+    replaces it (updated, not added), a report without `ask` leaves it open, and the same question
+    again changes nothing. A reply that only ends in `?` is not a decision: Reef does not guess
+    intent. *Round 1: the lead asked the same a/b question in 6 of its last 11 runs as a dim
+    Blocked line, and the driver missed it for 45 minutes.*
+  - A blocker: `blocked` of the thread's newest report, when it is real (not empty or none-like,
+    as the Blocked line decides). *Blocked stays for what only the user can fix outside the chat:
+    a sign-in, access.* The reply keeps its Blocked line, as before.
+  - A ready PR: an entry of `ready` (see above), the newest entry per URL across the thread's runs;
+    each entry may carry `note`, one line of at most 120 characters. Its age counts from the end of
+    the first run that listed the URL at its current sha.
+  A message of the person's in the thread, sent after the run that raised a decision or blocker,
+  closes it: the buttons of a decision post the option's text as that message, so the buttons and
+  the composer are one path (*a reply in chat resolves whatever waits*). A wake, a helper's report
+  or a later report does not close a decision; a later report without a real `blocked` closes a
+  blocker. A ready PR is not closed by a reply: it leaves when a thread tracking its URL has
+  `mr_state` `merged` or `closed`, whoever changed it, with no message from the Bot. A ready PR no
+  thread tracks cannot be read, so it leaves with the person's next message. A run that starts
+  while a decision is open ends its prompt with `Open question for the person (do not ask it
+  again): <question>`. *One card, updated; the Bot is told it exists.*
 - Reef's own MCP tools (`finish_run`, and `approve` as Claude's permission prompt tool) are served
   over streamable HTTP on Reef's own server at `/mcp/<run token>`. *They need live server state
   (open approvals, the run being reported); stdio would need a child that calls back anyway.*
@@ -1361,6 +1388,7 @@ How you work
 - Once a PR is called ready it is frozen: new work goes in a follow-up PR.
 - On top of an unmerged PR's branch, open yours with `gh pr create --draft`, body starting `Waits for #<n>`; mark it ready when woken that #<n> merged.
 - Blocked: stop and say exactly what is missing.
+- A decision only the person can make: put it in finish_run's ask (question, 2-4 options), once; never ask it again while open. blocked is only what they must fix outside the chat.
 
 Memory
 - Before changing code, recall the area you are touching.
@@ -1439,7 +1467,8 @@ Voice
   first, then pinned Bots in the order pinned, then the user's groups in their order, then Ungrouped. Hovering a row shows a pin button
   and `+` (New thread); Bot settings has Pin to sidebar; Chief cannot be pinned. A second
   line shows only while a run works (the live verb, "Running make build", with three wave dots) or
-  while an approval waits ("Needs you: ..." in the same colour as a thread's "Needs you"); an
+  while an approval waits ("Needs you: ..." in the same colour as a thread's "Needs you") or, with
+  no approval, while one of its open threads has a waiting item ("Waiting on you", same colour); an
   idle, asleep or failed Bot is one line. The row's first line shows the Bot's
   `cost_24h_usd` as muted text before the time (`$0.19 · 2m`; `<$0.01` under a cent; nothing when
   absent). *Two lines for every Bot made the list twice as tall as
@@ -1476,12 +1505,13 @@ Voice
   the creature's centre (28 px from the row's left edge; rows start 14 px right of it, at 42 px).
   The rail starts at the bottom of the Bot row and ends in a rounded hook at the middle of the last row, the overflow line included; it never touches a row. A Bot with
   nothing to show is its plain row. A row is the title and one marker at its right end: "Needs
-  you" and a light dot; a blue dot and a bold title for New; three wave dots while running; a pin
+  you" and a light dot; "Waiting on you" and a light dot, the same marker for a thread with a waiting
+  item (below), after Needs you in priority; a blue dot and a bold title for New; three wave dots while running; a pin
   when pinned and nothing else applies (a pinned thread that needs you, is New or runs shows that
   instead). Only the open thread and the hovered row have a box. *The tick tree started inside the
-  Bot row and collided with the row boxes; the user picked one rail with a hook.* Slots go to needs you (never
-  hidden, so there may be more than 3), then pinned, new and running; the thread on screen always
-  shows and is never New. When those already fill 3 or more, nothing else is added. One last line
+  Bot row and collided with the row boxes; the user picked one rail with a hook.* Slots go to needs
+  you and waiting (never hidden, so there may be more than 3), then pinned, new and running; the
+  thread on screen always shows and is never New. When those already fill 3 or more, nothing else is added. One last line
   stands for the rest: `N more running` (wave dots) when a hidden thread is running, which unfolds
   only the hidden running threads in place, then `Show less`; a row leaves when its run ends, and
   switching Bot folds it again. Otherwise `N more` (a blue dot when a hidden thread is New) opens
@@ -1555,14 +1585,15 @@ Voice
   Move a Bot with right-click › Move to group (the groups, No group, New group…) or by dragging it
   onto a heading. A heading's hover shows a fold arrow and ⋯ (Rename, New Bot in this group, Move
   up, Move down, Delete group); deleting moves its Bots to Ungrouped. Name, order and fold state
-  are stored (`/api/groups`). A folded group shows a light dot only when a Bot in it needs the user;
-  no counts.
+  are stored (`/api/groups`). A folded group shows a light dot only when a Bot in it needs the user or has a
+  waiting item; no counts.
 - Bot header: a solid band in the main background, 72 px tall, with a 24 px fade below it; the
   centred island sits on it. Messages scroll under the band and fade out; no text shows above its
   bottom edge. At rest
   the pill holds the creature, the Bot name, the thread title (cut with "…") and the open thread's
   run state: three wave dots (text "Thinking") while its run works, "Needs you" while an approval
-  waits, "Run failed" after a failed run, nothing otherwise. It has no thread list, search, New
+  waits, `3 waiting on you` when the thread has waiting items (the count of them, `1 waiting on you`
+  for one), "Run failed" after a failed run, nothing otherwise. It has no thread list, search, New
   thread, Close thread or chevron. Bot settings is an icon at the right. *The user saw a centred
   island in a reference app and preferred it; the run state sits where the eye already is.*
 - The island is where work in other threads reaches the user: every thread except the one on
@@ -1571,8 +1602,11 @@ Voice
   that run go on without leaving the thread on screen. It stays until answered; Esc or a click
   away shrinks it to a count on the pill. A finished run widens the island for about 4 s
   ("reviewer finished Review !42", View), with no buttons, then it returns to rest. Clicking the
-  island opens the notification list: Needs you (Allow and Deny inline), then Earlier (finished
-  runs, MRs opened, Chief's changes). Hover does not open it.
+  island opens the notification list: Needs you (Allow and Deny inline), then Waiting on you (an
+  item of another thread: its question with Open thread, a blocker's text, a ready PR's row), then
+  Earlier (finished runs, MRs opened, Chief's changes). Hover does not open it. A waiting item
+  never drops the island open or widens it: it adds to the red count on the pill, with the
+  approvals. *Conversation first: nothing forces an answer.*
 - The island remembers across a close of the app (server side, like the sidebar's New; browser
   storage is not used, so a new window or a cleared webview changes nothing). One timestamp,
   `island_seen_at` (settings), set to now by `POST /api/island/seen`. The page sends it when the
@@ -1756,6 +1790,22 @@ Voice
   Reef's mark and the sentence (`PR #7 merged`), not as a bubble of the user's or a Bot's. A new
   thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message.
+- The "Waiting on you" card (#147). When a thread has waiting items (Threads and runs), a region
+  named `Waiting on you` sits between the chat and the composer, under the `Helpers` region, with
+  one quiet block per item, in this order: the decision, the blocker, the ready PRs. It is not in
+  the chat log and is never repeated there: the reply that raised it stays a message. A decision is
+  its question and its options as buttons, with "or reply below"; the composer stays open for
+  free text. A blocker is its text (2 lines, then clamped like the Blocked line) with an amber dot
+  and no button. A ready PR is one row, `#7 Add the thing · green · 2h` and Open (the PR's link):
+  `#7` (`!7` on GitLab) from the URL, the title of a thread tracking it (else none), the checks
+  from that thread's last read (`green`, `red`, `running`; no mark when there is no read), the age
+  (`now`, `12m`, `2h`, `3d`). A red PR whose `note` has the line `fails on main for the right
+  reason` says `red on purpose`; a bare red says `red`. The row shows the short sha of the entry,
+  and `changed since ready` when `report.ready[].changed`. The card has no close: it goes when its
+  item does, in every place at once (sidebar row, Bot row, folded group, pill, island list).
+  Buttons answer like the composer, so a button while a run goes does what the composer does.
+  *One pending item shows in every place it matters, clears in all, never twice; a test PR that is
+  red until its fix lands is the expected state, not an alarm.*
 - Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` tray (a region of
   that name) is attached to the top of the composer, on the composer's surface and border. It is
   one line of about 32 px that never grows with more helpers: each helper task's creature, stacked
