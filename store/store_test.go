@@ -428,7 +428,7 @@ func TestStore_QuietLine(t *testing.T) {
 	if err := st.FinishRun(ctx, run.ID, failed, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetMR(ctx, thread.ID, "https://example.test/pr/1", "open", "t"); err != nil {
+	if _, err := st.SetMR(ctx, thread.ID, "https://example.test/pr/1", "open", "t"); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(10 * time.Millisecond)
