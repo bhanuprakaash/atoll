@@ -91,9 +91,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	failed, err := st.FailUnfinished(ctx, _restartReason, func(w store.Wake) string {
-		return threadrun.WakeText(w, threadrun.HelpersLine(nil))
-	})
+	failed, err := st.FailUnfinished(ctx, _restartReason, threadrun.RestartWakeText)
 	if err != nil {
 		return err
 	}
@@ -125,6 +123,7 @@ func serve(ctx context.Context, args []string, w io.Writer) error {
 		DataDir:      data,
 		WorktreeRoot: filepath.Join(home, "Reef", "worktrees"),
 		PollInterval: pollInterval(),
+		WakeWindow:   wakeWindow(),
 		Log:          log,
 	})
 	pathDirs(ctx) // glab is found on the provider folders' PATH
@@ -183,6 +182,16 @@ func pollInterval() time.Duration {
 	d, err := time.ParseDuration(os.Getenv("ATOLL_REPO_POLL_INTERVAL"))
 	if err != nil || d <= 0 {
 		return time.Minute
+	}
+	return d
+}
+
+// wakeWindow is ATOLL_WAKE_WINDOW, a Go duration, or 20 seconds when it is unset, invalid or not
+// positive.
+func wakeWindow() time.Duration {
+	d, err := time.ParseDuration(os.Getenv("ATOLL_WAKE_WINDOW"))
+	if err != nil || d <= 0 {
+		return 20 * time.Second
 	}
 	return d
 }

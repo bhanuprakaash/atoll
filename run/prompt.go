@@ -58,6 +58,13 @@ const _helpersPrompt = `
 Helpers
 - Before finish_run, if a slot is free and a ticket is ready, delegate it first. Never end a run with work waiting for a slot that is already free.`
 
+const _helperReportsPrompt = `
+
+Helper reports
+- A helper's message to you is a report: progress, a result or a question. Several may arrive in one message: read them all and answer once.
+- Reply only when {user} must act: a PR ready, a decision, something failed that you cannot fix.
+- Otherwise act on it if needed, end with finish_run and write no reply.`
+
 const _platformBlock = `
 
 Managing Reef
@@ -102,7 +109,7 @@ func systemPrompt(bot store.Bot, user string, onBossBranch, boss bool) string {
 	}
 	prompt += _memoryPrompt
 	if boss {
-		prompt += _helpersPrompt
+		prompt += _helpersPrompt + _helperReportsPrompt
 	}
 	if bot.CanManagePlatform {
 		prompt += _platformBlock
