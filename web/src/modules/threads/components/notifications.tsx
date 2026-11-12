@@ -21,7 +21,7 @@ function AnswerButtons({ id, className }: { id: string; className: string }) {
       <button
         type="button"
         disabled={answer.isPending}
-        onClick={() => answer.mutate(false)}
+        onClick={() => answer.mutate({ approve: false })}
         className={`rounded-xl border border-outline px-4 ${className}`}
       >
         Deny
@@ -29,7 +29,7 @@ function AnswerButtons({ id, className }: { id: string; className: string }) {
       <button
         type="button"
         disabled={answer.isPending}
-        onClick={() => answer.mutate(true)}
+        onClick={() => answer.mutate({ approve: true })}
         className={`rounded-xl bg-accent px-5 font-medium text-accent-ink ${className}`}
       >
         Allow

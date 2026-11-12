@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { quiet } from '@/components/button';
 import { ApiError } from '@/lib/api-client';
 import { useAnswerApproval } from '@/modules/threads/api/approvals';
 
@@ -17,7 +18,17 @@ export function approvalVerb(tool: string) {
   return /bash|command/i.test(tool) ? 'Wants to run' : `Wants to use ${tool}`;
 }
 
-export function ApprovalCard({ id, tool, input }: { id: string; tool: string; input: unknown }) {
+export function ApprovalCard({
+  id,
+  tool,
+  input,
+  allow_in_thread,
+}: {
+  id: string;
+  tool: string;
+  input: unknown;
+  allow_in_thread?: boolean;
+}) {
   const [answered, setAnswered] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const answer = useAnswerApproval(id);
@@ -46,11 +57,14 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
     : typeof details.old_string === 'string'
       ? details.old_string.split('\n').length
       : 0;
-  const respond = (approve: boolean) =>
-    answer.mutate(approve, {
-      onSuccess: () => setAnswered(true),
-      onError: (err) => err instanceof ApiError && err.status === 404 && setAnswered(true),
-    });
+  const respond = (approve: boolean, in_thread?: boolean) =>
+    answer.mutate(
+      { approve, in_thread },
+      {
+        onSuccess: () => setAnswered(true),
+        onError: (err) => err instanceof ApiError && err.status === 404 && setAnswered(true),
+      },
+    );
   if (answered) return null;
   return (
     <div className="flex flex-col gap-2 text-sm">
@@ -80,7 +94,7 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
             </>
           )}
         </span>
-        <span className="flex gap-2">
+        <span className="flex items-center gap-2">
           <button
             type="button"
             disabled={answer.isPending}
@@ -97,6 +111,16 @@ export function ApprovalCard({ id, tool, input }: { id: string; tool: string; in
           >
             Deny
           </button>
+          {allow_in_thread && (
+            <button
+              type="button"
+              disabled={answer.isPending}
+              onClick={() => respond(true, true)}
+              className={quiet}
+            >
+              Allow in this thread
+            </button>
+          )}
         </span>
       </div>
       {showDiff && (

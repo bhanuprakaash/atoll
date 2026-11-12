@@ -55,10 +55,13 @@ func TestRepos_PickFolderLinux(t *testing.T) {
 		m := newMachine(t, "claude")
 		m.path = m.bin
 		s := m.serve(t)
-		var got picked
+		var got struct {
+			Error string `json:"error"`
+			Code  string `json:"code"`
+		}
 		s.do(t, http.MethodPost, "/api/repos/pick-folder", nil, &got, http.StatusNotImplemented)
-		if got.Error != "No folder picker on this system. Type the repo path instead." {
-			t.Errorf("error = %q", got.Error)
+		if got.Error != "No folder picker on this system." || got.Code != "unsupported" {
+			t.Errorf("reply {error: %q, code: %q}, want {No folder picker on this system., unsupported}", got.Error, got.Code)
 		}
 	})
 }
