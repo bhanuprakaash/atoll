@@ -1,0 +1,19 @@
+#!/bin/sh
+# Prints true when every file changed since the merge base with <base ref> is docs, else false.
+# Usage: scripts/docs-only <base ref>
+set -eu
+
+files=$(mktemp)
+trap 'rm -f "$files"' EXIT
+git diff --name-only "${1:?usage: scripts/docs-only <base ref>}...HEAD" >"$files"
+while IFS= read -r path; do
+	case $path in
+	docs/* | .github/ISSUE_TEMPLATE/*) ;;
+	.github/*/*) echo false && exit ;;
+	.github/*.md) ;;
+	*/*) echo false && exit ;;
+	*.md) ;;
+	*) echo false && exit ;;
+	esac
+done <"$files"
+echo true
