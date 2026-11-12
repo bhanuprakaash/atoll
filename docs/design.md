@@ -254,6 +254,23 @@ after a failed undo counts a Bot that is already gone as removed.
   the rest, so a client drops every approval that has one and the open ones are exactly the cards
   left. `POST /api/approvals/{id}` on a closed approval answers `404`, and the card then leaves
   without an error.
+- A run records what it used, when it ends (any status; none when the provider reported nothing),
+  before `run_finished`: `GET /api/runs/{id}` has `usage` `{model, calls, input_tokens,
+  output_tokens, cache_read_tokens, cache_write_tokens, cost_usd}`. It counts that run only, never
+  the session it resumed. *A session carries its totals into the next process, so a resumed run
+  read naively counts its past again.*
+  - Claude: `model` is the init line's. `calls` is the distinct assistant `message.id`s of the run
+    (`num_turns` is not API calls). Tokens are the `result` line's `usage` (`input_tokens`,
+    `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`), which covers the
+    process only. `cost_usd` is `total_cost_usd` minus the `total_cost_usd` of the session's
+    previous run (its whole value when there is none); `modelUsage` is session-wide, so unused.
+  - Codex: `model` is the thread's. `calls` is the `thread/tokenUsage/updated` events of the run's
+    own turn, and tokens are the sum of their `last` (a resume first replays an update of the
+    earlier turn: ignored, and `total` is thread-wide): `input_tokens` is `inputTokens` minus
+    `cachedInputTokens`, `cache_read_tokens` is `cachedInputTokens`, `cache_write_tokens` is
+    `cacheWriteInputTokens`. No `cost_usd` (no Codex prices).
+  - Each Bot on `GET /api/bots` has `cost_24h_usd`: the sum of `cost_usd` of its runs that ended in
+    the last 24 hours; absent when there is none.
 - Claude cancels an MCP tool call after 60 s unless `MCP_TOOL_TIMEOUT` says otherwise, and the
   permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes). *The
   variable covers every MCP server of the run, not only Reef's: Claude Code has no per-server
@@ -1278,7 +1295,9 @@ Voice
   and `+` (New thread); Bot settings has Pin to sidebar; Chief cannot be pinned. A second
   line shows only while a run works (the live verb, "Running make build", with three wave dots) or
   while an approval waits ("Needs you: ..." in the same colour as a thread's "Needs you"); an
-  idle, asleep or failed Bot is one line. *Two lines for every Bot made the list twice as tall as
+  idle, asleep or failed Bot is one line. The row's first line shows the Bot's
+  `cost_24h_usd` as muted text before the time (`$0.19 · 2m`; `<$0.01` under a cent; nothing when
+  absent). *Two lines for every Bot made the list twice as tall as
   Claude's; the user wanted a calm list.* `+` at the top opens New Bot and New
   group; the bottom user row opens Settings. No group chats. A thread's activity time moves when a run
   starts, an approval opens or closes, and a run ends (also one failed at start-up), not on every
@@ -1416,6 +1435,11 @@ Voice
   then a Blocked line (from `finish_run`'s `blocked`) whose dot hangs in the margin so its text
   starts at the reply's edge. Spacing: 18 px between messages, 24 px between the blocks of one reply
   (prose, changes, memories, Blocked line, footer), 14 px between paragraphs and list items.
+- The run footer ends with a usage segment in the same muted line: `Sonnet 5.5, 7 calls, $0.19`
+  (`1 call`; `<$0.01` under a cent). A Claude model id shows as its name and version
+  (`claude-sonnet-5-5` is `Sonnet 5.5`); any other id as it is. A run without `cost_usd` (Codex)
+  has no dollars: `gpt-5.6-sol, 3 calls`. A run without `usage` has no segment. *Evidence over claims: what
+  a run cost shows where the run ends, with no page of its own.*
 - Chat type: Bot replies, the user's bubble and briefs are 16 px, line height 1.65, letter spacing
   0; the rest of the app keeps 14 px. *Replies read as a wall next to Claude's app; the user wanted
   more air.*
