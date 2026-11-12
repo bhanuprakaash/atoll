@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -187,6 +189,12 @@ func TestProcSecrets_OtherRunReadsNoSecretOfAHeldRun(t *testing.T) {
 			if reply.GitHub.GH.Exit != 0 || !strings.Contains(reply.GitHub.GH.Output, "reef-fixture") {
 				t.Errorf("gh api user in the holder's run: %+v, want it to reach GitHub", reply.GitHub.GH)
 			}
+			if reply.GitHub.Push.Exit != 0 {
+				t.Errorf("git push in the holder's run: exit %d: %s", reply.GitHub.Push.Exit, reply.GitHub.Push.Output)
+			}
+			if got := gitIn(t, f.gh.root, "--git-dir", filepath.Join(f.gh.root, "octo", "hello.git"), "show", "refs/heads/reef-push:probe.txt"); got != "pushed by the probe" {
+				t.Errorf("the fake GitHub's reef-push branch holds %q, want the holder's pushed probe.txt", got)
+			}
 			if !reply.GitHub.MCP.Connected || !strings.Contains(reply.GitHub.MCP.Text, "reef-fixture") {
 				t.Errorf("GitHub MCP in the holder's run: %+v, want connected and answering", reply.GitHub.MCP)
 			}
@@ -247,8 +255,18 @@ func TestProcSecrets_ReefEnvironHoldsNoLoginToken(t *testing.T) {
 		}
 	}
 
-	if found := scan(t, s, s.newBot(t, "Scanner", "claude"), "reef-login-"); len(found) > 0 {
-		t.Errorf("a Bot's shell found login values in %+v, want none", found)
+	// A process of the same user holds a value the scan must find, or finding no login value
+	// proves nothing.
+	control := exec.CommandContext(t.Context(), "sleep", "60")
+	control.Env = []string{"REEF_SCAN_CONTROL=reef-scan-control"}
+	if err := control.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = control.Process.Kill(); _ = control.Wait() })
+	found := scan(t, s, s.newBot(t, "Scanner", "claude"), "reef-login-", "reef-scan-control")
+	want := []procFinding{{PID: control.Process.Pid, Kind: "environ", Name: "REEF_SCAN_CONTROL"}}
+	if !slices.Equal(found, want) {
+		t.Errorf("a Bot's shell found %+v, want only the control %+v and no login value", found, want)
 	}
 }
 

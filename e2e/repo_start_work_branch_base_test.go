@@ -212,7 +212,9 @@ func TestRepo_StartWorkRefusesBadBase(t *testing.T) {
 		{name: "colon-path", base: "test/x:base-only.txt"},
 		{name: "reflog", base: "test/x@{1}"},
 		{name: "lock-suffix", base: "test/x.lock"},
-		{name: "the-new-branch", base: "fix/seeded-bug"},
+		{name: "the-new-branch", base: "fix/seeded-bug", setup: func(t *testing.T, f *repoFixture) {
+			f.pushBase(t, "fix/seeded-bug")
+		}},
 	}
 	for _, c := range _baseCases[:2] {
 		for _, b := range bases {

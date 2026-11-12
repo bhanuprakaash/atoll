@@ -36,7 +36,8 @@ directives in `fakes/fake/procs.go`):
 
 The holder Bot has the GitHub connection and `docs-remote` (a header secret); the scanner Bot has
 neither. The scan must find the holder's `GH_TOKEN` in the holder's process: a scan that cannot read
-other processes would pass every other check.
+other processes would pass every other check. The scan of Reef's env has its own control: a `sleep`
+the test starts with `REEF_SCAN_CONTROL=reef-scan-control` is the one finding it must make.
 
 ## Acceptance mapping
 

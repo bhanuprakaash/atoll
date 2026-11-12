@@ -253,7 +253,17 @@ func TestNoRepoShell_RealClaudeCannotReadRegisteredRepo(t *testing.T) {
 				"5. Bash: cat control.txt"
 			cmd.Stdin = strings.NewReader(`{"type":"user","message":{"role":"user","content":` + string(mustJSON(ask)) + `}}` + "\n")
 			cmd.Dir = c.cwd
-			cmd.Env = os.Environ()
+			// The machine's scratch HOME (with its keychain on macOS) and only the sign-in, so no
+			// setting, hook or CLAUDE.md of the developer's own Claude Code can make the refusals pass.
+			if b, err := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".claude", ".credentials.json")); err == nil {
+				writeFile(t, filepath.Join(m.home, ".claude", ".credentials.json"), string(b))
+			}
+			for _, kv := range os.Environ() {
+				if k, _, _ := strings.Cut(kv, "="); k != "HOME" && k != "CLAUDE_CONFIG_DIR" && k != "XDG_CONFIG_HOME" {
+					cmd.Env = append(cmd.Env, kv)
+				}
+			}
+			cmd.Env = append(cmd.Env, "HOME="+m.home)
 			for k, v := range c.env {
 				if k == "CLAUDE_CODE_SHELL_PREFIX" || k == "ENABLE_CLAUDEAI_MCP_SERVERS" || strings.HasPrefix(k, "ATOLL_MCP_") {
 					cmd.Env = append(cmd.Env, k+"="+v)
