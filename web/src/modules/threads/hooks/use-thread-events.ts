@@ -41,12 +41,15 @@ export function useThreadEvents(threadId: string) {
     void opened();
     const source = new EventSource(`/api/threads/${threadId}/events`);
     const refresh = () => {
+      // Invalidating reuses a first read still on its way, which may say the run is running.
+      void queryClient
+        .cancelQueries({ queryKey: ['run'] })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['run'] }));
       const [messages] = [
         ['messages', threadId],
         ['thread', threadId],
         ['threads'],
         ['bots'],
-        ['run'],
         ['memory'],
         ['changes', threadId],
       ].map((queryKey) => queryClient.invalidateQueries({ queryKey }));
