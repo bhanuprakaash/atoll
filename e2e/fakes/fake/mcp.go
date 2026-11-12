@@ -51,6 +51,9 @@ type MCP struct {
 	stdout  *bufio.Scanner
 }
 
+// URL is the server's URL as the provider configured it, or its command.
+func (c *MCP) URL() string { return c.url }
+
 // Dial does the MCP handshake (initialize, notifications/initialized, tools/list).
 func Dial(url string, headers map[string]string) (*MCP, error) {
 	return (&MCP{url: url, headers: headers}).handshake()
