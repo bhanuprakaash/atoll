@@ -657,7 +657,7 @@ export function ThreadView({
   const ledgerRow = (m: Message): LedgerRow | null => {
     if (fromHelper(m)) {
       const report = helperReport(m.text);
-      if (!report.threadId || !report.state || report.blocked) return null;
+      if (!report.state || report.blocked) return null;
       const helper = helpers.find((h) => h.id === report.threadId);
       const bot = bots[m.from_bot_id ?? ''];
       return {
@@ -667,15 +667,18 @@ export function ThreadView({
         look: bot?.look,
         line: report.line,
         state: report.state,
+        reportFor: report.threadId,
         mr: helper?.mr_url
           ? { url: helper.mr_url, state: helper.mr_state, title: helper.mr_title }
           : undefined,
         report: (
           <>
             <Markdown threadId={threadId}>{report.prose}</Markdown>
-            <Link to={`/bots/${m.from_bot_id}/threads/${report.threadId}`} className={quiet}>
-              Open thread
-            </Link>
+            {report.threadId && (
+              <Link to={`/bots/${m.from_bot_id}/threads/${report.threadId}`} className={quiet}>
+                Open thread
+              </Link>
+            )}
           </>
         ),
       };

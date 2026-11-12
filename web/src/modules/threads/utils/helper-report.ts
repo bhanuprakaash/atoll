@@ -24,8 +24,9 @@ const field = (fields: string, name: string) =>
 
 // helperReport is a helper's message in its boss's thread as the user reads it: the prose, the
 // helper thread it came from, and for the lead's ledger its outcome, line and blocked. The
-// Done/Tried/Blocked/Next lines stay in the helper thread.
-export function helperReport(text: string) {
+// Done/Tried/Blocked/Next lines and the Helpers line every wake ends with stay out of the prose.
+export function helperReport(wake: string) {
+  const text = wake.replace(/\n\nHelpers: \d+ of \d+ running[^\n]*$/, '');
   const head = /^.+ reported back from thread (\S+)\.\n/.exec(text);
   if (head) {
     const rest = text.slice(head[0].length);
@@ -44,10 +45,11 @@ export function helperReport(text: string) {
   if (tail) {
     const prose = text.slice(0, tail.index);
     const failed = /^.+'s run failed: ([\s\S]*)$/.exec(prose);
+    const deleted = /^.+ was deleted$/.test(prose);
     return {
       prose,
-      threadId: tail[1],
-      state: failed ? 'Failed' : 'Stopped',
+      threadId: deleted ? '' : tail[1],
+      state: failed || /^.+ is out until /.test(prose) ? 'Failed' : 'Stopped',
       line: failed ? firstLine(failed[1]) || firstLine(prose) : firstLine(prose),
       blocked: '',
     };
