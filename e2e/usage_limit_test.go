@@ -81,11 +81,11 @@ func TestUsageLimit_NextMessageAfterResetRuns(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
-			at := time.Now().Add(4 * time.Second).Truncate(time.Second)
-			m.limit(t, p, at)
-
 			th := s.newThread(t, s.newBot(t, "Kelp", p))
 			ch := s.events(t, th)
+
+			at := time.Now().Add(4 * time.Second).Truncate(time.Second)
+			m.limit(t, p, at)
 			r := s.send(t, th, _hey)
 			s.finished(t, ch, r.ID)
 			wantLimited(t, s.limitRun(t, r.ID), p, at)

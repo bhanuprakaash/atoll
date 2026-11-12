@@ -194,11 +194,18 @@ test('the popover has a shortcut, arrow keys and Enter, and Stop on hover', asyn
 
   await page.goBack();
   await tray(page).getByRole('button', { name: 'Show', exact: true }).click();
+  const stops: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().endsWith('/stop')) stops.push(new URL(r.url()).pathname);
+  });
   const tester = helpers.find((h) => h.bot_id === bots.Tester.id)!;
   const row = rows.filter({ hasText: tester.title });
   await row.hover();
   await row.getByRole('button', { name: 'Stop' }).click();
   await expect.poll(() => runStatus(m, tester.id)).toBe('stopped');
+  await expect(row).toContainText('Stopped');
+  const stopped = (await api(m, 'GET', `/api/threads/${tester.id}`)).run_id;
+  expect(stops).toEqual([`/api/runs/${stopped}/stop`]);
   const reviewer = helpers.find((h) => h.bot_id === bots.Reviewer.id)!;
   expect(await runStatus(m, reviewer.id)).toBe('running');
 });
@@ -298,7 +305,8 @@ test('a helper that reported stays in the tray until its report was on screen, t
   await page.reload();
   await reloaded;
   await expect(log.getByRole('article', { name: 'Tester' })).toContainText(reportReply);
-  await page.waitForTimeout(1_000);
+  // The hand-off line is drawn from the same helpers the tray reads.
+  await expect(log.getByText('Handed off to Tester', { exact: true })).toBeVisible();
   await expect(tray(page)).toHaveCount(0);
 });
 

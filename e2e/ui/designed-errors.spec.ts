@@ -110,7 +110,12 @@ test('an unreachable GitLab names the host and offers Try again, not the dial er
     raw: /dial tcp|connection refused|OAuth request|authorize_device/,
     details: /unreachable · 502 · POST \/api\/connections\/gitlab\/start/,
   });
+  const retried = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.url().endsWith('/api/connections/gitlab/start'),
+  );
   await alert.getByRole('button', { name: 'Try again' }).click();
+  await retried;
+  await expect(page.getByRole('button', { name: 'Sign in to GitLab' })).toBeEnabled();
   await expect(notice(page, "Reef couldn't reach 127.0.0.1:1.")).toHaveCount(1);
 });
 

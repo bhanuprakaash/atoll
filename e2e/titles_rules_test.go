@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,7 +51,7 @@ func TestTitles_AnswerRules(t *testing.T) {
 					th := s.newThread(t, bot)
 					s.finished(t, s.events(t, th), s.send(t, th, _titlePrompt+" "+fake.TitleAnswer(c.raw)).ID)
 					if c.want == "" {
-						time.Sleep(2 * time.Second)
+						titleFailed(t, s, th.ID)
 						if got := s.thread(t, th.ID).Title; got != _titleFirstWords {
 							t.Errorf("answer %q: title %q, want no title and the first words %q", c.raw, got, _titleFirstWords)
 						}
@@ -87,7 +88,7 @@ func TestTitles_FirstWordsRules(t *testing.T) {
 						t.Errorf("message %q: title %q when sent, want %q", c.message, got, c.want)
 					}
 					s.finished(t, s.events(t, th), run.ID)
-					time.Sleep(2 * time.Second)
+					titleFailed(t, s, th.ID)
 					if got := s.thread(t, th.ID).Title; got != c.want {
 						t.Errorf("message %q: title %q after the failed title session, want %q", c.message, got, c.want)
 					}
@@ -95,6 +96,15 @@ func TestTitles_FirstWordsRules(t *testing.T) {
 			}
 		})
 	}
+}
+
+// titleFailed waits until the server logs that naming the thread failed, so the title session had
+// its chance to change the title.
+func titleFailed(t *testing.T, s *server, threadID string) {
+	t.Helper()
+	eventually(t, 30*time.Second, "the failed title session of thread "+threadID, func() bool {
+		return strings.Contains(s.log.String(), `"msg":"name thread","thread_id":"`+threadID+`"`)
+	})
 }
 
 // TestTitles_LaunchCleansStoredTitles: on the next launch a stored title loses its label and a

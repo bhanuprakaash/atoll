@@ -432,11 +432,15 @@ func (f *prWakeFixture) waitWake(t *testing.T, th thread, n int) wakeMessage {
 	return w[n-1]
 }
 
-// quiet fails when the Bot is woken in any thread within d: a wake message in th, or a `Reef: `
-// prompt that the provider got beyond the first want.
-func (f *prWakeFixture) quiet(t *testing.T, d time.Duration, what string, th thread, wantWakes, wantPrompts int) {
+// quiet fails when the Bot is woken in any thread by the time the server has read pull request pr
+// three more times, so at least two whole reads (CI wakes on the second equal one) came after the
+// change: a wake message in th, or a `Reef: ` prompt that the provider got beyond the first want.
+func (f *prWakeFixture) quiet(t *testing.T, pr int, what string, th thread, wantWakes, wantPrompts int) {
 	t.Helper()
-	time.Sleep(d)
+	reads := f.gh.pullReads(pr)
+	eventually(t, 30*time.Second, fmt.Sprintf("%s: the server reads pull request %d again", what, pr), func() bool {
+		return f.gh.pullReads(pr) >= reads+3
+	})
 	if w := f.wakes(t, th); len(w) != wantWakes {
 		t.Errorf("%s: thread %s got wake messages %+v, want %d", what, th.ID, w, wantWakes)
 	}

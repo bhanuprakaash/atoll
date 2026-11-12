@@ -87,7 +87,7 @@ func TestReadyNamesCommit_ReportCarriesHeadSHA(t *testing.T) {
 				got := f.readyOf(t, run.ID)
 				return len(got) == 1 && got[0].Changed && got[0].SHA == sha
 			})
-			f.quiet(t, time.Second, "a push after ready", th, 0, 0)
+			f.quiet(t, 1, "a push after ready", th, 0, 0)
 
 			f.gh.setHead(1, sha)
 			eventually(t, 30*time.Second, "report.ready is unchanged again once the head is the ready commit", func() bool {
@@ -208,7 +208,7 @@ func TestReadyNamesCommit_MergeIntoAnotherBranchIsQuiet(t *testing.T) {
 			if len(w) != 1 || w[0].Kind != "merged" || w[0].Text != want || w[0].FromBotID != "" {
 				t.Errorf("messages with a kind %+v, want one merged line from Reef: %q", w, want)
 			}
-			f.quiet(t, 2*time.Second, "a merge into another branch", th, 1, 0)
+			f.quiet(t, 2, "a merge into another branch", th, 1, 0)
 			if got := f.s.thread(t, th.ID); got.RunID != before {
 				t.Errorf("thread's latest run is %s, was %s: the merge line must start no run", got.RunID, before)
 			}
@@ -237,7 +237,7 @@ func TestReadyNamesCommit_StackedFixWaitsAsDraft(t *testing.T) {
 			if !f.gh.isDraft(2) {
 				t.Error("the stacked fix is not a draft while its base is open")
 			}
-			f.quiet(t, 2*time.Second, "a draft whose base is open", fix, 0, 0)
+			f.quiet(t, 2, "a draft whose base is open", fix, 0, 0)
 
 			f.gh.setPull(1, "closed", true)
 			merged := f.waitWake(t, test, 1)
@@ -260,7 +260,7 @@ func TestReadyNamesCommit_StackedFixWaitsAsDraft(t *testing.T) {
 				t.Error("the stacked fix is still a draft after the Bot marked it ready")
 			}
 
-			f.quiet(t, 2*time.Second, "the base wake already sent", fix, 1, 2)
+			f.quiet(t, 2, "the base wake already sent", fix, 1, 2)
 		})
 	}
 }
