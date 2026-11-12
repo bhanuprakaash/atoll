@@ -652,13 +652,18 @@ func (a *api) getRun(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) answer(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Approve *bool `json:"approve"`
+		Approve  *bool `json:"approve"`
+		InThread bool  `json:"in_thread"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Approve == nil {
 		fail(w, http.StatusBadRequest, "approve is required")
 		return
 	}
-	if err := a.runs.Answer(r.Context(), r.PathValue("id"), *body.Approve); err != nil {
+	answer := a.runs.Answer
+	if body.InThread {
+		answer = a.runs.AnswerInThread
+	}
+	if err := answer(r.Context(), r.PathValue("id"), *body.Approve); err != nil {
 		a.fail(w, r, err)
 		return
 	}
@@ -727,7 +732,8 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, store.ErrNotFound), errors.Is(err, run.ErrNotFound),
 		errors.Is(err, memory.ErrNotFound):
 		fail(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, memory.ErrInvalid), errors.Is(err, mcpserver.ErrInvalid):
+	case errors.Is(err, memory.ErrInvalid), errors.Is(err, mcpserver.ErrInvalid),
+		errors.Is(err, run.ErrNotOffered):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed),
 		errors.Is(err, store.ErrExists), errors.Is(err, store.ErrUndone),

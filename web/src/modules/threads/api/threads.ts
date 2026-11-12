@@ -27,7 +27,7 @@ export type Thread = {
   run_id: string;
   run_status: string;
   run_error_kind: string;
-  approval: { id: string; tool: string; input: unknown } | null;
+  approval: { id: string; tool: string; input: unknown; allow_in_thread?: boolean } | null;
 };
 
 export const getThread = (threadId: string) =>
@@ -35,7 +35,13 @@ export const getThread = (threadId: string) =>
     Thread & {
       active_run: Run | null;
       queued: Message[];
-      approvals: { run_id: string; id: string; tool: string; input: unknown }[];
+      approvals: {
+        run_id: string;
+        id: string;
+        tool: string;
+        input: unknown;
+        allow_in_thread?: boolean;
+      }[];
     }
   >(`/threads/${threadId}`);
 

@@ -37,6 +37,8 @@ var (
 	ErrClosed = errors.New("thread is closed")
 	// ErrNotFound is wrapped when an approval id or run token matches nothing open.
 	ErrNotFound = errors.New("not found")
+	// ErrNotOffered is returned when Allow in this thread answers an approval that does not offer it.
+	ErrNotOffered = errors.New("allow in this thread is not offered for this approval")
 	// ErrNoGitHubConnection means the Bot has no GitHub connection.
 	ErrNoGitHubConnection = errors.New("this repo is on GitHub and this Bot has no GitHub connection: " +
 		"give this Bot the GitHub connection in its settings, then ask again")
@@ -135,6 +137,8 @@ type (
 	// open is an approval waiting for the user; answer takes its one answer.
 	open struct {
 		approval Approval
+		command  string
+		run      *active
 		answer   chan bool
 	}
 
@@ -191,10 +195,11 @@ type (
 
 	// Approval is a step that waits for the user; ID is what Answer takes.
 	Approval struct {
-		RunID string          `json:"run_id"`
-		ID    string          `json:"id"`
-		Tool  string          `json:"tool"`
-		Input json.RawMessage `json:"input"`
+		RunID         string          `json:"run_id"`
+		ID            string          `json:"id"`
+		Tool          string          `json:"tool"`
+		Input         json.RawMessage `json:"input"`
+		AllowInThread bool            `json:"allow_in_thread"`
 	}
 
 	// ApprovalClosed says an approval is no longer open.
@@ -519,6 +524,43 @@ func (m *Manager) Answer(_ context.Context, id string, allow bool) error {
 		return fmt.Errorf("approval %s: %w", id, ErrNotFound)
 	}
 	o.answer <- allow
+	return nil
+}
+
+// AnswerInThread allows the open approval id and every later ask for the same command in its
+// thread. It wraps ErrNotFound when none is open, and leaves the approval open and returns
+// ErrNotOffered when allow is false or the approval does not offer it.
+func (m *Manager) AnswerInThread(ctx context.Context, id string, allow bool) error {
+	m.mu.Lock()
+	o, ok := m.approvals[id]
+	offered := ok && allow && o.approval.AllowInThread
+	if offered {
+		delete(m.approvals, id)
+	}
+	m.mu.Unlock()
+	switch {
+	case !ok:
+		return fmt.Errorf("approval %s: %w", id, ErrNotFound)
+	case !offered:
+		return ErrNotOffered
+	}
+	after, err := json.Marshal(map[string]string{"command": o.command})
+	if err == nil {
+		var c store.Change
+		c, err = m.cfg.Store.RecordChange(ctx, store.Change{
+			Entity: store.EntityAllow, EntityID: id, Action: store.ActionCreate, After: after,
+			SourceBotID: o.run.bot.ID, SourceThreadID: o.run.threadID, SourceRunID: o.run.run.ID,
+		})
+		if err == nil {
+			m.publish(o.run, EventPlatformChanged, PlatformChanged{
+				SourceBotID: c.SourceBotID, ThreadID: c.SourceThreadID, RunID: c.SourceRunID, Change: c,
+			})
+		}
+	}
+	o.answer <- true
+	if err != nil {
+		return fmt.Errorf("record allow: %w", err)
+	}
 	return nil
 }
 
@@ -1109,12 +1151,21 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 func (m *Manager) approve(
 	ctx context.Context, a *active, tool string, input json.RawMessage,
 ) (bool, error) {
+	command, isCommand := commandText(tool, input)
+	if isCommand && m.allowedInThread(ctx, a.threadID, command) {
+		return true, nil
+	}
 	id := randHex(8)
 	answer := make(chan bool, 1) // Answer must not wait for the run to read
 	ap := Approval{RunID: a.run.ID, ID: id, Tool: tool, Input: input}
+	if isCommand {
+		if thread, err := m.cfg.Store.Thread(ctx, a.threadID); err == nil {
+			ap.AllowInThread = canAllowInThread(command, allowRoots(thread))
+		}
+	}
 	a.statusMu.Lock()
 	m.mu.Lock()
-	m.approvals[id] = open{approval: ap, answer: answer}
+	m.approvals[id] = open{approval: ap, command: command, run: a, answer: answer}
 	a.open++
 	m.mu.Unlock()
 	err := m.cfg.Store.SetStatus(ctx, a.run.ID, store.StatusWaiting)
@@ -1132,6 +1183,22 @@ func (m *Manager) approve(
 	case <-a.ctx.Done():
 		return false, fmt.Errorf("approval %s: %w", id, a.ctx.Err())
 	}
+}
+
+// allowedInThread reports whether the user chose Allow in this thread for command.
+func (m *Manager) allowedInThread(ctx context.Context, threadID, command string) bool {
+	changes, err := m.cfg.Store.Changes(ctx, threadID)
+	if err != nil {
+		m.cfg.Log.Warn("read thread allows", "thread_id", threadID, "error", err)
+		return false
+	}
+	return slices.ContainsFunc(changes, func(c store.Change) bool {
+		var after struct {
+			Command string `json:"command"`
+		}
+		return c.Entity == store.EntityAllow && json.Unmarshal(c.After, &after) == nil &&
+			after.Command == command
+	})
 }
 
 // resume closes approval id and sets the run back to running once none is open.
