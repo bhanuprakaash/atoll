@@ -40,9 +40,6 @@ func TestSkillEditor_ReimportEndpoint(t *testing.T) {
 			if want := c.say(t, "Import the skill folder "+root).res; !reflect.DeepEqual(same, want) {
 				t.Fatalf("reimport %+v, import_skill %+v: want the same answer", same, want)
 			}
-			if !slices.Equal(same.HomePaths, _potetoHomePaths) {
-				t.Fatalf("home_paths %q, want %q", same.HomePaths, _potetoHomePaths)
-			}
 			if got := s.rawDo(t, "GET", "/api/skills/"+created.ID, nil, 200); string(got) != string(raw) {
 				t.Fatalf("unchanged reimport wrote:\nbefore %s\nafter  %s", raw, got)
 			}

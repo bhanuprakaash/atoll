@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
 import { quiet } from '@/components/button';
@@ -14,14 +15,24 @@ import {
   type Message,
   type Run,
 } from '@/modules/threads/api/messages';
-import { useRun, useStopRun } from '@/modules/threads/api/runs';
+import { getRun, useRun, useStopRun } from '@/modules/threads/api/runs';
 import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
+import { QueuedMessage } from '@/modules/threads/components/queued-message';
 import { HelpersRegion } from '@/modules/threads/components/helpers-region';
+import { FailedLine, FailedRun } from '@/modules/threads/components/failed-run-line';
+import { LeadLedger, type LedgerRow } from '@/modules/threads/components/lead-ledger';
 import { LiveRun } from '@/modules/threads/components/live-run';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
+import { MrChip } from '@/modules/threads/components/mr-chip';
+import {
+  firstLine,
+  helperReport,
+  isQuestion,
+  realBlocked,
+} from '@/modules/threads/utils/helper-report';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
-import { clockTime } from '@/utils/time';
+import { clockTime, messageTime } from '@/utils/time';
 
 const chatText = 'text-base leading-[1.65] tracking-normal';
 
@@ -32,12 +43,18 @@ function duration(run: Run) {
 }
 function RunResult({
   id,
+  botName,
   time,
+  newest,
+  askedAbove,
   retry,
   signedOut,
 }: {
   id: string;
+  botName: string;
   time?: string;
+  newest: boolean;
+  askedAbove?: boolean;
   retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
@@ -53,8 +70,9 @@ function RunResult({
       )
     );
   if (run.status === 'running' || run.status === 'waiting') return null;
+  if (run.status === 'failed' && askedAbove) return null;
   const tools = run.tools ?? {};
-  const blocked = run.report?.blocked?.trim();
+  const blocked = realBlocked(run.report?.blocked);
   const parts = [
     tools.read ? `read ${tools.read} ${tools.read === 1 ? 'file' : 'files'}` : '',
     tools.edit ? `edited ${tools.edit}` : '',
@@ -70,7 +88,7 @@ function RunResult({
   ].filter(Boolean);
   return (
     <div className="flex flex-col gap-6 text-sm text-muted">
-      {blocked && !['none', 'nothing', 'nothing.'].includes(blocked.toLowerCase()) && (
+      {blocked && (
         <p className="relative text-ink/80">
           <span
             aria-hidden="true"
@@ -80,47 +98,14 @@ function RunResult({
         </p>
       )}
       {run.status === 'failed' && (
-        <div className="flex flex-wrap items-center gap-3">
-          <svg
-            aria-hidden="true"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            className="flex-none text-danger"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7.5v5M12 16v.5" />
-          </svg>
-          {run.error_kind === 'signed_out' && signedOut ? (
-            signedOut(run.provider)
-          ) : (
-            <span className="min-w-60 flex-1 text-ink/80 [overflow-wrap:anywhere]">
-              Run failed{run.error ? `: ${run.error}` : '.'}
-              {/sign.?in|authenticat|not logged in|login/i.test(run.error) && (
-                <>
-                  {' '}
-                  <Link
-                    className="text-ink underline decoration-outline underline-offset-3"
-                    to="/settings/providers"
-                  >
-                    Sign in
-                  </Link>
-                </>
-              )}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => retry(id)}
-            className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
-          >
-            Retry
-          </button>
-        </div>
+        <FailedLine
+          run={run}
+          botName={botName}
+          replied
+          newest={newest}
+          retry={retry}
+          signedOut={signedOut}
+        />
       )}
       <p className="text-xs">
         <time dateTime={at} data-testid={time ? 'message-time' : undefined}>
@@ -130,32 +115,6 @@ function RunResult({
       </p>
     </div>
   );
-}
-function messageTime(createdAt: string) {
-  const date = new Date(createdAt);
-  const today = new Date();
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const startOfMessage = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const daysAgo = Math.round((startOfToday.getTime() - startOfMessage.getTime()) / 86_400_000);
-  const time = clockTime(createdAt);
-  if (daysAgo === 0) return time;
-  if (daysAgo === 1) return `Yesterday ${time}`;
-  if (daysAgo < 7) return `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
-  return `${date.getDate()} ${date.toLocaleDateString([], { month: 'short' })} ${time}`;
-}
-
-// helperReport is a helper's message in its boss's thread as the user reads it: the prose, and the
-// helper thread it came from. The Done/Tried/Blocked/Next lines stay in the helper thread.
-function helperReport(text: string) {
-  const head = /^.+ reported back from thread (\S+)\.\n/.exec(text);
-  if (head) {
-    const rest = text.slice(head[0].length);
-    const cut = rest.search(/\n\n(Done|Tried|Blocked|Next): |\n\nMerge \S+ into your branch\.$/);
-    return { prose: (cut < 0 ? rest : rest.slice(0, cut)).trim(), threadId: head[1] };
-  }
-  const tail = /\n\(thread (\S+)\)$/.exec(text);
-  if (tail) return { prose: text.slice(0, tail.index), threadId: tail[1] };
-  return { prose: text, threadId: '' };
 }
 
 function Clamp({
@@ -219,18 +178,27 @@ function MessageLine({
   from,
   brief,
   footer,
+  resend,
 }: {
   message: Message;
   threadId: string;
   from?: Bots[string];
   brief: boolean;
   footer?: ReactNode;
+  resend: (runId: string) => void;
 }) {
   const time = (
     <time className="text-xs text-muted" dateTime={message.created_at} data-testid="message-time">
       {messageTime(message.created_at)}
     </time>
   );
+  if (message.kind) {
+    return (
+      <p data-testid="message" className="text-sm text-muted">
+        Reef: {message.text} {time}
+      </p>
+    );
+  }
   if (message.from_bot_id) {
     const report = brief ? { prose: message.text, threadId: '' } : helperReport(message.text);
     const text = (
@@ -291,7 +259,17 @@ function MessageLine({
             </div>
           )}
         </article>
-        <span className="pr-[18px]">{time}</span>
+        <span className="flex items-center gap-2 pr-[18px]">
+          {message.not_read && (
+            <>
+              <span className="text-xs text-muted">Not read</span>
+              <button type="button" onClick={() => resend(message.run_id)} className={quiet}>
+                Resend
+              </button>
+            </>
+          )}
+          {time}
+        </span>
       </div>
     );
   return (
@@ -479,6 +457,11 @@ export function ThreadView({
   const messages = messageQuery.data?.pages.flat() ?? [];
   const { fetchNextPage, hasNextPage, isFetching } = messageQuery;
   const { data: thread } = useThread(threadId);
+  const queryClient = useQueryClient();
+  const queued = thread?.queued ?? [];
+  useEffect(() => {
+    void queryClient.invalidateQueries({ queryKey: ['messages', threadId] });
+  }, [queryClient, threadId, thread?.run_id, queued.length]);
   const create = useCreateThreadWithMessage(botId);
   const send = useSendMessage(threadId);
   const stop = useStopRun();
@@ -527,6 +510,27 @@ export function ThreadView({
     if (messages.length > 50 && hasNextPage && !isFetching) void fetchNextPage();
   }, [fetchNextPage, hasNextPage, isFetching, messages.length]);
   const answered = new Set(messages.filter((m) => m.role === 'bot').map((m) => m.run_id));
+  const fromHelper = (m: Message) => !!m.from_bot_id && m.from_bot_id !== thread?.parent_bot_id;
+  const woken = new Set(
+    messages.filter((m) => m.role === 'user' && fromHelper(m)).map((m) => m.run_id),
+  );
+  const fromUser = new Set(
+    messages.filter((m) => m.role === 'user' && !m.from_bot_id).map((m) => m.run_id),
+  );
+  const statusReply = (m: Message) =>
+    !!thread &&
+    m.role === 'bot' &&
+    !m.from_bot_id &&
+    woken.has(m.run_id) &&
+    !fromUser.has(m.run_id) &&
+    !isQuestion(m.text);
+  const replyRunIds = [...new Set(messages.filter(statusReply).map((m) => m.run_id))];
+  const replyRuns = useQueries({
+    queries: replyRunIds.map((id) => ({ queryKey: ['run', id], queryFn: () => getRun(id) })),
+  });
+  const unanswered = (m: Message) => m.role === 'user' && !m.from_bot_id && !answered.has(m.run_id);
+  const asked = new Set(messages.filter(unanswered).map((m) => m.run_id));
+  const newest = (runId: string) => runId === thread?.run_id && !activeId;
   const retry = async (runId: string) => {
     const message = messages.find((m) => m.role === 'user' && m.run_id === runId);
     if (!message) return;
@@ -541,7 +545,7 @@ export function ThreadView({
         return { mime: a.mime, data: url.slice(url.indexOf(',') + 1) };
       }),
     );
-    send.mutate({ text: message.text, images }, { onSuccess: ({ run }) => begin(run.id) });
+    send.mutate({ text: message.text, images }, { onSuccess: ({ run }) => run && begin(run.id) });
   };
   const sendFirst = (text: string, images?: ImageInput[]) => {
     if (repoId && !thread?.repo_id)
@@ -552,26 +556,14 @@ export function ThreadView({
             navigate(`/bots/${botId}/threads/${result.thread?.id ?? result.id}`),
         },
       );
-    else send.mutate({ text, images }, { onSuccess: ({ run }) => begin(run.id) });
+    else send.mutate({ text, images }, { onSuccess: ({ run }) => run && begin(run.id) });
   };
   const mrUrl = mr?.url ?? thread?.mr_url;
   const mrState = mr?.state ?? thread?.mr_state;
   const ref = mrRef(mrUrl);
   const chip = 'flex h-7 flex-none items-center gap-1.5 rounded-full bg-selected px-2.5';
   const mrChip = mrUrl && (
-    <a
-      href={mrUrl}
-      target="_blank"
-      rel="noreferrer"
-      title={(mr?.title ?? thread?.mr_title) || ref || mrUrl}
-      className={`${chip} text-ink`}
-    >
-      <span
-        aria-hidden="true"
-        className={`size-1.5 rounded-full ${{ merged: 'bg-whale', closed: 'bg-danger' }[mrState ?? ''] ?? 'bg-ok'}`}
-      />
-      {ref ?? '!MR'}
-    </a>
+    <MrChip url={mrUrl} state={mrState} title={mr?.title ?? thread?.mr_title} />
   );
   const context = (
     <>
@@ -631,6 +623,79 @@ export function ThreadView({
     thread?.parent_thread_id && thread.parent_bot_id && !thread.closed
       ? (bots[thread.parent_bot_id]?.name ?? 'Its boss')
       : '';
+  const holdScroll = () => {
+    wasAtLatest.current = false;
+    requestAnimationFrame(() => {
+      const element = log.current;
+      if (!element) return;
+      const atLatest = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+      wasAtLatest.current = atLatest;
+      setAwayFromLatest(!atLatest);
+    });
+  };
+  const ledgerRow = (m: Message): LedgerRow | null => {
+    if (fromHelper(m)) {
+      const report = helperReport(m.text);
+      if (!report.threadId || !report.state || report.blocked) return null;
+      const helper = helpers.find((h) => h.id === report.threadId);
+      const bot = bots[m.from_bot_id ?? ''];
+      return {
+        id: m.id,
+        time: m.created_at,
+        name: bot?.name ?? 'Helper',
+        look: bot?.look,
+        line: report.line,
+        state: report.state,
+        mr: helper?.mr_url
+          ? { url: helper.mr_url, state: helper.mr_state, title: helper.mr_title }
+          : undefined,
+        report: (
+          <>
+            <Markdown threadId={threadId}>{report.prose}</Markdown>
+            <Link to={`/bots/${m.from_bot_id}/threads/${report.threadId}`} className={quiet}>
+              Open thread
+            </Link>
+          </>
+        ),
+      };
+    }
+    if (!statusReply(m)) return null;
+    const query = replyRuns[replyRunIds.indexOf(m.run_id)];
+    const run = query?.data;
+    if (query?.isError || (run && (run.status !== 'done' || realBlocked(run.report?.blocked))))
+      return null;
+    return {
+      id: m.id,
+      time: m.created_at,
+      name: botName,
+      look,
+      line: run?.report?.done || firstLine(m.text),
+      state: 'Done',
+      report: <Markdown threadId={threadId}>{m.text}</Markdown>,
+    };
+  };
+  type Item = { rows: LedgerRow[]; day?: Date } | { message: Message; index: number; day?: Date };
+  const items: Item[] = [];
+  messages.forEach((m, index) => {
+    const day = new Date(m.created_at);
+    const previous = index > 0 ? new Date(messages[index - 1].created_at) : null;
+    const valid = Number.isFinite(day.getTime()) && day.getFullYear() > 1;
+    const showDay = valid && (!previous || day.toDateString() !== previous.toDateString());
+    const newDay = showDay ? day : undefined;
+    const row = ledgerRow(m);
+    const last = items.at(-1);
+    if (!row) {
+      items.push({ message: m, index, day: newDay });
+      return;
+    }
+    const handoff = handoffs.get(m.id);
+    const rows = [
+      row,
+      ...(handoff ? [{ id: `handoff-${m.id}`, handoff: <>Handed off to {names(handoff)}</> }] : []),
+    ];
+    if (last && 'rows' in last && !showDay) last.rows.push(...rows);
+    else items.push({ rows, day: newDay });
+  });
   const empty = messages.length === 0 && !activeId;
   const firstUserId = messages.find((m) => m.role === 'user')?.id;
   const loadOlder = () => {
@@ -685,31 +750,38 @@ export function ThreadView({
               onSent={(run) => begin(run.id)}
             />
           )}
-          {messages.map((m, index) => {
-            const day = new Date(m.created_at);
-            const previous = index > 0 ? new Date(messages[index - 1].created_at) : null;
-            const valid = Number.isFinite(day.getTime()) && day.getFullYear() > 1;
-            const showDay = valid && (!previous || day.toDateString() !== previous.toDateString());
+          {items.map((item) => {
+            const first = 'rows' in item ? item.rows[0].id : item.message.id;
+            const separator = item.day && (
+              <div className="flex items-center gap-3 text-xs text-label">
+                <span className="h-px flex-1 bg-line" />
+                {item.day.toDateString() === new Date().toDateString()
+                  ? 'Today'
+                  : item.day.toLocaleDateString([], {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                <span className="h-px flex-1 bg-line" />
+              </div>
+            );
+            if ('rows' in item)
+              return (
+                <Fragment key={first}>
+                  {separator}
+                  <LeadLedger rows={item.rows} onToggle={holdScroll} />
+                </Fragment>
+              );
+            const { message: m, index } = item;
             return (
               <Fragment key={m.id}>
-                {showDay && (
-                  <div className="flex items-center gap-3 text-xs text-label">
-                    <span className="h-px flex-1 bg-line" />
-                    {day.toDateString() === new Date().toDateString()
-                      ? 'Today'
-                      : day.toLocaleDateString([], {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })}
-                    <span className="h-px flex-1 bg-line" />
-                  </div>
-                )}
+                {separator}
                 <MessageLine
                   message={m}
                   threadId={threadId}
                   from={bots[m.from_bot_id ?? '']}
                   brief={!!m.from_bot_id && m.from_bot_id === thread?.parent_bot_id}
+                  resend={retry}
                   footer={
                     m.role === 'bot' &&
                     messages[index + 1]?.run_id !== m.run_id && (
@@ -717,7 +789,9 @@ export function ThreadView({
                         {afterRun?.(m.run_id)}
                         <RunResult
                           id={m.run_id}
+                          botName={botName}
                           time={m.created_at}
+                          newest={newest(m.run_id)}
                           retry={retry}
                           signedOut={signedOut}
                         />
@@ -725,6 +799,15 @@ export function ThreadView({
                     )
                   }
                 />
+                {unanswered(m) && (
+                  <FailedRun
+                    id={m.run_id}
+                    botName={botName}
+                    newest={newest(m.run_id)}
+                    retry={retry}
+                    signedOut={signedOut}
+                  />
+                )}
                 {handoffs.has(m.id) && (
                   <p className="text-sm text-muted">Handed off to {names(handoffs.get(m.id)!)}</p>
                 )}
@@ -742,7 +825,14 @@ export function ThreadView({
               {run.finished && !answered.has(id) && (
                 <>
                   {afterRun?.(id)}
-                  <RunResult id={id} retry={retry} signedOut={signedOut} />
+                  <RunResult
+                    id={id}
+                    botName={botName}
+                    newest={newest(id)}
+                    askedAbove={asked.has(id)}
+                    retry={retry}
+                    signedOut={signedOut}
+                  />
                 </>
               )}
             </div>
@@ -750,9 +840,25 @@ export function ThreadView({
           {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
             <div className="flex flex-col gap-6">
               {afterRun?.(thread.run_id)}
-              <RunResult id={thread.run_id} retry={retry} signedOut={signedOut} />
+              <RunResult
+                id={thread.run_id}
+                botName={botName}
+                newest={newest(thread.run_id)}
+                askedAbove={asked.has(thread.run_id)}
+                retry={retry}
+                signedOut={signedOut}
+              />
             </div>
           )}
+          {queued.map((m) => (
+            <QueuedMessage
+              key={m.id}
+              message={m}
+              threadId={threadId}
+              running={!!activeId}
+              editable={!thread?.parent_thread_id}
+            />
+          ))}
           {lostRepo && (
             <p className="text-sm text-muted">
               {botName} no longer has access to {lostRepo}

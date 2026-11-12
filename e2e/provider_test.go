@@ -27,6 +27,10 @@ const (
 	_codexThreadID  = "01a1a5b5-3b2c-71f2-84d9-e7c08190f545"
 )
 
+// _wakeWindow is ATOLL_WAKE_WINDOW on every machine: short, so a helper's report wakes its boss
+// soon. A test of the window sets its own.
+const _wakeWindow = "200ms"
+
 // machine is a user's machine atoll runs on. It sees nothing of the real one: HOME, its data
 // dir and the folders provider discovery searches are all temporary.
 type machine struct {
@@ -44,12 +48,13 @@ type call struct {
 	argv  []string
 	env   map[string]string
 	dirs  map[string]fake.Dir
+	mcp   json.RawMessage
 	stdin []string
 }
 
 func newMachine(t *testing.T, providers ...string) *machine {
 	t.Helper()
-	m := &machine{home: t.TempDir(), data: t.TempDir(), bin: t.TempDir()}
+	m := &machine{home: t.TempDir(), data: t.TempDir(), bin: t.TempDir(), env: []string{"ATOLL_WAKE_WINDOW=" + _wakeWindow}}
 	m.path = m.bin + ":/usr/bin:/bin"
 	if _keychains != "" {
 		if err := os.Mkdir(filepath.Join(m.home, "Library"), 0o755); err != nil {
@@ -165,6 +170,7 @@ func (m *machine) runs(t *testing.T, provider string) []*call {
 			Argv  []string            `json:"argv"`
 			Env   []string            `json:"env"`
 			Dirs  map[string]fake.Dir `json:"dirs"`
+			MCP   json.RawMessage     `json:"mcpConfig"`
 			Stdin string              `json:"stdin"`
 		}
 		if err := json.Unmarshal(s.Bytes(), &r); err != nil {
@@ -179,6 +185,10 @@ func (m *machine) runs(t *testing.T, provider string) []*call {
 			}
 			byPID[r.PID] = c
 			calls = append(calls, c)
+			continue
+		}
+		if r.MCP != nil {
+			c.mcp = r.MCP
 			continue
 		}
 		c.stdin = append(c.stdin, r.Stdin)

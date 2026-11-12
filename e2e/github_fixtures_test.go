@@ -17,8 +17,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"atoll/e2e/fakes/fake"
 )
 
 const (
@@ -48,6 +46,7 @@ type fakeGitHub struct {
 	mcp        []githubMCPRequest
 	pushAuth   []string // "user:password" of every git request GitHub accepted
 	pulls      []githubPull
+	watch      prWatch
 
 	// slowDownNext answers the next token request slow_down, as github.com does for a poll that
 	// came too early. From then on, like github.com, a poll sooner than interval after the
@@ -68,6 +67,10 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 	mux.HandleFunc("POST /login/oauth/access_token", g.accessToken)
 	mux.HandleFunc("GET /user", g.user)
 	mux.HandleFunc("POST /repos/{owner}/{repo}/pulls", g.createPull)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/pulls/{number}", g.getPull)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/issues/{number}", g.getIssue)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/commits/{sha}/check-runs", g.checkRuns)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/commits/{sha}/status", g.commitStatus)
 	mux.HandleFunc("POST /mcp/", g.mcpServer)
 	mux.HandleFunc("/octo/", g.gitRemote)
 	g.Server = httptest.NewServer(mux)
@@ -373,8 +376,9 @@ func assertGitHubEnv(t *testing.T, who string, env map[string]string, token stri
 	}
 }
 
-// mcpServersOf returns the servers of the provider session's MCP config: Claude's --mcp-config
-// argv, Codex's thread/start config (or -c arguments), by name with their url and headers.
+// mcpServersOf returns the servers of the provider session's MCP config: Claude's resolved config
+// as the fake loaded it, Codex's thread/start config (or -c arguments), by name with their url and
+// headers.
 func mcpServersOf(t *testing.T, provider string, c *call) map[string]struct {
 	URL     string
 	Headers map[string]string
@@ -392,17 +396,12 @@ func mcpServersOf(t *testing.T, provider string, c *call) map[string]struct {
 				Headers map[string]string `json:"headers"`
 			} `json:"mcpServers"`
 		}
-		if err := json.Unmarshal([]byte(flagValue(c.argv, "--mcp-config")), &cfg); err != nil {
-			t.Fatalf("claude --mcp-config is not inline JSON: %v", err)
+		if err := json.Unmarshal(c.mcp, &cfg); err != nil {
+			t.Fatalf("fake claude loaded MCP config is not JSON: %v", err)
 		}
-		getenv := func(k string) string { return c.env[k] }
 		for name, s := range cfg.MCPServers {
 			if s.Type != "http" {
 				t.Errorf("claude MCP server %s has type %q, want http", name, s.Type)
-			}
-			s.URL = fake.ExpandEnv(s.URL, getenv)
-			for k, v := range s.Headers {
-				s.Headers[k] = fake.ExpandEnv(v, getenv)
 			}
 			out[name] = struct {
 				URL     string
