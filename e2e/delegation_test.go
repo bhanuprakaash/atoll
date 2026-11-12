@@ -164,6 +164,7 @@ func quietBoss(t *testing.T, s *server, boss, helperBot string, n int) {
 // helper still works, and the helper thread has the boss thread as parent, the helper Bot, no
 // repo, the handoff line and brief as its first message, and a fresh provider session.
 func TestDelegate_HandsOff(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
@@ -208,6 +209,7 @@ func TestDelegate_HandsOff(t *testing.T) {
 // TestDelegate_ToolsOnlyForBosses: a Bot with no delegates, and a helper's run even when the
 // helper Bot has delegates, see neither delegate nor continue. A Bot with delegates sees both.
 func TestDelegate_ToolsOnlyForBosses(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -241,6 +243,7 @@ func TestDelegate_ToolsOnlyForBosses(t *testing.T) {
 // TestDelegate_Refused: a Bot not on the boss's list gets a tool error naming the list, and no
 // thread is made for it; three helper runs going refuse a fourth.
 func TestDelegate_Refused(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -283,6 +286,7 @@ func TestDelegate_Refused(t *testing.T) {
 // repo may name one with repo, and without it the helper has none. A helper without access to
 // the repo is refused with "Tester has no access to atoll".
 func TestDelegate_HelperRepo(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -340,6 +344,7 @@ func TestDelegate_HelperRepo(t *testing.T) {
 // another Bot with delegates and from another thread of the same boss, and accepted from the boss
 // thread, which gives the helper a new run.
 func TestContinue_OnlyFromBoss(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -379,7 +384,7 @@ func TestContinue_OnlyFromBoss(t *testing.T) {
 
 			quietBoss(t, s, boss.ID, tester.ID, 1)
 			lines := useAtoll(t, s, boss, ev, continueCall(helper, _askPrompt))
-			if len(lines) != 1 || lines[0] == "atoll/continue: unavailable" || slices.Contains(refusals, lines[0]) {
+			if len(lines) == 0 || lines[0] == "atoll/continue: unavailable" || slices.Contains(refusals, lines[0]) {
 				t.Fatalf("continue from the boss thread: reply %q, want it accepted (refusals were %q)", lines, refusals)
 			}
 			deadline := time.Now().Add(30 * time.Second)

@@ -78,6 +78,7 @@ func onlyChief(t *testing.T, s *server) {
 }
 
 func TestChiefBot_CreateWithModel(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -93,6 +94,7 @@ func TestChiefBot_CreateWithModel(t *testing.T) {
 }
 
 func TestChiefBot_CreateWithUnknownModelFails(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -104,6 +106,7 @@ func TestChiefBot_CreateWithUnknownModelFails(t *testing.T) {
 }
 
 func TestChiefBot_Look(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -133,6 +136,7 @@ func TestChiefBot_Look(t *testing.T) {
 }
 
 func TestChiefBot_EditModelAndLookUndo(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -161,6 +165,7 @@ func TestChiefBot_EditModelAndLookUndo(t *testing.T) {
 }
 
 func TestChiefBot_CreateWithoutModel(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -175,6 +180,7 @@ func TestChiefBot_CreateWithoutModel(t *testing.T) {
 var _otherProvider = map[string]string{"claude": "codex", "codex": "claude"}
 
 func TestChiefBot_EditProviderChecksModel(t *testing.T) {
+	t.Parallel()
 	m := newMachine(t, "claude", "codex")
 	m.signIn(t, "claude")
 	m.signIn(t, "codex")
@@ -197,6 +203,7 @@ func TestChiefBot_EditProviderChecksModel(t *testing.T) {
 }
 
 func TestChiefBot_EditKeepsOldModel(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -212,6 +219,7 @@ func TestChiefBot_EditKeepsOldModel(t *testing.T) {
 }
 
 func TestChiefBot_SignedOutProviderSaysSo(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			// Both installed, only p signed in, so Chief runs on p.
@@ -279,6 +287,7 @@ func rejected(t *testing.T, s *server, method, path string, body any, want []str
 }
 
 func TestChiefBot_CreateWithUnknownRepoFails(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -292,6 +301,7 @@ func TestChiefBot_CreateWithUnknownRepoFails(t *testing.T) {
 }
 
 func TestChiefBot_EditWithUnknownRepoFails(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -311,6 +321,7 @@ func TestChiefBot_EditWithUnknownRepoFails(t *testing.T) {
 }
 
 func TestBots_UnknownRepoRejected(t *testing.T) {
+	t.Parallel()
 	_, s := start(t, "claude")
 	ids := registerRepos(t, s, "atoll", "reef")
 	want := append([]string{_unknownRepo}, ids...)
@@ -328,6 +339,7 @@ func TestBots_UnknownRepoRejected(t *testing.T) {
 }
 
 func TestChiefBot_UnknownRepoWithNoReposRegistered(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -349,6 +361,7 @@ func TestChiefBot_UnknownRepoWithNoReposRegistered(t *testing.T) {
 }
 
 func TestChiefBot_RepoAccessAsToday(t *testing.T) {
+	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
