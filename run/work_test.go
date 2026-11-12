@@ -138,6 +138,34 @@ func TestCloseThread_WorktreeRootChange(t *testing.T) {
 	}
 }
 
+func TestCloseThread_WorktreeDeletedOutsideReef(t *testing.T) {
+	e := newRepoEnv(t)
+	var path string
+	e.run(t, func(token string) {
+		var err error
+		path, _, _, err = e.m.StartWork(t.Context(), token, "feat", "images", "")
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	if out, err := exec.Command("git", "-C", e.repo.Path, "worktree", "remove", "--force", path).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if err := os.RemoveAll(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.m.CloseThread(t.Context(), e.thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.st.Thread(t.Context(), e.thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Closed {
+		t.Fatal("thread stays open")
+	}
+}
+
 func TestRun_RepoAccessRevoked(t *testing.T) {
 	e := newRepoEnv(t)
 	mem, err := memory.Open(e.st.DB(), nil)

@@ -572,6 +572,8 @@ Follow-ups, not filed:
 - Closing the boss thread stops its helpers' runs (no wake) and closes their threads, saving
   unfinished work as any close does; deleting a Bot does the same for each of its threads. Stopping
   the boss's run leaves its helpers going.
+- A worktree folder deleted outside Reef counts as removed when its thread closes (nothing to save,
+  git's record pruned), so the thread, and its boss, still close.
 - A helper thread is read-only for the user: `POST /api/threads/{id}/messages` and the queued-message
   routes answer 409 `{boss} is handling this thread`.
 - A child's questions go to its parent; approvals go to the user. The child's first message is one
