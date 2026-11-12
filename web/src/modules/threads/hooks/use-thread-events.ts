@@ -130,7 +130,7 @@ export function useThreadEvents(threadId: string) {
       void settle((JSON.parse((e as MessageEvent<string>).data) as Data<object>).run_id, refresh());
       void opened();
     });
-    for (const type of ['platform_changed', 'memory_saved', 'worktree_created'])
+    for (const type of ['platform_changed', 'memory_saved', 'worktree_created', 'helper_started'])
       source.addEventListener(type, refresh);
     source.addEventListener('mr_updated', (e) => {
       setMr(JSON.parse((e as MessageEvent<string>).data));

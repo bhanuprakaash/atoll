@@ -364,6 +364,7 @@ type threadSummary struct {
 	Step        string          `json:"step"`
 	ParentBotID string          `json:"parent_bot_id"`
 	Helpers     []threadSummary `json:"helpers"`
+	MRCI        json.RawMessage `json:"mr_ci"`
 }
 
 func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, error) {
@@ -372,6 +373,9 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 		return threadSummary{}, err
 	}
 	out := threadSummary{Thread: t, UpdatedAt: t.LastActivity}
+	if t.MRCI != "" {
+		out.MRCI = json.RawMessage(t.MRCI)
+	}
 	if t.ParentThreadID != "" {
 		boss, err := a.st.Thread(r.Context(), t.ParentThreadID)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {

@@ -1,9 +1,12 @@
 import { Creature, type CreatureLook, type CreatureState } from '@/components/creature';
 import { helperLabel, type HelperState } from '@/modules/threads/utils/helper-state';
 
-const look: Record<HelperState, { state: CreatureState; style: string }> = {
-  working: { state: 'working', style: '' },
-  needs_you: { state: 'needs_you', style: '' },
+const look: Record<HelperState, CreatureState> = {
+  working: 'working',
+  needs_you: 'needs_you',
+  done: 'idle',
+  failed: 'failed',
+  stopped: 'asleep',
 };
 
 export function HelperCreature({
@@ -16,8 +19,8 @@ export function HelperCreature({
   state: HelperState;
 }) {
   return (
-    <span role="img" aria-label={helperLabel(name, state)} className={look[state].style}>
-      <Creature look={creature} state={look[state].state} size={20} />
+    <span role="img" aria-label={helperLabel(name, state)}>
+      <Creature look={creature} state={look[state]} size={20} />
     </span>
   );
 }

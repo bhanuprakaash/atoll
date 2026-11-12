@@ -21,11 +21,12 @@ import { Composer } from '@/modules/threads/components/composer';
 import { ErrorNotice } from '@/components/error-notice';
 import { approvalTarget } from '@/modules/threads/components/approval-card';
 import { QueuedMessage } from '@/modules/threads/components/queued-message';
-import { HelpersRegion } from '@/modules/threads/components/helpers-region';
 import { FailedLine, FailedRun } from '@/modules/threads/components/failed-run-line';
 import { LeadLedger, type LedgerRow } from '@/modules/threads/components/lead-ledger';
 import { chatText, LiveRun } from '@/modules/threads/components/live-run';
 import { WaitingCard } from '@/modules/threads/components/waiting-card';
+import { HelpersTray } from '@/modules/threads/components/helpers-tray';
+import { useSeenReports } from '@/modules/threads/hooks/use-seen-reports';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 import { MrChip } from '@/modules/threads/components/mr-chip';
 import {
@@ -213,6 +214,8 @@ function MessageLine({
       <article
         aria-label={from?.name ?? 'Helper'}
         data-testid="message"
+        data-report-for={brief ? undefined : report.threadId || undefined}
+        data-report-id={message.id}
         className="flex max-w-[85%] flex-col items-start gap-2"
       >
         <span className="flex items-center gap-2 text-sm">
@@ -629,6 +632,13 @@ export function ThreadView({
         { name: bots[h.bot_id]?.name ?? 'Helper', href: `/bots/${h.bot_id}/threads/${h.id}` },
       ]);
   }
+  const reports = new Map<string, string>();
+  for (const m of messages)
+    if (m.from_bot_id && m.from_bot_id !== thread?.parent_bot_id) {
+      const helper = helperReport(m.text).threadId;
+      if (helper) reports.set(helper, m.id);
+    }
+  const seen = useSeenReports(log, [...reports.values()].join());
   const boss =
     thread?.parent_thread_id && thread.parent_bot_id && !thread.closed
       ? (bots[thread.parent_bot_id]?.name ?? 'Its boss')
@@ -926,7 +936,6 @@ export function ThreadView({
               </button>
             </div>
           )}
-          <HelpersRegion helpers={helpers} bots={bots} />
           <WaitingCard
             threadId={threadId}
             items={thread?.waiting ?? []}
@@ -984,6 +993,7 @@ export function ThreadView({
               disabled={!connected || !!thread?.closed}
               onSent={(run) => begin(run.id)}
               context={context}
+              tray={<HelpersTray helpers={helpers} bots={bots} reports={reports} seen={seen} />}
             />
           )}
         </div>

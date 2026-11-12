@@ -60,6 +60,7 @@ const (
 	EventWorktreeRemoved = "worktree_removed" // WorktreeRemoved
 	EventMemorySaved     = "memory_saved"     // MemorySaved
 	EventPrompt          = "prompt"           // Prompt
+	EventHelperStarted   = "helper_started"   // HelperStarted
 )
 
 const (

@@ -1845,7 +1845,8 @@ Voice
   in place of the step and the time, and in the summary's reported count, until its report (the
   helper Bot's message in the chat) has been in the visible part of the chat; then it leaves and
   the count follows. Which reports were seen is kept in the browser per helper thread, so a reload
-  does not bring one back. *The first design said `Approved · Read`; a report has no verdict to
+  does not bring one back. A new helper reaches the boss's page at once (`helper_started` on the boss's stream, which
+  refreshes its thread); a helper's later changes arrive with the thread's 2 s refresh. *The first design said `Approved · Read`; a report has no verdict to
   read it from, and reading prose to guess one is not something Reef does.* The
   chat keeps one line where work was handed off, after the message that led to it ("Handed off to
   Tester and Reviewer", `Tester ×2` for two helpers of one Bot), each name linking to its helper

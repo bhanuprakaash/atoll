@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { quiet, refuse } from '@/components/button';
 import { ErrorNotice } from '@/components/error-notice';
 import { ApiError } from '@/lib/api-client';
@@ -30,11 +30,13 @@ export function ApprovalCard({
   id,
   tool,
   input,
+  by,
   allow_in_thread,
 }: {
   id: string;
   tool: string;
   input: unknown;
+  by?: ReactNode;
   allow_in_thread?: boolean;
 }) {
   const [answered, setAnswered] = useState(false);
@@ -93,7 +95,15 @@ export function ApprovalCard({
     <div role="group" aria-label="Approval" className="flex flex-col gap-1.5 text-sm">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="flex min-w-60 flex-1 items-center gap-2 text-muted">
-          <span className="flex-none">{approvalLead(tool)} </span>
+          <span className="flex-none">
+            {by ? (
+              <>
+                {by} {approvalLead(tool).toLowerCase()}
+              </>
+            ) : (
+              approvalLead(tool)
+            )}{' '}
+          </span>
           <code
             ref={code}
             className={`min-w-0 flex-1 rounded-md bg-box px-2 py-1 font-mono text-[12.5px] leading-5 text-ink [overflow-wrap:anywhere] ${open ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}
