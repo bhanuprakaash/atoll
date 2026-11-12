@@ -4,7 +4,7 @@ pre-commit:
     - name: gofmt
       glob: "*.go"
       run: |
-        files=$(gofmt -l {staged_files})
+        files=$("$(go env GOROOT)/bin/gofmt" -l {staged_files})
         [ -z "$files" ] || { echo "not gofmt-ed: $files"; exit 1; }
     - name: prettier
       root: web/
