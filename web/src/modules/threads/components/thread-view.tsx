@@ -472,6 +472,7 @@ export function ThreadView({
   const { data: thread } = useThread(threadId);
   const queryClient = useQueryClient();
   const queued = thread?.queued ?? [];
+  const unsent = queued.filter((q) => !messages.some((m) => m.id === q.id));
   useEffect(() => {
     void queryClient.invalidateQueries({ queryKey: ['messages', threadId] });
   }, [queryClient, threadId, thread?.run_id, queued.length]);
@@ -875,7 +876,7 @@ export function ThreadView({
               />
             </div>
           )}
-          {queued.map((m) => (
+          {unsent.map((m) => (
             <QueuedMessage
               key={m.id}
               message={m}
