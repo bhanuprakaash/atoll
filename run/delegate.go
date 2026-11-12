@@ -23,11 +23,18 @@ type RefusedError string
 
 func (e RefusedError) Error() string { return string(e) }
 
+// HelperStarted is a helper thread made for the boss's run, so the boss's page reads its helpers.
+type HelperStarted struct {
+	RunID    string `json:"run_id"`
+	ThreadID string `json:"thread_id"`
+}
+
 // Handoff is the boss's result for a delegate.
 type Handoff struct {
 	ThreadID string `json:"thread_id"`
 	Branch   string `json:"branch,omitempty"`
 	Note     string `json:"note,omitempty"`
+	Helpers  string `json:"helpers"`
 }
 
 // Delegate starts a helper thread for the Bot botName and sends it the brief.
@@ -72,6 +79,10 @@ func (m *Manager) Delegate(
 		m.abandonHelper(ctx, rp, h, path)
 		return Handoff{}, err
 	}
+	if h.Helpers, err = m.helpersLine(ctx, t.ID, ""); err != nil {
+		return Handoff{}, err
+	}
+	m.publish(a, EventHelperStarted, HelperStarted{RunID: a.run.ID, ThreadID: h.ThreadID})
 	return h, nil
 }
 
@@ -149,6 +160,10 @@ func (m *Manager) abandonHelper(ctx context.Context, rp store.Repo, h Handoff, p
 	if path == "" {
 		return
 	}
+	if err := m.checkWorktree(path, rp.Name); err != nil {
+		m.cfg.Log.Error("remove helper worktree", "path", path, "error", err)
+		return
+	}
 	if err := repo.Remove(ctx, rp.Path, path); err != nil {
 		m.cfg.Log.Error("remove helper worktree", "path", path, "error", err)
 		return
@@ -201,19 +216,67 @@ func (m *Manager) hasGitHub(ctx context.Context, b store.Bot) bool {
 }
 
 func (m *Manager) helpersGoing(ctx context.Context, bossID string) (int, error) {
+	running, err := m.helpersRunning(ctx, bossID, "")
+	return len(running), err
+}
+
+// helpersRunning lists the helper threads of bossID that have a run going, oldest first, except
+// skip.
+func (m *Manager) helpersRunning(ctx context.Context, bossID, skip string) ([]store.Thread, error) {
 	helpers, err := m.cfg.Store.HelperThreads(ctx, bossID)
 	if err != nil {
-		return 0, fmt.Errorf("list helper threads: %w", err)
+		return nil, fmt.Errorf("list helper threads: %w", err)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	going := 0
+	var running []store.Thread
 	for _, h := range helpers {
-		if _, ok := m.runs[h.ID]; ok {
-			going++
+		if _, ok := m.runs[h.ID]; ok && h.ID != skip {
+			running = append(running, h)
 		}
 	}
-	return going, nil
+	return running, nil
+}
+
+// HelpersLine is the line that tells a boss how many of its helper slots are free: running holds
+// one "{Bot} on {title}" per helper going.
+func HelpersLine(running []string) string {
+	free := _maxHelpers - len(running)
+	if len(running) == 0 {
+		return fmt.Sprintf("Helpers: 0 of %d running. %d free.", _maxHelpers, free)
+	}
+	return fmt.Sprintf("Helpers: %d of %d running (%s). %d free.",
+		len(running), _maxHelpers, strings.Join(running, "; "), free)
+}
+
+// helpersLine is HelpersLine for the helper runs going under bossID, except the one on skip.
+func (m *Manager) helpersLine(ctx context.Context, bossID, skip string) (string, error) {
+	running, err := m.helpersRunning(ctx, bossID, skip)
+	if err != nil {
+		return "", err
+	}
+	names := make([]string, len(running))
+	for i, h := range running {
+		b, err := m.cfg.Store.Bot(ctx, h.BotID)
+		if err != nil {
+			return "", fmt.Errorf("load helper: %w", err)
+		}
+		names[i] = b.Name + " on " + h.Title
+	}
+	return HelpersLine(names), nil
+}
+
+// BossHelpers is the helpers line for the run with token, or "" unless the run lists delegate:
+// the Bot has delegates and its thread is not a helper thread.
+func (m *Manager) BossHelpers(ctx context.Context, token string) (string, error) {
+	bot, t, _, err := m.Source(token)
+	if err != nil {
+		return "", err
+	}
+	if len(bot.Delegates) == 0 || t.ParentThreadID != "" {
+		return "", nil
+	}
+	return m.helpersLine(ctx, t.ID, "")
 }
 
 func (m *Manager) helper(ctx context.Context, boss store.Bot, name string) (store.Bot, error) {

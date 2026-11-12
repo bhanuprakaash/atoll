@@ -1,13 +1,24 @@
 import { Link } from 'react-router';
+import { refuse } from '@/components/button';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { useAnswerApproval } from '@/modules/threads/api/approvals';
 import { approvalTarget, approvalVerb } from '@/modules/threads/components/approval-card';
+import { waitingText } from '@/modules/threads/components/waiting-card';
 import type {
   ApprovalNotice,
   EarlierNotice,
   Notifications,
 } from '@/modules/threads/hooks/use-notifications';
+import type { Waiting } from '@/types/waiting';
 import { relativeTime } from '@/utils/time';
+
+export type WaitingNotice = {
+  bot_id: string;
+  bot_name: string;
+  thread_id: string;
+  title: string;
+  item: Waiting;
+};
 
 type Looks = Record<string, CreatureLook | undefined>;
 
@@ -21,15 +32,15 @@ function AnswerButtons({ id, className }: { id: string; className: string }) {
       <button
         type="button"
         disabled={answer.isPending}
-        onClick={() => answer.mutate(false)}
-        className={`rounded-xl border border-outline px-4 ${className}`}
+        onClick={() => answer.mutate({ approve: false })}
+        className={`rounded-xl border border-outline px-4 ${refuse} ${className}`}
       >
         Deny
       </button>
       <button
         type="button"
         disabled={answer.isPending}
-        onClick={() => answer.mutate(true)}
+        onClick={() => answer.mutate({ approve: true })}
         className={`rounded-xl bg-accent px-5 font-medium text-accent-ink ${className}`}
       >
         Allow
@@ -57,7 +68,7 @@ export function ApprovalDrop({
             <span className="font-medium">{approval.bot_name}</span>
             <span className="text-muted"> · {approval.title}</span>
           </div>
-          <div className="text-[13px] text-needs-ink">{approvalVerb(approval.tool)}</div>
+          <div className="text-[13px] text-muted">{approvalVerb(approval.tool)}</div>
         </div>
       </div>
       <div className="max-h-28 overflow-y-auto rounded-xl bg-card px-3 py-2 font-mono text-[12.5px] [overflow-wrap:anywhere]">
@@ -92,11 +103,13 @@ export function FinishedNotice({ notice, look }: { notice: EarlierNotice; look?:
 }
 
 export function NotificationList({
-  notifications: { needs, earlier },
+  notifications: { needs, earlier, markAllRead },
+  waiting,
   looks,
   onClose,
 }: {
   notifications: Notifications;
+  waiting: WaitingNotice[];
   looks: Looks;
   onClose: () => void;
 }) {
@@ -109,16 +122,16 @@ export function NotificationList({
     >
       {needs.length > 0 && (
         <>
-          <h3 className={`${heading} text-danger`}>Needs you</h3>
+          <h3 className={`${heading} text-muted`}>Needs you</h3>
           <ul aria-label="Needs you" className="flex flex-col gap-0.5">
             {needs.map((n) => (
-              <li key={n.id} className="flex items-center gap-2.5 rounded-2xl bg-needs p-2">
+              <li key={n.id} className="flex items-center gap-2.5 rounded-2xl bg-box p-2">
                 <Creature look={looks[n.bot_id]} state="needs_you" size={28} />
                 <Link to={threadPath(n)} onClick={onClose} className="min-w-0 flex-1">
                   <span className="block truncate text-[13.5px]">
                     {n.bot_name} · {n.title}
                   </span>
-                  <span className="block truncate font-mono text-xs text-needs-ink">
+                  <span className="block truncate font-mono text-xs text-ink">
                     {approvalTarget(n.input)}
                   </span>
                 </Link>
@@ -128,9 +141,48 @@ export function NotificationList({
           </ul>
         </>
       )}
+      {waiting.length > 0 && (
+        <>
+          <h3 className={`${heading} text-danger`}>Waiting on you</h3>
+          <ul aria-label="Waiting on you" className="flex flex-col gap-0.5">
+            {waiting.map((n) => (
+              <li
+                key={`${n.thread_id}:${n.item.kind}:${n.item.url ?? ''}`}
+                className="flex items-center gap-2.5 rounded-2xl bg-needs p-2"
+              >
+                <Creature look={looks[n.bot_id]} state="needs_you" size={28} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13.5px]">
+                    {n.bot_name} · {n.title}
+                  </span>
+                  <span className="block truncate text-xs text-needs-ink">
+                    {waitingText(n.item)}
+                  </span>
+                </span>
+                <Link
+                  to={threadPath(n)}
+                  onClick={onClose}
+                  className="text-[13px] text-muted hover:text-ink"
+                >
+                  Open thread
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {earlier.length > 0 && (
         <>
-          <h3 className={`${heading} text-label`}>Earlier</h3>
+          <div className="flex items-center justify-between pr-2">
+            <h3 className={`${heading} text-label`}>Earlier</h3>
+            <button
+              type="button"
+              onClick={markAllRead}
+              className="text-xs text-muted hover:text-ink"
+            >
+              Mark all read
+            </button>
+          </div>
           <ul aria-label="Earlier" className="flex flex-col gap-0.5">
             {earlier.map((n) => (
               <li key={n.id}>
@@ -155,7 +207,7 @@ export function NotificationList({
           </ul>
         </>
       )}
-      {needs.length === 0 && earlier.length === 0 && (
+      {needs.length === 0 && waiting.length === 0 && earlier.length === 0 && (
         <p className="px-2 py-3 text-center text-[13px] text-muted">Nothing new</p>
       )}
     </div>

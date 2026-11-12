@@ -36,6 +36,14 @@ func GitHubURL() string {
 	return GitHubInstance
 }
 
+// GitHubAPI is the base of GitHub's REST API: ATOLL_GITHUB_URL, else api.github.com.
+func GitHubAPI() string {
+	if os.Getenv("ATOLL_GITHUB_URL") != "" {
+		return GitHubURL()
+	}
+	return _githubAPI
+}
+
 // OnGitHub reports whether a git remote URL, in any form git takes, is on the host of GitHubURL.
 func OnGitHub(remote string) bool {
 	base, err := url.Parse(GitHubURL())
@@ -54,6 +62,22 @@ func OnGitHub(remote string) bool {
 		host, _, _ = strings.Cut(rest, ":")
 	}
 	return strings.EqualFold(host, base.Host)
+}
+
+// GitHubRepo returns the owner and name of the GitHub repo a git remote URL names, in any form
+// git takes; ok is false for a remote that is not on the host of GitHubURL.
+func GitHubRepo(remote string) (owner, name string, ok bool) {
+	if !OnGitHub(remote) {
+		return "", "", false
+	}
+	p := ""
+	if u, err := url.Parse(remote); err == nil && u.Host != "" {
+		p = u.Path
+	} else if _, rest, found := strings.Cut(remote, ":"); found {
+		p = rest
+	}
+	owner, name, found := strings.Cut(strings.TrimSuffix(strings.Trim(p, "/"), ".git"), "/")
+	return owner, name, found && owner != "" && name != "" && !strings.Contains(name, "/")
 }
 
 // GitHubMCPURL is GitHub's MCP server: ATOLL_GITHUB_MCP_URL, else the hosted one.
@@ -106,11 +130,7 @@ func PollGitHubToken(ctx context.Context, c *http.Client, deviceCode string) (st
 
 // CheckGitHubToken returns ErrGitHubNeedsSignIn when GitHub rejects the token.
 func CheckGitHubToken(ctx context.Context, c *http.Client, token string) error {
-	api := _githubAPI
-	if u := os.Getenv("ATOLL_GITHUB_URL"); u != "" {
-		api = GitHubURL()
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, api+"/user", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, GitHubAPI()+"/user", nil)
 	if err != nil {
 		return fmt.Errorf("create GitHub request: %w", err)
 	}
@@ -136,7 +156,8 @@ func SaveGitHubToken(id, token string) error {
 
 // GitHubToken loads the token from the OS secret store.
 func GitHubToken(id string) (string, error) {
-	return keyring.Get("atoll", "github:"+id)
+	token, err := keyring.Get("atoll", "github:"+id)
+	return token, readError(err)
 }
 
 // GitHub answers 200 with an error field, and form-encoded unless asked for JSON.
@@ -168,6 +189,8 @@ func githubPost(ctx context.Context, c *http.Client, path string, form url.Value
 			return ErrPending
 		case "slow_down":
 			return ErrSlowDown
+		case "expired_token", "access_denied":
+			return fmt.Errorf("%w: %s", ErrSignInEnded, failure.Error)
 		}
 		return fmt.Errorf("OAuth error: %s", failure.Error)
 	}

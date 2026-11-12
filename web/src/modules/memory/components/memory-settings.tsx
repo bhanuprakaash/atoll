@@ -1,3 +1,4 @@
+import { ErrorNotice } from '@/components/error-notice';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Box, RowText, rowClass, SectionHead, Tag } from '@/components/settings-ui';
 import { TextField } from '@/components/text-field';
@@ -65,13 +66,11 @@ function MemoryRow({
           .filter(Boolean)
           .join(' · ')}
       >
-        {retire.isError && (
-          <i className="block text-[12.5px] not-italic text-danger">{retire.error.message}</i>
-        )}
+        {retire.isError && <ErrorNotice error={retire.error} retry={() => retire.mutate()} />}
       </RowText>
       <Tag>{item.kind}</Tag>
       {item.status === 'retired' ? (
-        <Tag>Retired</Tag>
+        <Tag>{item.retired_reason ? `Retired · ${item.retired_reason}` : 'Retired'}</Tag>
       ) : (
         <button
           type="button"

@@ -2,8 +2,8 @@
 
 ## Rules
 
-1. One ticket per branch, named `<type>/<slug>` (`feat`, `fix`, `chore`, `docs`), with a PR to
-   `main`. Never push `main`; never merge your own PR.
+1. One ticket per branch, named `<type>/<slug>` (`feat`, `fix`, `chore`, `docs`, `test`), with a
+   PR to `main`. Never push `main`; never merge your own PR.
 2. Smallest diff that closes the ticket. Nothing speculative: no option, layer or wrapper the ticket
    does not need now.
 3. Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `build:`): one-line subject,
@@ -29,6 +29,7 @@
 - Smallest change that closes the ticket; owner merges.
 - Fix the whole class: when one instance is found, fix all of them, in the same PR if small.
 - Design first: settle an unsettled design before test and code; ask once, with a recommendation.
+- Full, living list; read before UI or product work: `.claude/skills/self-heal/references/owner-taste.md`
 
 ## What Reef is
 
@@ -109,6 +110,7 @@ every PR. New issues and PRs start from the templates in `.github/`.
 
 A ticket is done when:
 
+- Docs-only: `make format` check and `scripts/check-tests`; CI runs the rest
 - `make check` passes locally and in the PR checks.
 - Every acceptance line is proven by running it, and the PR's Proof section shows the command and
   its output.

@@ -113,16 +113,16 @@ func (p *providers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(parts) != 2 || parts[1] != "sign-in" {
-		http.NotFound(w, r)
+		server.Fail(w, r, http.StatusNotFound, "", nil)
 		return
 	}
 	a := p.adapter(parts[0])
 	if a == nil {
-		http.NotFound(w, r)
+		server.Fail(w, r, http.StatusNotFound, "", nil)
 		return
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		server.Fail(w, r, http.StatusMethodNotAllowed, "", nil)
 		return
 	}
 	p.mu.Lock()
@@ -154,7 +154,7 @@ func (p *providers) adapter(name string) *adapter {
 func (p *providers) update(w http.ResponseWriter, r *http.Request, name string) {
 	a := p.adapter(name)
 	if a == nil {
-		http.NotFound(w, r)
+		server.Fail(w, r, http.StatusNotFound, "", nil)
 		return
 	}
 	var body struct {
@@ -162,13 +162,11 @@ func (p *providers) update(w http.ResponseWriter, r *http.Request, name string) 
 		PathOverride *string `json:"path_override"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON body"})
+		server.Fail(w, r, http.StatusBadRequest, "invalid JSON body", nil)
 		return
 	}
 	if path := body.PathOverride; path != nil && *path != "" && !filepath.IsAbs(*path) {
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "path_override must be an absolute path"})
+		server.Fail(w, r, http.StatusBadRequest, "path_override must be an absolute path", nil)
 		return
 	}
 	var err error
@@ -189,8 +187,7 @@ func (p *providers) update(w http.ResponseWriter, r *http.Request, name string) 
 		}
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		server.Fail(w, r, http.StatusInternalServerError, "", err)
 		return
 	}
 	if body.PathOverride != nil {
@@ -292,7 +289,7 @@ func probeModels(parent context.Context, name, bin, dir string) []server.Model {
 		if err != nil {
 			return []server.Model{}
 		}
-		isolation, err := claude.IsolationArgs(cwd, false)
+		isolation, err := claude.IsolationArgs(cwd, false, nil)
 		if err != nil {
 			return []server.Model{}
 		}
@@ -453,21 +450,18 @@ func (p *providers) submitCode(w http.ResponseWriter, r *http.Request, name stri
 		Code string `json:"code"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Code) == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "code is required"})
+		server.Fail(w, r, http.StatusBadRequest, "code is required", nil)
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	stdin, ok := p.codes[name]
 	if !ok || !p.states[name].NeedsCode {
-		w.WriteHeader(http.StatusConflict)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "no sign-in is waiting for a code"})
+		server.Fail(w, r, http.StatusConflict, "no sign-in is waiting for a code", nil)
 		return
 	}
 	if _, err := io.WriteString(stdin, strings.TrimSpace(body.Code)+"\n"); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		server.Fail(w, r, http.StatusInternalServerError, "", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -529,7 +523,7 @@ func (p *providers) launch(ctx context.Context, name string) (provider.Session, 
 		return nil, provider.Config{}, fmt.Errorf("unknown provider %q", name)
 	}
 	if !p.enabled(name) {
-		return nil, provider.Config{}, fmt.Errorf("%s is turned off in Settings > Providers", name)
+		return nil, provider.Config{}, provider.Off(fmt.Errorf("%s is turned off in Settings > Providers", name))
 	}
 	p.checkAvailable(ctx, name)
 	bin, dir, err := a.prepare(ctx, p.pathOverride(name))

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api-client';
+import { api, ApiError } from '@/lib/api-client';
 import type { ImageInput, Message, Run } from '@/modules/threads/api/messages';
+import type { Waiting } from '@/types/waiting';
 
 export type Thread = {
   id: string;
@@ -14,6 +15,7 @@ export type Thread = {
   mr_url: string;
   mr_state: string;
   mr_title: string;
+  mr_ci: { passed: number; failed: number; pending: number } | null;
   worktree_removed: boolean;
   snapshot_ref: string;
   closed_at: string | null;
@@ -26,7 +28,8 @@ export type Thread = {
   last_activity: string;
   run_id: string;
   run_status: string;
-  approval: { id: string; tool: string; input: unknown } | null;
+  run_error_kind: string;
+  approval: { id: string; tool: string; input: unknown; allow_in_thread?: boolean } | null;
 };
 
 export const getThread = (threadId: string) =>
@@ -34,7 +37,14 @@ export const getThread = (threadId: string) =>
     Thread & {
       active_run: Run | null;
       queued: Message[];
-      approvals: { run_id: string; id: string; tool: string; input: unknown }[];
+      approvals: {
+        run_id: string;
+        id: string;
+        tool: string;
+        input: unknown;
+        allow_in_thread?: boolean;
+      }[];
+      waiting: Waiting[];
     }
   >(`/threads/${threadId}`);
 
@@ -43,6 +53,8 @@ export function useThread(threadId: string) {
     queryKey: ['thread', threadId],
     queryFn: () => getThread(threadId),
     refetchInterval: 2000,
+    retry: (failures, error) =>
+      !(error instanceof ApiError && error.status === 404) && failures < 3,
   });
 }
 

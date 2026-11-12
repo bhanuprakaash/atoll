@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -7,6 +8,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
+import { ErrorNotice } from '@/components/error-notice';
 import { TextArea } from '@/components/text-field';
 import { ZoomImage } from '@/components/zoom-image';
 import { useSendMessage, type ImageInput, type Run } from '@/modules/threads/api/messages';
@@ -40,6 +42,7 @@ export function Composer({
   onSent,
   context,
   onFirstSend,
+  tray,
 }: {
   threadId: string;
   botName: string;
@@ -48,6 +51,7 @@ export function Composer({
   onSent: (run: Run) => void;
   context?: ReactNode;
   onFirstSend?: (text: string, images: ImageInput[]) => void;
+  tray?: ReactNode;
 }) {
   const [text, setText] = useState('');
   const [images, setImages] = useState<Attachment[]>([]);
@@ -57,6 +61,11 @@ export function Composer({
   const send = useSendMessage(threadId);
   const stop = useStopRun();
   const canSend = !disabled && !send.isPending && (text.trim() !== '' || images.length > 0);
+
+  useEffect(() => {
+    const held = document.activeElement?.closest('input, textarea, [role="dialog"], [role="menu"]');
+    if (!held) box.current?.focus();
+  }, []);
 
   useLayoutEffect(() => {
     const el = box.current;
@@ -78,8 +87,8 @@ export function Composer({
       const added = await Promise.all(files.map((f) => readImage(f, nextImageId.current++)));
       setImageError('');
       setImages((current) => [...current, ...added]);
-    } catch (err) {
-      setImageError((err as Error).message);
+    } catch {
+      setImageError("Reef couldn't read that image.");
     }
   };
   const onPaste = (e: ClipboardEvent) => {
@@ -117,11 +126,12 @@ export function Composer({
   const input = (
     <TextArea
       ref={box}
+      data-composer
       variant="bare"
       aria-label={`Message ${botName}${runId ? ', run in progress' : ''}`}
       placeholder={
         runId
-          ? `${botName} is working…`
+          ? 'Working…'
           : onFirstSend
             ? `Ask ${botName} anything, or paste an issue or MR link`
             : `Message ${botName}`
@@ -202,12 +212,13 @@ export function Composer({
         onSubmit={submit}
         className={
           context
-            ? 'flex flex-col gap-1.5 rounded-[26px] border border-composer-line bg-composer pt-1.5 pr-2.5 pb-2.5 pl-4.5'
+            ? 'relative flex flex-col gap-1.5 rounded-[26px] border border-composer-line bg-composer pt-1.5 pr-2.5 pb-2.5 pl-4.5'
             : `flex items-end gap-2.5 rounded-[28px] border border-composer-line bg-composer py-2 pr-2 pl-4.5 ${onFirstSend ? 'min-h-15' : 'min-h-14'}`
         }
       >
         {context ? (
           <>
+            {tray}
             <div className="pr-2">{input}</div>
             <div className="flex items-center gap-1.5">
               <div
@@ -227,14 +238,8 @@ export function Composer({
           </>
         )}
       </form>
-      {imageError && (
-        <p role="alert" className="text-[13px] text-danger">
-          {imageError}
-        </p>
-      )}
-      {(send.isError || stop.isError) && (
-        <p className="text-[13px] text-danger">{send.error?.message || stop.error?.message}</p>
-      )}
+      {imageError && <ErrorNotice title={imageError} next="Pick another image." />}
+      {(send.isError || stop.isError) && <ErrorNotice error={send.error ?? stop.error} />}
     </div>
   );
 }

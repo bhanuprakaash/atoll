@@ -84,6 +84,23 @@ func Refused(dir, file string) bool {
 	return err == nil && Directive(b) == "revoked"
 }
 
+// Limited reports when the usage limit that the provider's server holds on the login in dir/file
+// resets: a file holding {"fake":"limited","resets_at":<epoch seconds>}. Until then every turn
+// fails with the limit; after it the file is ignored and turns play. The login stays valid: status
+// still reports signed in.
+func Limited(dir, file string) (time.Time, bool) {
+	b, err := os.ReadFile(filepath.Join(dir, file))
+	if err != nil || Directive(b) != "limited" {
+		return time.Time{}, false
+	}
+	var d struct {
+		ResetsAt int64 `json:"resets_at"`
+	}
+	_ = json.Unmarshal(b, &d)
+	at := time.Unix(d.ResetsAt, 0)
+	return at, time.Now().Before(at)
+}
+
 // Pause is the "pause" directive: {"fake":"pause","ms":1500} holds a tool call that long, so a
 // client can see each step of a run.
 func Pause(ms int) {

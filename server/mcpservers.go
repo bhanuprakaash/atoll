@@ -161,33 +161,41 @@ func (a *api) oauthCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	switch {
 	case !ok:
-		callbackPage(w, http.StatusBadRequest, "This sign-in link is not valid or was already used.")
+		callbackPage(w, r, http.StatusBadRequest, "invalid", "This sign-in link is not valid or was already used.", "Close this window and try again.")
 	case code == "":
-		callbackPage(w, http.StatusBadRequest, p.Server.Name+" was not allowed. Close this window and try again.")
+		callbackPage(w, r, http.StatusBadRequest, "invalid", p.Server.Name+" was not allowed.", "Close this window and try again.")
 	default:
 		err := mcpserver.Finish(r.Context(), a.http, a.st, p, code)
 		if errors.Is(err, mcpserver.ErrInvalid) {
-			callbackPage(w, http.StatusBadRequest, p.Server.Name+" was removed or changed. Close this window and connect again.")
+			callbackPage(w, r, http.StatusBadRequest, "invalid", p.Server.Name+" was removed or changed.", "Close this window and connect again.")
 			return
 		}
 		if errors.Is(err, mcpserver.ErrKeychain) {
 			a.log.Error("MCP sign-in failed", "server", p.Server.Name, "err", err)
-			callbackPage(w, http.StatusInternalServerError, "Reef couldn't save the "+p.Server.Name+" sign-in to the system keychain: "+err.Error()+". Close this window and try again.")
+			callbackPage(w, r, http.StatusInternalServerError, "keychain", "Reef couldn't save the "+p.Server.Name+" sign-in to the system keychain.",
+				"Unlock the keychain or restart Reef, then close this window and try again.")
 			return
 		}
 		if err != nil {
 			a.log.Error("MCP sign-in failed", "server", p.Server.Name, "err", err)
-			callbackPage(w, http.StatusBadGateway, "Sign-in to "+p.Server.Name+" failed. Close this window and try again.")
+			callbackPage(w, r, http.StatusBadGateway, "unreachable", "Sign-in to "+p.Server.Name+" failed.", "Close this window and try again.")
 			return
 		}
-		callbackPage(w, http.StatusOK, "Signed in to "+p.Server.Name+". You can close this window.")
+		callbackPage(w, r, http.StatusOK, "", "Signed in to "+p.Server.Name+".", "You can close this window.")
 	}
 }
 
-func callbackPage(w http.ResponseWriter, status int, msg string) {
+// callbackPage is the error shape as static HTML: the title, what to do, and a closed Details.
+func callbackPage(w http.ResponseWriter, r *http.Request, status int, code, title, next string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = fmt.Fprintf(w, "<!doctype html><title>Reef</title><p>%s</p>", html.EscapeString(msg))
+	details := ""
+	if code != "" {
+		details = html.EscapeString(fmt.Sprintf("%s · %d · %s %s", code, status, r.Method, r.URL.Path))
+		details = "<details><summary>Details</summary><p>" + details + "</p></details>"
+	}
+	_, _ = fmt.Fprintf(w, "<!doctype html><title>Reef</title><p>%s</p><p>%s</p>%s",
+		html.EscapeString(title), html.EscapeString(next), details)
 }
 
 func localPort(r *http.Request) string {

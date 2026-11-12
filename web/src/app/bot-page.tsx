@@ -8,6 +8,7 @@ import {
   useSearchParams,
 } from 'react-router';
 import { Creature, type CreatureLook } from '@/components/creature';
+import { Gone } from '@/components/gone';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { BotMemory } from '@/modules/memory/components/bot-memory';
 import { BotSettings } from '@/modules/bots/components/bot-settings';
@@ -24,6 +25,7 @@ import {
   ApprovalDrop,
   FinishedNotice,
   NotificationList,
+  type WaitingNotice,
 } from '@/modules/threads/components/notifications';
 import type { Notifications } from '@/modules/threads/hooks/use-notifications';
 import { helperState, isLiveHelper, type HelperState } from '@/modules/threads/utils/helper-state';
@@ -33,6 +35,7 @@ export function BotHeader({
   thread,
   helpers = [],
   waiting = 0,
+  waitingOnYou = 0,
   open = false,
   onNotifications,
   onSettings,
@@ -42,6 +45,7 @@ export function BotHeader({
   thread?: Thread;
   helpers?: { id: string; name: string; look?: CreatureLook; state: HelperState }[];
   waiting?: number;
+  waitingOnYou?: number;
   open?: boolean;
   onNotifications?: () => void;
   onSettings?: () => void;
@@ -51,11 +55,11 @@ export function BotHeader({
   return (
     <header
       data-tauri-drag-region="deep"
-      className="relative z-10 grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5"
+      className="@container relative z-10 grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5"
     >
       <div
         data-island
-        className={`relative z-30 col-start-2 flex flex-col overflow-hidden border border-composer-line bg-composer shadow-[0_12px_32px_rgba(0,0,0,.4)] transition-[min-width,max-height,border-radius] duration-420 ease-[cubic-bezier(.32,1.25,.5,1)] motion-reduce:transition-none ${open ? 'max-h-[60vh] min-w-100 rounded-[22px]' : 'max-h-10 min-w-0 rounded-[20px]'}`}
+        className={`relative z-30 col-start-2 flex flex-col overflow-hidden border border-composer-line bg-composer shadow-[0_12px_32px_rgba(0,0,0,.4)] transition-[min-width,max-height,border-radius] duration-420 ease-[cubic-bezier(.32,1.25,.5,1)] motion-reduce:transition-none ${open ? 'max-h-[60vh] min-w-[min(25rem,calc(100vw-7rem))] rounded-[22px]' : 'max-h-10 min-w-0 rounded-[20px]'}`}
       >
         <div className="relative flex h-9.5 flex-none items-center justify-center gap-2.5 px-3 whitespace-nowrap">
           {bot && <Creature look={bot.look} state={bot.state} size={22} />}
@@ -63,10 +67,12 @@ export function BotHeader({
             <h1 className="text-sm">{bot?.name}</h1>
             {title && (
               <>
-                <span aria-hidden="true" className="text-label">
+                <span aria-hidden="true" className="hidden text-label @min-[32rem]:inline">
                   ·
                 </span>
-                <h2 className="max-w-50 truncate text-sm font-normal text-muted">{title}</h2>
+                <h2 className="hidden max-w-50 truncate text-sm font-normal text-muted @min-[32rem]:block">
+                  {title}
+                </h2>
               </>
             )}
           </div>
@@ -78,7 +84,7 @@ export function BotHeader({
             </div>
           )}
           {thread?.approval ? (
-            <span className="text-[13px] text-needs-ink">Needs you</span>
+            <span className="text-[13px] text-ink">Needs you</span>
           ) : thread?.run_status === 'running' ? (
             <span className="flex h-3.5 items-center gap-0.75">
               <span className="sr-only">Thinking</span>
@@ -92,16 +98,20 @@ export function BotHeader({
               ))}
             </span>
           ) : (
-            thread?.run_status === 'failed' && (
+            thread?.run_status === 'failed' &&
+            thread.run_error_kind !== 'secret_store' && (
               <span className="text-[13px] text-muted">Run failed</span>
             )
+          )}
+          {waitingOnYou > 0 && (
+            <span className="text-[13px] text-needs-ink">{waitingOnYou} waiting on you</span>
           )}
           {waiting > 0 && (
             <span
               aria-hidden="true"
-              className="flex items-center gap-1 rounded-full bg-needs-badge px-2 py-px text-xs text-needs-ink"
+              className="flex items-center gap-1 rounded-full bg-tile px-2 py-px text-xs text-ink"
             >
-              <span className="size-1.5 rounded-full bg-danger" />
+              <span className="size-1.5 rounded-full bg-accent" />
               {waiting}
             </span>
           )}
@@ -143,7 +153,7 @@ export function BotHeader({
   );
 }
 
-export function BotPage() {
+function BotFrame() {
   const { botId = '', threadId = '' } = useParams();
   const { data: bots = [] } = useBots();
   const { data: threads = [] } = useThreads(botId);
@@ -166,8 +176,9 @@ export function BotPage() {
     );
   const [list, setList] = useState(false);
   const notifications = useOutletContext<Notifications>();
-  const { drop, widened, dismiss } = notifications;
+  const { drop, widened, dismiss, markSeen } = notifications;
   const expanded = list || !!drop;
+  useEffect(() => (list ? markSeen : undefined), [list, markSeen]);
   useEffect(() => {
     if (!expanded) return;
     const shrink = () => {
@@ -185,6 +196,19 @@ export function BotPage() {
   }, [expanded, dismiss]);
   const bot = bots.find((item) => item.id === botId);
   const looks = Object.fromEntries(bots.map((item) => [item.id, item.look]));
+  const waiting: WaitingNotice[] = bots.flatMap((b) =>
+    (b.threads ?? [])
+      .filter((t) => t.id !== threadId)
+      .flatMap((t) =>
+        (t.waiting ?? []).map((item) => ({
+          bot_id: b.id,
+          bot_name: b.name,
+          thread_id: t.id,
+          title: t.title,
+          item,
+        })),
+      ),
+  );
   const helpers = (threads.find((thread) => thread.id === threadId)?.helpers ?? [])
     .filter(isLiveHelper)
     .map((helper) => {
@@ -206,11 +230,15 @@ export function BotPage() {
           open={expanded || !!widened}
           thread={threads.find((thread) => thread.id === threadId)}
           helpers={helpers}
-          waiting={notifications.needs.length}
+          waiting={notifications.needs.length + waiting.length}
+          waitingOnYou={
+            bot?.threads?.find((thread) => thread.id === threadId)?.waiting?.length ?? 0
+          }
         >
           {list ? (
             <NotificationList
               notifications={notifications}
+              waiting={waiting}
               looks={looks}
               onClose={() => setList(false)}
             />
@@ -246,6 +274,15 @@ export function BotPage() {
       )}
     </div>
   );
+}
+
+export function BotPage() {
+  const { botId = '' } = useParams();
+  const { data: bots } = useBots();
+  if (!bots) return null;
+  if (!bots.some((bot) => bot.id === botId))
+    return <Gone title="This Bot is gone" to="/" link="Go home" />;
+  return <BotFrame />;
 }
 
 export function LatestThread() {

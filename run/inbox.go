@@ -195,8 +195,8 @@ func (m *Manager) recoverInbox() {
 	}
 }
 
-// WakeText is the message that tells a boss its helper's run ended.
-func WakeText(w store.Wake) string {
+// WakeText is the message that tells a boss its helper's run ended; helpers is the helpers line.
+func WakeText(w store.Wake, helpers string) string {
 	helper, threadID, run := w.Helper, w.ThreadID, w.Run
 	merge := ""
 	if w.BossBranch != "" && strings.HasPrefix(w.Branch, w.BossBranch+"--") {
@@ -218,21 +218,32 @@ func WakeText(w store.Wake) string {
 		if merge != "" {
 			fmt.Fprintf(&b, "\nMerge %s into your branch.", merge)
 		}
-		return strings.TrimSpace(b.String())
+		return strings.TrimSpace(b.String()) + "\n\n" + helpers
 	case store.StatusStopped:
-		return fmt.Sprintf("The user stopped %s\n(thread %s)", helper, threadID)
+		return fmt.Sprintf("The user stopped %s\n(thread %s)\n\n%s", helper, threadID, helpers)
 	}
-	return fmt.Sprintf("%s's run failed: %s\n(thread %s)", helper, run.Error, threadID)
+	if run.ErrorKind == store.ErrorRateLimited {
+		until := "its Claude limit resets"
+		if run.Provider == "codex" {
+			until = "its Codex limit resets"
+		}
+		if run.ResetsAt != "" {
+			until = run.ResetsAt
+		}
+		return fmt.Sprintf("%s is out until %s.\nDo not send it work until then.\n(thread %s)\n\n%s", helper, until, threadID, helpers)
+	}
+	return fmt.Sprintf("%s's run failed: %s\n(thread %s)\n\n%s", helper, run.Error, threadID, helpers)
 }
 
 // RestartWakeText is the message that tells a boss the restart interrupted its helpers' runs.
 func RestartWakeText(ws []store.Wake) string {
+	helpers := HelpersLine(nil)
 	if len(ws) == 1 {
-		return WakeText(ws[0])
+		return WakeText(ws[0], helpers)
 	}
 	parts := []string{fmt.Sprintf("A restart interrupted %d helper runs.", len(ws))}
 	for _, w := range ws {
-		parts = append(parts, WakeText(w))
+		parts = append(parts, strings.TrimSpace(WakeText(w, "")))
 	}
-	return strings.Join(parts, "\n\n")
+	return strings.Join(append(parts, helpers), "\n\n")
 }

@@ -48,6 +48,7 @@ type call struct {
 	argv  []string
 	env   map[string]string
 	dirs  map[string]fake.Dir
+	mcp   json.RawMessage
 	stdin []string
 }
 
@@ -169,6 +170,7 @@ func (m *machine) runs(t *testing.T, provider string) []*call {
 			Argv  []string            `json:"argv"`
 			Env   []string            `json:"env"`
 			Dirs  map[string]fake.Dir `json:"dirs"`
+			MCP   json.RawMessage     `json:"mcpConfig"`
 			Stdin string              `json:"stdin"`
 		}
 		if err := json.Unmarshal(s.Bytes(), &r); err != nil {
@@ -183,6 +185,10 @@ func (m *machine) runs(t *testing.T, provider string) []*call {
 			}
 			byPID[r.PID] = c
 			calls = append(calls, c)
+			continue
+		}
+		if r.MCP != nil {
+			c.mcp = r.MCP
 			continue
 		}
 		c.stdin = append(c.stdin, r.Stdin)

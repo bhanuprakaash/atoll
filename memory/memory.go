@@ -33,6 +33,9 @@ const (
 	ScopeBot  = "bot"
 )
 
+// ReasonIssueClosed is the retired_reason of an item whose ticket's issue closed.
+const ReasonIssueClosed = "issue closed"
+
 // Item statuses. Only accepted items are found by Recall and Relevant.
 const (
 	StatusCandidate = "candidate"
@@ -41,7 +44,8 @@ const (
 )
 
 const _cols = `m.id, m.kind, m.body, m.why, m.scope, m.scope_id, m.status, m.source_bot_id,
-	m.source_thread_id, m.source_run_id, m.replaces, m.replaced_by, m.created_at, m.retired_at`
+	m.source_thread_id, m.source_run_id, m.replaces, m.replaced_by, m.created_at, m.retired_at,
+	m.ticket, m.retired_reason`
 
 var (
 	// ErrNotFound is wrapped when the id matches no item.
@@ -60,7 +64,9 @@ var (
 
 type (
 	// Item is one stored memory. ScopeID is empty for the user scope, else a repo or Bot id.
-	// Replaces lists the items it retired; ReplacedBy is the item that retired this one.
+	// Replaces lists the items it retired; ReplacedBy is the item that retired this one. Ticket is
+	// the issue a repo item is about, "#N", else empty; RetiredReason is set only when Reef retired
+	// the item.
 	Item struct {
 		ID             string     `json:"id"`
 		Kind           string     `json:"kind"`
@@ -76,12 +82,14 @@ type (
 		ReplacedBy     string     `json:"replaced_by"`
 		CreatedAt      time.Time  `json:"created_at"`
 		RetiredAt      *time.Time `json:"retired_at"`
+		Ticket         string     `json:"ticket"`
+		RetiredReason  string     `json:"retired_reason"`
 	}
 
 	// Note is what Remember saves. Every id in Replaces must be an accepted item of the same
 	// scope.
 	Note struct {
-		Kind, Body, Why, Scope, ScopeID          string
+		Kind, Body, Why, Scope, ScopeID, Ticket  string
 		Replaces                                 []string
 		SourceBotID, SourceThreadID, SourceRunID string
 	}
@@ -175,10 +183,10 @@ func (s *Store) Remember(ctx context.Context, n Note) (Item, []Similar, error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO memory (id, kind, body, why, scope, scope_id, status, source_bot_id,
-		 source_thread_id, source_run_id, replaces, created_at, vector)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 source_thread_id, source_run_id, replaces, created_at, vector, ticket)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, n.Kind, n.Body, n.Why, n.Scope, n.ScopeID, StatusAccepted, n.SourceBotID,
-		n.SourceThreadID, n.SourceRunID, string(list), now, blob); err != nil {
+		n.SourceThreadID, n.SourceRunID, string(list), now, blob, n.Ticket); err != nil {
 		return Item{}, nil, fmt.Errorf("insert item: %w", err)
 	}
 	for _, old := range n.Replaces {
@@ -210,6 +218,57 @@ func (s *Store) Retire(ctx context.Context, id string) (Item, error) {
 		return Item{}, fmt.Errorf("retire %s: %w", id, err)
 	}
 	return read(ctx, s.db, id)
+}
+
+// Ticket is an issue of a repo that has an accepted item: Number is "#N".
+type Ticket struct{ RepoID, Number string }
+
+// Tickets lists the issues that have an accepted item, once each.
+func (s *Store) Tickets(ctx context.Context) ([]Ticket, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT scope_id, ticket FROM memory WHERE status = ? AND ticket != '' ORDER BY scope_id, ticket`,
+		StatusAccepted)
+	if err != nil {
+		return nil, fmt.Errorf("query tickets: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Ticket
+	for rows.Next() {
+		var t Ticket
+		if err := rows.Scan(&t.RepoID, &t.Number); err != nil {
+			return nil, fmt.Errorf("scan ticket: %w", err)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// RetireTicket retires the accepted items about the ticket, with the reason ReasonIssueClosed.
+func (s *Store) RetireTicket(ctx context.Context, t Ticket) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE memory SET status = ?, retired_at = ?, retired_reason = ?
+		 WHERE status = ? AND scope = ? AND scope_id = ? AND ticket = ?`,
+		StatusRetired, time.Now().UTC().Format(time.RFC3339Nano), ReasonIssueClosed,
+		StatusAccepted, ScopeRepo, t.RepoID, t.Number)
+	if err != nil {
+		return fmt.Errorf("retire ticket %s: %w", t.Number, err)
+	}
+	return nil
+}
+
+// TicketItems returns the ids of the accepted items of the repo about the ticket, oldest first.
+func (s *Store) TicketItems(ctx context.Context, t Ticket) ([]string, error) {
+	items, err := queryItems(ctx, s.db,
+		`WHERE m.status = ? AND m.scope = ? AND m.scope_id = ? AND m.ticket = ? ORDER BY m.seq`,
+		StatusAccepted, ScopeRepo, t.RepoID, t.Number)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(items))
+	for i, it := range items {
+		ids[i] = it.ID
+	}
+	return ids, nil
 }
 
 // List returns every item, retired ones included, oldest first.
@@ -303,7 +362,24 @@ func validate(n Note) error {
 	if n.Scope != ScopeUser && n.ScopeID == "" {
 		return fmt.Errorf("%w: scope_id is required for scope %s", ErrInvalid, n.Scope)
 	}
+	if n.Ticket != "" && (n.Scope != ScopeRepo || !validTicket(n.Ticket)) {
+		return fmt.Errorf("%w: ticket %q must be # and the issue number, on a repo item", ErrInvalid, n.Ticket)
+	}
 	return nil
+}
+
+// validTicket reports whether s is # and digits without a leading zero.
+func validTicket(s string) bool {
+	digits, ok := strings.CutPrefix(s, "#")
+	if !ok || digits == "" || digits[0] == '0' {
+		return false
+	}
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // replace retires old, which must be an accepted item of the scope of n.
@@ -368,7 +444,7 @@ func scanItem(rows *sql.Rows) (Item, error) {
 	)
 	if err := rows.Scan(&it.ID, &it.Kind, &it.Body, &it.Why, &it.Scope, &it.ScopeID, &it.Status,
 		&it.SourceBotID, &it.SourceThreadID, &it.SourceRunID, &replaces, &it.ReplacedBy,
-		&createdAt, &retiredAt); err != nil {
+		&createdAt, &retiredAt, &it.Ticket, &it.RetiredReason); err != nil {
 		return Item{}, fmt.Errorf("scan item: %w", err)
 	}
 	if err := json.Unmarshal([]byte(replaces), &it.Replaces); err != nil {

@@ -40,6 +40,75 @@ func TestStore_Open_Private(t *testing.T) {
 	}
 }
 
+func TestCleanTitle(t *testing.T) {
+	tests := []struct {
+		name   string
+		text   string
+		source store.TitleSource
+		want   string
+	}{
+		{"generated strips label before cutting", "Status line: One two three four five six seven", store.TitleGenerated, "One two three four five six"},
+		{"generated removes repeated stop words", "On the of and to in a for", store.TitleGenerated, ""},
+		{"first words keep label", "Status: why does login loop on settings page", store.TitleFirstWords, "Status: why does login loop"},
+		{"first words trim when cut", "hey we have to bring the shell tests back.", store.TitleFirstWords, "hey we have to bring"},
+		{"stored exact six trims stop word", "Final review of #122 fix on", store.TitleStored, "Final review of #122 fix"},
+		{"stored other length stays", "What is this for", store.TitleStored, "What is this for"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := store.CleanTitle(tt.text, tt.source); got != tt.want {
+				t.Errorf("CleanTitle(%q, %v) = %q, want %q", tt.text, tt.source, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStore_Open_CleansTitles(t *testing.T) {
+	ctx := t.Context()
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct{ old, want string }{
+		{"Conversation title: Login redirect loop", "Login redirect loop"},
+		{"Final review of #122 fix on", "Final review of #122 fix"},
+		{"What is this for", "What is this for"},
+	}
+	var ids []string
+	for _, tt := range tests {
+		thread, err := st.CreateThread(ctx, bot.ID, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.SetTitle(ctx, thread.ID, tt.old); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, thread.ID)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	for i, tt := range tests {
+		thread, err := st.Thread(ctx, ids[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if thread.Title != tt.want {
+			t.Errorf("title %q after opening = %q, want %q", tt.old, thread.Title, tt.want)
+		}
+	}
+}
+
 func TestRepoAccess_JSON(t *testing.T) {
 	tests := []struct {
 		name    string

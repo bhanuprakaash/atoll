@@ -5,6 +5,7 @@ import {
   type InfiniteData,
 } from '@tanstack/react-query';
 import { api, apiBlob } from '@/lib/api-client';
+import type { RunUsage } from '@/utils/usage';
 
 export type Message = {
   id: string;
@@ -12,9 +13,12 @@ export type Message = {
   text: string;
   run_id: string;
   from_bot_id?: string;
+  kind?: string;
   created_at: string;
   queued?: boolean;
   attachments: { id: string; mime: string }[];
+  not_read: boolean;
+  answered_approvals?: { id: string; tool: string; input: unknown }[];
 };
 
 export const fetchAttachment = (id: string) => apiBlob(`/attachments/${id}`);
@@ -28,10 +32,15 @@ export type Run = {
   started_at: string;
   finished_at: string;
   tools: Record<string, number>;
-  report?: { blocked: string } | null;
+  report?: { done: string; blocked: string } | null;
+  reply: string;
   error: string;
-  error_kind: '' | 'signed_out';
+  error_detail: string;
+  error_kind:
+    '' | 'signed_out' | 'secret_store' | 'rate_limited' | 'provider_off' | 'needs_sign_in';
+  resets_at: string;
   provider: 'claude' | 'codex';
+  usage?: RunUsage | null;
 };
 
 type MessagePageParam = { before?: string; after?: string };
@@ -81,16 +90,18 @@ export function useSendMessage(threadId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { text: string; images?: ImageInput[] }) =>
-      api<{ message: Message; run: Run | null }>(`/threads/${threadId}/messages`, {
-        method: 'POST',
-        body: input,
-      }),
+      api<{ message: Message; run: Run | null; answered?: string[] }>(
+        `/threads/${threadId}/messages`,
+        {
+          method: 'POST',
+          body: input,
+        },
+      ),
     onSuccess: () =>
       Promise.all(
-        [
-          ['messages', threadId],
-          ['thread', threadId],
-        ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+        [['messages', threadId], ['thread', threadId], ['bots']].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
       ),
   });
 }

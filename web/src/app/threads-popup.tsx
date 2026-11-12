@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Creature } from '@/components/creature';
 import { TextField } from '@/components/text-field';
+import { ErrorNotice } from '@/components/error-notice';
 import { ApiError } from '@/lib/api-client';
 import { useBots, type SidebarThread } from '@/modules/bots/api/bots';
 import { ThreadLabel } from '@/modules/bots/components/thread-tree';
@@ -25,6 +26,7 @@ function ThreadRow({
   thread,
   detail,
   closed,
+  openThreadId,
   onPin,
   onClose,
 }: {
@@ -32,15 +34,18 @@ function ThreadRow({
   thread: SidebarThread;
   detail?: Thread;
   closed?: boolean;
+  openThreadId?: string;
   onPin: () => void;
   onClose: () => void;
 }) {
   const sub = [detail?.branch, mrRef(detail?.mr_url)].filter(Boolean).join(' · ');
+  const selected = thread.id === openThreadId;
   return (
     <li className="group relative">
       <Link
         to={`/bots/${botId}/threads/${thread.id}`}
-        className="flex min-h-11 flex-col justify-center rounded-xl px-2.5 py-1 hover:bg-selected"
+        aria-current={selected ? 'page' : undefined}
+        className={`flex min-h-11 flex-col justify-center rounded-xl px-2.5 py-1 ${selected ? 'bg-selected' : 'hover:bg-selected'}`}
       >
         <span className="flex items-center gap-2 text-sm">
           <ThreadLabel thread={thread} />
@@ -123,7 +128,15 @@ export function ThreadsPopup({
   const inSidebar = new Set(threadTree(openThreads, openThreadId, false).rows.map((t) => t.id));
   const closedThreads = threads
     .filter((t) => t.closed)
-    .map((t): SidebarThread => ({ id: t.id, title: t.title, state: '', pinned: false }));
+    .map((t): SidebarThread => ({
+      id: t.id,
+      title: t.title,
+      state: '',
+      pinned: false,
+      branch: t.branch,
+      mr_url: t.mr_url,
+      last_activity: t.last_activity,
+    }));
   const sections = [
     { title: 'In the sidebar', rows: openThreads.filter((t) => inSidebar.has(t.id)) },
     { title: 'Other open threads', rows: openThreads.filter((t) => !inSidebar.has(t.id)) },
@@ -146,6 +159,7 @@ export function ThreadsPopup({
       thread={thread}
       detail={detail.get(thread.id)}
       closed={closed}
+      openThreadId={openThreadId}
       onPin={() => setPinned(thread, !thread.pinned)}
       onClose={() => close.mutate(thread.id)}
     />
@@ -210,7 +224,7 @@ export function ThreadsPopup({
             />
           </div>
           {pin.isError && !isPinLimit(pin.error) && (
-            <p className="px-4 pb-2 text-[13px] text-danger">{pin.error.message}</p>
+            <ErrorNotice error={pin.error} className="px-4 pb-2" />
           )}
           <div className="min-h-0 flex-1 overflow-y-auto border-t border-line px-2 pb-2">
             {sections.map(
