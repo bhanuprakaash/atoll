@@ -139,7 +139,14 @@ type (
 		approval Approval
 		command  string
 		run      *active
-		answer   chan bool
+		answer   chan Decision
+	}
+
+	// Decision is the user's answer to an approval. Reason is what a reply told the provider
+	// instead; it is empty for a plain Allow or Deny.
+	Decision struct {
+		Allow  bool
+		Reason string
 	}
 
 	// active is a run in progress. The Manager's mu guards log and open.
@@ -523,7 +530,7 @@ func (m *Manager) Answer(_ context.Context, id string, allow bool) error {
 	if !ok {
 		return fmt.Errorf("approval %s: %w", id, ErrNotFound)
 	}
-	o.answer <- allow
+	o.answer <- Decision{Allow: allow}
 	return nil
 }
 
@@ -557,7 +564,7 @@ func (m *Manager) AnswerInThread(ctx context.Context, id string, allow bool) err
 			})
 		}
 	}
-	o.answer <- true
+	o.answer <- Decision{Allow: true}
 	if err != nil {
 		return fmt.Errorf("record allow: %w", err)
 	}
@@ -589,19 +596,19 @@ func (m *Manager) Report(ctx context.Context, token string, r store.Report) erro
 // follows the tool call toolUseID on the thread's stream.
 func (m *Manager) Ask(
 	ctx context.Context, token, toolUseID, tool string, input json.RawMessage,
-) (bool, error) {
+) (Decision, error) {
 	a, err := m.byToken(token)
 	if err != nil {
-		return false, err
+		return Decision{}, err
 	}
 	if strings.HasPrefix(tool, _atollTools) {
-		return true, nil
+		return Decision{Allow: true}, nil
 	}
 	select {
 	case <-m.called(a, toolUseID):
 	case <-time.After(_callWait):
 	case <-ctx.Done():
-		return false, ctx.Err()
+		return Decision{}, ctx.Err()
 	}
 	return m.approve(ctx, a, tool, input)
 }
@@ -1113,9 +1120,9 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 				ctx, cancel := context.WithCancelCause(a.ctx)
 				asks[ev.ID] = cancel
 				wg.Go(func() {
-					allow, err := m.approve(ctx, a, ev.Name, ev.Input)
+					d, err := m.approve(ctx, a, ev.Name, ev.Input)
 					if err == nil {
-						if err = sess.Answer(ev.ID, allow); err != nil {
+						if err = sess.Answer(ev.ID, d.Allow, d.Reason); err != nil {
 							err = fmt.Errorf("answer approval: %w", err)
 						}
 					}
@@ -1150,13 +1157,13 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 // approve opens an approval and blocks until it is answered, ctx ends or the Manager closes.
 func (m *Manager) approve(
 	ctx context.Context, a *active, tool string, input json.RawMessage,
-) (bool, error) {
+) (Decision, error) {
 	command, isCommand := commandText(tool, input)
 	if isCommand && m.allowedInThread(ctx, a.threadID, command) {
-		return true, nil
+		return Decision{Allow: true}, nil
 	}
 	id := randHex(8)
-	answer := make(chan bool, 1) // Answer must not wait for the run to read
+	answer := make(chan Decision, 1) // Answer must not wait for the run to read
 	ap := Approval{RunID: a.run.ID, ID: id, Tool: tool, Input: input}
 	if isCommand {
 		if thread, err := m.cfg.Store.Thread(ctx, a.threadID); err == nil {
@@ -1172,16 +1179,16 @@ func (m *Manager) approve(
 	a.statusMu.Unlock()
 	defer m.resume(ctx, a, id)
 	if err != nil {
-		return false, fmt.Errorf("approval %s: %w", id, err)
+		return Decision{}, fmt.Errorf("approval %s: %w", id, err)
 	}
 	m.publish(a, EventApproval, ap)
 	select {
-	case allow := <-answer:
-		return allow, nil
+	case d := <-answer:
+		return d, nil
 	case <-ctx.Done():
-		return false, fmt.Errorf("approval %s: %w", id, ctx.Err())
+		return Decision{}, fmt.Errorf("approval %s: %w", id, ctx.Err())
 	case <-a.ctx.Done():
-		return false, fmt.Errorf("approval %s: %w", id, a.ctx.Err())
+		return Decision{}, fmt.Errorf("approval %s: %w", id, a.ctx.Err())
 	}
 }
 

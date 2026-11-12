@@ -22,7 +22,7 @@ export function MrChip({
     >
       <span
         aria-hidden="true"
-        className={`size-1.5 rounded-full ${{ merged: 'bg-whale', closed: 'bg-danger' }[state ?? ''] ?? 'bg-ok'}`}
+        className={`size-1.5 rounded-full ${{ merged: 'bg-whale', closed: 'bg-muted' }[state ?? ''] ?? 'bg-ok'}`}
       />
       {ref ?? '!MR'}
     </a>

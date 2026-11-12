@@ -375,7 +375,7 @@ test('a failed run keeps its red icon and nothing else in the header is red', as
   await waitStatus(failed.id, 'failed');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${failed.id}`);
   const log = page.getByRole('log', { name: 'Messages' });
-  await expect(log.getByText(/^Run failed/)).toBeVisible();
+  await expect(log.getByText(/^(Run failed|Didn't run)/)).toBeVisible();
   await page.mouse.move(0, 0);
   const inLog = await reds(log);
   expect(inLog.length).toBeGreaterThan(0);

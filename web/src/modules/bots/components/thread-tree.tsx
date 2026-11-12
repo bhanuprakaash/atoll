@@ -55,7 +55,7 @@ export function ThreadLabel({ thread }: { thread: SidebarThread }) {
   return (
     <>
       {thread.state === 'needs_you' ? (
-        <Dot className="bg-danger" />
+        <Dot className="bg-accent" />
       ) : thread.state === 'new' ? (
         <Dot className="bg-kind" />
       ) : thread.pinned && thread.state === '' ? (
@@ -67,7 +67,7 @@ export function ThreadLabel({ thread }: { thread: SidebarThread }) {
         {thread.title || 'Empty thread'}
       </span>
       {thread.state === 'needs_you' && (
-        <span className="flex-none text-xs text-needs-ink">Needs you</span>
+        <span className="flex-none text-xs text-ink">Needs you</span>
       )}
       {thread.state === 'new' && <span className="flex-none text-xs text-kind">New</span>}
       {thread.state === 'running' && <Wave label="Running" />}
@@ -79,8 +79,8 @@ function ThreadMarker({ thread }: { thread: SidebarThread }) {
   if (thread.state === 'needs_you')
     return (
       <>
-        <span className="flex-none text-xs text-needs-ink">Needs you</span>
-        <Dot className="bg-danger" />
+        <span className="flex-none text-xs text-ink">Needs you</span>
+        <Dot className="bg-accent" />
       </>
     );
   if (thread.state === 'new')

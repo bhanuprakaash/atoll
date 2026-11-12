@@ -83,7 +83,7 @@ func (f *fakeSession) Send(_ context.Context, prompt string, _ []provider.Image)
 	return nil
 }
 
-func (f *fakeSession) Answer(_ string, allow bool) error {
+func (f *fakeSession) Answer(_ string, allow bool, _ string) error {
 	f.mu.Lock()
 	f.answers = append(f.answers, allow)
 	f.mu.Unlock()

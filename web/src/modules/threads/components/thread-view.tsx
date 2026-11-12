@@ -18,6 +18,7 @@ import {
 import { getRun, useRun, useStopRun } from '@/modules/threads/api/runs';
 import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
+import { approvalTarget } from '@/modules/threads/components/approval-card';
 import { QueuedMessage } from '@/modules/threads/components/queued-message';
 import { HelpersRegion } from '@/modules/threads/components/helpers-region';
 import { FailedLine, FailedRun } from '@/modules/threads/components/failed-run-line';
@@ -272,6 +273,15 @@ function MessageLine({
           )}
           {time}
         </span>
+        {message.answered_approvals?.map((a) => (
+          <p
+            key={a.id}
+            className="flex max-w-full items-baseline gap-2 pr-[18px] text-xs text-muted"
+          >
+            <code className="min-w-0 truncate font-mono">{approvalTarget(a.input) || a.tool}</code>
+            <span className="flex-none">You replied instead</span>
+          </p>
+        ))}
       </div>
     );
   return (

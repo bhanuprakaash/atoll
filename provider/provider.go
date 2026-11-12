@@ -82,8 +82,9 @@ type Session interface {
 	Send(ctx context.Context, prompt string, images []Image) error
 	// Events streams events until the process exits, then closes.
 	Events() <-chan Event
-	// Answer replies to the KindApproval event with id.
-	Answer(id string, allow bool) error
+	// Answer replies to the KindApproval event with id. A non-empty reason with allow false is what
+	// the user wrote instead; the provider is told it before the refusal.
+	Answer(id string, allow bool, reason string) error
 	// Interrupt stops the process. When it returns, the process is gone and Events is closed.
 	Interrupt() error
 }

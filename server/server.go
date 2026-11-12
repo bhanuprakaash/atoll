@@ -529,6 +529,21 @@ func (a *api) sendMessage(w http.ResponseWriter, r *http.Request) {
 	if !a.userMayWrite(w, r, id) {
 		return
 	}
+	if len(images) == 0 {
+		replied, err := a.runs.Reply(r.Context(), id, body.Text)
+		if err == nil {
+			write(w, http.StatusAccepted, struct {
+				Message  store.Message `json:"message"`
+				Run      *store.Run    `json:"run"`
+				Answered []string      `json:"answered"`
+			}{Message: replied.Message, Run: replied.Run, Answered: replied.Answered})
+			return
+		}
+		if !errors.Is(err, run.ErrNoApproval) {
+			a.fail(w, r, err)
+			return
+		}
+	}
 	m, ru, err := a.runs.Send(r.Context(), id, body.Text, images)
 	if err != nil {
 		a.fail(w, r, err)

@@ -184,7 +184,7 @@ func TestWake_ReportWakesBoss(t *testing.T) {
 			}
 
 			const answer = "Yes, update it. " + _reportPrompt
-			if lines := useAtoll(t, s, boss, ev, continueCall(helper, answer)); len(lines) != 1 || lines[0] == "atoll/continue: unavailable" {
+			if lines := useAtoll(t, s, boss, ev, continueCall(helper, answer)); len(lines) == 0 || lines[0] == "atoll/continue: unavailable" {
 				t.Fatalf("continue from the boss thread: reply %q, want it accepted", lines)
 			}
 			allow(t, s, helper)

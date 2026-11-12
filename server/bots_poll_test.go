@@ -374,7 +374,7 @@ func (s *approvalSession) Resume(context.Context, provider.Config, string) error
 
 func (s *approvalSession) Events() <-chan provider.Event { return s.events }
 
-func (s *approvalSession) Answer(string, bool) error { return nil }
+func (s *approvalSession) Answer(string, bool, string) error { return nil }
 
 func (s *approvalSession) Interrupt() error {
 	close(s.events)

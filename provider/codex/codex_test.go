@@ -133,10 +133,10 @@ func TestSession(t *testing.T) {
 					}
 				case provider.KindApproval:
 					ask = ev.Name + " " + ev.ID
-					if err := s.Answer(ev.ID, tt.allow); err != nil {
+					if err := s.Answer(ev.ID, tt.allow, ""); err != nil {
 						t.Fatal(err)
 					}
-					if s.Answer(ev.ID, tt.allow) == nil {
+					if s.Answer(ev.ID, tt.allow, "") == nil {
 						t.Error("a second answer to the same request was accepted")
 					}
 				case provider.KindSession:
@@ -356,7 +356,7 @@ func TestSession_requestResolved(t *testing.T) {
 				t.Errorf("event %+v, want KindApprovalEnd with ID %q", ev, tt.want)
 			}
 			if tt.want != "" {
-				if err := s.Answer(tt.want, true); !errors.Is(err, provider.ErrApprovalEnded) {
+				if err := s.Answer(tt.want, true, ""); !errors.Is(err, provider.ErrApprovalEnded) {
 					t.Errorf("Answer = %v, want ErrApprovalEnded", err)
 				}
 			}
