@@ -72,11 +72,11 @@ test('two helpers: one handoff line, a line each above the composer and in the i
 test('a helper that hands off reads "Handing off" on its line, never "Setting up"', async ({
   page,
 }) => {
-  await handOff(page, [['Tester', prompts.handOff]]);
-  const region = page.getByRole('region', { name: 'Helpers' });
-  await expect(region).toContainText('Tester');
-  await expect(region.getByText('Handing off', { exact: true })).toHaveCount(1);
-  await expect(region).not.toContainText('Setting up');
+  await bossHandsOff(m, page, [['Tester', prompts.handOff]]);
+  await tray(page).getByRole('button', { name: 'Show', exact: true }).click();
+  const line = popover(page).getByRole('listitem').filter({ hasText: 'Tester' });
+  await expect(line.getByText('Handing off', { exact: true })).toHaveCount(1);
+  await expect(line).not.toContainText('Setting up');
 });
 
 test('a helper approval shows under its line, Allow works there, and the report comes from the helper', async ({
