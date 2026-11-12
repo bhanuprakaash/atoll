@@ -220,27 +220,57 @@ func (a *api) deleteGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 // earlierNotice is one row of the island's Earlier list: a notice of the type and with the data a
-// live event of that type has, and when it happened in milliseconds.
+// live event of that type has, and when it happened.
 type earlierNotice struct {
 	notice
-	Type string `json:"type"`
-	At   int64  `json:"at"`
+	Type string    `json:"type"`
+	At   time.Time `json:"at"`
+	key  string
 }
 
 // notices streams the events of every thread that the sidebar and the island show, each with its
-// thread's Bot and title, led by the island's Earlier list. An event whose thread is gone is
-// skipped.
+// thread's Bot and title: the approvals open now, then the island's Earlier list, then what
+// happens. A live event that Earlier already lists is skipped, as is an event whose thread is gone.
 func (a *api) notices(w http.ResponseWriter, r *http.Request) {
-	events, cancel := a.runs.SubscribeAll()
+	open, events, cancel := a.runs.SubscribeAll()
 	defer cancel()
 	earlier, err := a.earlier(r.Context())
 	if err != nil {
 		a.log.Error("build earlier", "err", err)
 	}
+	lead := make([]sseEvent, 0, len(open)+1)
+	for _, ev := range open {
+		if n, err := a.noticeOf(r.Context(), ev); err == nil {
+			lead = append(lead, sseEvent{Type: ev.Type, Data: n})
+		}
+	}
+	lead = append(lead, sseEvent{Type: "earlier", Data: earlier})
+	listed := make(map[string]bool, len(earlier))
+	for _, n := range earlier {
+		listed[n.key] = true
+	}
 	a.stream(w, r, events, func(ev run.Event) (any, bool) {
+		if key := eventKey(ev.Data); listed[key] {
+			delete(listed, key)
+			return nil, false
+		}
 		n, err := a.noticeOf(r.Context(), ev)
 		return n, err == nil
-	}, sseEvent{Type: "earlier", Data: earlier})
+	}, lead...)
+}
+
+// eventKey names what a run, MR or platform event is about, so that Earlier and the live stream
+// never both show it. Other events have no key.
+func eventKey(data any) string {
+	switch d := data.(type) {
+	case run.Finished:
+		return "run " + d.RunID
+	case run.MRUpdated:
+		return "mr " + d.URL + " " + d.State
+	case run.PlatformChanged:
+		return "change " + d.Change.ID
+	}
+	return ""
 }
 
 // earlier lists, newest first, what happened after the island was last read: runs that ended, MRs
@@ -253,7 +283,7 @@ func (a *api) earlier(ctx context.Context) ([]earlierNotice, error) {
 	}
 	add := func(typ string, at time.Time, threadID string, data any) {
 		if n, err := a.noticeAbout(ctx, threadID, data); err == nil {
-			out = append(out, earlierNotice{notice: n, Type: typ, At: at.UnixMilli()})
+			out = append(out, earlierNotice{notice: n, Type: typ, At: at, key: eventKey(data)})
 		}
 	}
 	runs, err := a.st.FinishedRunsSince(ctx, since)
@@ -261,7 +291,7 @@ func (a *api) earlier(ctx context.Context) ([]earlierNotice, error) {
 		return out, err
 	}
 	for _, e := range runs {
-		add(run.EventRunFinished, e.At, e.ThreadID, run.Finished{Status: e.Status, Error: e.Error})
+		add(run.EventRunFinished, e.At, e.ThreadID, run.Finished{RunID: e.RunID, Status: e.Status, Error: e.Error})
 	}
 	mrs, err := a.st.OpenedMRsSince(ctx, since)
 	if err != nil {
@@ -278,7 +308,7 @@ func (a *api) earlier(ctx context.Context) ([]earlierNotice, error) {
 		add(run.EventPlatformChanged, c.Created, c.SourceThreadID,
 			run.PlatformChanged{SourceBotID: c.SourceBotID, ThreadID: c.SourceThreadID, RunID: c.SourceRunID, Change: c})
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].At > out[j].At })
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
 	return out, nil
 }
 

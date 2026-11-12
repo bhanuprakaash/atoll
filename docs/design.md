@@ -197,7 +197,9 @@ after a failed undo counts a Bot that is already gone as removed.
   `run_finished`, `mr_updated` and `platform_changed` from every thread, each as `{thread_id,
   bot_id, bot_name, title, data}` with `data` as on the thread's own stream. On connect it first
   sends the approvals open now, then one `earlier` event: the island's Earlier list, built from
-  rows (see the island). Every connect, a reload or the stream's own reconnect after a restart,
+  rows (see the island), each with `at` as RFC 3339. A live event for something `earlier` lists
+  (a run that finished while it was built, the same MR, the same change) is not sent again. Every
+  connect, a reload or the stream's own reconnect after a restart,
   sends it again, and it replaces what the page holds. *A notifications table would need read
   state and cleanup for little gain; the rows are already there and one timestamp says what the
   user has seen.*

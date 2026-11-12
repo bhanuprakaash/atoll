@@ -1206,7 +1206,7 @@ func TestRun_SubscribeAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	ap := nextAs[Approval](t, e, EventApproval)
-	all, cancel := e.m.SubscribeAll()
+	open, all, cancel := e.m.SubscribeAll()
 	defer cancel()
 	if err := e.m.Answer(t.Context(), ap.ID, true); err != nil {
 		t.Fatal(err)
@@ -1214,6 +1214,9 @@ func TestRun_SubscribeAll(t *testing.T) {
 	<-e.sess.answered
 	close(e.sess.release)
 	var got []string
+	for _, ev := range open {
+		got = append(got, ev.Type+" "+ev.ThreadID)
+	}
 	for len(got) < 3 {
 		select {
 		case ev := <-all:

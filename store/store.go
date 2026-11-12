@@ -637,10 +637,11 @@ func (s *Store) MarkIslandSeen(ctx context.Context) error {
 	return s.SetSetting(ctx, _islandSeenKey, strconv.FormatInt(time.Now().UTC().UnixMicro(), 10))
 }
 
-// ThreadEvent is something that happened to a thread at At: a run that ended (Status, Error), or
-// an MR that opened (URL, Title).
+// ThreadEvent is something that happened to a thread at At: a run that ended (RunID, Status,
+// Error), or an MR that opened (URL, Title).
 type ThreadEvent struct {
 	ThreadID string
+	RunID    string
 	At       time.Time
 	Status   string
 	Error    string
@@ -651,12 +652,12 @@ type ThreadEvent struct {
 // FinishedRunsSince lists the runs that ended after since in a thread that is still open.
 func (s *Store) FinishedRunsSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
 	return query(ctx, s.db,
-		`SELECT r.thread_id, r.finished_at, r.status, r.error
+		`SELECT r.thread_id, r.id, r.finished_at, r.status, r.error
 		 FROM runs r JOIN threads t ON t.id = r.thread_id
 		 WHERE r.finished_at > ? AND r.status IN (?, ?, ?) AND t.closed = 0`,
 		func(r *sql.Rows) (e ThreadEvent, err error) {
 			var at int64
-			err = r.Scan(&e.ThreadID, &at, &e.Status, &e.Error)
+			err = r.Scan(&e.ThreadID, &e.RunID, &at, &e.Status, &e.Error)
 			e.At = time.UnixMicro(at).UTC()
 			return e, err
 		}, since.UnixMicro(), StatusDone, StatusFailed, StatusStopped)

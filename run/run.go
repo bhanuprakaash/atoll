@@ -474,30 +474,26 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 	}
 }
 
-// SubscribeAll streams the notice events of every thread from now on, until cancel is called. It
-// starts with an approval event for each approval open now.
-func (m *Manager) SubscribeAll() (events <-chan Event, cancel func()) {
+// SubscribeAll streams the notice events of every thread from now on, until cancel is called.
+// approvals holds an approval event for each approval open now; events carries what follows them.
+func (m *Manager) SubscribeAll() (approvals []Event, events <-chan Event, cancel func()) {
 	ch := make(chan Event, _subscriberBuffer)
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		close(ch)
 		m.mu.Unlock()
-		return ch, func() {}
+		return nil, ch, func() {}
 	}
 	for threadID, a := range m.runs {
 		for _, o := range m.approvals {
-			if o.approval.RunID != a.run.ID {
-				continue
-			}
-			select {
-			case ch <- Event{Type: EventApproval, ThreadID: threadID, Data: o.approval}:
-			default:
+			if o.approval.RunID == a.run.ID {
+				approvals = append(approvals, Event{Type: EventApproval, ThreadID: threadID, Data: o.approval})
 			}
 		}
 	}
 	m.all[ch] = struct{}{}
 	m.mu.Unlock()
-	return ch, func() {
+	return approvals, ch, func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if _, ok := m.all[ch]; ok {

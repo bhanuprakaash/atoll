@@ -27,7 +27,7 @@ type MrUpdate = { url: string; state: string; title: string };
 type Change = { change: { entity: string; action: string; after: { name?: string } | null } };
 type Remembered = About & {
   type: 'run_finished' | 'mr_updated' | 'platform_changed';
-  at: number;
+  at: string;
   data: { status: string } & MrUpdate & Change;
 };
 
@@ -74,6 +74,7 @@ export function useNotifications(): Notifications {
       setEarlier(
         items
           .filter((n) => !isOn(n, screen.current))
+          .map((n) => ({ ...n, at: Date.parse(n.at) }))
           .flatMap((n) => {
             const id = seq.current++;
             if (n.type === 'run_finished')
