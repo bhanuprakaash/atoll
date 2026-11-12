@@ -106,7 +106,7 @@ export function Composer({
     e?.preventDefault();
     if (!canSend) return;
     const restore = () => {
-      setText((now) => text + now);
+      setText((now) => [text, now].filter(Boolean).join('\n'));
       setImages((now) => [...images, ...now]);
     };
     setText('');

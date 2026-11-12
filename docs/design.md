@@ -1916,7 +1916,7 @@ Voice
   thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message. A send that
   fails, the first message of a thread included, puts its text and images back in the box and
-  shows the error under it.
+  shows the error under it; text typed meanwhile stays, on a new line after the restored text.
 - The "Waiting on you" card (#147). When a thread has waiting items (Threads and runs), a region
   named `Waiting on you` sits between the chat and the composer, under the `Helpers` region, with
   one quiet block per item, in this order: the decision, the blocker, the ready PRs. It is not in
