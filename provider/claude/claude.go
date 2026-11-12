@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -96,16 +95,27 @@ type (
 				Input json.RawMessage `json:"input"`
 			} `json:"content"`
 		} `json:"message"`
-		IsError bool     `json:"is_error"`
-		Result  string   `json:"result"`
-		Errors  []string `json:"errors"`
-		Error   string   `json:"error"`
+		IsError        bool     `json:"is_error"`
+		Result         string   `json:"result"`
+		Errors         []string `json:"errors"`
+		Error          string   `json:"error"`
+		APIError       string   `json:"api_error"`
+		APIErrorParams struct {
+			RateLimitInfo rateLimitInfo `json:"rate_limit_info"`
+		} `json:"api_error_params"`
+		RateLimitInfo rateLimitInfo `json:"rate_limit_info"`
+	}
+
+	rateLimitInfo struct {
+		Status   string `json:"status"`
+		ResetsAt int64  `json:"resetsAt"`
 	}
 
 	// state is what parse keeps between lines. A message that starts after text in the same turn
 	// has its first text delta begin a new paragraph.
 	state struct {
-		wrote, breakNext, signedOut bool
+		wrote, breakNext, signedOut, limited bool
+		resetsAt                             time.Time
 	}
 
 	// tail keeps the last 4 KB written to it, for claude's stderr.
@@ -303,14 +313,13 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	}
 	s.started = true
 
-	args, secrets, err := argv(cfg, extra...)
+	args, mcpConfig, err := argv(cfg, extra...)
 	if err != nil {
 		return err
 	}
 	cmd := exec.Command(cfg.Bin, args...)
 	cmd.Dir = cfg.Cwd
 	cmd.Env = append(configEnv(cfg.Dir), "ENABLE_CLAUDEAI_MCP_SERVERS=false", "MCP_TOOL_TIMEOUT=1800000", "CLAUDE_CODE_SHELL_PREFIX="+filepath.Join(cfg.Dir, "..", "..", "bin", "claude-shell-prefix"))
-	cmd.Env = append(cmd.Env, secrets...)
 	cmd.Env = append(cmd.Env, cfg.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.WaitDelay = _waitDelay
@@ -323,6 +332,21 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	if err != nil {
 		return err
 	}
+	if mcpConfig != nil {
+		r, w, err := os.Pipe()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = r.Close() }()
+		_, err = w.Write(mcpConfig)
+		if cerr := w.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			return err
+		}
+		cmd.ExtraFiles = []*os.File{r}
+	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start claude: %w", err)
 	}
@@ -332,17 +356,15 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 	return nil
 }
 
-// argv returns the arguments for claude and the KEY=value variables they name. The MCP config holds
-// ${KEY} in place of every URL, header value and env value, which claude expands from its own
-// environment, so none of them shows in the process list.
-func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
-	var secrets []string
-	hide := func(value string) string {
-		name := "ATOLL_MCP_" + strconv.Itoa(len(secrets))
-		secrets = append(secrets, name+"="+value)
-		return "${" + name + "}"
-	}
-	isolation, err := IsolationArgs(cfg.Cwd, cfg.NoTools || cfg.NoShell)
+// _mcpConfigPath is the first extra file of the process (fd 3): a pipe holding the MCP config.
+const _mcpConfigPath = "/dev/fd/3"
+
+// argv returns the arguments for claude and the MCP config they name, or nil when there is none.
+// The config holds every URL, header value and env value; it goes to claude on a pipe, so none
+// shows in the process list or the environment.
+func argv(cfg provider.Config, extra ...string) ([]string, []byte, error) {
+	var mcpConfig []byte
+	isolation, err := IsolationArgs(cfg.Cwd, cfg.NoTools || cfg.NoShell, cfg.HiddenPaths)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -363,24 +385,24 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 	}
 	if cfg.MCPURL != "" && !cfg.NoTools {
 		mcpServers := map[string]any{
-			provider.MCPServer: map[string]any{"type": "http", "url": hide(cfg.MCPURL)},
+			provider.MCPServer: map[string]any{"type": "http", "url": cfg.MCPURL},
 		}
 		if cfg.GitHubMCPURL != "" {
 			mcpServers[provider.GitHubMCPServer] = map[string]any{
 				"type": "http", "url": cfg.GitHubMCPURL,
-				"headers": map[string]string{"Authorization": "Bearer " + hide(cfg.GitHubToken)},
+				"headers": map[string]string{"Authorization": "Bearer " + cfg.GitHubToken},
 			}
 		}
 		for _, m := range cfg.MCPServers {
-			mcpServers[m.Name] = userServer(m, hide)
+			mcpServers[m.Name] = userServer(m)
 		}
-		servers, err := json.Marshal(map[string]any{"mcpServers": mcpServers})
+		mcpConfig, err = json.Marshal(map[string]any{"mcpServers": mcpServers})
 		if err != nil {
 			return nil, nil, err
 		}
 		mcp := "mcp__" + provider.MCPServer
 		args = append(args,
-			"--mcp-config", string(servers),
+			"--mcp-config", _mcpConfigPath,
 			"--permission-prompt-tool", mcp+"__"+provider.ToolApprove,
 			"--allowedTools", mcp,
 		)
@@ -394,24 +416,25 @@ func argv(cfg provider.Config, extra ...string) ([]string, []string, error) {
 	if cfg.SkillDir != "" {
 		args = append(args, "--add-dir", cfg.SkillDir)
 	}
-	return append(args, extra...), secrets, nil
+	return append(args, extra...), mcpConfig, nil
 }
 
 // IsolationArgs excludes ancestor instructions, so cwd must be the repo root to keep its CLAUDE.md.
-func IsolationArgs(cwd string, noTools bool) ([]string, error) {
+// With tools on, hidden paths are refused to the file tools and, through a sandbox that only hides
+// reads, to Bash.
+func IsolationArgs(cwd string, noTools bool, hidden []string) ([]string, error) {
 	excludes := []string{}
 	seen := map[string]bool{}
 	paths := []string{cwd}
 	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
 		paths = append(paths, resolved)
 	}
-	replacer := strings.NewReplacer(`\`, "?", "*", "?", "?", "?", "[", "?", "]", "?", "{", "?", "}", "?", "(", "?", ")", "?")
 	for _, path := range paths {
 		if path == "" {
 			continue
 		}
 		for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
-			for _, pattern := range []string{filepath.Join(replacer.Replace(dir), "*.md"), filepath.Join(replacer.Replace(dir), ".claude", "**")} {
+			for _, pattern := range []string{filepath.Join(_globChars.Replace(dir), "*.md"), filepath.Join(_globChars.Replace(dir), ".claude", "**")} {
 				if !seen[pattern] {
 					excludes = append(excludes, pattern)
 					seen[pattern] = true
@@ -422,11 +445,26 @@ func IsolationArgs(cwd string, noTools bool) ([]string, error) {
 			}
 		}
 	}
-	settings, err := json.Marshal(map[string]any{
+	base := map[string]any{
 		"disableAllHooks": true, "disableBundledSkills": true,
 		"skillOverrides":    map[string]string{"design": "off", "doctor": "off", "plugin-authoring": "off"},
 		"autoMemoryEnabled": false, "claudeMdExcludes": excludes,
-	})
+	}
+	if len(hidden) > 0 && !noTools {
+		var deny []string
+		for _, path := range hidden {
+			rule := "(/" + _globChars.Replace(path) + "/**)"
+			deny = append(deny, "Read"+rule, "Edit"+rule)
+		}
+		base["permissions"] = map[string]any{"deny": deny}
+		base["sandbox"] = map[string]any{
+			"enabled": true, "failIfUnavailable": true,
+			"allowUnsandboxedCommands": false, "autoAllowBashIfSandboxed": false,
+			"network":    map[string]any{"allowedDomains": []string{"*"}},
+			"filesystem": map[string]any{"allowWrite": []string{"/"}, "denyRead": hidden},
+		}
+	}
+	settings, err := json.Marshal(base)
 	if err != nil {
 		return nil, err
 	}
@@ -437,29 +475,23 @@ func IsolationArgs(cwd string, noTools bool) ([]string, error) {
 	return []string{"--setting-sources", "project", "--settings", string(settings), "--tools", tools}, nil
 }
 
-func userServer(m provider.UserMCPServer, hide func(string) string) map[string]any {
+var _globChars = strings.NewReplacer(`\`, "?", "*", "?", "?", "?", "[", "?", "]", "?", "{", "?", "}", "?", "(", "?", ")", "?")
+
+func userServer(m provider.UserMCPServer) map[string]any {
 	e := map[string]any{"type": "stdio", "command": m.Command}
 	if m.Command == "" {
-		e = map[string]any{"type": "http", "url": hide(m.URL)}
+		e = map[string]any{"type": "http", "url": m.URL}
 	}
 	if len(m.Args) > 0 {
 		e["args"] = m.Args
 	}
 	if len(m.Env) > 0 {
-		e["env"] = hidden(m.Env, hide)
+		e["env"] = m.Env
 	}
 	if len(m.Headers) > 0 {
-		e["headers"] = hidden(m.Headers, hide)
+		e["headers"] = m.Headers
 	}
 	return e
-}
-
-func hidden(m map[string]string, hide func(string) string) map[string]string {
-	out := make(map[string]string, len(m))
-	for _, k := range slices.Sorted(maps.Keys(m)) {
-		out[k] = hide(m[k])
-	}
-	return out
 }
 
 func (s *Session) read(stdout io.Reader) {
@@ -486,10 +518,12 @@ func (s *Session) read(stdout io.Reader) {
 	if err == nil || last == provider.KindError {
 		return
 	}
-	s.emit(provider.Event{
-		Kind: provider.KindError,
-		Text: fmt.Sprintf("claude exited: %v: %s", err, bytes.TrimSpace(s.stderr.b)),
-	})
+	text := fmt.Sprintf("claude exited: %v: %s", err, bytes.TrimSpace(s.stderr.b))
+	if bytes.Contains(s.stderr.b, []byte("sandbox required but unavailable")) {
+		text = "This Bot cannot run: it needs bubblewrap and socat to keep the repos it lacks out of its shell. " +
+			"Install them (on Debian or Ubuntu: sudo apt install bubblewrap socat) and ask again."
+	}
+	s.emit(provider.Event{Kind: provider.KindError, Text: text})
 }
 
 // emit reports whether ev was delivered. Once Interrupt has run it delivers nothing.
@@ -522,6 +556,10 @@ func parse(line []byte, st *state) []provider.Event {
 		}
 	case "assistant":
 		st.signedOut = st.signedOut || l.Error == "authentication_failed"
+		if l.Error == "rate_limit" && l.APIError == "usage_limit_reached" {
+			st.limited = true
+			st.setReset(l.APIErrorParams.RateLimitInfo)
+		}
 		var evs []provider.Event
 		for _, c := range l.Message.Content {
 			if c.Type == "tool_use" {
@@ -531,6 +569,10 @@ func parse(line []byte, st *state) []provider.Event {
 			}
 		}
 		return evs
+	case "rate_limit_event":
+		if l.RateLimitInfo.Status == "rejected" {
+			st.setReset(l.RateLimitInfo)
+		}
 	case "stream_event":
 		if l.Event.Type == "message_start" {
 			st.breakNext = st.wrote
@@ -544,11 +586,14 @@ func parse(line []byte, st *state) []provider.Event {
 			return []provider.Event{{Kind: provider.KindText, Text: text}}
 		}
 	case "result":
-		wrote, signedOut := st.wrote, st.signedOut
+		wrote, prev := st.wrote, *st
 		*st = state{}
 		if l.IsError {
 			text := strings.Join(append([]string{l.Result}, l.Errors...), "\n")
-			return []provider.Event{{Kind: provider.KindError, Text: strings.TrimSpace(text), SignedOut: signedOut}}
+			return []provider.Event{{
+				Kind: provider.KindError, Text: strings.TrimSpace(text),
+				SignedOut: prev.signedOut, Limited: prev.limited, ResetsAt: prev.resetsAt,
+			}}
 		}
 		if !wrote && l.Result != "" {
 			return []provider.Event{{Kind: provider.KindText, Text: l.Result}, {Kind: provider.KindTurnEnd}}
@@ -556,6 +601,12 @@ func parse(line []byte, st *state) []provider.Event {
 		return []provider.Event{{Kind: provider.KindTurnEnd}}
 	}
 	return nil
+}
+
+func (st *state) setReset(info rateLimitInfo) {
+	if info.ResetsAt > 0 {
+		st.resetsAt = time.Unix(info.ResetsAt, 0).UTC()
+	}
 }
 
 // Write appends p and drops the oldest bytes beyond 4 KB.

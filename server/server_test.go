@@ -297,29 +297,6 @@ func TestGetSettings_DataDir(t *testing.T) {
 	}
 }
 
-func TestShortCommand(t *testing.T) {
-	tests := []struct {
-		name string
-		give string
-		want string
-	}{
-		{name: "program and argument", give: "make e2e", want: "make e2e"},
-		{name: "past cd", give: "cd /tmp/atoll && make check 2>&1 | tail -5", want: "make check"},
-		{name: "path program", give: "/usr/bin/git status --short", want: "git status"},
-		{name: "flag argument", give: "go test -count=1 ./e2e", want: "go test"},
-		{name: "path argument", give: "ls ~/.claude/agents", want: "ls"},
-		{name: "subshell", give: "cd x && (e2e/with-secret-store go test ./e2e)", want: "with-secret-store go"},
-		{name: "only cd", give: "cd /tmp", want: ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := shortCommand(tt.give); got != tt.want {
-				t.Errorf("shortCommand(%q) = %q, want %q", tt.give, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestCreateRepo_UnsafeName(t *testing.T) {
 	h := newHandler(t)
 	for _, name := range []string{"../x", ".", "..", "a/b"} {

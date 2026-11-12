@@ -212,6 +212,17 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
+		case "procs-hold", "procs-scan":
+			var err error
+			if e.Fake == "procs-hold" {
+				repoReply, err = fake.ProcsHold(t.servers)
+			} else {
+				repoReply, err = fake.ProcsScan(t.userMessage)
+			}
+			if err != nil {
+				return err
+			}
+			continue
 		case "ask":
 			if skip {
 				continue
@@ -323,6 +334,10 @@ func (t *turn) mcpUse(in *bufio.Scanner, log *fake.Log) (string, error) {
 		c := t.servers[call.Server]
 		if c == nil || !c.Tools[call.Tool] {
 			lines = append(lines, fake.MCPLine(call, "unavailable"))
+			continue
+		}
+		if bad := call.Undeclared(c); bad != "" {
+			lines = append(lines, fake.MCPLine(call, bad))
 			continue
 		}
 		it := map[string]any{"type": "mcpToolCall", "id": fmt.Sprintf("mcp-use-%d", i+1), "server": call.Server, "tool": call.Tool,
