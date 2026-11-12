@@ -14,13 +14,14 @@ func (a *api) createMemory(w http.ResponseWriter, r *http.Request) {
 		Why     string `json:"why"`
 		Scope   string `json:"scope"`
 		ScopeID string `json:"scope_id"`
+		Ticket  string `json:"ticket"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		fail(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	item, _, err := a.mem.Remember(r.Context(), memory.Note{
-		Kind: body.Kind, Body: body.Body, Why: body.Why, Scope: body.Scope, ScopeID: body.ScopeID,
+		Kind: body.Kind, Body: body.Body, Why: body.Why, Scope: body.Scope, ScopeID: body.ScopeID, Ticket: body.Ticket,
 	})
 	if err != nil {
 		a.fail(w, r, err)

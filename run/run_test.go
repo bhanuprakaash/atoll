@@ -519,8 +519,12 @@ func TestRun_Approval(t *testing.T) {
 			if got, _ := e.st.Run(t.Context(), run.ID); got.Status != store.StatusWaiting {
 				t.Errorf("status %q when the approval was published, want waiting", got.Status)
 			}
-			if _, _, err := e.m.Send(t.Context(), e.thread.ID, "again", nil); !errors.Is(err, ErrBusy) {
-				t.Errorf("Send during a run: %v, want ErrBusy", err)
+			queued, _, err := e.m.Send(t.Context(), e.thread.ID, "again", nil)
+			if err != nil || !queued.Queued {
+				t.Errorf("Send during a run: %+v, %v, want a queued message", queued, err)
+			}
+			if err := e.m.RemoveQueued(t.Context(), e.thread.ID, queued.ID); err != nil {
+				t.Fatal(err)
 			}
 			if err := e.m.Answer(t.Context(), ap.ID, tt.allow); err != nil {
 				t.Fatal(err)
@@ -955,6 +959,8 @@ func TestToolVerb(t *testing.T) {
 		{"platform", "create_bot", "platform", "Setting up"},
 		{"edit", "Edit", "edit", "Editing"},
 		{"command", "Bash", "command", "Running"},
+		{"delegate", "mcp__atoll__delegate", "platform", "Handing off"},
+		{"continue", "mcp__atoll__continue", "platform", "Handing off"},
 		{"unknown", "unknown", "other", "Thinking"},
 		{"user memory server", "mcp__memory__remember", "other", "Thinking"},
 		{"user start work", "mcp__user__start_work", "other", "Thinking"},
@@ -964,6 +970,43 @@ func TestToolVerb(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := ToolVerb(tt.tool, tt.kind); got != tt.want {
 				t.Errorf("ToolVerb(%q, %q) = %q, want %q", tt.tool, tt.kind, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCommandTarget(t *testing.T) {
+	tests := []struct {
+		name string
+		give string
+		want string
+	}{
+		{name: "program and argument", give: "make e2e", want: "make e2e"},
+		{name: "past cd", give: "cd /tmp/atoll && make check 2>&1 | tail -5", want: "make check"},
+		{name: "path program", give: "/usr/bin/git status --short", want: "git status"},
+		{name: "flag argument", give: "go test -count=1 ./e2e", want: "go test"},
+		{name: "path argument", give: "ls ~/.claude/agents", want: "ls"},
+		{name: "subshell", give: "cd x && (e2e/with-secret-store go test ./e2e)", want: "with-secret-store go"},
+		{name: "only cd", give: "cd /tmp", want: ""},
+		{name: "function definition", give: `e() { gh pr view "$1"; }; e a`, want: "gh pr"},
+		{name: "function definition spaced", give: "mem () { git log; }; mem", want: "git log"},
+		{name: "for loop", give: "for n in a b; do gh pr view $n; done", want: "gh pr"},
+		{name: "while loop", give: "while read l; do echo $l; done < f", want: "read l"},
+		{name: "if header", give: "if [ -f x ]; then make check; fi", want: "make check"},
+		{name: "timeout", give: "timeout 400 gh pr checks 168 --watch", want: "gh pr"},
+		{name: "assignment", give: "x=$(date); git log", want: "git log"},
+		{name: "heredoc write", give: "cat > f <<EOF\nmake test\nEOF", want: "cat"},
+		{name: "write then command", give: "cat > f && make check", want: "make check"},
+		{name: "heredoc text", give: "cat <<'EOF' | sh\nrm -rf x\nEOF", want: "cat"},
+		{name: "timeout and cd", give: "cd x && timeout 540 make e2e", want: "make e2e"},
+		{name: "bash wrapper", give: `/bin/bash -lc "cd x && make check"`, want: "make check"},
+		{name: "bash wrapper quotes", give: `/bin/bash -lc "e() { gh pr view \"$1\"; }; e a"`, want: "gh pr"},
+		{name: "bash wrapper single quotes", give: `/bin/bash -lc 'ls -la'`, want: "ls"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CommandTarget(tt.give); got != tt.want {
+				t.Errorf("CommandTarget(%q) = %q, want %q", tt.give, got, tt.want)
 			}
 		})
 	}
@@ -981,6 +1024,8 @@ func TestToolKind(t *testing.T) {
 		{"Reef note", "mcp__atoll__remember", `{"topic":"design"}`, "memory", "design"},
 		{"Reef work", "mcp__atoll__start_work", `{}`, "work", ""},
 		{"Reef platform", "mcp__atoll__create_bot", `{"name":"Ada"}`, "platform", "Ada"},
+		{"Reef delegate", "mcp__atoll__delegate", `{"name":"Tester"}`, "platform", ""},
+		{"codex bash wrapper", "commandExecution", `{"command":"/bin/bash -lc \"x=$(date); git log\""}`, "command", "git"},
 		{"user memory server", "mcp__memory__recall", `{}`, "other", ""},
 		{"user tool", "mcp__user__remember", `{}`, "other", ""},
 		{"bare memory tool", "remember", `{}`, "other", ""},
