@@ -54,6 +54,10 @@ var _adapters = []adapter{
 }
 
 func main() {
+	if err := scrubEnv(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	err := run(ctx, os.Args[1:], os.Stdout)
 	stop()
@@ -218,7 +222,7 @@ func (a adapter) signIn(ctx context.Context) error {
 
 func (a adapter) prepare(ctx context.Context, override string) (bin, dir string, err error) {
 	if bin = a.find(pathDirs(ctx), override); bin == "" {
-		return "", "", fmt.Errorf("%s is not installed", a.name)
+		return "", "", provider.Off(fmt.Errorf("%s is not installed", a.name))
 	}
 	if dir, err = a.dir(); err != nil {
 		return "", "", err

@@ -69,7 +69,7 @@ func TestSidebar_Routes(t *testing.T) {
 		{"pin 2", "POST", pin(ids[1]), `{}`, 204, ""},
 		{"pin 3", "POST", pin(ids[2]), "", 204, ""},
 		{"pin 4 is refused", "POST", pin(ids[3]), "", 409,
-			`{"error":"3 threads of this Bot are pinned"}`},
+			`"error":"3 threads of this Bot are pinned","code":"conflict"}`},
 		{"pin 4 replacing 1", "POST", pin(ids[3]),
 			`{"replace":"` + ids[1] + `"}`, 204, ""},
 		{"unpin", "DELETE", pin(ids[3]), "", 204, ""},

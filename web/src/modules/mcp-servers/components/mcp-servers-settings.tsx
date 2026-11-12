@@ -18,6 +18,7 @@ import {
   type McpServer,
 } from '@/modules/mcp-servers/api/mcp-servers';
 import { SetupDialog } from '@/modules/mcp-servers/components/setup-dialog';
+import { ErrorNotice } from '@/components/error-notice';
 
 const listClass = 'divide-y divide-line overflow-hidden rounded-[18px] border border-line bg-box';
 
@@ -172,7 +173,7 @@ function ServerDialog({
               GitHub has a connection. Use it instead, or add this server as well.
             </p>
           )}
-          {save.isError && <p className="text-sm text-danger">{save.error.message}</p>}
+          {save.isError && <ErrorNotice error={save.error} retry={add} />}
           <div className="flex justify-end gap-2">
             <button type="button" className={outlineButton} onClick={onClose}>
               Cancel
@@ -375,8 +376,21 @@ export function McpServersSettings() {
       ) : (
         <p className="text-[13.5px] text-muted">No servers of your own yet.</p>
       )}
-      {connect.isError && <p className="text-sm text-danger">{connect.error.message}</p>}
-      {remove.isError && <p className="text-sm text-danger">{remove.error.message}</p>}
+      {connect.isError && (
+        <ErrorNotice
+          error={connect.error}
+          retry={() => {
+            const s = servers.find((item) => item.id === connect.variables);
+            if (s) signIn(s);
+          }}
+        />
+      )}
+      {remove.isError && (
+        <ErrorNotice
+          error={remove.error}
+          retry={() => remove.variables && remove.mutate(remove.variables)}
+        />
+      )}
       {setup && <SetupDialog server={setup} onClose={() => setSetup(undefined)} />}
       {dialog && (
         <ServerDialog

@@ -26,6 +26,7 @@ export type Bot = {
   pinned: boolean;
   activity: string;
   last_activity: string;
+  cost_24h_usd?: number;
   repo_access: 'all' | string[];
   connections: string[];
   provider: Provider;

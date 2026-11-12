@@ -5,6 +5,7 @@ import { api } from '@/lib/api-client';
 type ChangeSnapshot = {
   name?: string;
   path?: string;
+  command?: string;
   content?: string;
   look?: CreatureLook;
   provider?: 'claude' | 'codex';
@@ -19,7 +20,7 @@ type ChangeSnapshot = {
 
 export type PlatformChange = {
   id: string;
-  entity: 'bot' | 'skill' | 'repo';
+  entity: 'bot' | 'skill' | 'repo' | 'allow';
   entity_id: string;
   action: 'create' | 'edit';
   before: ChangeSnapshot | null;

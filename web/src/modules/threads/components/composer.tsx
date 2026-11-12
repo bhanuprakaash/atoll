@@ -8,6 +8,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
+import { ErrorNotice } from '@/components/error-notice';
 import { TextArea } from '@/components/text-field';
 import { ZoomImage } from '@/components/zoom-image';
 import { useSendMessage, type ImageInput, type Run } from '@/modules/threads/api/messages';
@@ -84,8 +85,8 @@ export function Composer({
       const added = await Promise.all(files.map((f) => readImage(f, nextImageId.current++)));
       setImageError('');
       setImages((current) => [...current, ...added]);
-    } catch (err) {
-      setImageError((err as Error).message);
+    } catch {
+      setImageError("Reef couldn't read that image.");
     }
   };
   const onPaste = (e: ClipboardEvent) => {
@@ -114,7 +115,7 @@ export function Composer({
         onSuccess: ({ run }) => {
           setText('');
           setImages([]);
-          onSent(run);
+          if (run) onSent(run);
         },
       },
     );
@@ -128,7 +129,7 @@ export function Composer({
       aria-label={`Message ${botName}${runId ? ', run in progress' : ''}`}
       placeholder={
         runId
-          ? `${botName} is working…`
+          ? 'Working…'
           : onFirstSend
             ? `Ask ${botName} anything, or paste an issue or MR link`
             : `Message ${botName}`
@@ -146,19 +147,7 @@ export function Composer({
       className="block max-h-[194px] overflow-y-auto py-2.25 text-[15px] leading-[22px]"
     />
   );
-  const action = runId ? (
-    <button
-      type="button"
-      aria-label="Stop"
-      disabled={stop.isPending}
-      onClick={() => stop.mutate(runId)}
-      className={roundButton}
-    >
-      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14">
-        <rect x="2" y="2" width="10" height="10" rx="2" fill="currentColor" />
-      </svg>
-    </button>
-  ) : (
+  const sendButton = (
     <button type="submit" aria-label="Send" disabled={!canSend} className={roundButton}>
       <svg
         aria-hidden="true"
@@ -174,6 +163,24 @@ export function Composer({
         <path d="M12 19V5M5 12l7-7 7 7" />
       </svg>
     </button>
+  );
+  const action = runId ? (
+    <>
+      <button
+        type="button"
+        aria-label="Stop"
+        disabled={stop.isPending}
+        onClick={() => stop.mutate(runId)}
+        className={roundButton}
+      >
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14">
+          <rect x="2" y="2" width="10" height="10" rx="2" fill="currentColor" />
+        </svg>
+      </button>
+      {sendButton}
+    </>
+  ) : (
+    sendButton
   );
 
   return (
@@ -228,14 +235,8 @@ export function Composer({
           </>
         )}
       </form>
-      {imageError && (
-        <p role="alert" className="text-[13px] text-danger">
-          {imageError}
-        </p>
-      )}
-      {(send.isError || stop.isError) && (
-        <p className="text-[13px] text-danger">{send.error?.message || stop.error?.message}</p>
-      )}
+      {imageError && <ErrorNotice title={imageError} next="Pick another image." />}
+      {(send.isError || stop.isError) && <ErrorNotice error={send.error ?? stop.error} />}
     </div>
   );
 }

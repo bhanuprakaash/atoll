@@ -247,7 +247,7 @@ export function Creature({
           cx="56"
           cy="4"
           r="7"
-          fill="var(--color-danger)"
+          fill="var(--color-accent)"
           stroke="var(--color-bg)"
           strokeWidth="3"
         />

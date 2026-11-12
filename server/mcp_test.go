@@ -102,7 +102,7 @@ func (s *urlSession) Resume(ctx context.Context, cfg provider.Config, _ string) 
 }
 func (s *urlSession) Events() <-chan provider.Event                        { return s.events }
 func (s *urlSession) Send(context.Context, string, []provider.Image) error { return nil }
-func (s *urlSession) Answer(string, bool) error                            { return nil }
+func (s *urlSession) Answer(string, bool, string) error                    { return nil }
 func (s *urlSession) Interrupt() error                                     { close(s.events); return nil }
 
 type platformEnv struct {
