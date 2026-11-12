@@ -42,9 +42,9 @@ const _tools = `{"tools":[
 "properties":{"tool_name":{"type":"string"},"input":{"type":"object"},"tool_use_id":{"type":"string"}},
 "required":["tool_name","input"]}},
 {"name":"remember",
-"description":"Save one lasting fact for later threads: a decision, convention, finding, fact or lesson. Put one idea in body and the reason in why. Scope repo is for this repo, bot for this Bot only, user for the user in every repo. To change an older item, pass its id in replaces: it is retired and this one takes its place. Returns the saved item and a similar array of existing items that look the same.",
+"description":"Save one lasting fact for later threads: a decision, convention, finding, fact or lesson. Put one idea in body and the reason in why. Scope repo is for this repo, bot for this Bot only, user for the user in every repo. To change an older item, pass its id in replaces: it is retired and this one takes its place. For a note about one issue of this repo, pass ticket as #N; it is retired when the issue closes. Returns the saved item and a similar array of existing items that look the same.",
 "inputSchema":{"type":"object",
-"properties":{"kind":{"type":"string","enum":["decision","convention","finding","fact","lesson"]},"body":{"type":"string"},"why":{"type":"string"},"scope":{"type":"string","enum":["repo","user","bot"]},"replaces":{"type":"array","items":{"type":"string"}}},
+"properties":{"kind":{"type":"string","enum":["decision","convention","finding","fact","lesson"]},"body":{"type":"string"},"why":{"type":"string"},"scope":{"type":"string","enum":["repo","user","bot"]},"replaces":{"type":"array","items":{"type":"string"}},"ticket":{"type":"string"}},
 "required":["kind","body","why","scope"]}},
 {"name":"recall",
 "description":"Search saved memory for this repo, this Bot and the user. Returns an array of items, best match first. Call read_memory with an id for one item.",
@@ -228,12 +228,13 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			Why      string   `json:"why"`
 			Scope    string   `json:"scope"`
 			Replaces []string `json:"replaces"`
+			Ticket   string   `json:"ticket"`
 		}
 		if err := json.Unmarshal(call.Arguments, &in); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
 		item, similar, err := a.runs.Remember(
-			r.Context(), token, in.Kind, in.Body, in.Why, in.Scope, in.Replaces)
+			r.Context(), token, in.Kind, in.Body, in.Why, in.Scope, in.Ticket, in.Replaces)
 		if err != nil {
 			return nil, a.toolError(err)
 		}

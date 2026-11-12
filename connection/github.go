@@ -64,6 +64,22 @@ func OnGitHub(remote string) bool {
 	return strings.EqualFold(host, base.Host)
 }
 
+// GitHubRepo returns the owner and name of the GitHub repo a git remote URL names, in any form
+// git takes; ok is false for a remote that is not on the host of GitHubURL.
+func GitHubRepo(remote string) (owner, name string, ok bool) {
+	if !OnGitHub(remote) {
+		return "", "", false
+	}
+	p := ""
+	if u, err := url.Parse(remote); err == nil && u.Host != "" {
+		p = u.Path
+	} else if _, rest, found := strings.Cut(remote, ":"); found {
+		p = rest
+	}
+	owner, name, found := strings.Cut(strings.TrimSuffix(strings.Trim(p, "/"), ".git"), "/")
+	return owner, name, found && owner != "" && name != "" && !strings.Contains(name, "/")
+}
+
 // GitHubMCPURL is GitHub's MCP server: ATOLL_GITHUB_MCP_URL, else the hosted one.
 func GitHubMCPURL() string {
 	if u := os.Getenv("ATOLL_GITHUB_MCP_URL"); u != "" {

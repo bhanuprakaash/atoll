@@ -12,6 +12,9 @@ import (
 
 const _ticketBody = "SQLite round 1 call from Bhanu: %s for the journal."
 
+// merged1 is the wake of PR #1 merging into the default branch at its fake head.
+var merged1 = "PR #1 merged into main at " + headSHA(1)[:7]
+
 // remember seeds a repo item with the SQLite words every memory check message matches. An empty
 // ticket saves an item about no ticket.
 func (f *prWakeFixture) remember(t *testing.T, call, ticket string) memoryItem {
@@ -169,7 +172,7 @@ func TestMemoryTicket_MergedWakeNamesItems(t *testing.T) {
 			f.gh.setPull(1, "closed", true)
 			w := f.waitWake(t, th, 1)
 
-			f.wantWake(t, th, w, "merged", "PR #1 merged. Memory about #7 to replace or retire: ")
+			f.wantWake(t, th, w, "merged", merged1+". Memory about #7 to replace or retire: ")
 			f.wantReply(t, th, "Merge noted.", first)
 			for _, want := range []string{"Memory about #9 to replace or retire: " + z.ID, x.ID, y.ID} {
 				if !strings.Contains(w.Text, want) {
@@ -199,10 +202,10 @@ func TestMemoryTicket_MergedWakeWithoutItemsIsPlain(t *testing.T) {
 			f.gh.setPull(1, "closed", true)
 			w := f.waitWake(t, th, 1)
 
-			f.wantWake(t, th, w, "merged", "PR #1 merged")
+			f.wantWake(t, th, w, "merged", merged1)
 			f.wantReply(t, th, "Merge noted.", first)
-			if w.Text != "PR #1 merged" {
-				t.Errorf("wake %q, want exactly %q", w.Text, "PR #1 merged")
+			if w.Text != merged1 {
+				t.Errorf("wake %q, want exactly %q", w.Text, merged1)
 			}
 		})
 	}
@@ -222,7 +225,7 @@ func TestMemoryTicket_MergeThatClosesTheIssueWakesBeforeRetiring(t *testing.T) {
 			f.gh.mergeClosing(1, 7)
 			w := f.waitWake(t, th, 1)
 
-			f.wantWake(t, th, w, "merged", "PR #1 merged. Memory about #7 to replace or retire: "+x.ID)
+			f.wantWake(t, th, w, "merged", merged1+". Memory about #7 to replace or retire: "+x.ID)
 			f.wantReply(t, th, "Merge noted.", first)
 			eventually(t, 30*time.Second, "the item of the closed issue is retired", func() bool { return f.item(t, x.ID).Status == "retired" })
 			f.wantRetired(t, x, "issue closed")

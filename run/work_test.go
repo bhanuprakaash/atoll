@@ -183,7 +183,7 @@ func TestRun_RepoAccessRevoked(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				item, _, err := e.m.Remember(t.Context(), token, "fact", "Use Go.", "", tt.scope, nil)
+				item, _, err := e.m.Remember(t.Context(), token, "fact", "Use Go.", "", tt.scope, "", nil)
 				if tt.wantErr != "" {
 					if !errors.Is(err, memory.ErrInvalid) || err.Error() != tt.wantErr {
 						t.Errorf("Remember = %v, want %q", err, tt.wantErr)
