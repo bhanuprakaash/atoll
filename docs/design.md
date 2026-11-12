@@ -1733,20 +1733,42 @@ Voice
   Reef's mark and the sentence (`PR #7 merged`), not as a bubble of the user's or a Bot's. A new
   thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message.
-- Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` region sits between
-  the chat and the composer with one quiet line per helper whose run is going or waiting on an
-  approval: creature, Bot name, state
-  and `Open`. The state is the live step while it works: the verb and a short target, for a
-  command its program and plain first argument ("Running make build"; Codex shows the program only), never the raw
-  command. The program is the first real one: past `cd`, `VAR=value` assignments, a leading
-  `timeout <n>`, and a leading `cat > file` or other redirect; a function definition
-  (`name() {`) and a loop or `if` header (`for`, `while`, `until`, `if`) show the first command
-  inside; a heredoc's text is never a command; a command that only writes a file shows "Running
-  cat" (`e() { gh pr view "$1"; }; e a`, `for n in a b; do gh pr view $n; done` and
-  `timeout 400 gh pr checks 168 --watch` all show "Running gh pr"). Other words: "Waiting on a background task" for a command that reads a task's output file, "Looking around"
-  for Chief's `list_*` tools, "Handing off" (no target) for `delegate` and `continue`, else "Working"; or "Needs you" with an open approval; the line leaves when the run ends, and the report in the chat
-  says how it went. A helper's open approval shows under its line in the usual inline form; Allow and Deny
-  there answer it, and answering it in either thread removes it from both (`approval_closed`). The
+- Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` tray (a region of
+  that name) is attached to the top of the composer, on the composer's surface and border. It is
+  one line of about 32 px that never grows with more helpers: each helper task's creature, stacked
+  (two helpers of one Bot are two creatures), `N working · N reported` (a zero part is left out)
+  and `Show`; with no helper running or unread, nothing shows above the composer. The Waiting on
+  you card sits above the tray. Only what needs the person opens by itself: a helper's open
+  approval is one line under the summary, the approval card led by the helper's creature and name
+  (`Tester wants to run make check`, with Allow and Deny); with two waiting it shows the first and
+  `1 more`. It leaves when answered, in either thread (`approval_closed`), and a message in the
+  boss's composer answers it as Replying to an approval says. Needs you is marked as the approval
+  card marks it (#146), not with an amber or red alarm of its own. `Show` opens the list as a popover over the chat (a
+  dialog named `Helper tasks`; the chat does not move); Esc, a click outside or `Show` again
+  closes it, `⌘.` (`Ctrl+.` off macOS) toggles it, the arrow keys move between rows and Enter
+  opens the helper's thread. One row per helper task: creature, Bot name, the helper thread's
+  title (the task), the step, the time, its PR, `Open` and, while its run goes, `Stop` on hover or
+  focus. The step is the live verb and a short target, for a command its program and plain first
+  argument ("Running make build"; Codex shows the program only), never raw shell ("Running for
+  i"). The program is the first real one: past `cd`, `VAR=value` assignments, a leading `timeout
+  <n>`, and a leading `cat > file` or other redirect; a function definition (`name() {`) and a loop
+  or `if` header (`for`, `while`, `until`, `if`) show the first command inside; a heredoc's text is
+  never a command; a command that only writes a file shows "Running cat" (`e() { gh pr view "$1";
+  }; e a`, `for n in a b; do gh pr view $n; done` and `timeout 400 gh pr checks 168 --watch` all
+  show "Running gh pr"). Other words: "Waiting on a background task" for a command that reads a
+  task's output file, "Looking around" for Chief's `list_*` tools, "Handing off" (no target) for
+  `delegate` and `continue`, "Needs you" with an open approval, else "Working". The time is `42s`, `3m`,
+  `1h 5m` since the helper thread was created, counting while its run goes. A helper thread that
+  tracks a PR or MR shows its reference (`#7`, `!7`) as a link to it, with the state dot of the
+  composer's chip and, while it is open, its CI as a word: `running` (muted), `passed` (green) or
+  `failed` (red, a real failure), from the last read of the watcher (so `mr_ci` joins `mr_state`
+  in every thread summary, `helpers` included); no PR, no mark. The resting line holds no PR text.
+  A helper whose run ended stays as a row with `Reported` (`Failed` or `Stopped` for those ends)
+  in place of the step and the time, and in the summary's reported count, until its report (the
+  helper Bot's message in the chat) has been in the visible part of the chat; then it leaves and
+  the count follows. Which reports were seen is kept in the browser per helper thread, so a reload
+  does not bring one back. *The first design said `Approved · Read`; a report has no verdict to
+  read it from, and reading prose to guess one is not something Reef does.* The
   chat keeps one line where work was handed off, after the message that led to it ("Handed off to
   Tester and Reviewer", `Tester ×2` for two helpers of one Bot), each name linking to its helper
   thread; a helper's report is a message from the helper Bot, an article named after it with its
