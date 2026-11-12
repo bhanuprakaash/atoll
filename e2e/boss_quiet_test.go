@@ -338,10 +338,13 @@ func TestBossQuiet_StoppedRunStartsNone(t *testing.T) {
 			setDelegates(t, s, poteto, tester)
 			boss := s.newThread(t, poteto)
 			ev := s.events(t, boss)
-			ids, _ := delegateTester(t, s, boss, ev, _reportPrompt)
+			ids, _ := delegateTester(t, s, boss, ev, _slowPrompt)
 			busy := s.send(t, boss, _writePrompt)
 			until(t, ev, busy.ID, "approval")
-			helpersEnd(t, s, ids[0])
+			if r := settled(t, s, ids[0]); r.Status != "done" {
+				t.Fatalf("helper %s: status %q, error %q; want done", ids[0], r.Status, r.Error)
+			}
+			bossStill(t, s, boss.ID, busy.ID, "while the boss's run waits for its approval")
 
 			s.do(t, "POST", "/api/runs/"+busy.ID+"/stop", nil, nil, http.StatusNoContent)
 			if got := s.finished(t, ev, busy.ID); got.Status != "stopped" {
