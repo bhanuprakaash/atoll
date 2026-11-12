@@ -30,6 +30,8 @@ var (
 	ErrPending = errors.New("authorization pending")
 	// ErrSlowDown is ErrPending for a poll that came too early: every later poll must wait 5s more.
 	ErrSlowDown = fmt.Errorf("%w: slow down", ErrPending)
+	// ErrSignInEnded is wrapped when the provider says a sign-in expired or was refused.
+	ErrSignInEnded = errors.New("sign-in expired or refused")
 	// ErrNeedsSignIn is returned when GitLab rejects a refresh token.
 	ErrNeedsSignIn = errors.New("GitLab needs sign-in")
 
@@ -219,6 +221,9 @@ func post(ctx context.Context, c *http.Client, instance, path string, form url.V
 			}
 			if resp.StatusCode == http.StatusBadRequest && reply.Error == "invalid_grant" {
 				return _invalidGrant
+			}
+			if reply.Error == "expired_token" || reply.Error == "access_denied" {
+				return fmt.Errorf("%w: %s", ErrSignInEnded, reply.Error)
 			}
 			return fmt.Errorf("OAuth error: %s", reply.Error)
 		}

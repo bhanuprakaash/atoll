@@ -11,6 +11,7 @@ import {
 } from '@/components/settings-ui';
 import { TextField } from '@/components/text-field';
 import { usePickRepoFolder, useRegisterRepo, useRepos } from '@/modules/repos/api/repos';
+import { ErrorNotice } from '@/components/error-notice';
 
 function RepoForm({ onDone, onCancel }: { onDone?: () => void; onCancel?: () => void }) {
   const [name, setName] = useState('');
@@ -25,8 +26,7 @@ function RepoForm({ onDone, onCancel }: { onDone?: () => void; onCancel?: () => 
         setName((current) => current || result.path.split('/').filter(Boolean).at(-1) || '');
       },
     });
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
+  const add = () =>
     register.mutate(
       { name, path },
       {
@@ -37,6 +37,9 @@ function RepoForm({ onDone, onCancel }: { onDone?: () => void; onCancel?: () => 
         },
       },
     );
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    add();
   };
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
@@ -74,8 +77,8 @@ function RepoForm({ onDone, onCancel }: { onDone?: () => void; onCancel?: () => 
           </button>
         </span>
       </label>
-      {picker.isError && <p className="text-sm text-danger">{picker.error.message}</p>}
-      {register.isError && <p className="text-sm text-danger">{register.error.message}</p>}
+      {picker.isError && <ErrorNotice error={picker.error} retry={pick} />}
+      {register.isError && <ErrorNotice error={register.error} retry={add} />}
       <div className="flex justify-end gap-2">
         {onCancel && (
           <button type="button" className={outlineButton} onClick={onCancel}>

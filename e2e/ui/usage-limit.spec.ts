@@ -65,7 +65,7 @@ for (const c of cases) {
     await expect(log.getByText(/^(Run failed|Didn't run):/)).toBeVisible();
     const danger = await log
       .getByText(/^(Run failed|Didn't run):/)
-      .locator('xpath=..')
+      .locator('xpath=ancestor::*[.//*[local-name()="svg"]][1]')
       .locator('svg')
       .first()
       .evaluate((e) => getComputedStyle(e).color);

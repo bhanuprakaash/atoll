@@ -33,8 +33,11 @@ export type Run = {
   finished_at: string;
   tools: Record<string, number>;
   report?: { done: string; blocked: string } | null;
+  reply: string;
   error: string;
-  error_kind: '' | 'signed_out' | 'secret_store' | 'rate_limited';
+  error_detail: string;
+  error_kind:
+    '' | 'signed_out' | 'secret_store' | 'rate_limited' | 'provider_off' | 'needs_sign_in';
   resets_at: string;
   provider: 'claude' | 'codex';
   usage?: RunUsage | null;

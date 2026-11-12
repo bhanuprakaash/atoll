@@ -7,6 +7,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
+import { ErrorNotice } from '@/components/error-notice';
 import { TextArea } from '@/components/text-field';
 import { ZoomImage } from '@/components/zoom-image';
 import { useSendMessage, type ImageInput, type Run } from '@/modules/threads/api/messages';
@@ -78,8 +79,8 @@ export function Composer({
       const added = await Promise.all(files.map((f) => readImage(f, nextImageId.current++)));
       setImageError('');
       setImages((current) => [...current, ...added]);
-    } catch (err) {
-      setImageError((err as Error).message);
+    } catch {
+      setImageError("Reef couldn't read that image.");
     }
   };
   const onPaste = (e: ClipboardEvent) => {
@@ -227,14 +228,8 @@ export function Composer({
           </>
         )}
       </form>
-      {imageError && (
-        <p role="alert" className="text-[13px] text-danger">
-          {imageError}
-        </p>
-      )}
-      {(send.isError || stop.isError) && (
-        <p className="text-[13px] text-danger">{send.error?.message || stop.error?.message}</p>
-      )}
+      {imageError && <ErrorNotice title={imageError} next="Pick another image." />}
+      {(send.isError || stop.isError) && <ErrorNotice error={send.error ?? stop.error} />}
     </div>
   );
 }

@@ -58,6 +58,17 @@ const (
 // ErrSignedOut is the error of a run that failed because the provider refused its sign-in.
 var ErrSignedOut = errors.New("provider is signed out")
 
+// ErrOff is the error of a run whose provider cannot start: its CLI is missing or it is turned off.
+var ErrOff = errors.New("provider is off")
+
+type offError struct{ error }
+
+func (e offError) Unwrap() error      { return e.error }
+func (offError) Is(target error) bool { return target == ErrOff }
+
+// Off marks err as ErrOff without changing its text.
+func Off(err error) error { return offError{err} }
+
 // LimitError is the error of a run a provider's usage limit stopped. ResetsAt is zero when the
 // provider gave no time.
 type LimitError struct {

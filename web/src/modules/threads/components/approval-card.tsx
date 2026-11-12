@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { quiet, refuse } from '@/components/button';
+import { ErrorNotice } from '@/components/error-notice';
 import { ApiError } from '@/lib/api-client';
 import { useAnswerApproval } from '@/modules/threads/api/approvals';
 
@@ -153,7 +154,15 @@ export function ApprovalCard({
           {diff || 'No diff available'}
         </pre>
       )}
-      {answer.isError && <span className="text-danger">Could not answer approval</span>}
+      {answer.isError && (
+        <ErrorNotice
+          title="Couldn't send your answer."
+          error={answer.error}
+          retry={() =>
+            answer.variables && respond(answer.variables.approve, answer.variables.in_thread)
+          }
+        />
+      )}
     </div>
   );
 }

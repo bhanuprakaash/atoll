@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Creature } from '@/components/creature';
 import { TextField } from '@/components/text-field';
+import { ErrorNotice } from '@/components/error-notice';
 import { ApiError } from '@/lib/api-client';
 import { useBots, type SidebarThread } from '@/modules/bots/api/bots';
 import { ThreadLabel } from '@/modules/bots/components/thread-tree';
@@ -215,7 +216,7 @@ export function ThreadsPopup({
             />
           </div>
           {pin.isError && !isPinLimit(pin.error) && (
-            <p className="px-4 pb-2 text-[13px] text-danger">{pin.error.message}</p>
+            <ErrorNotice error={pin.error} className="px-4 pb-2" />
           )}
           <div className="min-h-0 flex-1 overflow-y-auto border-t border-line px-2 pb-2">
             {sections.map(

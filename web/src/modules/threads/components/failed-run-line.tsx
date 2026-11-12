@@ -1,6 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { Link } from 'react-router';
-import { quiet } from '@/components/button';
+import { type ReactNode } from 'react';
+import { ErrorNotice } from '@/components/error-notice';
 import type { Run } from '@/modules/threads/api/messages';
 import { useRun } from '@/modules/threads/api/runs';
 import { messageTime } from '@/utils/time';
@@ -30,7 +29,6 @@ export function FailedLine({
   retry: (runId: string) => void;
   signedOut?: (provider: Run['provider']) => ReactNode;
 }) {
-  const [details, setDetails] = useState(false);
   if (run.error_kind === 'rate_limited') {
     return (
       <p className="text-ink/80">
@@ -39,68 +37,59 @@ export function FailedLine({
       </p>
     );
   }
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <svg
-        aria-hidden="true"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        className="flex-none text-danger"
-      >
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 7.5v5M12 16v.5" />
-      </svg>
-      {run.error_kind === 'signed_out' && signedOut ? (
-        signedOut(run.provider)
-      ) : run.error_kind === 'secret_store' ? (
-        <span className="min-w-60 flex-1 text-ink/80">{run.error}</span>
-      ) : (
-        <span className="min-w-60 flex-1 text-ink/80 [overflow-wrap:anywhere]">
-          {replied
-            ? `Run failed${run.error ? `: ${run.error}` : '.'}`
-            : `Didn't run: ${reason(run.error)}`}
-          {signedOutError.test(run.error) && !connectionSignIn.test(run.error) && (
-            <>
-              {' '}
-              <Link
-                className="text-ink underline decoration-outline underline-offset-3"
-                to="/settings/providers"
-              >
-                Sign in
-              </Link>
-            </>
-          )}
-          {!replied && run.error && !connectionSignIn.test(run.error) && (
-            <>
-              {' '}
-              <button
-                type="button"
-                aria-expanded={details}
-                onClick={() => setDetails(!details)}
-                className={quiet}
-              >
-                Details
-              </button>
-              {details && <span className="mt-1 block text-[12.5px] text-muted">{run.error}</span>}
-            </>
-          )}
-        </span>
-      )}
-      {newest && run.error_kind !== 'secret_store' && (
-        <button
-          type="button"
-          onClick={() => retry(run.id)}
-          className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
+  if (run.error_kind === 'secret_store' || (run.error_kind === 'signed_out' && signedOut)) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <svg
+          aria-hidden="true"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          className="flex-none text-danger"
         >
-          Retry
-        </button>
-      )}
-    </div>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7.5v5M12 16v.5" />
+        </svg>
+        {run.error_kind === 'secret_store' ? (
+          <span className="min-w-60 flex-1 text-ink/80">{run.error}</span>
+        ) : (
+          signedOut?.(run.provider)
+        )}
+        {newest && run.error_kind !== 'secret_store' && (
+          <button
+            type="button"
+            onClick={() => retry(run.id)}
+            className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
+          >
+            Retry
+          </button>
+        )}
+      </div>
+    );
+  }
+  const plain =
+    run.error_kind === 'provider_off' ||
+    run.error_kind === 'needs_sign_in' ||
+    connectionSignIn.test(run.error);
+  const settings =
+    run.error_kind === 'provider_off' || (signedOutError.test(run.error) && !plain)
+      ? '/settings/providers'
+      : run.error_kind === 'needs_sign_in'
+        ? '/settings/connections'
+        : '';
+  return (
+    <ErrorNotice
+      title={`${replied ? 'Run failed' : "Didn't run"}: ${plain ? `${run.error.replace(/\.$/, '')}.` : reason(run.error)}`}
+      details={run.error_detail || (plain ? '' : run.error)}
+      actions={[
+        ...(settings ? [{ label: 'Open settings', to: settings }] : []),
+        ...(newest ? [{ label: 'Retry', onClick: () => retry(run.id) }] : []),
+      ]}
+    />
   );
 }
 

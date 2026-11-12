@@ -3,6 +3,7 @@ import { quiet } from '@/components/button';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { Fold } from '@/components/fold';
 import { type PlatformChange, useChanges, useUndoChange } from '@/modules/platform/api/changes';
+import { ErrorNotice } from '@/components/error-notice';
 
 const providerLabel = (provider?: string) =>
   (({ claude: 'Claude Code', codex: 'Codex' }) as Record<string, string>)[provider ?? ''] ??
@@ -128,7 +129,7 @@ function NewBotRow({
             .filter(Boolean)
             .join(' · ')}
         </div>
-        {undo.isError && <p className="text-sm text-danger">{undo.error.message}</p>}
+        {undo.isError && <ErrorNotice error={undo.error} retry={() => undo.mutate()} />}
       </div>
       {change.undone ? (
         <span className="text-[13px] text-muted">Undone</span>
@@ -210,7 +211,7 @@ function NewBots({
           ))}
         </div>
       </Fold>
-      {undo.isError && <p className="text-sm text-danger">{undo.error.message}</p>}
+      {undo.isError && <ErrorNotice error={undo.error} retry={() => undo.mutate()} />}
     </li>
   );
 }
@@ -320,7 +321,7 @@ function Change({
           </div>
         )}
       </Fold>
-      {undo.isError && <p className="text-sm text-danger">{undo.error.message}</p>}
+      {undo.isError && <ErrorNotice error={undo.error} retry={() => undo.mutate()} />}
     </li>
   );
 }
@@ -361,7 +362,7 @@ function ChangeGroup({
           </>
         )}
       />
-      {undo.isError && <p className="text-sm text-danger">{undo.error.message}</p>}
+      {undo.isError && <ErrorNotice error={undo.error} retry={() => undo.mutate()} />}
     </li>
   );
 }

@@ -189,6 +189,8 @@ func githubPost(ctx context.Context, c *http.Client, path string, form url.Value
 			return ErrPending
 		case "slow_down":
 			return ErrSlowDown
+		case "expired_token", "access_denied":
+			return fmt.Errorf("%w: %s", ErrSignInEnded, failure.Error)
 		}
 		return fmt.Errorf("OAuth error: %s", failure.Error)
 	}

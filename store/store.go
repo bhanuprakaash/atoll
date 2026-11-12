@@ -60,6 +60,13 @@ const (
 // ErrorSignedOut is the error kind of a run that failed because its provider is signed out.
 const ErrorSignedOut = "signed_out"
 
+// ErrorNeedsSignIn is the error kind of a run that failed because a GitHub or GitLab connection
+// needs sign-in; its error is Reef's own plain sentence.
+const ErrorNeedsSignIn = "needs_sign_in"
+
+// ErrorProviderOff is the error kind of a run whose provider is not installed or is turned off.
+const ErrorProviderOff = "provider_off"
+
 // ErrorSecretStore is the error kind of a run that failed because a secret could not be read.
 const ErrorSecretStore = "secret_store"
 
@@ -254,19 +261,21 @@ type (
 
 	// Run is one message handled.
 	Run struct {
-		ID         string         `json:"id"`
-		ThreadID   string         `json:"thread_id"`
-		Status     string         `json:"status"`
-		Reply      string         `json:"reply"`
-		Error      string         `json:"error"`
-		ErrorKind  string         `json:"error_kind"`
-		ResetsAt   string         `json:"resets_at"`
-		Provider   string         `json:"provider"`
-		Report     *Report        `json:"report"`
-		StartedAt  time.Time      `json:"started_at"`
-		FinishedAt time.Time      `json:"finished_at"`
-		Tools      map[string]int `json:"tools"`
-		Usage      *Usage         `json:"usage"`
+		ID        string `json:"id"`
+		ThreadID  string `json:"thread_id"`
+		Status    string `json:"status"`
+		Reply     string `json:"reply"`
+		Error     string `json:"error"`
+		ErrorKind string `json:"error_kind"`
+		// ErrorDetail is the raw error behind a plain Error; empty when Error is the raw one.
+		ErrorDetail string         `json:"error_detail"`
+		ResetsAt    string         `json:"resets_at"`
+		Provider    string         `json:"provider"`
+		Report      *Report        `json:"report"`
+		StartedAt   time.Time      `json:"started_at"`
+		FinishedAt  time.Time      `json:"finished_at"`
+		Tools       map[string]int `json:"tools"`
+		Usage       *Usage         `json:"usage"`
 	}
 
 	// Usage is what one run used; it counts that run only. CostUSD is nil when the provider

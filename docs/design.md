@@ -1685,13 +1685,17 @@ Voice
   shows every failure a person can cause: a `role="alert"` block with a title in plain words, one
   line of what to do next, an action button when there is one, and a collapsed `Details` button
   (`aria-expanded`) whose text is for a bug report. It sits inline where the action failed (the
-  form, card, dialog or setting), replaces itself on the next attempt and never toasts. Calm:
+  form, card, dialog or setting), replaces itself on the next attempt and never toasts. When its action is a button the screen
+  already has (Sign in again on a Connection), the notice carries it and the row's copy waits. Calm:
   only its icon is red; the words are ink and muted. No screen renders `error.message`, a JSON
   body, an HTTP status text or a Go error chain; `.message` of an error is read only inside
   `ErrorNotice`, which only `Details` shows. A chat run line is the same component in its
   one-line form: the title is the line (`Didn't run: <reason>`, or `Run failed: <reason>` after a
   reply), Retry or Resend is the action and stands in for the next-step line, and `Details` holds
-  the provider's raw error. The callback pages (`/oauth/callback`) take the same shape as static
+  the provider's raw error (`error_detail` of a `provider_off` run, whose `error` is the plain
+  sentence; the run's `error` otherwise). The reason is that sentence, or `something went wrong`
+  for any other failure; `Run failed` is for a run that had replied, `Didn't run` for one that had
+  not. The callback pages (`/oauth/callback`) take the same shape as static
   HTML: the title, the next-step line and a closed `<details>` with the summary `Details`. *37 of
   44 red texts rendered a server string, `internal error` or a raw HTML 502 page.*
 - The server answers a failed request `{"error": "<plain sentence>", "code": "<id>"}`. `error` is

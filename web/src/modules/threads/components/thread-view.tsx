@@ -18,6 +18,7 @@ import {
 import { getRun, useRun, useStopRun } from '@/modules/threads/api/runs';
 import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
+import { ErrorNotice } from '@/components/error-notice';
 import { approvalTarget } from '@/modules/threads/components/approval-card';
 import { QueuedMessage } from '@/modules/threads/components/queued-message';
 import { HelpersRegion } from '@/modules/threads/components/helpers-region';
@@ -430,9 +431,7 @@ export function DraftThread({
           sendFirst={sendFirst}
           onSent={() => {}}
         />
-        {create.isError && (
-          <p className="text-center text-sm text-danger">{create.error.message}</p>
-        )}
+        {create.isError && <ErrorNotice error={create.error} />}
       </div>
     </div>
   );

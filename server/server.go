@@ -662,6 +662,10 @@ func (a *api) getRun(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	if ru.ErrorKind == store.ErrorProviderOff {
+		name := strings.ToUpper(ru.Provider[:1]) + ru.Provider[1:]
+		ru.ErrorDetail, ru.Error = ru.Error, name+" isn't installed or isn't signed in."
+	}
 	write(w, http.StatusOK, ru)
 }
 
@@ -739,36 +743,6 @@ func (a *api) stream(
 			return
 		}
 	}
-}
-
-// fail answers err with the status it maps to, and logs it when it is a 500.
-func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, store.ErrNotFound), errors.Is(err, run.ErrNotFound),
-		errors.Is(err, memory.ErrNotFound):
-		fail(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, memory.ErrInvalid), errors.Is(err, mcpserver.ErrInvalid),
-		errors.Is(err, run.ErrNotOffered):
-		fail(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, run.ErrBusy), errors.Is(err, run.ErrClosed),
-		errors.Is(err, store.ErrExists), errors.Is(err, store.ErrUndone),
-		errors.Is(err, store.ErrInUse), errors.Is(err, store.ErrPinLimit), errors.Is(err, store.ErrSent):
-		fail(w, http.StatusConflict, err.Error())
-	case errors.Is(err, store.ErrEmpty):
-		fail(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, mcpserver.ErrKeychain):
-		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
-		fail(w, http.StatusInternalServerError, err.Error())
-	default:
-		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
-		fail(w, http.StatusInternalServerError, "internal error")
-	}
-}
-
-func fail(w http.ResponseWriter, status int, msg string) {
-	write(w, status, struct {
-		Error string `json:"error"`
-	}{Error: msg})
 }
 
 func write(w http.ResponseWriter, status int, v any) {
