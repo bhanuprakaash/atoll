@@ -253,7 +253,7 @@ async function handOff(page: Page) {
 
 test('a helper approval waiting in the boss thread is not red anywhere', async ({ page }) => {
   const { region } = await handOff(page);
-  await expect(region).toContainText('Needs you');
+  await expect(region).toContainText('wants to run');
   await page.mouse.move(0, 0);
   expect(await reds(page.locator('body'))).toEqual([]);
 });
