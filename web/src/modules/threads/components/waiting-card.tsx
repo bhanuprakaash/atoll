@@ -42,7 +42,7 @@ export function WaitingCard({
                 type="button"
                 disabled={send.isPending}
                 onClick={() =>
-                  send.mutate({ text: option }, { onSuccess: ({ run }) => onSent(run) })
+                  send.mutate({ text: option }, { onSuccess: ({ run }) => run && onSent(run) })
                 }
                 className="h-8 rounded-full border border-outline px-3.5 text-[13.5px]"
               >

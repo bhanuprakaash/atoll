@@ -7,6 +7,7 @@ import {
   useSaveMcpServerSetup,
   type McpServer,
 } from '@/modules/mcp-servers/api/mcp-servers';
+import { ErrorNotice } from '@/components/error-notice';
 
 export function SetupDialog({ server, onClose }: { server: McpServer; onClose: () => void }) {
   const [clientId, setClientId] = useState('');
@@ -17,9 +18,10 @@ export function SetupDialog({ server, onClose }: { server: McpServer; onClose: (
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+  const saveId = () => save.mutate(clientId.trim(), { onSuccess: onClose });
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    save.mutate(clientId.trim(), { onSuccess: onClose });
+    saveId();
   };
   return (
     <div
@@ -52,7 +54,9 @@ export function SetupDialog({ server, onClose }: { server: McpServer; onClose: (
           <li>Turn PKCE on for the app. Do not copy the client secret.</li>
           <li>Copy the Client ID from Basic Information and paste it here.</li>
         </ol>
-        {info.isError && <p className="mb-3 text-sm text-danger">{info.error.message}</p>}
+        {info.isError && (
+          <ErrorNotice error={info.error} retry={() => void info.refetch()} className="mb-3" />
+        )}
         <form onSubmit={submit} className="flex flex-col gap-4">
           <Field label="Client ID">
             {(id) => (
@@ -67,7 +71,7 @@ export function SetupDialog({ server, onClose }: { server: McpServer; onClose: (
               />
             )}
           </Field>
-          {save.isError && <p className="text-sm text-danger">{save.error.message}</p>}
+          {save.isError && <ErrorNotice error={save.error} retry={saveId} />}
           <div className="flex justify-end gap-2">
             <button type="button" className={outlineButton} onClick={onClose}>
               Cancel

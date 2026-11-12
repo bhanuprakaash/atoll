@@ -12,6 +12,9 @@ export type SidebarThread = {
   pinned: boolean;
   helper?: boolean;
   waiting?: Waiting[];
+  branch: string;
+  mr_url: string;
+  last_activity: string;
 };
 
 export type Bot = {
@@ -25,6 +28,7 @@ export type Bot = {
   pinned: boolean;
   activity: string;
   last_activity: string;
+  cost_24h_usd?: number;
   repo_access: 'all' | string[];
   connections: string[];
   provider: Provider;

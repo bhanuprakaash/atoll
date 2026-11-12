@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useMatch, useNavigate, useSearchParams } from 'react-router';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { NavLink, Outlet, useLocation, useMatch, useNavigate, useSearchParams } from 'react-router';
 import { BotList } from '@/modules/bots/components/bot-list';
 import { Menu } from '@/components/menu';
+import { Switcher } from '@/app/switcher';
 import { ThreadsPopup } from '@/app/threads-popup';
 import { useSettings } from '@/modules/settings/api/settings';
 import { useNotifications } from '@/modules/threads/hooks/use-notifications';
+import { useTypeToCompose } from '@/modules/threads/hooks/use-type-to-compose';
 import { TextField } from '@/components/text-field';
 import { useCloseThread, useRenameThread } from '@/modules/threads/api/threads';
 import { inDesktopApp, useAppUpdate } from '@/lib/app-update';
@@ -39,6 +41,27 @@ function useSidebarWidth() {
   return [width, (next: number) => setWidth(clampSidebar(next))] as const;
 }
 
+const NARROW = '(max-width: 899.98px)';
+const DRAWER_GUTTER = 48;
+const isMac = /Mac/.test(navigator.platform);
+
+// Below 900 px the sidebar is a drawer, closed whenever the window turns narrow and after any
+// navigation.
+function useDrawer() {
+  const narrow = useSyncExternalStore(
+    (notify) => {
+      const query = matchMedia(NARROW);
+      query.addEventListener('change', notify);
+      return () => query.removeEventListener('change', notify);
+    },
+    () => matchMedia(NARROW).matches,
+  );
+  const [open, setOpen] = useState(false);
+  const { key } = useLocation();
+  useEffect(() => setOpen(false), [narrow, key]);
+  return [narrow, narrow && open, setOpen] as const;
+}
+
 function initials(name: string) {
   const words = name.split(/\s+/).filter(Boolean);
   return words
@@ -51,6 +74,9 @@ export function Shell() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
+  const [narrow, drawerOpen, setDrawerOpen] = useDrawer();
+  const toggleButton = useRef<HTMLButtonElement>(null);
+  const searchField = useRef<HTMLInputElement>(null);
   const resizeStart = useRef({ x: 0, width: 0 });
   const notifications = useNotifications();
   const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
@@ -70,6 +96,23 @@ export function Shell() {
   const botId = botMatch === 'new' ? undefined : botMatch;
   const threadId = useMatch('/bots/:botId/threads/:threadId')?.params.threadId;
   useEffect(() => {
+    if (!narrow) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((isMac ? event.metaKey : event.ctrlKey) && event.key === 'b') {
+        event.preventDefault();
+        setDrawerOpen((open) => !open);
+      } else if (event.key === 'Escape' && drawerOpen && !event.defaultPrevented) {
+        setDrawerOpen(false);
+        toggleButton.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [narrow, drawerOpen, setDrawerOpen]);
+  useEffect(() => {
+    if (drawerOpen) searchField.current?.focus();
+  }, [drawerOpen]);
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!botId || !event.metaKey || event.key !== 'n') return;
       event.preventDefault();
@@ -78,19 +121,70 @@ export function Shell() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [botId, navigate]);
+  const [switching, setSwitching] = useState(false);
+  useTypeToCompose();
+  useEffect(() => {
+    const mac = navigator.userAgent.includes('Mac');
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'k' || event.altKey || event.shiftKey) return;
+      if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return;
+      event.preventDefault();
+      setSwitching(true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
   const { data: settings } = useSettings();
   const userName = settings?.user_name || 'User';
   const updateAvailable = Boolean(useAppUpdate().data?.available);
   return (
     <div className="flex h-screen">
       {inDesktopApp && <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-10 h-3" />}
+      {narrow && (
+        <button
+          ref={toggleButton}
+          type="button"
+          aria-label="Sidebar"
+          aria-expanded={drawerOpen}
+          onClick={() => {
+            setDrawerOpen(!drawerOpen);
+            if (drawerOpen) toggleButton.current?.focus();
+          }}
+          className={`fixed top-3.5 z-50 flex size-10 items-center justify-center rounded-full text-muted ${inDesktopApp ? 'left-20' : 'left-3'}`}
+        >
+          <svg
+            aria-hidden="true"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          >
+            <rect x="3.5" y="4.5" width="17" height="15" rx="3" />
+            <path d="M9.5 4.5v15" />
+          </svg>
+        </button>
+      )}
+      {drawerOpen && (
+        <div
+          aria-hidden="true"
+          onClick={() => setDrawerOpen(false)}
+          className="fixed inset-0 z-30 bg-scrim"
+        />
+      )}
       <nav
         aria-label="Bots"
-        style={{ width: sidebarWidth }}
-        className="relative flex flex-none flex-col border-r border-sidebar-line bg-card px-2.5 pt-4 pb-3"
+        style={{
+          width: narrow ? `min(${sidebarWidth}px, calc(100vw - ${DRAWER_GUTTER}px))` : sidebarWidth,
+        }}
+        className={`flex-none flex-col border-r border-sidebar-line bg-card px-2.5 pt-4 pb-3 ${narrow ? `fixed inset-y-0 left-0 z-40 ${drawerOpen ? 'flex' : 'hidden'}` : 'relative flex'}`}
       >
         {inDesktopApp && <div data-tauri-drag-region="deep" className="h-8" />}
-        <div className={`flex items-center gap-2 ${inDesktopApp ? 'mt-3.5' : ''}`}>
+        <div
+          className={`flex items-center gap-2 ${inDesktopApp ? 'mt-3.5' : narrow ? 'ml-11' : ''}`}
+        >
           <div className="relative min-w-0 flex-1">
             <svg
               aria-hidden="true"
@@ -107,6 +201,7 @@ export function Shell() {
               <path d="m20 20-4-4" />
             </svg>
             <TextField
+              ref={searchField}
               size="bare"
               aria-label="Search Bots"
               placeholder="Search"
@@ -188,33 +283,35 @@ export function Shell() {
             <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" />
           </svg>
         </NavLink>
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-          aria-valuenow={sidebarWidth}
-          aria-valuemin={SIDEBAR_MIN}
-          aria-valuemax={SIDEBAR_MAX}
-          tabIndex={0}
-          onPointerDown={(event) => {
-            event.currentTarget.setPointerCapture(event.pointerId);
-            resizeStart.current = { x: event.clientX, width: sidebarWidth };
-          }}
-          onPointerMove={(event) => {
-            if (event.currentTarget.hasPointerCapture(event.pointerId))
-              setSidebarWidth(resizeStart.current.width + event.clientX - resizeStart.current.x);
-          }}
-          onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
-          onKeyDown={(event) => {
-            const step = { ArrowRight: SIDEBAR_STEP, ArrowLeft: -SIDEBAR_STEP }[event.key];
-            if (!step) return;
-            event.preventDefault();
-            setSidebarWidth(sidebarWidth + step);
-          }}
-          className="group absolute top-3 -right-1 bottom-0 z-20 w-1.5 cursor-col-resize outline-none"
-        >
-          <span className="absolute inset-y-0 right-[3px] w-px group-hover:bg-muted group-focus-visible:bg-muted group-active:bg-muted" />
-        </div>
+        {!narrow && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            aria-valuenow={sidebarWidth}
+            aria-valuemin={SIDEBAR_MIN}
+            aria-valuemax={SIDEBAR_MAX}
+            tabIndex={0}
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              resizeStart.current = { x: event.clientX, width: sidebarWidth };
+            }}
+            onPointerMove={(event) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId))
+                setSidebarWidth(resizeStart.current.width + event.clientX - resizeStart.current.x);
+            }}
+            onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+            onKeyDown={(event) => {
+              const step = { ArrowRight: SIDEBAR_STEP, ArrowLeft: -SIDEBAR_STEP }[event.key];
+              if (!step) return;
+              event.preventDefault();
+              setSidebarWidth(sidebarWidth + step);
+            }}
+            className="group absolute top-3 -right-1 bottom-0 z-20 w-1.5 cursor-col-resize outline-none"
+          >
+            <span className="absolute inset-y-0 right-[3px] w-px group-hover:bg-muted group-focus-visible:bg-muted group-active:bg-muted" />
+          </div>
+        )}
       </nav>
       {newMenu && (
         <Menu
@@ -226,6 +323,7 @@ export function Shell() {
           ]}
         />
       )}
+      {switching && <Switcher onClose={() => setSwitching(false)} />}
       {threadsBot && (
         <ThreadsPopup
           botId={threadsBot}

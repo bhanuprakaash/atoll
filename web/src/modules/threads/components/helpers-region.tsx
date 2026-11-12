@@ -25,7 +25,7 @@ export function HelpersRegion({
               <HelperCreature name={bot?.name ?? 'Helper'} creature={bot?.look} state={state} />
               <span>{bot?.name ?? 'Helper'}</span>
               <span
-                className={`min-w-0 flex-1 truncate ${state === 'needs_you' ? 'text-needs-ink' : 'text-muted'}`}
+                className={`min-w-0 flex-1 truncate ${state === 'needs_you' ? 'text-ink' : 'text-muted'}`}
               >
                 {state === 'working' ? h.step || 'Working' : 'Needs you'}
               </span>

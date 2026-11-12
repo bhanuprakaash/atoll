@@ -41,7 +41,8 @@ type Waiting struct {
 
 // ThreadWaiting lists what waits on the person in one thread.
 func (s *Store) ThreadWaiting(ctx context.Context, threadID string) ([]Waiting, error) {
-	threads, err := s.threadRuns(ctx, "t.id = ?", threadID)
+	// Only Waiting is read, so no thread has its run polled.
+	threads, err := s.threadRuns(ctx, "polled(thread_id, status, reply) AS (SELECT '', '', '' WHERE 0)", "t.id = ?", threadID)
 	if err != nil || len(threads) == 0 {
 		return nil, err
 	}

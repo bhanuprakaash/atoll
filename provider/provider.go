@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Atoll's own MCP server, as every provider's config names it, and its tools.
@@ -57,6 +58,26 @@ const (
 // ErrSignedOut is the error of a run that failed because the provider refused its sign-in.
 var ErrSignedOut = errors.New("provider is signed out")
 
+// ErrOff is the error of a run whose provider cannot start: its CLI is missing or it is turned off.
+var ErrOff = errors.New("provider is off")
+
+type offError struct{ error }
+
+func (e offError) Unwrap() error      { return e.error }
+func (offError) Is(target error) bool { return target == ErrOff }
+
+// Off marks err as ErrOff without changing its text.
+func Off(err error) error { return offError{err} }
+
+// LimitError is the error of a run a provider's usage limit stopped. ResetsAt is zero when the
+// provider gave no time.
+type LimitError struct {
+	Text     string
+	ResetsAt time.Time
+}
+
+func (e *LimitError) Error() string { return e.Text }
+
 // ErrApprovalEnded means the provider resolved an approval before Answer reached it.
 var ErrApprovalEnded = errors.New("approval request has ended")
 
@@ -72,8 +93,9 @@ type Session interface {
 	Send(ctx context.Context, prompt string, images []Image) error
 	// Events streams events until the process exits, then closes.
 	Events() <-chan Event
-	// Answer replies to the KindApproval event with id.
-	Answer(id string, allow bool) error
+	// Answer replies to the KindApproval event with id. A non-empty reason with allow false is what
+	// the user wrote instead; the provider is told it before the refusal.
+	Answer(id string, allow bool, reason string) error
 	// Interrupt stops the process. When it returns, the process is gone and Events is closed.
 	Interrupt() error
 }
@@ -109,6 +131,8 @@ type Config struct {
 	NoTools bool
 	// NoShell disables Claude's built-in tools while retaining MCP tools.
 	NoShell bool
+	// HiddenPaths are absolute paths Claude's file tools and shell must not reach.
+	HiddenPaths []string
 }
 
 // UserMCPServer is local with Command, Args and Env, or remote with URL and Headers.
@@ -129,10 +153,11 @@ const (
 	KindText    Kind = iota + 1 // Text is a piece of the reply
 	KindSession                 // SessionID is the id Resume takes
 	KindTurnEnd
-	KindError       // Text is the error; SignedOut when the provider refused its sign-in
+	KindError       // Text is the error; SignedOut when the provider refused its sign-in; Limited when its usage limit stopped the turn
 	KindToolCall    // ID, Server, Name and Input: a tool call started
 	KindApproval    // ID, Name and Input: the provider waits for Answer(ID, ...)
 	KindApprovalEnd // ID: the provider ended the request without an Answer
+	KindUsage       // Usage: what the process used so far; it comes before the turn's end
 )
 
 // Event is one step of a session.
@@ -145,6 +170,23 @@ type Event struct {
 	Server    string
 	Input     json.RawMessage
 	SignedOut bool
+	Limited   bool
+	ResetsAt  time.Time // when Limited, the provider's reset time; zero if it gave none
+	Usage     *Usage
+}
+
+// Usage is what one provider process used, over all its turns. Tokens are the process's only,
+// never the resumed session's past.
+type Usage struct {
+	Model            string
+	Calls            int
+	InputTokens      int
+	OutputTokens     int
+	CacheReadTokens  int
+	CacheWriteTokens int
+	// SessionCostUSD is what the whole session has cost so far, including runs before this process;
+	// nil when the provider reports no price.
+	SessionCostUSD *float64
 }
 
 // Env returns the parent environment without the variables that carry a provider's credentials or
@@ -156,17 +198,28 @@ type Event struct {
 func Env(kv ...string) []string {
 	var env []string
 	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "ANTHROPIC_") && !strings.HasPrefix(e, "CLAUDE") &&
-			!strings.HasPrefix(e, "OPENAI_") && !strings.HasPrefix(e, "CODEX_") &&
-			!slices.ContainsFunc(_loginTokens, func(name string) bool { return strings.HasPrefix(e, name+"=") }) {
+		if !Login(e) && !slices.ContainsFunc(_loginSettings, func(name string) bool { return strings.HasPrefix(e, name+"=") }) {
 			env = append(env, e)
 		}
 	}
 	return append(env, kv...)
 }
 
+// Login reports whether e, a NAME=value entry, is a login token or provider session state:
+// ANTHROPIC_*, CLAUDE*, OPENAI_*, CODEX_*, or one of the GitHub, GitLab and OAuth tokens.
+func Login(e string) bool {
+	return strings.HasPrefix(e, "ANTHROPIC_") || strings.HasPrefix(e, "CLAUDE") ||
+		strings.HasPrefix(e, "OPENAI_") || strings.HasPrefix(e, "CODEX_") ||
+		slices.ContainsFunc(_loginTokens, func(name string) bool { return strings.HasPrefix(e, name+"=") })
+}
+
 var _loginTokens = []string{
 	"GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
-	"OAUTH_TOKEN", "GITLAB_HOST", "GIT_CONFIG_PARAMETERS", "SSH_AUTH_SOCK", "ATOLL_TOKEN",
+	"OAUTH_TOKEN",
+}
+
+// _loginSettings are not tokens, but a Bot's CLIs must not inherit them either; Reef keeps them.
+var _loginSettings = []string{
+	"GITLAB_HOST", "GIT_CONFIG_PARAMETERS", "SSH_AUTH_SOCK", "ATOLL_TOKEN",
 	"DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "DISPLAY",
 }

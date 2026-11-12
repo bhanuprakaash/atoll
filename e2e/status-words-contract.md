@@ -16,6 +16,18 @@ program only, so `cd /a/b && make check` shows `Running make`, `cd e2e/ui && nod
 shows `Running node`, and `cd x; make` shows `Running make`. Plain Codex commands retain
 the existing program-only target.
 
+The program of a command is the first real one (see design.md, Helpers): past `cd`, `VAR=value`
+assignments, a leading `timeout <n>` and a leading `cat > file`; a function definition or a
+`for`/`while`/`until`/`if` header shows the first command inside; a heredoc's text is never a
+command. With a scripted shell the event, the Bot's sidebar activity and the thread's `verb` and
+`step` (the Helpers line) all read alike. Claude shows `Running gh pr` for
+`e() { gh pr view "$1"; }; e a`, `for n in a b; do gh pr view $n; done` and
+`timeout 400 gh pr checks 168 --watch`, `Running cat` for `cat > f <<EOF` with a command in the
+heredoc, `Running git log` for `x=$(date); git log`, `Running make check` for
+`cat > f && make check`, `Running make e2e` for `timeout 540 make e2e`; Codex shows the program
+only (`Running gh`, `Running cat`, `Running git`, `Running make`), for its `step` too. `delegate`
+and `continue` read `Handing off` with no target, in the event, the sidebar and a helper's line.
+
 ## Acceptance mapping
 
 | Acceptance | Tests |
@@ -24,3 +36,5 @@ the existing program-only target.
 | Codex commands after `cd` and assignments name the first program | `TestRun_StatusWords/codex` |
 | Background task output stays out of status and sidebar; ordinary output files remain commands | `TestRun_StatusWords` |
 | Read, write and finish activity words | `TestRun_StatusWords` |
+| Shell fragments name the first real program (Claude, Codex; event, sidebar, `verb`, `step`) | `TestRun_StatusWordsShell` |
+| `delegate` and `continue` read "Handing off" in the event, sidebar and Helpers line | `TestRun_StatusWordsHandoff`, `ui/helpers.spec.ts` "a helper that hands off reads ..." |
