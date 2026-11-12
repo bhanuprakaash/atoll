@@ -1001,7 +1001,8 @@ Follow-ups, not filed:
         it. A pipe that cannot be read or is empty stops startup: Reef never serves without the
         credential it was given.
       - Claude's `--mcp-config` is `/dev/fd/<n>`: a pipe holding the whole config with real URLs,
-        header values and env values, written and closed before `claude` starts. The run's Reef MCP
+        header values and env values, written and closed by a goroutine after `claude` starts, so a
+        config larger than the pipe buffer never blocks the start. The run's Reef MCP
         URL (with its token), the GitHub MCP bearer and every MCP server secret are then in no env
         and no `argv`; `${ATOLL_MCP_<n>}` is gone. Spike on `claude` 2.1.322: the pipe and a 0600
         file removed after the `init` event both connected and called tools; `claude` read the
