@@ -801,7 +801,7 @@ func (m *Manager) check(w *watcher, t store.Thread) error {
 		return err
 	}
 	if RepoHost(m.ctx, rp.Path) == _hostGitHub {
-		return m.checkGitHub(w, t, bot)
+		return m.checkGitHub(w, t, bot, rp)
 	}
 	env, _, err := m.runEnv(m.ctx, bot, false)
 	if err != nil {
@@ -817,7 +817,7 @@ func (m *Manager) check(w *watcher, t store.Thread) error {
 	if t.MRTitle != "" {
 		title = t.MRTitle
 	}
-	if err := m.update(t, "", store.MRRead{State: state, Title: title, CI: t.MRCI, Woke: t.MRWoke}); err != nil {
+	if err := m.update(t, "", store.MRRead{State: state, Title: title, CI: t.MRCI, Woke: t.MRWoke, Head: t.MRHead, BaseWoke: t.MRBaseWoke}); err != nil {
 		return err
 	}
 	if state != _mrMerged {

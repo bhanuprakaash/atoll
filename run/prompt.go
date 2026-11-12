@@ -9,6 +9,10 @@ import (
 	"atoll/store"
 )
 
+// FreezeSentence is the rule for a PR a Bot has called ready; the code part of the prompt and the
+// delegate tool's description carry it.
+const FreezeSentence = "Once a PR is called ready it is frozen: new work goes in a follow-up PR."
+
 const (
 	_bodyCut = 400
 	_whyCut  = 200
@@ -24,7 +28,9 @@ How you talk
 `
 
 const (
-	_codeChanges       = "- Code changes: branch <type>/<short-slug>, commit, push, open an MR and link it. Never merge.\n"
+	_codeChanges = "- Code changes: branch <type>/<short-slug>, commit, push, open an MR and link it. Never merge.\n" +
+		"- " + FreezeSentence + "\n" +
+		"- On top of an unmerged PR's branch, open yours with `gh pr create --draft`, body starting `Waits for #<n>`; mark it ready when woken that #<n> merged.\n"
 	_helperCodeChanges = "- Code changes: commit on your branch; do not push or open an MR; the boss merges it.\n"
 	_codePrompt        = `
 How you work

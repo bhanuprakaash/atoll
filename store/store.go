@@ -178,6 +178,8 @@ type (
 		MRCI            string     `json:"-"`
 		MRWoke          string     `json:"-"`
 		MRWake          bool       `json:"-"`
+		MRHead          string     `json:"-"`
+		MRBaseWoke      bool       `json:"-"`
 		WorktreeRemoved bool       `json:"worktree_removed"`
 		SnapshotRef     string     `json:"snapshot_ref"`
 		ClosedAt        *time.Time `json:"closed_at"`
@@ -228,7 +230,10 @@ type (
 	// MRRead is what one poll of a thread's MR changes: the values to store, and the wake they
 	// report. Prev is the state the poll started from.
 	MRRead struct {
-		URL, Prev, State, Title, CI, Woke string
+		URL, Prev, State, Title, CI, Woke, Head string
+		BaseWoke                                bool
+		// Quiet stores the wake as a message in the thread, with no inbox row and no run.
+		Quiet bool
 		// DropCI deletes the thread's held ci wake: its commit is no longer the head or the MR is done.
 		DropCI   bool
 		WakeKind string
@@ -253,10 +258,19 @@ type (
 
 	// Report is what the provider passed to finish_run, exactly.
 	Report struct {
-		Done    string `json:"done"`
-		Tried   string `json:"tried"`
-		Blocked string `json:"blocked"`
-		Next    string `json:"next"`
+		Done    string    `json:"done"`
+		Tried   string    `json:"tried"`
+		Blocked string    `json:"blocked"`
+		Next    string    `json:"next"`
+		Ready   []ReadyPR `json:"ready,omitempty"`
+	}
+
+	// ReadyPR is a PR the Bot called ready, at the head commit it saw. Changed is set on read: a
+	// thread tracking the PR last read another head.
+	ReadyPR struct {
+		URL     string `json:"url"`
+		SHA     string `json:"sha"`
+		Changed bool   `json:"changed"`
 	}
 )
 
@@ -273,7 +287,7 @@ const (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake, mr_head, mr_base_woke"
 	_messagePageSize = 50
 )
 
@@ -677,6 +691,8 @@ func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) e
 		mr_state = CASE WHEN mr_url = ?1 THEN mr_state ELSE ?2 END,
 		mr_ci = CASE WHEN mr_url = ?1 THEN mr_ci ELSE '' END,
 		mr_woke = CASE WHEN mr_url = ?1 THEN mr_woke ELSE '' END,
+		mr_head = CASE WHEN mr_url = ?1 THEN mr_head ELSE '' END,
+		mr_base_woke = CASE WHEN mr_url = ?1 THEN mr_base_woke ELSE 0 END,
 		mr_url = ?1, mr_title = ?3, mr_wake = 1 WHERE id = ?4`,
 		url, state, title, threadID)
 	if err != nil {
@@ -691,9 +707,9 @@ func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) e
 func (s *Store) StoreMR(ctx context.Context, threadID string, r MRRead) (bool, error) {
 	stored := false
 	err := s.tx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE threads SET mr_state = ?, mr_title = ?, mr_ci = ?, mr_woke = ?, mr_wake = 1
+		res, err := tx.ExecContext(ctx, `UPDATE threads SET mr_state = ?, mr_title = ?, mr_ci = ?, mr_woke = ?, mr_head = ?, mr_base_woke = ?, mr_wake = 1
 			WHERE id = ? AND mr_url = ? AND mr_state = ? AND closed = 0`,
-			r.State, r.Title, r.CI, r.Woke, threadID, r.URL, r.Prev)
+			r.State, r.Title, r.CI, r.Woke, r.Head, r.BaseWoke, threadID, r.URL, r.Prev)
 		if err != nil {
 			return fmt.Errorf("store MR: %w", err)
 		}
@@ -706,8 +722,11 @@ func (s *Store) StoreMR(ctx context.Context, threadID string, r MRRead) (bool, e
 				return fmt.Errorf("drop held ci wake: %w", err)
 			}
 		}
-		if r.WakeKind == "" {
+		switch {
+		case r.WakeKind == "":
 			return nil
+		case r.Quiet:
+			return insertQuietLine(ctx, tx, threadID, r.WakeText, r.WakeKind)
 		}
 		return insertInbox(ctx, tx, threadID, "", r.WakeText, r.WakeKind)
 	})
@@ -1086,6 +1105,16 @@ func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 	if report.Valid {
 		if err := json.Unmarshal([]byte(report.String), &r.Report); err != nil {
 			return Run{}, fmt.Errorf("decode report of run %s: %w", id, err)
+		}
+	}
+	if r.Report != nil {
+		for i, p := range r.Report.Ready {
+			err := s.db.QueryRowContext(ctx,
+				"SELECT EXISTS (SELECT 1 FROM threads WHERE mr_url = ? AND mr_head != '' AND mr_head != ?)",
+				p.URL, p.SHA).Scan(&r.Report.Ready[i].Changed)
+			if err != nil {
+				return Run{}, fmt.Errorf("read ready PR of run %s: %w", id, err)
+			}
 		}
 	}
 	return r, nil
@@ -1482,6 +1511,43 @@ func insertInbox(ctx context.Context, db execer, threadID, fromBotID, text, kind
 	return nil
 }
 
+// insertQuietLine adds a Reef line to the thread, after its newest run: it starts no run.
+func insertQuietLine(ctx context.Context, tx *sql.Tx, threadID, text, kind string) error {
+	var runID string
+	err := tx.QueryRowContext(ctx, "SELECT id FROM runs WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1", threadID).Scan(&runID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read latest run of thread %s: %w", threadID, err)
+	}
+	return insertMessage(ctx, tx, Message{ID: newID(), ThreadID: threadID, Role: RoleUser, Text: text, RunID: runID, Kind: kind})
+}
+
+// ReadySHA is the head commit that the thread's latest finish_run listed for the PR url as ready,
+// or "" when it did not list it.
+func (s *Store) ReadySHA(ctx context.Context, threadID, url string) (string, error) {
+	var report sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		"SELECT report FROM runs WHERE thread_id = ? AND report IS NOT NULL ORDER BY rowid DESC LIMIT 1", threadID).Scan(&report)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read latest report of thread %s: %w", threadID, err)
+	}
+	var r Report
+	if err := json.Unmarshal([]byte(report.String), &r); err != nil {
+		return "", fmt.Errorf("decode report of thread %s: %w", threadID, err)
+	}
+	for _, p := range r.Ready {
+		if p.URL == url {
+			return p.SHA, nil
+		}
+	}
+	return "", nil
+}
+
 func insertMessage(ctx context.Context, tx *sql.Tx, m Message) error {
 	_, err := tx.ExecContext(ctx,
 		"INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id, kind) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -1516,17 +1582,18 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	var t Thread
 	var closed int
 	var created, lastActivity int64
-	var removed, wake int
+	var removed, wake, baseWoke int
 	var closedAt sql.NullInt64
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
 		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
-		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir, &t.MRCI, &t.MRWoke, &wake)
+		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir, &t.MRCI, &t.MRWoke, &wake, &t.MRHead, &baseWoke)
 	if err != nil {
 		return Thread{}, err
 	}
 	t.Closed = closed != 0
 	t.WorktreeRemoved = removed != 0
 	t.MRWake = wake != 0
+	t.MRBaseWoke = baseWoke != 0
 	if closedAt.Valid {
 		when := time.UnixMicro(closedAt.Int64).UTC()
 		t.ClosedAt = &when

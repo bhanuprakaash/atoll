@@ -374,6 +374,16 @@ func Origin(ctx context.Context, path string) string {
 	return url
 }
 
+// DefaultBranch is the repo's default branch: what origin/HEAD names, else the branch checked out.
+// It is empty when neither resolves.
+func DefaultBranch(ctx context.Context, repoPath string) string {
+	if remote, err := git(ctx, repoPath, nil, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		return strings.TrimPrefix(remote, "origin/")
+	}
+	local, _ := git(ctx, repoPath, nil, "symbolic-ref", "--short", "HEAD")
+	return local
+}
+
 // HasCommit reports whether the repo at path has a commit to branch from.
 func HasCommit(ctx context.Context, path string) bool {
 	_, err := git(ctx, path, nil, "rev-parse", "--verify", "--quiet", "HEAD")
