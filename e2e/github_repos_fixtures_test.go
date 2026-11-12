@@ -38,7 +38,10 @@ func (g *fakeGitHub) createPull(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprint(w, `{"message":"Bad credentials","status":"401"}`)
 		return
 	}
-	var body struct{ Title, Body, Head, Base string }
+	var body struct {
+		Title, Body, Head, Base string
+		Draft                   bool
+	}
 	if json.NewDecoder(r.Body).Decode(&body) != nil || body.Head == "" || body.Title == "" {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		_, _ = fmt.Fprint(w, `{"message":"Validation Failed"}`)
@@ -48,6 +51,11 @@ func (g *fakeGitHub) createPull(w http.ResponseWriter, r *http.Request) {
 	g.mu.Lock()
 	g.pulls = append(g.pulls, in)
 	n := len(g.pulls)
+	if g.watch.drafts == nil {
+		g.watch.drafts = map[int]bool{}
+	}
+	g.watch.drafts[n] = body.Draft
+	g.watch.calls = append(g.watch.calls, fmt.Sprintf("create #%d base=%s draft=%v", n, in.Base, body.Draft))
 	g.mu.Unlock()
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]any{"number": n, "state": "open", "title": in.Title,

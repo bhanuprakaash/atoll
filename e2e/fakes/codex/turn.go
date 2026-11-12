@@ -207,6 +207,17 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
+		case "repo-github-stack":
+			var err error
+			if repoReply, err = fake.StackStep(t.servers["atoll"], t.userMessage); err != nil {
+				return err
+			}
+			continue
+		case "github-base-merged":
+			if err := fake.BaseMergedStep(t.userMessage, t.cwd); err != nil {
+				return err
+			}
+			continue
 		case "logins-probe":
 			var err error
 			if repoReply, err = fake.LoginsProbe(); err != nil {
@@ -216,6 +227,17 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 		case "github-probe":
 			var err error
 			if repoReply, err = fake.GitHubProbe(t.servers["github"]); err != nil {
+				return err
+			}
+			continue
+		case "procs-hold", "procs-scan":
+			var err error
+			if e.Fake == "procs-hold" {
+				repoReply, err = fake.ProcsHold(t.servers)
+			} else {
+				repoReply, err = fake.ProcsScan(t.userMessage)
+			}
+			if err != nil {
 				return err
 			}
 			continue
@@ -246,7 +268,7 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 			continue
 		}
 		encoded, _ := json.Marshal(repoReply)
-		out := json.RawMessage(strings.ReplaceAll(string(e.Msg), "$REPO_REPLY", string(encoded[1:len(encoded)-1])))
+		out := json.RawMessage(strings.ReplaceAll(strings.ReplaceAll(string(e.Msg), "$REPO_REPLY", string(encoded[1:len(encoded)-1])), `"$READY"`, fake.ReadyArg(t.userMessage)))
 		var m message
 		_ = json.Unmarshal(out, &m)
 		var p itemParams
@@ -387,6 +409,10 @@ func (t *turn) mcpUse(in *bufio.Scanner, log *fake.Log) (string, error) {
 		c := t.servers[call.Server]
 		if c == nil || !c.Tools[call.Tool] {
 			lines = append(lines, fake.MCPLine(call, "unavailable"))
+			continue
+		}
+		if bad := call.Undeclared(c); bad != "" {
+			lines = append(lines, fake.MCPLine(call, bad))
 			continue
 		}
 		it := map[string]any{"type": "mcpToolCall", "id": fmt.Sprintf("mcp-use-%d", i+1), "server": call.Server, "tool": call.Tool,

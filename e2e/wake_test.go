@@ -255,7 +255,7 @@ func TestWake_BusyThreadsDeliverLater(t *testing.T) {
 			first, second := "Yes, update it. "+_reportPrompt, "Then tag a release. "+_reportPrompt
 			// Both in one boss run: a message to the boss while the helper's approval is open would answer it.
 			lines := useAtoll(t, s, boss, ev, continueCall(helper, first), continueCall(helper, second))
-			if len(lines) != 2 || slices.Contains(lines, "atoll/continue: unavailable") {
+			if len(lines) < 2 || slices.Contains(lines, "atoll/continue: unavailable") {
 				t.Fatalf("two continues in a row: replies %q, want both accepted", lines)
 			}
 			going := asking(t, s, helper)

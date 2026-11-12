@@ -59,7 +59,7 @@ export function SettingsPage() {
     <div className="flex min-h-0 flex-1">
       <nav
         aria-label="Settings"
-        className="flex w-55 shrink-0 flex-col gap-0.5 border-r border-line px-3 py-6"
+        className="flex w-55 shrink-0 flex-col gap-0.5 border-r border-line px-3 py-6 max-[899.98px]:pt-16"
       >
         <h1 data-tauri-drag-region="deep" className="px-3 pb-3 text-base font-normal">
           Settings
