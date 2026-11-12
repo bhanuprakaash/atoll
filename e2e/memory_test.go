@@ -212,6 +212,10 @@ func TestMemory_PromptGoldenAndBudget(t *testing.T) {
 			if len(system)+len(first)-len(_recallMemory) > 4000*4 {
 				t.Errorf("all Reef additions exceed 4000 tokens")
 			}
+			setDelegates(t, f.s, b, f.s.newBot(t, "Tester", p))
+			if boss := heySystem(t, f.s, p, b); len(boss)-len(system) > 150*4 {
+				t.Errorf("boss additions %.2f tokens, limit 150", float64(len(boss)-len(system))/4)
+			}
 		})
 	}
 }
