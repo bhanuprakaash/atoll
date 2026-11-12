@@ -593,7 +593,9 @@ Follow-ups, not filed:
   line, and is the `helpers` field of `delegate`'s result (the new helper counts). `finish_run`
   gets it only in a run that lists `delegate`; refusals keep their text. A wake held while the boss's
   run goes keeps the line it was posted with; the results of the boss's own calls are always
-  current.
+  current. A line Reef cannot read is left out (`helpers` empty): the call has taken effect and
+  still succeeds. *A message removed while it is held, by the person or by a newer head commit, is
+  skipped when its run starts, never delivered; a run with none left is not started.*
 
 ## Repos and worktrees
 

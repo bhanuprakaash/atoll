@@ -40,6 +40,7 @@ func (m *Manager) drain(ctx context.Context, threadID string, wait bool) error {
 		switch {
 		case err == nil, errors.Is(err, ErrBusy):
 			return nil
+		case errors.Is(err, store.ErrNoneHeld):
 		case errors.Is(err, ErrClosed), errors.Is(err, store.ErrNotFound):
 			m.cfg.Log.Warn("drop message for closed thread", "thread_id", threadID, "error", err)
 			for _, it := range items {

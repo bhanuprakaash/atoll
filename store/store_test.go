@@ -721,7 +721,7 @@ func TestStore_Attachments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msg, _, err := st.StartRunFrom(ctx, store.InboxItem{
+	msgs, _, err := st.StartRunFrom(ctx, store.InboxItem{
 		ThreadID: thread.ID, Text: "look",
 		Images: []store.Attachment{{Mime: "image/png", Data: []byte("png")}},
 	})
@@ -735,7 +735,7 @@ func TestStore_Attachments(t *testing.T) {
 	if len(listed) != 1 || len(listed[0].Attachments) != 1 || listed[0].Attachments[0].Data != nil {
 		t.Fatalf("listed = %+v, want one message with one attachment and no bytes", listed)
 	}
-	got, err := st.Attachment(ctx, msg.Attachments[0].ID)
+	got, err := st.Attachment(ctx, msgs[0].Attachments[0].ID)
 	if err != nil || got.Mime != "image/png" || string(got.Data) != "png" {
 		t.Fatalf("attachment = %+v, %v", got, err)
 	}
@@ -1000,9 +1000,9 @@ func TestStore_Queued(t *testing.T) {
 	if err != nil || len(items) != 2 {
 		t.Fatalf("UserInbox = %+v, %v; want 2", items, err)
 	}
-	msg, _, err := st.StartRunFrom(ctx, items...)
-	if err != nil || msg.ID != one.ID {
-		t.Fatalf("StartRunFrom = %+v, %v; want first message with id %s", msg, err, one.ID)
+	msgs, _, err := st.StartRunFrom(ctx, items...)
+	if err != nil || len(msgs) != 2 || msgs[0].ID != one.ID {
+		t.Fatalf("StartRunFrom = %+v, %v; want two messages, the first with id %s", msgs, err, one.ID)
 	}
 	for _, err := range []error{
 		st.DeleteQueued(ctx, th.ID, two.ID),
@@ -1018,5 +1018,60 @@ func TestStore_Queued(t *testing.T) {
 	}
 	if rest, err := st.Queued(ctx, th.ID); err != nil || len(rest) != 0 {
 		t.Errorf("Queued after delivery = %+v, %v; want none", rest, err)
+	}
+}
+
+func TestStore_StartRunFromRemovedItem(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var held []store.InboxItem
+	for _, text := range []string{"one", "two"} {
+		it, err := st.Enqueue(ctx, store.InboxItem{ThreadID: th.ID, Text: text, Queued: true, FromUser: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		held = append(held, it)
+	}
+	if err := st.DeleteQueued(ctx, th.ID, held[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	msgs, started, err := st.StartRunFrom(ctx, held...)
+	if err != nil || len(msgs) != 1 || msgs[0].ID != held[1].ID {
+		t.Fatalf("StartRunFrom = %+v, %v; want only the message still held", msgs, err)
+	}
+	if listed, err := st.Messages(ctx, th.ID); err != nil || len(listed) != 1 || listed[0].Text != "two" {
+		t.Errorf("Messages = %+v, %v; want only two", listed, err)
+	}
+
+	if err := st.DeleteQueued(ctx, th.ID, held[1].ID); !errors.Is(err, store.ErrSent) {
+		t.Fatalf("delete after delivery: %v, want ErrSent", err)
+	}
+	gone, err := st.Enqueue(ctx, store.InboxItem{ThreadID: th.ID, Text: "gone", Queued: true, FromUser: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteQueued(ctx, th.ID, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.StartRunFrom(ctx, gone); !errors.Is(err, store.ErrNoneHeld) {
+		t.Fatalf("StartRunFrom with nothing held: %v, want ErrNoneHeld", err)
+	}
+	if listed, err := st.Messages(ctx, th.ID); err != nil || len(listed) != 1 {
+		t.Errorf("Messages = %+v, %v; want the one stored message only", listed, err)
+	}
+	if latest, err := st.LatestRun(ctx, th.ID); err != nil || latest != started.ID {
+		t.Errorf("LatestRun = %q, %v; want %q: no run for nothing held", latest, err, started.ID)
 	}
 }

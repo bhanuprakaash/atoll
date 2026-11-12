@@ -243,6 +243,59 @@ func TestPlatform_ChangeRecordFailsWithEntity(t *testing.T) {
 	}
 }
 
+func TestMCP_FinishRunHelpersLineFails(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	helper, err := st.CreateBot(ctx, store.Bot{Name: "Tester", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boss, err := st.CreateBot(ctx, store.Bot{Name: "Boss", Provider: "claude", Delegates: []string{helper.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, boss.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := &urlSession{events: make(chan provider.Event), url: make(chan string, 1)}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	runs := run.New(run.Config{
+		Store: st, Log: log, DataDir: t.TempDir(), MCPURL: "http://atoll" + MCPPath,
+		Launch: func(context.Context, string) (provider.Session, provider.Config, error) {
+			return sess, provider.Config{}, nil
+		},
+	})
+	t.Cleanup(func() { _ = runs.Close() })
+	srv := httptest.NewServer(New(st, nil, runs, log, nil))
+	t.Cleanup(srv.Close)
+	if _, _, err := runs.Send(ctx, thread.ID, "hi", nil); err != nil {
+		t.Fatal(err)
+	}
+	e := platformEnv{st: st, srv: srv, token: path.Base(<-sess.url), thread: thread}
+	_, err = st.DB().ExecContext(ctx,
+		"INSERT INTO threads (id, bot_id, parent_thread_id, created) VALUES ('bad', ?, ?, 'x')",
+		helper.ID, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := e.call(t, "finish_run", `{"done":"All of it."}`)
+	if !strings.Contains(got, "Report saved.") || strings.Contains(got, "error") {
+		t.Fatalf("response %s, want the saved report without an error", got)
+	}
+	id, err := st.LatestRun(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ru, err := st.Run(ctx, id); err != nil || ru.Report == nil || ru.Report.Done != "All of it." {
+		t.Errorf("run = %+v, %v; want the report stored", ru, err)
+	}
+}
+
 type fakeProviders []Provider
 
 func (fakeProviders) ServeHTTP(http.ResponseWriter, *http.Request) {}

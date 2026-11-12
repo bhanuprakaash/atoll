@@ -325,26 +325,16 @@ func (m *Manager) SendNow(ctx context.Context, threadID, id string) (store.Run, 
 		return store.Run{}, store.ErrSent
 	}
 	_, run, err := m.sendHeld(ctx, items...)
+	if errors.Is(err, store.ErrNoneHeld) {
+		return store.Run{}, store.ErrSent
+	}
 	return run, err
 }
 
 func (m *Manager) send(ctx context.Context, items ...store.InboxItem) (store.Message, store.Run, error) {
 	threadID := items[0].ThreadID
-	texts := make([]string, len(items))
-	var images []provider.Image
-	kind := items[0].Kind
-	for i, it := range items {
-		texts[i] = it.Text
-		if it.Kind != kind {
-			kind = ""
-		}
-		for _, img := range it.Images {
-			images = append(images, provider.Image{Mime: img.Mime, Data: img.Data})
-		}
-	}
-	text := strings.Join(texts, "\n\n")
 	runCtx, cancel := context.WithCancel(m.ctx)
-	a := &active{threadID: threadID, kind: kind, msgs: items, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
+	a := &active{threadID: threadID, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		cancel()
@@ -360,35 +350,51 @@ func (m *Manager) send(ctx context.Context, items ...store.InboxItem) (store.Mes
 	m.wg.Add(1)
 	m.mu.Unlock()
 
-	msg, run, err := m.start(ctx, items)
+	msgs, run, err := m.start(ctx, items)
 	if err != nil {
 		m.drop(a)
 		cancel()
 		m.wg.Done()
 		return store.Message{}, store.Run{}, err
 	}
+	items = slices.DeleteFunc(slices.Clone(items), func(it store.InboxItem) bool {
+		return it.ID != "" && !slices.ContainsFunc(msgs, func(msg store.Message) bool { return msg.ID == it.ID })
+	})
+	texts := make([]string, len(items))
+	var images []provider.Image
+	kind := items[0].Kind
+	for i, it := range items {
+		texts[i] = it.Text
+		if it.Kind != kind {
+			kind = ""
+		}
+		for _, img := range it.Images {
+			images = append(images, provider.Image{Mime: img.Mime, Data: img.Data})
+		}
+	}
 	m.mu.Lock()
-	a.run = run
+	a.run, a.kind, a.msgs = run, kind, items
 	m.tokens[a.token] = a
 	m.mu.Unlock()
-	go m.execute(a, text, images)
-	return msg, run, nil
+	go m.execute(a, strings.Join(texts, "\n\n"), images)
+	return msgs[0], run, nil
 }
 
-// start refuses a closed thread, then stores the messages and their run.
-func (m *Manager) start(ctx context.Context, items []store.InboxItem) (store.Message, store.Run, error) {
+// start refuses a closed thread, then stores the messages and their run. It returns the messages
+// stored, which leave out a held message removed meanwhile.
+func (m *Manager) start(ctx context.Context, items []store.InboxItem) ([]store.Message, store.Run, error) {
 	t, err := m.cfg.Store.Thread(ctx, items[0].ThreadID)
 	if err != nil {
-		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
+		return nil, store.Run{}, fmt.Errorf("start run: %w", err)
 	}
 	if t.Closed {
-		return store.Message{}, store.Run{}, ErrClosed
+		return nil, store.Run{}, ErrClosed
 	}
-	msg, run, err := m.cfg.Store.StartRunFrom(ctx, items...)
+	msgs, run, err := m.cfg.Store.StartRunFrom(ctx, items...)
 	if err != nil {
-		return store.Message{}, store.Run{}, fmt.Errorf("start run: %w", err)
+		return nil, store.Run{}, fmt.Errorf("start run: %w", err)
 	}
-	return msg, run, nil
+	return msgs, run, nil
 }
 
 // Available reports whether the provider is installed and signed in.
@@ -547,7 +553,8 @@ func (m *Manager) Answer(_ context.Context, id string, allow bool) error {
 
 // AnswerInThread allows the open approval id and every later ask for the same command in its
 // thread. It wraps ErrNotFound when none is open, and leaves the approval open and returns
-// ErrNotOffered when allow is false or the approval does not offer it.
+// ErrNotOffered when allow is false or the approval does not offer it. When saving the allow
+// fails it leaves the approval open and the command unanswered.
 func (m *Manager) AnswerInThread(ctx context.Context, id string, allow bool) error {
 	m.mu.Lock()
 	o, ok := m.approvals[id]
@@ -575,10 +582,13 @@ func (m *Manager) AnswerInThread(ctx context.Context, id string, allow bool) err
 			})
 		}
 	}
-	o.answer <- Decision{Allow: true}
 	if err != nil {
+		m.mu.Lock()
+		m.approvals[id] = o
+		m.mu.Unlock()
 		return fmt.Errorf("record allow: %w", err)
 	}
+	o.answer <- Decision{Allow: true}
 	return nil
 }
 

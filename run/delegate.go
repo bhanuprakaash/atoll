@@ -80,7 +80,7 @@ func (m *Manager) Delegate(
 		return Handoff{}, err
 	}
 	if h.Helpers, err = m.helpersLine(ctx, t.ID, ""); err != nil {
-		return Handoff{}, err
+		m.cfg.Log.Error("count helpers", "thread_id", t.ID, "error", err)
 	}
 	m.publish(a, EventHelperStarted, HelperStarted{RunID: a.run.ID, ThreadID: h.ThreadID})
 	return h, nil

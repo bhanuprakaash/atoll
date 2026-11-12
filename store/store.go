@@ -36,6 +36,8 @@ var (
 	ErrPinLimit = errors.New("3 threads of this Bot are pinned")
 	// ErrSent is returned when a queued message has already been delivered.
 	ErrSent = errors.New("already sent")
+	// ErrNoneHeld is returned when every held message of a run to start was removed meanwhile.
+	ErrNoneHeld = errors.New("no held message is left")
 	// ErrEmpty is returned when a message would have neither text nor an image.
 	ErrEmpty = errors.New("text or an image is required")
 )
@@ -1135,9 +1137,10 @@ func (s *Store) SetSession(ctx context.Context, threadID, session, provider stri
 }
 
 // StartRunFrom stores the items as messages of one running run, removing each held item that has
-// an ID, in one transaction. A held item's message keeps its ID and its images. It returns the
-// first message.
-func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) (Message, Run, error) {
+// an ID, in one transaction. A held item's message keeps its ID and its images. A held item that
+// was removed meanwhile is skipped; it returns ErrNoneHeld when none is left. It returns the
+// stored messages.
+func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) ([]Message, Run, error) {
 	threadID := items[0].ThreadID
 	r := Run{ID: newID(), ThreadID: threadID, Status: StatusRunning, StartedAt: time.Now().UTC(), Tools: map[string]int{}}
 	msgs := make([]Message, len(items))
@@ -1155,6 +1158,7 @@ func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) (Message, 
 			msgs[i].Attachments = append(msgs[i].Attachments, img)
 		}
 	}
+	stored := make([]Message, 0, len(msgs))
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx,
 			"INSERT INTO runs (id, thread_id, status, started_at) SELECT ?, id, ?, ? FROM threads WHERE id = ?",
@@ -1172,20 +1176,32 @@ func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) (Message, 
 		}
 		for i, it := range items {
 			if it.ID != "" {
-				if _, err := tx.ExecContext(ctx, "DELETE FROM inbox WHERE id = ?", it.ID); err != nil {
+				res, err := tx.ExecContext(ctx, "DELETE FROM inbox WHERE id = ?", it.ID)
+				if err != nil {
 					return fmt.Errorf("delete inbox item: %w", err)
+				}
+				n, err := res.RowsAffected()
+				if err != nil {
+					return fmt.Errorf("count rows: %w", err)
+				}
+				if n == 0 {
+					continue
 				}
 			}
 			if err := insertMessage(ctx, tx, msgs[i]); err != nil {
 				return err
 			}
+			stored = append(stored, msgs[i])
+		}
+		if len(stored) == 0 {
+			return ErrNoneHeld
 		}
 		return nil
 	})
 	if err != nil {
-		return Message{}, Run{}, err
+		return nil, Run{}, err
 	}
-	return msgs[0], r, nil
+	return stored, r, nil
 }
 
 // AddReply stores text as the user's message in the thread, under run runID, with the approvals it

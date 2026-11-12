@@ -403,10 +403,11 @@ func (a *api) jsonText(v any) (any, *rpcError) {
 }
 
 // withHelpers is the text result s, then the helpers line on a new line when the run lists delegate.
+// The tool has taken effect, so a line that cannot be read is left out.
 func (a *api) withHelpers(r *http.Request, token, s string) (any, *rpcError) {
 	line, err := a.runs.BossHelpers(r.Context(), token)
 	if err != nil {
-		return nil, a.toolError(err)
+		a.log.Error("helpers line", "err", err)
 	}
 	if line != "" {
 		s += "\n" + line
