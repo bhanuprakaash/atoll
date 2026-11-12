@@ -65,12 +65,12 @@ class Script {
     return id;
   }
 
-  private message(thread: string, role: string, text: string, run: string, from = '') {
+  private message(thread: string, role: string, text: string, run: string, from = '', kind = '') {
     this.db
       .prepare(
-        'INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO messages (id, thread_id, role, text, run_id, from_bot_id, kind) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(randomUUID(), thread, role, text, run, from);
+      .run(randomUUID(), thread, role, text, run, from, kind);
   }
 
   // person is a message of the person's and the lead's answer to it.
@@ -100,7 +100,8 @@ class Script {
       error?: string;
       created?: number;
     },
-    lead?: { reply: string; report: Report },
+    // reef is a Reef wake line, e.g. a tracked PR that merged, that the same lead run took.
+    lead?: { reply: string; report: Report; reef?: [kind: string, text: string] },
   ) {
     const thread = randomUUID();
     this.threads[h.report.done] = thread;
@@ -151,6 +152,7 @@ class Script {
           ].join('\n')
         : `${helper}'s run failed: ${h.error}\n(thread ${thread})`;
     this.message(this.boss, 'user', text, woken, this.bots[helper]);
+    if (lead?.reef) this.message(this.boss, 'user', lead.reef[1], woken, '', lead.reef[0]);
     if (lead?.reply) this.message(this.boss, 'bot', lead.reply, woken);
   }
 }
@@ -483,5 +485,31 @@ test('a lead question and a helper blocked end a ledger; a handoff line joins it
     await expect(lists.getByText('On it.')).toHaveCount(0);
   } finally {
     b.m.stop();
+  }
+});
+
+test('a Reef wake line joins the ledger, and the lead reply to the run that took it folds', async ({
+  page,
+}) => {
+  const merged = 'PR #1 merged into main at abc1234';
+  const c = await startLead((s) => {
+    s.person(19, 'Ship the changelog.', 'On it.');
+    s.wake(
+      21,
+      'Tester',
+      { reply: prose(1), report: { done: done(1) } },
+      { reply: ack(1), report: { done: 'Noted item-01' }, reef: ['merged', merged] },
+    );
+  });
+  try {
+    await open(page, c);
+    const lists = ledgers(page);
+    await expect(lists).toHaveCount(1);
+    await expect(lists).toContainText(merged);
+    await expect(messages(page).getByText(merged)).toHaveCount(1);
+    await expect(lists.getByRole('listitem').filter({ hasText: 'Noted item-01' })).toHaveCount(1);
+    await expect(messages(page).getByText(ack(1))).toHaveCount(0);
+  } finally {
+    c.m.stop();
   }
 });
