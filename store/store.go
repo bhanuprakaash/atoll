@@ -966,8 +966,9 @@ func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
 		             WHERE parent_thread_id != '' AND (closed = 0 OR id IN live))`)
 }
 
-// threadRuns reads the threads matching where, newest activity first. with defines the CTEs it
-// needs, among them polled(thread_id, status, reply): the threads whose newest run is read.
+// threadRuns reads the threads matching where, newest activity first. waiting defines the CTEs
+// of the waits, replies and tracked columns; with defines the others it needs, among them
+// polled(thread_id, status, reply): the threads whose newest run is read.
 func (s *Store) threadRuns(ctx context.Context, waiting, with, where string, args ...any) ([]ThreadRun, error) {
 	return query(ctx, s.db,
 		`WITH `+with+`, `+waiting+`

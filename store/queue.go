@@ -135,7 +135,6 @@ func (s *Store) missingQueued(ctx context.Context, db dbConn, threadID, id strin
 	return fmt.Errorf("find message: %w", err)
 }
 
-// inbox reads the held messages that match where, with their images.
 // inbox lists the held messages matching where, each with its images. imageData is the SQL that
 // gives an image's Data: its column, or NULL for a caller that does not need the bytes.
 func (s *Store) inbox(ctx context.Context, imageData, where string, args ...any) ([]InboxItem, error) {

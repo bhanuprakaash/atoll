@@ -362,6 +362,8 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 		return fmt.Errorf("start claude: %w", err)
 	}
 	if w != nil {
+		// Not waited for: it ends when the child reads the config or exits, and a grandchild that
+		// holds fd 3 open could make a wait hang.
 		go func() {
 			_, _ = w.Write(mcpConfig)
 			_ = w.Close()

@@ -249,42 +249,17 @@ func TestRun_StartWorkConcurrent(t *testing.T) {
 	}
 }
 
-func TestRun_TrackMRKeepsStoredState(t *testing.T) {
-	const url = "https://gitlab.example/g/p/-/merge_requests/1"
-	e := newRepoEnv(t)
-	if _, err := e.st.SetMR(t.Context(), e.thread.ID, url, "merged", "T"); err != nil {
-		t.Fatal(err)
-	}
-	events, cancel := e.m.Subscribe(e.thread.ID)
-	defer cancel()
-	e.run(t, func(token string) {
-		if err := e.m.TrackMR(t.Context(), token, url, "T"); err != nil {
-			t.Error(err)
-		}
-	})
-	for {
-		select {
-		case ev := <-events:
-			if mr, ok := ev.Data.(MRUpdated); ok {
-				if mr.State != "merged" {
-					t.Errorf("MRUpdated state %q, want merged", mr.State)
-				}
-				return
-			}
-		default:
-			t.Fatal("no mr_updated event")
-		}
-	}
-}
-
 func TestRun_TrackMR(t *testing.T) {
 	tests := []struct {
-		name    string
-		give    string
-		wantErr string
+		name      string
+		give      string
+		stored    string
+		wantState string
+		wantErr   string
 	}{
-		{name: "https", give: "https://gitlab.example/g/p/-/merge_requests/1"},
-		{name: "http", give: "http://gitlab.example/g/p/-/merge_requests/1"},
+		{name: "https", give: "https://gitlab.example/g/p/-/merge_requests/1", wantState: "opened"},
+		{name: "keeps the stored state", give: "https://gitlab.example/g/p/-/merge_requests/1", stored: "merged", wantState: "merged"},
+		{name: "http", give: "http://gitlab.example/g/p/-/merge_requests/1", wantState: "opened"},
 		{name: "other scheme", give: "javascript://x/%0Aalert(1)", wantErr: "http(s)"},
 		{name: "option", give: "--web", wantErr: "http(s)"},
 		{name: "relative", give: "/g/p/-/merge_requests/1", wantErr: "http(s)"},
@@ -293,6 +268,13 @@ func TestRun_TrackMR(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newRepoEnv(t)
+			if tt.stored != "" {
+				if _, err := e.st.SetMR(t.Context(), e.thread.ID, tt.give, tt.stored, "T"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			events, cancel := e.m.Subscribe(e.thread.ID)
+			defer cancel()
 			var err error
 			e.run(t, func(token string) { err = e.m.TrackMR(t.Context(), token, tt.give, "T") })
 			if (err == nil) != (tt.wantErr == "") || err != nil && !strings.Contains(err.Error(), tt.wantErr) {
@@ -304,6 +286,25 @@ func TestRun_TrackMR(t *testing.T) {
 			}
 			if (th.MRURL == tt.give) != (tt.wantErr == "") {
 				t.Errorf("stored MR URL %q for %q", th.MRURL, tt.give)
+			}
+			if tt.wantErr != "" {
+				return
+			}
+			if th.MRState != tt.wantState {
+				t.Errorf("stored MR state %q, want %q", th.MRState, tt.wantState)
+			}
+			for {
+				select {
+				case ev := <-events:
+					if mr, ok := ev.Data.(MRUpdated); ok {
+						if mr.State != tt.wantState {
+							t.Errorf("MRUpdated state %q, want %q", mr.State, tt.wantState)
+						}
+						return
+					}
+				default:
+					t.Fatal("no mr_updated event")
+				}
 			}
 		})
 	}
