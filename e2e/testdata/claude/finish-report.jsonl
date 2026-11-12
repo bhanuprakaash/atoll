@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","cwd":"/work","session_id":"e5249980-178d-4e8c-8829-3c64eb27639f","mcp_servers":[{"name":"atoll","status":"connected","source":"dynamic"}],"model":"claude-haiku-5-5","permissionMode":"default","claude_code_version":"2.1.306","tools":["Read","Bash","mcp__atoll__start_work","mcp__atoll__track_mr","mcp__atoll__finish_run","mcp__atoll__approve"]}
+{"type":"user","message":{"role":"user","content":"Report only. Use MCP tools. "},"session_id":"e5249980-178d-4e8c-8829-3c64eb27639f","parent_tool_use_id":null,"uuid":"1d6407bd-0892-402e-94d4-c5598d1d9a85","timestamp":"2026-11-04T11:02:00.756Z","isReplay":true}
+{"fake":"mcp-use"}
+{"duration_api_ms":4756,"stop_reason":"end_turn","session_id":"e5249980-178d-4e8c-8829-3c64eb27639f","total_cost_usd":0.0090556,"is_error":false,"num_turns":3,"subtype":"success","result":"$REPO_REPLY","type":"result","duration_ms":6752}
