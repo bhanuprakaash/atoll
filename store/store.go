@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zalando/go-keyring"
 	"modernc.org/sqlite"
 )
 
@@ -75,6 +76,15 @@ const ErrorSecretStore = "secret_store"
 // ErrSecretStore is wrapped when the OS secret store cannot be read; a secret that is simply
 // missing does not wrap it.
 var ErrSecretStore = errors.New("secret store unreachable")
+
+// SecretReadError marks a failed secret read as an unreachable store, unless the secret is only
+// missing.
+func SecretReadError(err error) error {
+	if err == nil || errors.Is(err, keyring.ErrNotFound) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrSecretStore, err)
+}
 
 // ErrorRateLimited is the error kind of a run a provider's usage limit stopped.
 const ErrorRateLimited = "rate_limited"

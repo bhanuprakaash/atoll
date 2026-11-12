@@ -1817,7 +1817,7 @@ Voice
 
   | code | status | `error` | next step | action |
   | --- | --- | --- | --- | --- |
-  | `keychain` | 500 | `Reef couldn't save <what> to the system keychain.` | Unlock the keychain or restart Reef, then try again. | Sign in again (a connection) or Try again |
+  | `keychain` | 500 | `Reef couldn't save <what> to the system keychain.`, or `remove <what> from` it, or `read <what> from` it | Unlock the keychain or restart Reef, then try again. | Sign in again (a connection) or Try again |
   | `signed_out` | 401 | `That sign-in expired or was refused.` | Sign in again. | Sign in again |
   | `provider_off` | 409 | `<Provider> isn't installed or isn't signed in.` | Open Settings > Providers. | Open settings |
   | `busy` | 409 | `A run is going in this thread.` | Wait for it to finish, or stop it. | |
@@ -1826,9 +1826,9 @@ Voice
   | `exists` | 409 | `Something with that name already exists.` | Pick another name. | |
   | `invalid` | 400 | the input rule in a plain sentence, as the server words it (`name is required`), without a package's prefix | Fix it and try again. | |
   | `conflict` | 409 | the rule that refused, plain (`Chief is always first`, `Poteto is handling this thread`) | Change it and try again. | |
-  | `forbidden` | 403 | the rule that refused, plain (`the Bot has no access to this repo`) | Change it and try again. | |
+  | `forbidden` | 403 | the rule that refused, plain (`The Bot has no access to this repo.`); the local-only check says `That request didn't come from Reef.` | Change it and try again. | |
   | `unsupported` | 501 | `No folder picker on this system.` | Type the repo path instead. | |
-  | `unreachable` | 502 | `Reef couldn't reach <host>.` | Check the address and your connection, then try again. | Try again |
+  | `unreachable` | 502 | `Reef couldn't reach <host>.` (a request the host never answered; a host that answered with an error is `internal`) | Check the address and your connection, then try again. | Try again |
   | `internal` | 500 | `Something went wrong on our side.` | Try again. If it keeps happening, copy the details into a bug report. | Try again |
 
   `Details` of a failed request reads `<code> · <status> · <METHOD> <path>`, nothing from the

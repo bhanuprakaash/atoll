@@ -160,7 +160,7 @@ func (a *api) localOnly(next http.Handler) http.Handler {
 		exchange := a.token != "" && r.Method == http.MethodGet && r.URL.Path == "/" &&
 			r.URL.Query().Has("token")
 		if (guarded || exchange) && (!isLocalHost(r.Host) || !sameOrigin(r)) {
-			fail(w, http.StatusForbidden, "forbidden")
+			fail(w, http.StatusForbidden, "That request didn't come from Reef.")
 			return
 		}
 		if exchange {
@@ -318,7 +318,7 @@ func (a *api) createThread(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !bot.RepoAccess.Allows(body.RepoID) {
-			fail(w, http.StatusForbidden, "the Bot has no access to this repo")
+			fail(w, http.StatusForbidden, "The Bot has no access to this repo.")
 			return
 		}
 		if !repo.HasCommit(r.Context(), rp.Path) {

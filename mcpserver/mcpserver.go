@@ -22,6 +22,9 @@ import (
 // ErrKeychain is wrapped when the system keychain fails.
 var ErrKeychain = errors.New("system keychain failed")
 
+// ErrKeychainRemove is ErrKeychain for a secret the keychain would not delete.
+var ErrKeychainRemove = fmt.Errorf("%w: delete", ErrKeychain)
+
 // ErrInvalid is wrapped when a server cannot be saved as given.
 var ErrInvalid = errors.New("invalid MCP server")
 
@@ -181,21 +184,13 @@ func Remove(ctx context.Context, st *store.Store, id string) error {
 	return errors.Join(deleteSecrets(s, nil), deleteTokens(id))
 }
 
-// readError marks a failed secret read as an unreachable store, unless the secret is only missing.
-func readError(err error) error {
-	if errors.Is(err, keyring.ErrNotFound) {
-		return err
-	}
-	return fmt.Errorf("%w: %w", store.ErrSecretStore, err)
-}
-
 // Secrets returns the stored env values of a local server, or the header values of a remote one.
 func Secrets(s store.MCPServer) (map[string]string, error) {
 	values := map[string]string{}
 	for _, name := range secretNames(s) {
 		v, err := keyring.Get("atoll", secretUser(s, name))
 		if err != nil {
-			return nil, fmt.Errorf("read %s of MCP server %s: %w", name, s.Name, readError(err))
+			return nil, fmt.Errorf("read %s of MCP server %s: %w", name, s.Name, store.SecretReadError(err))
 		}
 		values[name] = v
 	}
@@ -293,7 +288,7 @@ func deleteSecrets(s store.MCPServer, keep []string) error {
 			continue
 		}
 		if err := keyring.Delete("atoll", secretUser(s, name)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
-			errs = append(errs, fmt.Errorf("delete %s of MCP server %s: %w: %w", name, s.Name, ErrKeychain, err))
+			errs = append(errs, fmt.Errorf("delete %s of MCP server %s: %w: %w", name, s.Name, ErrKeychainRemove, err))
 		}
 	}
 	return errors.Join(errs...)

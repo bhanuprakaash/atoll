@@ -295,7 +295,7 @@ func (a *api) deleteBot(w http.ResponseWriter, r *http.Request) {
 func (a *api) createSkill(w http.ResponseWriter, r *http.Request) {
 	var sk store.Skill
 	if err := readSkill(r, &sk); err != nil {
-		fail(w, http.StatusBadRequest, err.Error())
+		a.fail(w, r, err)
 		return
 	}
 	sk, err := a.st.CreateSkill(r.Context(), sk)
@@ -331,7 +331,7 @@ func (a *api) putSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := readSkill(r, &sk); err != nil {
-		fail(w, http.StatusBadRequest, err.Error())
+		a.fail(w, r, err)
 		return
 	}
 	sk, err = a.st.UpdateSkill(r.Context(), sk)
@@ -362,7 +362,7 @@ func (a *api) reimportSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	imp, err := a.readImport(sk.Source)
 	if err != nil {
-		fail(w, http.StatusBadRequest, err.Error())
+		a.fail(w, r, err)
 		return
 	}
 	if refused := refusal(imp); refused != nil {
@@ -371,7 +371,7 @@ func (a *api) reimportSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	res, _, _, err := a.importSkill(r.Context(), a.st, imp, in.Replace)
 	if err != nil {
-		fail(w, http.StatusBadRequest, err.Error())
+		a.fail(w, r, err)
 		return
 	}
 	write(w, http.StatusOK, res)
@@ -870,13 +870,13 @@ func (a *api) unknownRepos(ctx context.Context, access store.RepoAccess) (string
 
 func validateRepo(ctx context.Context, rp store.Repo) error {
 	if rp.Name == "" {
-		return errors.New("name and path are required")
+		return ruleError("name and path are required")
 	}
 	if !_repoName.MatchString(rp.Name) || rp.Name == "." || rp.Name == ".." {
-		return errors.New("name must be one folder name of letters, digits, dot, dash and underscore")
+		return ruleError("name must be one folder name of letters, digits, dot, dash and underscore")
 	}
 	if !filepath.IsAbs(rp.Path) || !repo.IsRepo(ctx, rp.Path) {
-		return errors.New("path must be the top level of a git repo")
+		return ruleError("path must be the top level of a git repo")
 	}
 	return nil
 }
@@ -938,7 +938,11 @@ func (a *api) readImport(path string) (skill.Import, error) {
 	if rest, ok := strings.CutPrefix(path, "~/"); ok {
 		path = filepath.Join(home, rest)
 	}
-	return skill.Read(resolved, filepath.Clean(path))
+	imp, err := skill.Read(resolved, filepath.Clean(path))
+	if err != nil {
+		return skill.Import{}, fmt.Errorf("%w: %w", errUnreadable, err)
+	}
+	return imp, nil
 }
 
 func importPath(path, home string, folders []string) (string, error) {
@@ -946,13 +950,13 @@ func importPath(path, home string, folders []string) (string, error) {
 		path = filepath.Join(home, rest)
 	}
 	if !filepath.IsAbs(path) {
-		return "", errors.New("path must be absolute or start with ~/")
+		return "", ruleError("path must be absolute or start with ~/")
 	}
 	resolved, err := filepath.EvalSymlinks(filepath.Clean(path))
 	if err != nil {
 		parent, parentErr := filepath.EvalSymlinks(filepath.Dir(filepath.Clean(path)))
 		if parentErr != nil {
-			return "", fmt.Errorf("%s is not in allowed folders: %s", path, strings.Join(folders, ", "))
+			return "", ruleError(fmt.Sprintf("%s is not in allowed folders: %s", path, strings.Join(folders, ", ")))
 		}
 		resolved = filepath.Join(parent, filepath.Base(path))
 	}
@@ -962,7 +966,7 @@ func importPath(path, home string, folders []string) (string, error) {
 			return resolved, nil
 		}
 	}
-	return "", fmt.Errorf("%s is not in allowed folders: %s", path, strings.Join(folders, ", "))
+	return "", ruleError(fmt.Sprintf("%s is not in allowed folders: %s", path, strings.Join(folders, ", ")))
 }
 
 func readAgent(path string) (any, error) {
@@ -1094,16 +1098,19 @@ func readSkill(r *http.Request, sk *store.Skill) error {
 // decoding turns invalid UTF-8 into U+FFFD, so the raw body is checked first.
 func decodeSkill(body []byte, sk *store.Skill) error {
 	if !utf8.Valid(body) {
-		return errors.New("skill is not UTF-8 text")
+		return ruleError("skill is not UTF-8 text")
 	}
 	id, source, files := sk.ID, sk.Source, sk.Files
 	sk.Files = nil
 	if json.Unmarshal(body, sk) != nil || sk.Name == "" {
-		return errors.New("invalid skill: name is required")
+		return ruleError("invalid skill: name is required")
 	}
 	sk.ID, sk.Source = id, source
 	if sk.Files == nil {
 		sk.Files = files
 	}
-	return skill.Check(sk.Files)
+	if err := skill.Check(sk.Files); err != nil {
+		return ruleError(err.Error())
+	}
+	return nil
 }

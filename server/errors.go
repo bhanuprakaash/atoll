@@ -18,13 +18,15 @@ const (
 )
 
 // fail answers a failed request {"error": "<plain sentence>", "code": "<id>"}: the code is the
-// status's own, and a 404 or 500 gets its fixed sentence, never msg.
+// status's own, and a 401, 404 or 500 gets its fixed sentence, never msg.
 func fail(w http.ResponseWriter, status int, msg string) {
 	switch status {
 	case http.StatusBadRequest:
 		failCode(w, status, "invalid", msg)
-	case http.StatusUnauthorized, http.StatusForbidden:
+	case http.StatusUnauthorized:
 		failCode(w, status, "forbidden", "That request wasn't allowed.")
+	case http.StatusForbidden:
+		failCode(w, status, "forbidden", msg)
 	case http.StatusNotFound, http.StatusMethodNotAllowed:
 		failCode(w, status, "not_found", _notFoundSentence)
 	case http.StatusConflict:
@@ -54,6 +56,7 @@ func failCode(w http.ResponseWriter, status int, code, msg string) {
 // fail answers err with the status and code it maps to. Anything else is internal: its chain goes
 // to the log, never to the client.
 func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
+	var rule ruleError
 	switch {
 	case errors.Is(err, store.ErrNotFound), errors.Is(err, run.ErrNotFound),
 		errors.Is(err, memory.ErrNotFound):
@@ -80,18 +83,41 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		fail(w, http.StatusConflict, "A thread still uses that.")
 	case errors.Is(err, store.ErrPinLimit):
 		fail(w, http.StatusConflict, store.ErrPinLimit.Error())
+	case errors.Is(err, mcpserver.ErrNeedsSetup):
+		fail(w, http.StatusConflict, "This server needs its Client ID. Set it up first.")
+	case errors.Is(err, mcpserver.ErrNeedsApp):
+		fail(w, http.StatusConflict, "This server needs a registered app.")
+	case errors.Is(err, errUnreadable):
+		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
+		fail(w, http.StatusBadRequest, "Reef couldn't read that skill folder.")
+	case errors.Is(err, mcpserver.ErrKeychainRemove):
+		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
+		failKeychain(w, "Reef couldn't remove that MCP server's secrets from the system keychain.")
 	case errors.Is(err, mcpserver.ErrKeychain):
 		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
-		failKeychain(w, "that MCP server's secrets")
+		failKeychain(w, "Reef couldn't save that MCP server's secrets to the system keychain.")
+	case errors.Is(err, store.ErrSecretStore):
+		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
+		failKeychain(w, "Reef couldn't read a secret from the system keychain.")
+	case errors.As(err, &rule):
+		fail(w, http.StatusBadRequest, rule.Error())
 	default:
 		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
 		fail(w, http.StatusInternalServerError, "")
 	}
 }
 
-func failKeychain(w http.ResponseWriter, what string) {
-	failCode(w, http.StatusInternalServerError, "keychain", "Reef couldn't save "+what+" to the system keychain.")
+func failKeychain(w http.ResponseWriter, sentence string) {
+	failCode(w, http.StatusInternalServerError, "keychain", sentence)
 }
+
+// ruleError is a refusal whose text is already a plain sentence for the person.
+type ruleError string
+
+func (e ruleError) Error() string { return string(e) }
+
+// errUnreadable is wrapped when a skill folder cannot be read; its chain is for the log.
+var errUnreadable = errors.New("skill folder unreadable")
 
 // unprefixed is err's text from the rule on: a package's name for its sentinel is not for people.
 func unprefixed(err, sentinel error) string {
