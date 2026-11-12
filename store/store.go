@@ -767,9 +767,9 @@ func (s *Store) Threads(ctx context.Context, botID string) ([]Thread, error) {
 		scanThread, botID)
 }
 
-// ThreadIDsOnRepo lists the ids of the threads on the repo repoID.
+// ThreadIDsOnRepo lists the ids of the open threads on the repo repoID.
 func (s *Store) ThreadIDsOnRepo(ctx context.Context, repoID string) ([]string, error) {
-	return query(ctx, s.db, "SELECT id FROM threads WHERE repo_id = ? ORDER BY rowid",
+	return query(ctx, s.db, "SELECT id FROM threads WHERE repo_id = ? AND closed = 0 ORDER BY rowid",
 		func(r *sql.Rows) (string, error) {
 			var id string
 			return id, r.Scan(&id)
@@ -938,7 +938,7 @@ type ThreadRun struct {
 // ThreadRuns lists every thread with its newest run, newest activity first. botID limits it to
 // one Bot; empty means every Bot.
 func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, error) {
-	return s.threadRuns(ctx,
+	return s.threadRuns(ctx, _allWaiting,
 		`polled AS MATERIALIZED (
 		   SELECT t.id AS thread_id, r.status, substr(r.reply, 1, 300) AS reply FROM threads t
 		   JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = t.id))`,
@@ -951,7 +951,7 @@ func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, erro
 // a live run and each Bot's newest thread with a run are read with their run; the rest have no
 // Status.
 func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
-	return s.threadRuns(ctx,
+	return s.threadRuns(ctx, _allWaiting,
 		`live AS MATERIALIZED (SELECT thread_id FROM runs WHERE status IN ('running', 'waiting')),
 		 polled AS MATERIALIZED (
 		   SELECT n.thread_id, r.status, substr(r.reply, 1, 300) AS reply
@@ -968,9 +968,9 @@ func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
 
 // threadRuns reads the threads matching where, newest activity first. with defines the CTEs it
 // needs, among them polled(thread_id, status, reply): the threads whose newest run is read.
-func (s *Store) threadRuns(ctx context.Context, with, where string, args ...any) ([]ThreadRun, error) {
+func (s *Store) threadRuns(ctx context.Context, waiting, with, where string, args ...any) ([]ThreadRun, error) {
 	return query(ctx, s.db,
-		`WITH `+with+`, `+_waitingWith+`
+		`WITH `+with+`, `+waiting+`
 		 SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.branch, t.mr_url, t.closed, t.pinned_at IS NOT NULL,
 		        t.last_activity,
 		        t.last_heard > t.last_opened_at AND t.last_heard > t.created
@@ -1258,7 +1258,7 @@ func (s *Store) AddReply(
 
 // OldestInbox returns the oldest held message; ok is false when none.
 func (s *Store) OldestInbox(ctx context.Context, threadID string) (it InboxItem, ok bool, err error) {
-	items, err := s.inbox(ctx, "WHERE thread_id = ? ORDER BY rowid LIMIT 1", threadID)
+	items, err := s.inbox(ctx, "data", "WHERE thread_id = ? ORDER BY rowid LIMIT 1", threadID)
 	if err != nil || len(items) == 0 {
 		return InboxItem{}, false, err
 	}

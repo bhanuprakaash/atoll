@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1231,5 +1233,162 @@ func TestStore_StartRunFromRemovedItem(t *testing.T) {
 	}
 	if latest, err := st.LatestRun(ctx, th.ID); err != nil || latest != started.ID {
 		t.Errorf("LatestRun = %q, %v; want %q: no run for nothing held", latest, err, started.ID)
+	}
+}
+
+// recordQueries opens a store that appends the text of every query it runs to the returned log.
+func recordQueries(t *testing.T) (*store.Store, *queryLog) {
+	t.Helper()
+	log := &queryLog{}
+	st, err := store.OpenWrapped(t.TempDir(), func(c driver.Connector) driver.Connector {
+		return recordingConnector{c, log}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st, log
+}
+
+type queryLog struct {
+	mu sync.Mutex
+	q  []string
+}
+
+func (l *queryLog) add(query string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.q = append(l.q, query)
+}
+
+func (l *queryLog) reset() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.q = nil
+}
+
+func (l *queryLog) all() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.q)
+}
+
+type recordingConnector struct {
+	driver.Connector
+	log *queryLog
+}
+
+func (c recordingConnector) Connect(ctx context.Context) (driver.Conn, error) {
+	conn, err := c.Connector.Connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return recordingConn{conn.(sqliteConn), c.log}, nil
+}
+
+type sqliteConn interface {
+	driver.Conn
+	driver.ConnBeginTx
+	driver.ConnPrepareContext
+	driver.ExecerContext
+	driver.QueryerContext
+	driver.Pinger
+	driver.SessionResetter
+	driver.Validator
+}
+
+type recordingConn struct {
+	sqliteConn
+	log *queryLog
+}
+
+func (c recordingConn) QueryContext(
+	ctx context.Context, query string, args []driver.NamedValue,
+) (driver.Rows, error) {
+	c.log.add(query)
+	return c.sqliteConn.QueryContext(ctx, query, args)
+}
+
+func TestStore_Queued_ReadsNoImageData(t *testing.T) {
+	ctx := t.Context()
+	st, log := recordQueries(t)
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	png := store.Attachment{Mime: "image/png", Data: []byte("png")}
+	it := store.InboxItem{ThreadID: th.ID, Text: "one", Queued: true, FromUser: true, Images: []store.Attachment{png}}
+	if _, err := st.Enqueue(ctx, it); err != nil {
+		t.Fatal(err)
+	}
+	log.reset()
+	queued, err := st.Queued(ctx, th.ID)
+	if err != nil || len(queued) != 1 || len(queued[0].Images) != 1 {
+		t.Fatalf("Queued = %+v, %v; want one message with its image", queued, err)
+	}
+	var images []string
+	for _, q := range log.all() {
+		if strings.Contains(q, "inbox_images") {
+			images = append(images, q)
+		}
+	}
+	want := "SELECT id, mime, NULL FROM inbox_images WHERE inbox_id = ? ORDER BY rowid"
+	if !slices.Equal(images, []string{want}) {
+		t.Errorf("Queued read images with %q, want only %q", images, want)
+	}
+}
+
+// TestStore_ThreadWaiting_ReadsOneThread proves, in the query's plan, that ThreadWaiting finds the
+// thread's runs by their thread instead of reading every run once.
+func TestStore_ThreadWaiting_ReadsOneThread(t *testing.T) {
+	ctx := t.Context()
+	st, log := recordQueries(t)
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.reset()
+	if _, err := st.ThreadWaiting(ctx, th.ID); err != nil {
+		t.Fatal(err)
+	}
+	queries := log.all()
+	if len(queries) != 1 {
+		t.Fatalf("ThreadWaiting ran %d queries, want 1", len(queries))
+	}
+	rows, err := st.DB().QueryContext(ctx, "EXPLAIN QUERY PLAN "+queries[0], th.ID, th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("plan: %q", plan)
+	var searched bool
+	for _, step := range plan {
+		if step == "SCAN r" || step == "SCAN m" {
+			t.Errorf("plan step %q reads every run or message, want a search by thread", step)
+		}
+		searched = searched || strings.Contains(step, "SEARCH r USING INDEX runs_thread (thread_id=?)")
+	}
+	if !searched {
+		t.Errorf("plan %q has no search of runs by thread", plan)
 	}
 }

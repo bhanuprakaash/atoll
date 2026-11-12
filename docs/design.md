@@ -703,7 +703,8 @@ Follow-ups, not filed:
   same way (`success`, `skipped` passed; `failed`, `canceled` failed). A `skipped` pipeline, a
   `manual` or `blocked` one, and a commit with no check never finish CI. *Checks of one commit
   appear over a few seconds; a result seen on two reads in a row, for the same commit, is not a
-  first check that finished before the next one registered.*
+  first check that finished before the next one registered.* A commit that two reads in a row found
+  with no check is not read again until a push changes the head.
 - Three events wake the thread's Bot, each at most once (a GitHub PR for now: see the GitLab gap
   below): the MR or PR is merged, is closed
   unmerged, or CI finished on its open head commit. A push changes the head commit, clears the
@@ -845,7 +846,7 @@ Follow-ups, not filed:
     repo it lacks (All lacks none; Chief and the title runs have no built-in tools) gets, for each
     hidden path, a `sandbox.filesystem.denyRead` entry and the permission rules `Read(//<path>/**)`
     and `Edit(//<path>/**)`. The hidden paths are, for each registered repo the Bot lacks: the repo's
-    path, `<worktree root>/<repo name>`, and `<data dir>/threads/<id>` for every thread on it (its
+    path, `<worktree root>/<repo name>`, and `<data dir>/threads/<id>` for every open thread on it (its
     read-only checkout); each as Reef knows it and with symlinks resolved when that differs, glob
     characters in a path replaced by `?` in the rules as in `claudeMdExcludes`. The settings are
     computed at run start from the registered repos and their threads.

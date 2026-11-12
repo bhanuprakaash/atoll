@@ -308,3 +308,50 @@ func TestRun_TrackMR(t *testing.T) {
 		})
 	}
 }
+
+// TestHiddenPaths_ClosedThreads proves the hidden paths of a repo the Bot lacks hold the folder of
+// each open thread on it and none of a closed thread's, which closing removed.
+func TestHiddenPaths_ClosedThreads(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	rp, err := st.CreateRepo(ctx, "proj", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := st.CreateBot(ctx, store.Bot{Name: "Ada", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := st.CreateBot(ctx, store.Bot{Name: "Bob", Provider: "claude", RepoAccess: store.RepoAccess{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	open, err := st.CreateThread(ctx, owner.ID, rp.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed, err := st.CreateThread(ctx, owner.ID, rp.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetClosed(ctx, closed.ID); err != nil {
+		t.Fatal(err)
+	}
+	m := New(Config{Store: st, DataDir: t.TempDir(), WorktreeRoot: t.TempDir()})
+	t.Cleanup(func() { _ = m.Close() })
+
+	paths, err := m.hiddenPaths(ctx, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(paths, m.threadDir(open.ID)) {
+		t.Errorf("hidden paths %q lack the open thread's folder %s", paths, m.threadDir(open.ID))
+	}
+	if slices.Contains(paths, m.threadDir(closed.ID)) {
+		t.Errorf("hidden paths %q hold the closed thread's folder %s, want none", paths, m.threadDir(closed.ID))
+	}
+}

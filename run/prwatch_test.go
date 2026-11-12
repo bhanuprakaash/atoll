@@ -1,8 +1,16 @@
 package run
 
 import (
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"atoll/store"
 )
 
 func TestCIText(t *testing.T) {
@@ -40,5 +48,43 @@ func TestCloses(t *testing.T) {
 		if s := strings.Join(got, " "); s != tt.want {
 			t.Errorf("%q closes %q, want %q", tt.body, s, tt.want)
 		}
+	}
+}
+
+func TestReadCI_NoChecksStopsBeingRead(t *testing.T) {
+	var reads atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reads.Add(1)
+		_, _ = w.Write([]byte(`{"check_runs":[],"statuses":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	m := New(Config{Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	t.Cleanup(func() { _ = m.Close() })
+	w := &watcher{paused: map[string]time.Time{}}
+
+	var th store.Thread
+	for i, want := range []struct {
+		reads int64
+		woke  string
+	}{{2, ""}, {2, "abc"}, {0, "abc"}} {
+		reads.Store(0)
+		r := store.MRRead{CI: th.MRCI, Woke: th.MRWoke}
+		if err := m.readCI(w, "c", "token", srv.URL, th, "abc", "PR #1", &r); err != nil {
+			t.Fatal(err)
+		}
+		if reads.Load() != want.reads || r.Woke != want.woke || r.WakeKind != "" {
+			t.Errorf("read %d: %d GitHub reads, woke %q, wake %q; want %d reads, woke %q, no wake",
+				i+1, reads.Load(), r.Woke, r.WakeKind, want.reads, want.woke)
+		}
+		th.MRCI, th.MRWoke = r.CI, r.Woke
+	}
+
+	reads.Store(0)
+	r := store.MRRead{CI: th.MRCI, Woke: th.MRWoke}
+	if err := m.readCI(w, "c", "token", srv.URL, th, "def", "PR #1", &r); err != nil {
+		t.Fatal(err)
+	}
+	if reads.Load() != 2 || !r.DropCI {
+		t.Errorf("new head: %d GitHub reads, DropCI %v; want 2 reads, DropCI true", reads.Load(), r.DropCI)
 	}
 }

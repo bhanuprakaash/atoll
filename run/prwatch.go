@@ -208,7 +208,8 @@ func (m *Manager) readBase(w *watcher, connID, token, api string, t store.Thread
 func short(sha string) string { return sha[:min(len(sha), 7)] }
 
 // readCI reads the checks of the head commit until its CI is reported, and sets in r the stored
-// result and, when CI finished, the wake. A finished result counts once seen on two reads in a row.
+// result and, when CI finished, the wake. A finished result counts once seen on two reads in a row,
+// and a head with no checks stops being read once two reads in a row found none.
 func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, head, label string, r *store.MRRead) error {
 	var prev ciResult
 	if t.MRCI != "" {
@@ -246,6 +247,12 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, 
 		return err
 	}
 	r.CI = string(enc)
+	if res.none() {
+		if prev.Head == head && prev.none() {
+			r.Woke = head
+		}
+		return nil
+	}
 	finished := res.Passed+res.Failed > 0 && res.Pending == 0
 	if !finished || t.MRWake && (prev.Head != head || !res.same(prev)) {
 		return nil
@@ -270,6 +277,8 @@ func (c *ciResult) add(name, outcome string) {
 		c.Pending++
 	}
 }
+
+func (c ciResult) none() bool { return c.Passed+c.Failed+c.Pending == 0 }
 
 func (c ciResult) same(o ciResult) bool {
 	return c.Passed == o.Passed && c.Failed == o.Failed && c.Pending == o.Pending && slices.Equal(c.Names, o.Names)
