@@ -562,8 +562,47 @@ func TestStore_FailUnfinished_OneWakePerBoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	held, err := st.Held(ctx, bt.ID)
-	if err != nil || len(held) != 1 || held[0].Text != "2" || held[0].FromBotID != "" {
-		t.Fatalf("held = %+v, %v; want one message of 2 runs from Reef", held, err)
+	if err != nil || len(held) != 1 || held[0].Text != "2" || held[0].FromBotID != "" || held[0].Kind != "restart" {
+		t.Fatalf("held = %+v, %v; want one restart message of 2 runs from Reef", held, err)
+	}
+}
+
+func TestStore_RestartWake_KeepsDecisionOpen(t *testing.T) {
+	ctx := context.Background()
+	st, bt, bot := wakeFixture(t)
+	_, ask, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: bt.ID, Text: "go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := store.Report{Ask: &store.Ask{Question: "Ship it?", Options: []string{"yes", "no"}}}
+	if err := st.SetReport(ctx, ask.ID, report); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishRun(ctx, ask.ID, store.RunResult{Status: store.StatusDone}, nil); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		th, err := st.CreateHelperThread(ctx, bt.ID, bot.ID, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.FailUnfinished(ctx, "restart", restartText); err != nil {
+		t.Fatal(err)
+	}
+	held, err := st.Held(ctx, bt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.StartRunFrom(ctx, held...); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.ThreadWaiting(ctx, bt.ID)
+	if err != nil || len(got) != 1 || got[0].Kind != store.WaitDecision || got[0].Question != "Ship it?" {
+		t.Fatalf("waiting = %+v, %v; want the open decision", got, err)
 	}
 }
 

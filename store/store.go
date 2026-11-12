@@ -1456,11 +1456,11 @@ func (s *Store) FailUnfinished(
 			for i, w := range held {
 				wakes[i] = w.Wake
 			}
-			from := ""
+			from, kind := "", "restart"
 			if len(held) == 1 {
-				from = held[0].botID
+				from, kind = held[0].botID, ""
 			}
-			if err := insertInbox(ctx, tx, bossID, from, wake(wakes), ""); err != nil {
+			if err := insertInbox(ctx, tx, bossID, from, wake(wakes), kind); err != nil {
 				return err
 			}
 		}
