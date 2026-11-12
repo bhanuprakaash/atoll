@@ -208,9 +208,12 @@ after a failed undo counts a Bot that is already gone as removed.
   also start fresh sessions.
 - Every run ends with `finish_run(done, tried, blocked, next)`, stored as data; the chat reply
   carries the answer itself, never only in the report or thinking. Status uses 2–3 plain lines,
-  not an answer the person asked for. The reply is only what the Bot writes after its last tool
-  call (after `finish_run` when the run ends with it); earlier text streams live but is not stored
-  or relayed to a boss, and a run with no tool call keeps all its text. *The report feeds memory, parents and fresh
+  not an answer the person asked for. The reply is only what the Bot writes after its last work tool
+  call, up to `finish_run`; earlier text streams live but is not stored or relayed to a boss. Text
+  after `finish_run` is the reply only when nothing came before it, and dropped text is not
+  streamed. A run with no tool call keeps all its text. *`finish_run` is a tool call, so the model
+  always gets one more turn after it and fills it with a recap or a second copy of the answer; the
+  old rule kept that turn and lost the answer.* *The report feeds memory, parents and fresh
   starts.* `blocked` is only what the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
   is not blocked, so the chat shows no Blocked line for it. A `blocked` that only says there is
   none ("Nothing blocking", "Nothing blocked", "None", "nothing", "n/a", any case, with spaces or trailing
@@ -1880,8 +1883,8 @@ Voice
   text between tool calls, and between the blocks one quiet line per finished tool step in the
   status line's words ("Running make check"). The step that is running is the status line, not a
   line as well, and `finish_run` is no step. When the run ends the stream is replaced by the reply
-  (the text after the last tool call, see Threads and runs): the closing block becomes the reply
-  where it stands, never drawn twice and never leaving a gap; the earlier blocks and the steps
+  (the text after the last work tool call, up to `finish_run`, see Threads and runs): the closing
+  block becomes the reply where it stands, never drawn twice and never leaving a gap; the earlier blocks and the steps
   leave the thread, so a reload shows the same thread. *The user wants to read what a Bot says
   while it works; keeping the working notes would repeat the reply.* A reader scrolled up is not
   moved by it. The sidebar row and the island keep the short verb and never show the text.

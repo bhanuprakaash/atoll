@@ -23,7 +23,7 @@ const (
 
 const _tools = `{"tools":[
 {"name":"finish_run",
-"description":"Report how this run went. Call it once in every run, when the work is done and before your final reply.",
+"description":"Report how this run went. Call it once in every run, when the work is done, after you write your answer. Call it last: nothing after it is shown.",
 "inputSchema":{"type":"object",
 "properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string","description":"What stopped the work that only the user can fix: a missing sign-in or token, no access, a denied approval, a failing service. Empty string if nothing. A question you asked in your reply is not blocked."},"next":{"type":"string"},"ready":{"type":"array","description":"The pull requests you call ready to merge, each with its head commit as you saw it.","items":{"type":"object","properties":{"url":{"type":"string"},"sha":{"type":"string","description":"The 40-hex head commit of the PR."},"note":{"type":"string","description":"One line about the PR, at most 120 characters. For a test PR that fails on main on purpose until its fix lands: fails on main for the right reason."}},"required":["url","sha"]}},"ask":{"type":"object","description":"A decision only the person can make, once. Reef shows it as a card with the options as buttons. A reply that only ends in a question is not a decision.","properties":{"question":{"type":"string","description":"One line, at most 300 characters."},"options":{"type":"array","description":"2 to 4 different choices, each at most 60 characters.","items":{"type":"string"}}},"required":["question","options"]}},
 "required":["done","tried","blocked","next"]}},
