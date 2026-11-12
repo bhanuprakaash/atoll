@@ -14,15 +14,17 @@ export type Tree = {
 const rank = (t: SidebarThread) =>
   t.state === 'needs_you'
     ? 0
-    : t.pinned
+    : t.state === 'waiting'
       ? 1
-      : t.state === 'new'
+      : t.pinned
         ? 2
-        : t.state === 'running'
+        : t.state === 'new'
           ? 3
-          : 4;
+          : t.state === 'running'
+            ? 4
+            : 5;
 
-// Needs-you, pinned and the open thread always show, even past maxRows.
+// Needs-you, waiting, pinned and the open thread always show, even past maxRows.
 export function threadTree(
   threads: SidebarThread[],
   openId: string | undefined,
@@ -31,7 +33,7 @@ export function threadTree(
   const ranked = threads
     .map((t) => (t.id === openId && t.state === 'new' ? { ...t, state: '' as const } : t))
     .sort((a, b) => rank(a) - rank(b));
-  const kept = ranked.filter((t) => rank(t) <= 1 || t.id === openId);
+  const kept = ranked.filter((t) => rank(t) <= 2 || t.id === openId);
   const room = Math.max(0, maxRows - kept.length);
   const shown = new Set([...kept, ...ranked.filter((t) => !kept.includes(t)).slice(0, room)]);
   const hidden = ranked.filter((t) => !shown.has(t));

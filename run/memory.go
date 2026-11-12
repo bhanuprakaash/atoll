@@ -19,7 +19,7 @@ type MemorySaved struct {
 // scope id: the thread's repo for scope repo, its Bot for scope bot. It returns the saved item
 // and the items that look like it.
 func (m *Manager) Remember(
-	ctx context.Context, token, kind, body, why, scope string, replaces []string,
+	ctx context.Context, token, kind, body, why, scope, ticket string, replaces []string,
 ) (memory.Item, []memory.Similar, error) {
 	a, err := m.byToken(token)
 	if err != nil {
@@ -40,7 +40,7 @@ func (m *Manager) Remember(
 		scopeID = sh.BotID
 	}
 	item, similar, err := m.cfg.Memory.Remember(ctx, memory.Note{
-		Kind: kind, Body: body, Why: why, Scope: scope, ScopeID: scopeID, Replaces: replaces,
+		Kind: kind, Body: body, Why: why, Scope: scope, ScopeID: scopeID, Ticket: ticket, Replaces: replaces,
 		SourceBotID: sh.BotID, SourceThreadID: a.threadID, SourceRunID: a.run.ID,
 	})
 	if err != nil {

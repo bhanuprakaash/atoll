@@ -28,7 +28,7 @@ const ciStyle: Record<string, string> = {
   passed: 'text-ok',
   failed: 'text-danger',
 };
-const dot: Record<string, string> = { merged: 'bg-whale', closed: 'bg-danger' };
+const dot: Record<string, string> = { merged: 'bg-whale', closed: 'bg-muted' };
 
 function useNow(on: boolean) {
   const [now, setNow] = useState(() => Date.now());

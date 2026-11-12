@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,7 +19,14 @@ type prFixture struct {
 	state  string
 	merged bool
 	title  string
+	draft  bool
+	base   string
+	body   string
+	head   string // empty: headSHA(n)
 }
+
+// issueFixture is what the fake GitHub says about an issue: open until a test closes it.
+type issueFixture struct{ state, reason string }
 
 // fakeCheck is a check run; an empty conclusion is JSON null, as GitHub has it until completed.
 type fakeCheck struct{ Name, Status, Conclusion string }
@@ -33,6 +41,19 @@ type prWatch struct {
 	runs     map[string][]fakeCheck
 	statuses map[string][]fakeStatus
 	reads    map[int]int
+	drafts   map[int]bool // whether the pull request was created as a draft
+	calls    []string     // what the Bots' gh did to pull requests: create, edit and ready, in order
+	issues   map[int]*issueFixture
+	issueGet map[int]int
+	issue304 map[int]int
+}
+
+// headOf is the head commit of the pull request: its own once a test pushed, else headSHA.
+func (pr *prFixture) headOf(n int) string {
+	if pr.head != "" {
+		return pr.head
+	}
+	return headSHA(n)
 }
 
 // headSHA is the head commit of pull request n: the same for as long as no test pushes.
@@ -49,9 +70,99 @@ func (g *fakeGitHub) setPull(n int, state string, merged bool) {
 	})
 }
 
+// setHead pushes a new head commit to pull request n.
+func (g *fakeGitHub) setHead(n int, sha string) {
+	g.set(func() { g.pr(n).head = sha })
+}
+
+// prCalls is what the Bots' gh did to pull requests so far, in order: `create #2 base=<b> draft=<bool>`,
+// `edit #2 base=<b>` and `ready #2`.
+func (g *fakeGitHub) prCalls() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return slices.Clone(g.watch.calls)
+}
+
+// isDraft is whether pull request n is a draft now.
+func (g *fakeGitHub) isDraft(n int) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.pr(n).draft
+}
+
 // setTitle changes the title of pull request n, so the next read is a new reply with a new ETag.
 func (g *fakeGitHub) setTitle(n int, title string) {
 	g.set(func() { g.pr(n).title = title })
+}
+
+// setPullBody changes the description of pull request n.
+func (g *fakeGitHub) setPullBody(n int, body string) {
+	g.set(func() { g.pr(n).body = body })
+}
+
+// setIssue closes or reopens issue n: state is "open" or "closed", reason the state_reason of a
+// closed one ("completed" or "not_planned"). An issue no test touched is open.
+func (g *fakeGitHub) setIssue(n int, state, reason string) {
+	g.set(func() { g.issue(n).state, g.issue(n).reason = state, reason })
+}
+
+// mergeClosing merges pull request pr and closes issue n in one step, as GitHub does for `Closes #n`.
+func (g *fakeGitHub) mergeClosing(pr, n int) {
+	g.set(func() {
+		p := g.pr(pr)
+		p.state, p.merged = "closed", true
+		g.issue(n).state, g.issue(n).reason = "closed", "completed"
+	})
+}
+
+// issueReads is how many times the server read issue n, and how many of those were answered 304.
+func (g *fakeGitHub) issueReads(n int) (reads, notModified int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.watch.issueGet[n], g.watch.issue304[n]
+}
+
+// issue is issue n; the caller holds g.mu.
+func (g *fakeGitHub) issue(n int) *issueFixture {
+	if g.watch.issues == nil {
+		g.watch.issues = map[int]*issueFixture{}
+	}
+	if g.watch.issues[n] == nil {
+		g.watch.issues[n] = &issueFixture{state: "open"}
+	}
+	return g.watch.issues[n]
+}
+
+// getIssue is GET /repos/{owner}/{repo}/issues/{number}: state and state_reason, with an ETag, and
+// 304 for a request whose If-None-Match is that ETag.
+func (g *fakeGitHub) getIssue(w http.ResponseWriter, r *http.Request) {
+	if g.reject(w, r) {
+		return
+	}
+	n, _ := strconv.Atoi(r.PathValue("number"))
+	var reason any
+	var state string
+	g.set(func() {
+		if g.watch.issueGet == nil {
+			g.watch.issueGet, g.watch.issue304 = map[int]int{}, map[int]int{}
+		}
+		g.watch.issueGet[n]++
+		state = g.issue(n).state
+		if g.issue(n).reason != "" {
+			reason = g.issue(n).reason
+		}
+	})
+	body, _ := json.Marshal(map[string]any{"number": n, "state": state, "state_reason": reason})
+	sum := sha256.Sum256(body)
+	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", etag)
+	if r.Header.Get("If-None-Match") == etag {
+		g.set(func() { g.watch.issue304[n]++ })
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	_, _ = w.Write(body)
 }
 
 // setChecks replaces the check runs and statuses of the commit.
@@ -81,7 +192,8 @@ func (g *fakeGitHub) pr(n int) *prFixture {
 		if n < 1 || n > len(g.pulls) {
 			return nil
 		}
-		g.watch.prs[n] = &prFixture{state: "open", title: g.pulls[n-1].Title}
+		p := g.pulls[n-1]
+		g.watch.prs[n] = &prFixture{state: "open", title: p.Title, draft: g.watch.drafts[n], base: p.Base, body: p.Body}
 	}
 	return g.watch.prs[n]
 }
@@ -111,7 +223,8 @@ func (g *fakeGitHub) getPull(w http.ResponseWriter, r *http.Request) {
 		g.watch.reads[n]++
 		if pr := g.pr(n); pr != nil {
 			body, _ = json.Marshal(map[string]any{"number": n, "state": pr.state, "merged": pr.merged, "title": pr.title,
-				"head": map[string]string{"sha": headSHA(n)}})
+				"draft": pr.draft, "body": pr.body, "base": map[string]string{"ref": pr.base},
+				"head": map[string]string{"sha": pr.headOf(n)}})
 		}
 	})
 	w.Header().Set("Content-Type", "application/json")
@@ -128,6 +241,62 @@ func (g *fakeGitHub) getPull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = w.Write(body)
+}
+
+// editPull is PATCH /repos/{owner}/{repo}/pulls/{number}: only the base is taken.
+func (g *fakeGitHub) editPull(w http.ResponseWriter, r *http.Request) {
+	if g.reject(w, r) {
+		return
+	}
+	n, _ := strconv.Atoi(r.PathValue("number"))
+	var in struct{ Base string }
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	found := false
+	g.set(func() {
+		if pr := g.pr(n); pr != nil && in.Base != "" {
+			pr.base, found = in.Base, true
+			g.watch.calls = append(g.watch.calls, fmt.Sprintf("edit #%d base=%s", n, in.Base))
+		}
+	})
+	w.Header().Set("Content-Type", "application/json")
+	if !found {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = fmt.Fprint(w, `{"message":"Validation Failed"}`)
+		return
+	}
+	_, _ = fmt.Fprint(w, `{}`)
+}
+
+// graphQL is POST /graphql for the one mutation `gh pr ready` sends, markPullRequestReadyForReview,
+// with the pull request's node id PR_<owner>/<repo>#<number>.
+func (g *fakeGitHub) graphQL(w http.ResponseWriter, r *http.Request) {
+	if g.reject(w, r) {
+		return
+	}
+	var in struct {
+		Query     string
+		Variables struct {
+			Input struct {
+				PullRequestID string `json:"pullRequestId"`
+			}
+		}
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	_, num, _ := strings.Cut(in.Variables.Input.PullRequestID, "#")
+	n, _ := strconv.Atoi(num)
+	ok := false
+	g.set(func() {
+		if pr := g.pr(n); pr != nil && strings.Contains(in.Query, "markPullRequestReadyForReview") {
+			pr.draft, ok = false, true
+			g.watch.calls = append(g.watch.calls, fmt.Sprintf("ready #%d", n))
+		}
+	})
+	w.Header().Set("Content-Type", "application/json")
+	if !ok {
+		_, _ = fmt.Fprint(w, `{"errors":[{"message":"Could not resolve to a PullRequest"}]}`)
+		return
+	}
+	_, _ = fmt.Fprint(w, `{"data":{"markPullRequestReadyForReview":{"pullRequest":{"isDraft":false}}}}`)
 }
 
 // checkRuns is GET /repos/{owner}/{repo}/commits/{sha}/check-runs.
