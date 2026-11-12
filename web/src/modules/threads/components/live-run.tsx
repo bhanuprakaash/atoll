@@ -6,7 +6,7 @@ import { ApprovalCard } from '@/modules/threads/components/approval-card';
 import type { LiveRun as Live } from '@/modules/threads/hooks/use-thread-events';
 import { toolVerb } from '@/modules/threads/utils/tool-line';
 
-export const chatText = 'text-base leading-[1.65] tracking-normal';
+export const chatText = 'text-[15px] leading-[1.6] tracking-normal';
 
 const fenceNames: Record<string, string> = { 'reef-metrics': 'Metrics', 'reef-kv': 'Details' };
 

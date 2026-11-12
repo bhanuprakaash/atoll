@@ -5,7 +5,7 @@ import { TextArea } from '@/components/text-field';
 import { ZoomImage } from '@/components/zoom-image';
 import { useChangeQueued, type Message } from '@/modules/threads/api/messages';
 
-const chatText = 'text-base leading-[1.65] tracking-normal';
+const chatText = 'text-[15px] leading-[1.6] tracking-normal';
 
 // QueuedMessage is the user's bubble for a message that waits for the run to end.
 export function QueuedMessage({

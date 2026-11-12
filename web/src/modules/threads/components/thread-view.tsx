@@ -217,7 +217,7 @@ function MessageLine({
         data-testid="message"
         data-report-for={brief ? undefined : report.threadId || undefined}
         data-report-id={message.id}
-        className="flex max-w-[85%] flex-col items-start gap-2"
+        className="flex flex-col items-start gap-2"
       >
         <span className="flex items-center gap-2 text-sm">
           <Creature look={from?.look} size={24} />
@@ -297,7 +297,7 @@ function MessageLine({
       </div>
     );
   return (
-    <div data-testid="message" className="flex max-w-[85%] flex-col gap-6">
+    <div data-testid="message" className="flex flex-col gap-6">
       <div className={chatText}>
         <Markdown threadId={threadId}>{message.text}</Markdown>
       </div>
@@ -791,7 +791,7 @@ export function ThreadView({
         }}
         className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-7 ${empty ? 'justify-center' : ''}`}
       >
-        <div ref={content} className="mx-auto flex w-full max-w-190 flex-col gap-4.5 pt-6 pb-4">
+        <div ref={content} className="mx-auto flex w-full max-w-205 flex-col gap-4.5 pt-6 pb-4">
           {empty && (
             <>
               <EmptyThread
@@ -944,7 +944,7 @@ export function ThreadView({
         </div>
       </div>
       {!empty && (
-        <div className="relative mx-auto w-full max-w-204 px-7 pb-4.5">
+        <div className="relative mx-auto w-full max-w-219 px-7 pb-4.5">
           {awayFromLatest && (
             <div className="pointer-events-none absolute inset-x-0 bottom-full mb-2 flex justify-center">
               <button
