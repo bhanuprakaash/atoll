@@ -188,7 +188,8 @@ after a failed undo counts a Bot that is already gone as removed.
 - A thread records when the user last opened it (`POST /api/threads/{id}/opened`, sent by the
   thread view when it opens and when a run ends while it is on screen; never by a read, which the
   UI polls). A thread whose newest run finished after that is New until the user opens it; this
-  survives a restart. Threads that were already there when this shipped start as read.
+  survives a restart. Threads that were already there when this shipped start as read. A run that
+  ended `done` with no reply does not count: a thread is New only for a reply, a failure or a stop.
 - A thread can be pinned to the sidebar (`POST`/`DELETE /api/threads/{id}/pin`), at most 3 open
   threads per Bot. A 4th pin answers `409` unless it names a pin to replace (`{replace}`), done in
   one transaction. Closing a thread drops its pin; helper threads cannot be pinned.
@@ -228,10 +229,9 @@ after a failed undo counts a Bot that is already gone as removed.
   - Delivery: when the going run ends other than stopped by the user, the thread's queued messages
     start one run together: oldest first, texts joined by a blank line in the prompt, images in
     order. Each keeps its `id` and becomes a normal message of that run, so the bubble stays in
-    place. A held message from a Bot (Delegation) still starts its own run; the oldest held item
-    goes first, so a person's messages behind one go after its run. *Several sends are one thought;
-    #190 decides the same for Bots' messages.* Queued messages survive a restart and are dropped
-    with a closed thread, as every held message.
+    place. A held message from a Bot (Delegation) joins the same run: every message held for the
+    thread is delivered as one run (Delegation, Waking the boss). Queued messages survive a restart
+    and are dropped with a closed thread, as every held message.
   - Edit and remove: `PATCH /api/threads/{id}/messages/{mid}` with `{text}` answers `200` with the
     message; `DELETE` answers `204`. Both work only while it is queued: after delivery `409`
     `already sent`, an unknown id `404`, an empty text with no image `400`.
@@ -327,27 +327,55 @@ after a failed undo counts a Bot that is already gone as removed.
   going (`3 helpers running. Tell the user, and hand this off when one of them reports back.`).
 - `continue` is accepted only from the helper's boss thread, and gives the helper a run with the
   message. A message for a thread whose run is going is held (the `inbox` table) and delivered
-  when that run ends, oldest first, one run each (a run the user stopped starts none: they wait
-  for that thread's next run to end); `continue` never answers busy: to a helper whose run is going
+  when that run ends (a run the user stopped starts none: they wait for that thread's next run to
+  end); `continue` never answers busy: to a helper whose run is going
   it answers `Queued: {Helper} is working; it gets this when its run ends.`, else `Sent.`, and the
-  message is in the helper thread's `queued` list (a helper thread's messages are one run each, and
-  the person cannot edit or remove them) until delivered. A message for a helper
+  message is in the helper thread's `queued` list until delivered. A helper thread's held messages
+  are one run each, oldest first, and the person cannot edit or remove them. A message for a helper
   thread is also held while its boss has 3 helper runs going, and goes out when one of them ends,
   so `continue` never takes a boss past 3. A held message
   survives a restart: on start, after the going runs are marked `failed`, each thread's held
   messages are delivered. A message for a closed or deleted thread is dropped.
 - Waking the boss: when a helper's run ends, Reef posts one message into the boss thread from the
   helper Bot (`from_bot_id` on the message; the boss's id on its brief in a helper thread, empty for the user's and for the boss's `continue` messages) and that starts a boss run,
-  or waits in the inbox while the boss's run is going. The text always holds the helper thread id:
+  or waits in the inbox while the boss's run is going (the wake window and one run for all held
+  messages: below). The text always holds the helper thread id:
   - done: `{Helper} reported back from thread {id}.`, then the reply and the report as
     `Done:`, `Tried:`, `Blocked:`, `Next:` lines;
   - failed: `{Helper}'s run failed: {error}`; a helper run going at a restart fails with the usual
-    reason and wakes its boss on start;
+    reason and wakes its boss on start, one message for all the boss thread's interrupted helper
+    runs (below);
   - stopped by a provider usage limit (`rate_limited`, see App and UI): `{Helper} is out until
     {time}.` and `Do not send it work until then.`, never the provider's text;
   - stopped by the user: `The user stopped {Helper}`;
   - Bot deleted mid-run: `{Helper} was deleted`.
   A helper's question is its reply; the boss answers with `continue`.
+- One run for what is held. A thread that is not a helper thread starts one run for all its held
+  messages: oldest first, except that the person's go first; each is its own message of the run
+  with its own header, `from_bot_id` and kind, and the prompt joins their texts with a blank line.
+  The run starts when the going run ends, or at once when none is going and a person's message, a
+  Reef wake or Stop and send arrives; it takes every held helper message with it, window or not.
+  *Round 2: 43% of a lead's runs started within 10 s of the previous run's end, each answering one
+  report.*
+- The wake window. Held helper messages alone do not start a run until the oldest of them is
+  `ATOLL_WAKE_WINDOW` old (a Go duration, 20 s when unset, invalid or not positive; tests set it as
+  `ATOLL_REPO_POLL_INTERVAL` is set). Reports that arrive meanwhile join it, so helpers that end
+  within one window wake the boss once. The window runs from the oldest held message, never the
+  newest, so a steady stream cannot hold the boss off; a boss whose run ends after the window
+  delivers at once. *20 s covers helpers that finish together and still feels prompt for a lone
+  report. A window that restarts on each report could wait for ever.* The window does not outlive
+  the process: on start, held helper messages are delivered at once.
+- A restart that interrupted N helper runs of one boss thread posts one message into it, not N: for
+  N > 1, from Reef (`kind` `restart`, `from_bot_id` empty), whose first line is `A restart
+  interrupted {N} helper runs.` and then each run's failed text above, in the order the runs began;
+  for N = 1 the failed message of that helper, as before. It is stored in the transaction that
+  marks the runs failed, so it cannot repeat or be lost.
+- The boss speaks only when the person is needed. A Bot with a delegate list gets a part `Helper
+  reports` in its system prompt: a report is progress, a result or a question; reply only when
+  {user} must act (a PR ready, a decision, something failed that you cannot fix); otherwise act on
+  it if needed, end with `finish_run` and write no reply; several reports may arrive in one message,
+  read them all and answer once. A run that ends `done` with no reply adds no message and does not
+  make the thread New (Threads and runs); the run, its report and the helpers region still show it.
 - Closing the boss thread stops its helpers' runs (no wake) and closes their threads, saving
   unfinished work as any close does; deleting a Bot does the same for each of its threads. Stopping
   the boss's run leaves its helpers going.
