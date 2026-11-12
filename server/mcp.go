@@ -176,7 +176,7 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		blocked := strings.TrimSpace(rep.Blocked)
 		blocked = strings.TrimSpace(strings.TrimRightFunc(blocked, unicode.IsPunct))
 		switch strings.ToLower(blocked) {
-		case "nothing blocking", "none", "nothing", "n/a":
+		case "nothing blocking", "nothing blocked", "none", "nothing", "n/a":
 			rep.Blocked = ""
 		}
 		if err := a.runs.Report(r.Context(), token, rep); err != nil {

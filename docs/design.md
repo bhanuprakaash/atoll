@@ -211,7 +211,7 @@ after a failed undo counts a Bot that is already gone as removed.
   or relayed to a boss, and a run with no tool call keeps all its text. *The report feeds memory, parents and fresh
   starts.* `blocked` is only what the user must fix (a sign-in, access, a denied approval), empty otherwise; a question in the reply
   is not blocked, so the chat shows no Blocked line for it. A `blocked` that only says there is
-  none ("Nothing blocking", "None", "nothing", "n/a", any case, with spaces or trailing
+  none ("Nothing blocking", "Nothing blocked", "None", "nothing", "n/a", any case, with spaces or trailing
   punctuation) is stored empty. A `finish_run` with `done` absent or blank is refused as a tool
   error naming `done` and stores nothing, so the Bot reads it and calls again in the same run.
   A turn that ends without
