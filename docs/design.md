@@ -307,11 +307,13 @@ after a failed undo counts a Bot that is already gone as removed.
     The text is Claude's `command`, or Codex's `command` without its `bash|sh|zsh -c|-lc` wrapper.
     Case, inner spaces, quoting and argument order count, so `a && b` equals only `a && b`.
   - Not offered, when any one holds (the card is then Allow and Deny alone, same size and weight):
-    the text contains `push` or `delete`, in any case; it has an `rm`-style flag word holding both
-    `r` and `f` (`-rf`, `-fr`, `-Rf`) or both `--recursive` and `--force`, and any other word of
-    the command is not an absolute path inside the thread's worktree or a tmp root (`/tmp`,
-    `/var/tmp`, `$TMPDIR`; a relative path, `~`, `$`, a glob or `..` counts as outside); or it runs
-    `gh` as a write. A `gh` write is a `gh` word whose subcommand is not a read: reads are
+    the text contains `push` or `delete`, in any case; it has a flag word holding both `r` and `f`
+    (`-rf`, `-fr`, `-Rf`), both `--recursive` and `--force`, or an `rm` whose flag words together
+    hold both (`-r -f`, `-r --force`, `--recursive -f`), and any other word of the command is not
+    an absolute path inside the thread's worktree or a tmp root (`/tmp`, `/var/tmp`, `$TMPDIR`; a
+    relative path, `~`, `$`, a glob or `..` counts as outside); it runs `git` to throw work away
+    (`clean` with `-f` or `--force`, `reset --hard`, `checkout` with `--`, `.` or `-f`, any
+    `restore`); or it runs `gh` as a write. A `gh` write is a `gh` word whose subcommand is not a read: reads are
     `view`, `list`, `status`, `diff`, `checks`, `search`, `browse`, `watch`, `download` and
     `gh api` with neither `-X`/`--method` other than `GET` nor `-f`/`-F`/`--field`/`--raw-field`/
     `--input`; every other verb, `create`, `edit`, `merge`, `close`, `comment`, `review`, `run`,

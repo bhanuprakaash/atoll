@@ -1570,28 +1570,11 @@ var (
 	_headSHA          = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	_quoted           = regexp.MustCompile(`\$\([^)]*\)|"[^"]*"|'[^']*'`)
 	_heredoc          = regexp.MustCompile(`<<-?\s*['"]?(\w+)`)
-	_shellWrapper     = regexp.MustCompile(`(?s)^(?:\S*/)?(?:ba|z)?sh\s+-\w*c\s+(.*)$`)
 	_writeRedirect    = regexp.MustCompile(`^\d?>`)
 	_timeout          = regexp.MustCompile(`^\d+[smhd]?$`)
 	_leadingWords     = map[string]bool{"if": true, "elif": true, "while": true, "until": true, "then": true, "do": true, "else": true, "{": true, "!": true}
 	_noCommand        = map[string]bool{"for": true, "case": true, "select": true, "}": true, "done": true, "fi": true, "esac": true, "[": true, "[[": true}
 )
-
-// unwrapShell returns the script of a `bash -lc '...'` wrapper, else command itself.
-func unwrapShell(command string) string {
-	m := _shellWrapper.FindStringSubmatch(strings.TrimSpace(command))
-	if m == nil {
-		return command
-	}
-	script := strings.TrimSpace(m[1])
-	if n := len(script); n >= 2 && (script[0] == '"' || script[0] == '\'') && script[n-1] == script[0] {
-		script = script[1 : n-1]
-		if m[1][0] == '"' {
-			script = strings.ReplaceAll(script, `\"`, `"`)
-		}
-	}
-	return script
-}
 
 // stripHeredocs drops the text of heredocs: it is input, never a command.
 func stripHeredocs(command string) string {
