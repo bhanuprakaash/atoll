@@ -817,23 +817,27 @@ func (s *Store) RemoveWorktree(ctx context.Context, threadID, ref string) error 
 	return found(res, "thread", threadID)
 }
 
-// SetMR records the thread's MR and, for a new URL, its state. A repeat call with the URL the
-// thread has keeps the state and what the poll stored, so a re-track after a merge never wakes
-// twice.
-func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE threads SET
-		mr_changed_at = CASE WHEN mr_url = ?1 OR mr_state = ?2 THEN mr_changed_at ELSE ?5 END,
+// SetMR records the thread's MR and, for a new URL, its state, and returns the state it holds. A
+// repeat call with the URL the thread has keeps the state and what the poll stored, so a re-track
+// after a merge never wakes twice.
+func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) (string, error) {
+	var kept string
+	err := s.db.QueryRowContext(ctx, `UPDATE threads SET
+		mr_changed_at = CASE WHEN mr_url = ?1 THEN mr_changed_at ELSE ?5 END,
 		mr_state = CASE WHEN mr_url = ?1 THEN mr_state ELSE ?2 END,
 		mr_ci = CASE WHEN mr_url = ?1 THEN mr_ci ELSE '' END,
 		mr_woke = CASE WHEN mr_url = ?1 THEN mr_woke ELSE '' END,
 		mr_head = CASE WHEN mr_url = ?1 THEN mr_head ELSE '' END,
 		mr_base_woke = CASE WHEN mr_url = ?1 THEN mr_base_woke ELSE 0 END,
-		mr_url = ?1, mr_title = ?3, mr_wake = 1 WHERE id = ?4`,
-		url, state, title, threadID, time.Now().UTC().UnixMicro())
-	if err != nil {
-		return fmt.Errorf("set MR: %w", err)
+		mr_url = ?1, mr_title = ?3, mr_wake = 1 WHERE id = ?4 RETURNING mr_state`,
+		url, state, title, threadID, time.Now().UTC().UnixMicro()).Scan(&kept)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("thread %s: %w", threadID, ErrNotFound)
 	}
-	return found(res, "thread", threadID)
+	if err != nil {
+		return "", fmt.Errorf("set MR: %w", err)
+	}
+	return kept, nil
 }
 
 // StoreMR stores what a poll read and, with it, the wake it reports, in one transaction: a restart

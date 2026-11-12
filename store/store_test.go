@@ -527,7 +527,7 @@ func TestStore_ThreadDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetMR(ctx, thread.ID, "https://gitlab.example/p/-/merge_requests/43", "merged", "Fix the wizard"); err != nil {
+	if _, err := st.SetMR(ctx, thread.ID, "https://gitlab.example/p/-/merge_requests/43", "merged", "Fix the wizard"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.RemoveWorktree(ctx, thread.ID, "refs/atoll/unfinished/test"); err != nil {
@@ -575,6 +575,47 @@ func TestStore_ThreadDetails(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStore_SetMR(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const first, second = "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2"
+	set := func(url, state, want string) {
+		t.Helper()
+		got, err := st.SetMR(ctx, thread.ID, url, state, "T")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("SetMR(%s, %s) = %q, want %q", url, state, got, want)
+		}
+	}
+	set(first, "opened", "opened")
+	since := time.Now()
+	time.Sleep(time.Millisecond)
+	set(second, "opened", "opened")
+	got, err := st.OpenedMRsSince(ctx, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].URL != second {
+		t.Errorf("OpenedMRsSince = %+v, want only %s", got, second)
+	}
+	set(first, "merged", "merged")
+	set(first, "opened", "merged")
 }
 
 func wakeFixture(t *testing.T) (*store.Store, store.Thread, store.Bot) {

@@ -742,7 +742,7 @@ Follow-ups, not filed:
   `Message:`.
 - `track_mr` sets `mr_wake` to 1. A repeat call with the URL the thread already has keeps
   `mr_state`, `mr_woke` and `mr_ci`; a different URL resets all three, so a re-track after a
-  merge never wakes twice. Three columns on the thread hold what is not derivable: `mr_ci` (JSON:
+  merge never wakes twice; the `mr_updated` event carries the state the thread holds. Three columns on the thread hold what is not derivable: `mr_ci` (JSON:
   head commit, passed, failed, pending, failed names; the last read), `mr_woke` and `mr_wake`
   (integer, default 0). *Sixteen of nineteen PR threads of the dogfood runs said `opened` after
   they merged.*
@@ -1732,7 +1732,7 @@ Voice
   (`runs.finished_at`; "Pilot finished Review !42", or "Pilot failed Review !42" for a failed
   one, which includes a run the restart cut short; a run the user stopped counts as finished), a
   thread whose MR is `opened` since then (`threads.mr_changed_at`, new, set when `mr_state`
-  changes; "Pilot opened !42", the MR title as detail) and a platform change
+  changes or `track_mr` gives a different URL; "Pilot opened !42", the MR title as detail) and a platform change
   (`changes.created_at`; "Chief created Bot Lagoon"). Threads on screen are left out, as they are
   live. The 4 s widening and the approval drop are not replayed, except that an approval still
   open drops the island as today. Needs you (and Waiting on you) are state, not events: they show

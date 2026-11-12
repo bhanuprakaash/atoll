@@ -249,6 +249,34 @@ func TestRun_StartWorkConcurrent(t *testing.T) {
 	}
 }
 
+func TestRun_TrackMRKeepsStoredState(t *testing.T) {
+	const url = "https://gitlab.example/g/p/-/merge_requests/1"
+	e := newRepoEnv(t)
+	if _, err := e.st.SetMR(t.Context(), e.thread.ID, url, "merged", "T"); err != nil {
+		t.Fatal(err)
+	}
+	events, cancel := e.m.Subscribe(e.thread.ID)
+	defer cancel()
+	e.run(t, func(token string) {
+		if err := e.m.TrackMR(t.Context(), token, url, "T"); err != nil {
+			t.Error(err)
+		}
+	})
+	for {
+		select {
+		case ev := <-events:
+			if mr, ok := ev.Data.(MRUpdated); ok {
+				if mr.State != "merged" {
+					t.Errorf("MRUpdated state %q, want merged", mr.State)
+				}
+				return
+			}
+		default:
+			t.Fatal("no mr_updated event")
+		}
+	}
+}
+
 func TestRun_TrackMR(t *testing.T) {
 	tests := []struct {
 		name    string
