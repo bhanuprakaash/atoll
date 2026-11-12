@@ -771,7 +771,6 @@ export function ThreadView({
             />
           )}
           {items.map((item) => {
-            const first = 'rows' in item ? item.rows[0].id : item.message.id;
             const separator = item.day && (
               <div className="flex items-center gap-3 text-xs text-label">
                 <span className="h-px flex-1 bg-line" />
@@ -787,7 +786,7 @@ export function ThreadView({
             );
             if ('rows' in item)
               return (
-                <Fragment key={first}>
+                <Fragment key={item.rows[0].id}>
                   {separator}
                   <LeadLedger rows={item.rows} onToggle={holdScroll} />
                 </Fragment>

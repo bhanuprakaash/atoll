@@ -1,3 +1,4 @@
+import { ErrorNotice } from '@/components/error-notice';
 import { useSendMessage, type Run } from '@/modules/threads/api/messages';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 import type { Waiting } from '@/types/waiting';
@@ -51,7 +52,7 @@ export function WaitingCard({
             ))}
             <span className="text-[13px] text-muted">or reply below</span>
           </div>
-          {send.isError && <p className="text-[13px] text-danger">{send.error.message}</p>}
+          {send.isError && <ErrorNotice error={send.error} />}
         </div>
       )}
       {blocker && (
