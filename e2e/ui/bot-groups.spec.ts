@@ -50,7 +50,7 @@ const order = (page: Page) =>
 const fold = (page: Page, name: string) =>
   group(page, name).getByRole('button', { name, exact: true });
 
-test('New group, Move to group, drag, Rename, Move up and down, and fold persist across restart', async ({
+test('New group, Move to group, drag, Rename, group drag, and fold persist across restart', async ({
   page,
 }) => {
   for (const name of ['Ivy', 'Oak', 'Elm']) await newBotAPI(m, name);
@@ -87,11 +87,23 @@ test('New group, Move to group, drag, Rename, Move up and down, and fold persist
   await expect(group(page, 'Backend')).toHaveCount(0);
 
   await expect.poll(() => order(page)).toEqual(['Platform', 'Frontend', 'Ungrouped']);
-  await groupAction(page, 'Frontend', 'Move up');
+  await group(page, 'Frontend')
+    .getByRole('heading')
+    .dragTo(group(page, 'Platform').getByRole('heading'), {
+      targetPosition: { x: 20, y: 2 },
+    });
   await expect.poll(() => order(page)).toEqual(['Frontend', 'Platform', 'Ungrouped']);
-  await groupAction(page, 'Frontend', 'Move down');
+  await group(page, 'Frontend')
+    .getByRole('heading')
+    .dragTo(group(page, 'Platform').getByRole('heading'), {
+      targetPosition: { x: 20, y: 20 },
+    });
   await expect.poll(() => order(page)).toEqual(['Platform', 'Frontend', 'Ungrouped']);
-  await groupAction(page, 'Platform', 'Move down');
+  await group(page, 'Frontend')
+    .getByRole('heading')
+    .dragTo(group(page, 'Platform').getByRole('heading'), {
+      targetPosition: { x: 20, y: 2 },
+    });
   await expect.poll(() => order(page)).toEqual(['Frontend', 'Platform', 'Ungrouped']);
 
   await group(page, 'Platform').getByRole('heading').hover();
