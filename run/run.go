@@ -1309,7 +1309,19 @@ func (m *Manager) replay(threadID string, ch chan Event, snapshot io.Reader) {
 			Type string          `json:"type"`
 			Data json.RawMessage `json:"data"`
 		}
-		if json.Unmarshal(line, &ev) != nil || ev.Type == EventText {
+		if json.Unmarshal(line, &ev) != nil {
+			continue
+		}
+		if ev.Type == EventText {
+			var piece Text
+			if json.Unmarshal(ev.Data, &piece) != nil {
+				continue
+			}
+			if n := len(evs); n > 0 && evs[n-1].Type == EventText {
+				piece.Text = evs[n-1].Data.(Text).Text + piece.Text
+				evs = evs[:n-1]
+			}
+			evs = append(evs, Event{Type: EventText, ThreadID: threadID, Data: piece})
 			continue
 		}
 		evs = append(evs, Event{Type: ev.Type, ThreadID: threadID, Data: ev.Data})

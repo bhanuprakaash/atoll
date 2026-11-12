@@ -783,7 +783,7 @@ func TestManager_Subscribers(t *testing.T) {
 			}
 			_ = e.m.Close()
 		}, 0},
-		{"late subscriber replays the log without text", func(t *testing.T, e *env) {
+		{"late subscriber replays the log with consecutive text joined", func(t *testing.T, e *env) {
 			file, err := e.m.openLog("replay")
 			if err != nil {
 				t.Fatal(err)
@@ -792,28 +792,29 @@ func TestManager_Subscribers(t *testing.T) {
 			a := &active{threadID: e.thread.ID, run: store.Run{ID: "replay"}, log: file}
 			e.m.runs[e.thread.ID] = a
 			e.m.publish(a, EventToolCall, ToolCall{ID: "before"})
-			e.m.publish(a, EventText, Text{Text: "omitted"})
+			e.m.publish(a, EventText, Text{Text: "joined "})
+			e.m.publish(a, EventText, Text{Text: "text"})
 			late, cancel := e.m.Subscribe(e.thread.ID)
 			defer cancel()
 			e.m.publish(a, EventToolCall, ToolCall{ID: "after"})
 			delete(e.m.runs, e.thread.ID)
 			_ = e.m.Close()
-			var ids []string
+			var got []string
 			for ev := range late {
 				body, err := json.Marshal(ev.Data)
 				if err != nil {
 					t.Fatal(err)
 				}
-				var call ToolCall
-				if err := json.Unmarshal(body, &call); err != nil || ev.Type != EventToolCall {
-					t.Fatalf("replay = %s %s, %v; want tool call", ev.Type, body, err)
+				var data struct{ ID, Text string }
+				if err := json.Unmarshal(body, &data); err != nil {
+					t.Fatalf("replay = %s %s, %v", ev.Type, body, err)
 				}
-				ids = append(ids, call.ID)
+				got = append(got, ev.Type+" "+data.ID+data.Text)
 			}
-			if !slices.Equal(ids, []string{"before", "after"}) {
-				t.Errorf("late subscriber IDs = %v, want [before after]", ids)
+			if want := []string{"tool_call before", "text joined text", "tool_call after"}; !slices.Equal(got, want) {
+				t.Errorf("late subscriber events = %q, want %q", got, want)
 			}
-		}, 3},
+		}, 4},
 		{"ActiveTool input is a copy", func(t *testing.T, e *env) {
 			a := &active{threadID: e.thread.ID, tool: ToolCall{Input: json.RawMessage(`{"a":1}`)}}
 			e.m.runs[e.thread.ID] = a

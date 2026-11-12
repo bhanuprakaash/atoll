@@ -24,7 +24,7 @@ import { QueuedMessage } from '@/modules/threads/components/queued-message';
 import { HelpersRegion } from '@/modules/threads/components/helpers-region';
 import { FailedLine, FailedRun } from '@/modules/threads/components/failed-run-line';
 import { LeadLedger, type LedgerRow } from '@/modules/threads/components/lead-ledger';
-import { LiveRun } from '@/modules/threads/components/live-run';
+import { chatText, LiveRun } from '@/modules/threads/components/live-run';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 import { MrChip } from '@/modules/threads/components/mr-chip';
 import {
@@ -36,8 +36,6 @@ import {
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 import { clockTime, messageTime } from '@/utils/time';
 import { usageLine } from '@/utils/usage';
-
-const chatText = 'text-base leading-[1.65] tracking-normal';
 
 function duration(run: Run) {
   const seconds =
@@ -832,7 +830,13 @@ export function ThreadView({
           })}
           {Object.entries(runs).map(([id, run]) => (
             <div key={id} className="flex flex-col gap-6">
-              <LiveRun id={id} run={run} look={look} />
+              <LiveRun
+                id={id}
+                threadId={threadId}
+                run={run}
+                answered={answered.has(id)}
+                look={look}
+              />
               {run.finished && !answered.has(id) && (
                 <>
                   {afterRun?.(id)}
