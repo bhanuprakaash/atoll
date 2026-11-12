@@ -8,6 +8,7 @@ import {
   useSearchParams,
 } from 'react-router';
 import { Creature, type CreatureLook } from '@/components/creature';
+import { Gone } from '@/components/gone';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { BotMemory } from '@/modules/memory/components/bot-memory';
 import { BotSettings } from '@/modules/bots/components/bot-settings';
@@ -51,11 +52,11 @@ export function BotHeader({
   return (
     <header
       data-tauri-drag-region="deep"
-      className="relative z-10 grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5"
+      className="@container relative z-10 grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5"
     >
       <div
         data-island
-        className={`relative z-30 col-start-2 flex flex-col overflow-hidden border border-composer-line bg-composer shadow-[0_12px_32px_rgba(0,0,0,.4)] transition-[min-width,max-height,border-radius] duration-420 ease-[cubic-bezier(.32,1.25,.5,1)] motion-reduce:transition-none ${open ? 'max-h-[60vh] min-w-100 rounded-[22px]' : 'max-h-10 min-w-0 rounded-[20px]'}`}
+        className={`relative z-30 col-start-2 flex flex-col overflow-hidden border border-composer-line bg-composer shadow-[0_12px_32px_rgba(0,0,0,.4)] transition-[min-width,max-height,border-radius] duration-420 ease-[cubic-bezier(.32,1.25,.5,1)] motion-reduce:transition-none ${open ? 'max-h-[60vh] min-w-[min(25rem,calc(100vw-7rem))] rounded-[22px]' : 'max-h-10 min-w-0 rounded-[20px]'}`}
       >
         <div className="relative flex h-9.5 flex-none items-center justify-center gap-2.5 px-3 whitespace-nowrap">
           {bot && <Creature look={bot.look} state={bot.state} size={22} />}
@@ -63,10 +64,12 @@ export function BotHeader({
             <h1 className="text-sm">{bot?.name}</h1>
             {title && (
               <>
-                <span aria-hidden="true" className="text-label">
+                <span aria-hidden="true" className="hidden text-label @min-[32rem]:inline">
                   ·
                 </span>
-                <h2 className="max-w-50 truncate text-sm font-normal text-muted">{title}</h2>
+                <h2 className="hidden max-w-50 truncate text-sm font-normal text-muted @min-[32rem]:block">
+                  {title}
+                </h2>
               </>
             )}
           </div>
@@ -92,7 +95,8 @@ export function BotHeader({
               ))}
             </span>
           ) : (
-            thread?.run_status === 'failed' && (
+            thread?.run_status === 'failed' &&
+            thread.run_error_kind !== 'secret_store' && (
               <span className="text-[13px] text-muted">Run failed</span>
             )
           )}
@@ -143,7 +147,7 @@ export function BotHeader({
   );
 }
 
-export function BotPage() {
+function BotFrame() {
   const { botId = '', threadId = '' } = useParams();
   const { data: bots = [] } = useBots();
   const { data: threads = [] } = useThreads(botId);
@@ -246,6 +250,15 @@ export function BotPage() {
       )}
     </div>
   );
+}
+
+export function BotPage() {
+  const { botId = '' } = useParams();
+  const { data: bots } = useBots();
+  if (!bots) return null;
+  if (!bots.some((bot) => bot.id === botId))
+    return <Gone title="This Bot is gone" to="/" link="Go home" />;
+  return <BotFrame />;
 }
 
 export function LatestThread() {
