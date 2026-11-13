@@ -9,6 +9,7 @@ export type Thread = {
   parent_thread_id: string;
   parent_bot_id: string;
   helpers: Thread[];
+  ready?: boolean;
   repo_id: string;
   branch: string;
   worktree: string;

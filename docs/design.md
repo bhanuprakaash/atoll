@@ -1999,12 +1999,14 @@ Voice
     messages, not the person's) with no real `blocked` and no question, a question being a reply
     whose last line ends with `?`. *Reef does not guess intent: a status reply that ends in `?`
     stays visible, the safe error.* The run's `status`, `done` and `blocked` come with each
-    message in `GET /api/threads/{id}/messages` (`run_status`, `done`, `blocked`), so the chat
+    message in `GET /api/threads/{id}/messages` (`run_status`, `done`, `blocked`, and `ready` and `ask` on a bot message; a helper thread's
+    summary carries `ready`), so the chat
     makes no request per reply. A handoff line and a Reef wake line between folded events
     join the block as lines.
   - Not folded: the person's messages; a boss reply to a message of the person's (they asked); a
-    boss reply with a real `blocked` or a question; a helper's report with a real `blocked` (that
-    is for the person to fix); approvals; a failed run of the boss itself. Each ends the block, and
+    boss reply with a real `blocked`, a question, a `ready` PR or an `ask`; a helper's report with
+    a real `blocked` (that is for the person to fix) or a `ready` PR (it waits on the person);
+    approvals; a failed run of the boss itself. Each ends the block, and
     the next folded event starts a new one below it, so the thread keeps its order and a decision
     stands right after what led to it. A decision also shows as the "Waiting on you" card (#147,
     which lands with that ticket); this rule only keeps it a message.
