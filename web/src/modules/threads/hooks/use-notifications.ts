@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMatch } from 'react-router';
-import { useMarkIslandSeen } from '@/modules/threads/api/island';
+import { useDismissEarlier, useMarkIslandSeen } from '@/modules/threads/api/island';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 
 type About = {
@@ -12,7 +12,14 @@ type About = {
 };
 type Notice<T> = About & { data: T };
 export type ApprovalNotice = About & { id: string; tool: string; input: unknown };
-export type EarlierNotice = About & { id: number; at: number; text: string; detail?: string };
+export type EarlierNotice = About & {
+  id: number;
+  at: number;
+  text: string;
+  detail?: string;
+  type: string;
+  target: string;
+};
 export type Notifications = {
   needs: ApprovalNotice[];
   earlier: EarlierNotice[];
@@ -20,12 +27,15 @@ export type Notifications = {
   widened?: EarlierNotice;
   dismiss: () => void;
   markSeen: () => void;
+  dismissEarlier: (notice: EarlierNotice) => void;
   markAllRead: () => void;
   markAllReadError: unknown;
 };
 
 type MrUpdate = { url: string; state: string; title: string };
-type Change = { change: { entity: string; action: string; after: { name?: string } | null } };
+type Change = {
+  change: { id: string; entity: string; action: string; after: { name?: string } | null };
+};
 type Remembered = About & {
   type: 'run_finished' | 'mr_updated' | 'platform_changed';
   at: string;
@@ -46,6 +56,9 @@ function changeText(notice: About, { entity, action, after }: Change['change']) 
   return `${notice.bot_name} ${verb} ${what} ${after?.name ?? ''}`.trim();
 }
 
+const isRun = (n: { type: string; thread_id: string }, threadId: string) =>
+  n.type === 'run_finished' && n.thread_id === threadId;
+
 const isOn = (notice: About, threadId?: string) =>
   notice.thread_id === threadId || notice.parent_thread_id === threadId;
 
@@ -63,10 +76,13 @@ export function useNotifications(): Notifications {
     let timer: number | undefined;
     const on = <T>(type: string, handle: (notice: Notice<T>) => void) =>
       source.addEventListener(type, (e) => handle(JSON.parse((e as MessageEvent<string>).data)));
-    const add = (notice: About, text: string, detail?: string) => {
+    const add = (notice: About, type: string, target: string, text: string, detail?: string) => {
       if (isOn(notice, screen.current)) return undefined;
-      const item = { ...notice, id: seq.current++, at: Date.now(), text, detail };
-      setEarlier((prev) => [item, ...prev]);
+      const item = { ...notice, id: seq.current++, at: Date.now(), text, detail, type, target };
+      setEarlier((prev) => [
+        item,
+        ...prev.filter((n) => type !== 'run_finished' || !isRun(n, notice.thread_id)),
+      ]);
       return item;
     };
     source.onopen = () => setApprovals([]);
@@ -79,11 +95,19 @@ export function useNotifications(): Notifications {
           .flatMap((n) => {
             const id = seq.current++;
             if (n.type === 'run_finished')
-              return [{ ...n, id, text: finishedText(n, n.data.status) }];
+              return [{ ...n, id, target: n.thread_id, text: finishedText(n, n.data.status) }];
             if (n.type === 'mr_updated')
-              return [{ ...n, id, text: mrText(n, n.data.url), detail: n.data.title }];
+              return [
+                {
+                  ...n,
+                  id,
+                  target: n.thread_id,
+                  text: mrText(n, n.data.url),
+                  detail: n.data.title,
+                },
+              ];
             if (n.data.change.entity === 'allow') return [];
-            return [{ ...n, id, text: changeText(n, n.data.change) }];
+            return [{ ...n, id, target: n.data.change.id, text: changeText(n, n.data.change) }];
           }),
       );
     });
@@ -92,11 +116,19 @@ export function useNotifications(): Notifications {
         prev.some((a) => a.id === data.id) ? prev : [{ ...about, ...data }, ...prev],
       ),
     );
+    on<unknown>('thread_read', ({ thread_id }) =>
+      setEarlier((prev) => prev.filter((n) => !isRun(n, thread_id))),
+    );
     on<{ id: string }>('approval_closed', ({ data }) =>
       setApprovals((prev) => prev.filter((a) => a.id !== data.id)),
     );
     on<{ status: string }>('run_finished', (notice) => {
-      const item = add(notice, finishedText(notice, notice.data.status));
+      const item = add(
+        notice,
+        'run_finished',
+        notice.thread_id,
+        finishedText(notice, notice.data.status),
+      );
       if (!item) return;
       setWidened(item);
       window.clearTimeout(timer);
@@ -104,11 +136,22 @@ export function useNotifications(): Notifications {
     });
     on<MrUpdate>('mr_updated', (notice) => {
       if (notice.data.state === 'opened')
-        add(notice, mrText(notice, notice.data.url), notice.data.title);
+        add(
+          notice,
+          'mr_updated',
+          notice.thread_id,
+          mrText(notice, notice.data.url),
+          notice.data.title,
+        );
     });
     on<Change>('platform_changed', (notice) => {
       if (notice.data.change.entity !== 'allow')
-        add(notice, changeText(notice, notice.data.change));
+        add(
+          notice,
+          'platform_changed',
+          notice.data.change.id,
+          changeText(notice, notice.data.change),
+        );
     });
     return () => {
       source.close();
@@ -128,6 +171,14 @@ export function useNotifications(): Notifications {
     setEarlier([]);
     postAllRead();
   }, [postAllRead]);
+  const { mutate: postDismiss } = useDismissEarlier();
+  const dismissEarlier = useCallback(
+    (notice: EarlierNotice) => {
+      setEarlier((prev) => prev.filter((n) => n.id !== notice.id));
+      postDismiss({ type: notice.type, id: notice.target });
+    },
+    [postDismiss],
+  );
   return {
     needs,
     earlier,
@@ -135,6 +186,7 @@ export function useNotifications(): Notifications {
     widened: widened && !isOn(widened, onScreen) ? widened : undefined,
     dismiss,
     markSeen,
+    dismissEarlier,
     markAllRead,
     markAllReadError,
   };

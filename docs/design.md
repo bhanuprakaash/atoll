@@ -1733,8 +1733,10 @@ Voice
   once and leaves the list open ("Nothing new"). Opening the list alone does not. A launch of the
   version that adds it starts with the timestamp at now, so old runs do not flood the list. On
   connect the server builds Earlier from rows newer than the timestamp, newest first, one row
-  per event, with the text a live event gets: a run that ended in an open thread
-  (`runs.finished_at`; "Pilot finished Review !42", or "Pilot failed Review !42" for a failed
+  per event except runs, with the text a live event gets: a run that ended in an open thread (a
+  thread's newest ended run only, and only while it ended after the thread's `last_opened_at`, the
+  rule of the sidebar's New, so opening a thread drops its row from an open list at once;
+  `runs.finished_at`; "Pilot finished Review !42", or "Pilot failed Review !42" for a failed
   one, which includes a run the restart cut short; a run the user stopped counts as finished), a
   thread whose MR is `opened` since then (`threads.mr_changed_at`, new, set when `mr_state`
   changes or `track_mr` gives a different URL; "Pilot opened !42", the MR title as detail) and a platform change
@@ -1744,7 +1746,10 @@ Voice
   while true and the timestamp never clears them. A restart ends a run that waited on an approval
   as failed, so that approval is gone and the run is under Earlier. The pill gets no new mark: the
   list is where Earlier is read, so the island and the sidebar's New agree (every unread run is
-  both) without a second red thing. *The island said "Nothing new" next to 60 New threads after
+  both) without a second red thing. Each row has a dismiss (×) button, shown on hover and keyboard
+  focus, `POST /api/island/dismiss`: a run row marks its thread read (`last_opened_at`), an MR row
+  sets `threads.island_dismissed_at` and stays hidden while `mr_changed_at` is not newer, and a
+  platform change row sets `changes.dismissed_at`. *The island said "Nothing new" next to 60 New threads after
   every launch.*
 - Thread titles: the first six words of the first message (a helper's brief), set when that message
   is sent and stored, with trailing `.,;:!?` removed from the last word. After the thread's first

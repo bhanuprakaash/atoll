@@ -664,12 +664,16 @@ type ThreadEvent struct {
 	Title    string
 }
 
-// FinishedRunsSince lists the runs that ended after since in a thread that is still open.
+// FinishedRunsSince lists, for each thread that is still open, its newest ended run when it ended
+// after since and after the user last opened the thread.
 func (s *Store) FinishedRunsSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
 	return query(ctx, s.db,
 		`SELECT r.thread_id, r.id, r.finished_at, r.status, r.error
 		 FROM runs r JOIN threads t ON t.id = r.thread_id
-		 WHERE r.finished_at > ? AND r.status IN (?, ?, ?) AND t.closed = 0`,
+		 WHERE r.finished_at > ? AND r.finished_at > t.last_opened_at AND t.closed = 0
+		   AND r.rowid = (SELECT r2.rowid FROM runs r2
+		                  WHERE r2.thread_id = r.thread_id AND r2.status IN (?, ?, ?)
+		                  ORDER BY r2.finished_at DESC, r2.rowid DESC LIMIT 1)`,
 		func(r *sql.Rows) (e ThreadEvent, err error) {
 			var at int64
 			err = r.Scan(&e.ThreadID, &e.RunID, &at, &e.Status, &e.Error)
@@ -678,17 +682,28 @@ func (s *Store) FinishedRunsSince(ctx context.Context, since time.Time) ([]Threa
 		}, since.UnixMicro(), StatusDone, StatusFailed, StatusStopped)
 }
 
-// OpenedMRsSince lists the threads whose MR is open and became so after since.
+// OpenedMRsSince lists the threads whose MR is open, became so after since and has not been
+// dismissed from the island since.
 func (s *Store) OpenedMRsSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
 	return query(ctx, s.db,
 		`SELECT id, mr_changed_at, mr_url, mr_title FROM threads
-		 WHERE mr_state = 'opened' AND mr_changed_at > ?`,
+		 WHERE mr_state = 'opened' AND mr_changed_at > ? AND mr_changed_at > island_dismissed_at`,
 		func(r *sql.Rows) (e ThreadEvent, err error) {
 			var at int64
 			err = r.Scan(&e.ThreadID, &at, &e.URL, &e.Title)
 			e.At = time.UnixMicro(at).UTC()
 			return e, err
 		}, since.UnixMicro())
+}
+
+// DismissMR hides the thread's MR from the island until the MR changes again.
+func (s *Store) DismissMR(ctx context.Context, threadID string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE threads SET island_dismissed_at = ? WHERE id = ?",
+		time.Now().UTC().UnixMicro(), threadID)
+	if err != nil {
+		return fmt.Errorf("dismiss mr: %w", err)
+	}
+	return found(res, "thread", threadID)
 }
 
 // CreateConnection stores a new pending connection of kind to instanceURL.
