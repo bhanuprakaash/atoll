@@ -21,6 +21,8 @@ export type Message = {
   run_status: Run['status'];
   done: string;
   blocked: string;
+  ready?: boolean;
+  ask?: boolean;
   answered_approvals?: { id: string; tool: string; input: unknown }[];
 };
 
