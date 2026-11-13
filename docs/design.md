@@ -685,7 +685,16 @@ Follow-ups, not filed:
 - A merged GitLab MR with a worktree is cleaned up like a closed thread, only while no run is going
   in the thread; a woken run counts, so the release comes after the wake run ends. A closed MR
   keeps its worktree. A merged GitHub PR keeps its worktree until the thread closes; the poll
-  updates its state and chip only.
+  updates its state and chip only and, below, the thread leaves the
+  sidebar tree.
+- A thread the person started whose PR merged leaves the sidebar tree but stays open (not closed:
+  a closed thread refuses messages, which would block "the merge broke X, fix it"). It is hidden
+  while its PR's merge (`mr_changed_at`) is later than the person's last message in it (a message
+  with no `kind`, not from a Bot), no run is going and nothing waits on the person (no approval,
+  ask or blocker). The merge wake's run does not bring it back: it shows while that run goes and
+  leaves when it ends. A message from the person brings it back for good; a later merge of a newly
+  tracked PR hides it again. A pinned thread stays, and so does the open thread. It is still in the
+  threads popup under Other open threads and counts in the Bot's `N more`.
 - GitHub reads per thread: the PR; and, while it is open and its head commit has no stored CI
   result, the check runs and the combined status of that commit, with `per_page=100`, following
   `Link` until every item is read. Each read sends `If-None-Match` with the last ETag, kept in
@@ -1637,7 +1646,8 @@ Voice
   the one that acted last, or the one that needs the person first with `Needs you`, which shows
   nowhere else; clicking it opens the boss thread at its helpers panel (`Working with {Boss}`). A
   folded boss thread adds `· {Helper} working` to the `N more` line. A finished helper thread is
-  counted in its own Bot's `N more`, which so stays when every open thread is hidden. *The
+  counted in its own Bot's `N more`, like a merged thread the tree hides (see the watcher), which so stays
+  when every open thread is hidden. *The
   server sends each thread's `parent_thread_id` and, for a live helper, its `step`.* *The
   server sends each Bot's open threads with their marker on `GET /api/bots`; the client picks the
   rows, since only it knows the thread on screen and what is unfolded.*
@@ -1648,14 +1658,16 @@ Voice
   row in the threads popup. Never two selected rows in the sidebar. *A Bot row's heavy fill and
   the thread row's fill competed, and the heavier one sat on the less specific item.*
 - Bot list poll (`GET /api/bots`, every 2 s): the Bots with their summary, each with every open
-  thread as `{id, title, state, pinned, helper?}`, newest activity first; `state` is `needs_you`,
+  thread as `{id, title, state, pinned, helper?, hidden?}` (`hidden`: a merged thread the tree leaves
+  out, see the watcher; the client counts it in `N more`), newest activity first; `state` is `needs_you`,
   `waiting`, `running`, `new` or empty. Two queries, a Bots query and a threads query; `new` reads
   the column `threads.last_heard` (migration 029). The threads query reads each
   thread row once and never joins every thread to its newest run. It reads a run only for the
   threads with a live run (database status `running` or `waiting`, a closed thread included, which
   feeds the Bot's state and its boss's marker) and for each Bot's newest thread with a run (its
   activity line and time), both found once per poll in a materialised set; one scan of `runs`
-  finds the live ones. `new` comes from the thread row: it was last heard from after the user last
+  finds the live ones. `hidden` comes from the thread row too: the state and `mr_changed_at` of its PR and a
+  `max(created)` over the person's messages, read only for a merged thread. `new` comes from the thread row: it was last heard from after the user last
   opened it (`last_heard`, after `created` too) and no run is live. A run that ends with a reply, a
   failure or a stop sets `last_heard` in the transaction that ends it, a run failed at start-up
   included; one that ends `done` with no reply sets only `last_activity`, which still orders the

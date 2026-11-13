@@ -25,6 +25,7 @@ type sidebarThread struct {
 	Helper         bool      `json:"helper,omitempty"`
 	ParentThreadID string    `json:"parent_thread_id"`
 	Step           string    `json:"step,omitempty"`
+	Hidden         bool      `json:"hidden,omitempty"` // PR merged: open and in the popup, not in the tree
 	Branch         string    `json:"branch"`
 	MRURL          string    `json:"mr_url"`
 	LastActivity   time.Time `json:"last_activity"`
@@ -64,6 +65,7 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 			ID: t.ThreadID, ParentThreadID: t.ParentThreadID, Step: step, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
 			Branch: t.Branch, MRURL: t.MRURL, LastActivity: t.LastActivity,
 			Waiting: t.Waiting,
+			Hidden:  t.Merged && !t.Pinned && (state == "" || state == "new"),
 		})
 	}
 	return out

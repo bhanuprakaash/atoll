@@ -29,8 +29,8 @@ export const isLiveHelper = (t: SidebarThread) =>
   t.parent_thread_id !== '' && (t.state === 'running' || t.state === 'needs_you');
 
 // Needs-you, waiting, pinned and the open thread always show, even past maxRows. A helper thread
-// is a row only while it is open: while it runs it is the line under its boss thread, after that it is counted in
-// the "more" line.
+// is a row only while it is open: while it runs it is the line under its boss thread. A finished
+// helper thread and a merged thread nothing needs are not rows; both count toward `N more`.
 export function threadTree(
   all: SidebarThread[],
   openId: string | undefined,
@@ -43,7 +43,10 @@ export function threadTree(
     .sort((a, b) => rank(a) - rank(b));
   const kept = ranked.filter((t) => rank(t) <= 2 || t.id === openId);
   const room = Math.max(0, maxRows - kept.length);
-  const shown = new Set([...kept, ...ranked.filter((t) => !kept.includes(t)).slice(0, room)]);
+  const shown = new Set([
+    ...kept,
+    ...ranked.filter((t) => !t.hidden && !kept.includes(t)).slice(0, room),
+  ]);
   const hidden = ranked.filter((t) => !shown.has(t));
   const folded = [...hidden, ...finished];
   const running = hidden.filter((t) => t.state === 'running');
