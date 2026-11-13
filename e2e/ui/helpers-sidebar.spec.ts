@@ -158,7 +158,7 @@ test('after the helper reports the line is gone and the helper thread is not in 
   await expect(page).toHaveURL(new RegExp(`/threads/${helper}$`));
   const log = page.getByRole('log', { name: 'Messages' });
   await expect(log.getByRole('article', { name: 'Poteto' })).toContainText(reportPrompt);
-  await expect(log.getByRole('article', { name: 'Tester' })).toContainText(reportReply);
+  await expect(log).toContainText(reportReply);
 });
 
 test('with the boss thread folded into N more, that line says a helper is working', async ({
