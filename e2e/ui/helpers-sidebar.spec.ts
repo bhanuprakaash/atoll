@@ -126,30 +126,26 @@ test('the helper thread header is a breadcrumb: the boss thread title, then the 
   await expect(page).toHaveURL(`${m.url}/bots/${poteto.id}/threads/${boss}`);
 });
 
-test('after the helper reports the line is gone and the helper thread is not in the sidebar, also after a reload and a restart; it is in the helper Bot’s threads popup with its history', async ({
+test('after the helper reports the line is gone and the helper thread is not in the sidebar but its Bot shows 1 more, also after a reload and a restart; it is in the helper Bot’s threads popup with its history', async ({
   page,
 }) => {
-  const { bots, thread } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
+  const { thread } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
   const helper = thread('Tester');
-  for (let i = 0; i < 4; i++) {
-    const t = await openThreadAPI(m, bots.Tester.id, prompts.pong);
-    await expect.poll(() => runStatus(m, t.id), { timeout: 15_000 }).toBe('done');
-  }
   await tray(page).getByRole('button', { name: 'Allow', exact: true }).click();
   await expect.poll(() => runStatus(m, helper), { timeout: 30_000 }).toBe('done');
   await away(page);
 
   await expect(line(page)).toHaveCount(0);
   await expect(helperRows(page, helper)).toHaveCount(0);
-  await expect(threadTree(page, 'Tester').getByRole('link').first()).toBeVisible();
+  await expect(threadTree(page, 'Tester').getByRole('button', { name: /^1 more$/ })).toBeVisible();
 
   await page.reload();
-  await expect(threadTree(page, 'Tester').getByRole('link').first()).toBeVisible();
+  await expect(threadTree(page, 'Tester').getByRole('button', { name: /^1 more$/ })).toBeVisible();
   await expect(helperRows(page, helper)).toHaveCount(0);
   m.kill();
   await m.restart();
   await page.goto(m.url);
-  await expect(threadTree(page, 'Tester').getByRole('link').first()).toBeVisible();
+  await expect(threadTree(page, 'Tester').getByRole('button', { name: /^1 more$/ })).toBeVisible();
   await expect(helperRows(page, helper)).toHaveCount(0);
   await expect(line(page)).toHaveCount(0);
 

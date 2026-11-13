@@ -6,15 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
-import {
-  api,
-  type Machine,
-  newBotAPI,
-  openThreadAPI,
-  prompts,
-  startAtoll,
-  threadTree,
-} from './atoll';
+import { api, type Machine, newBotAPI, prompts, startAtoll, threadTree } from './atoll';
 import { githubEnv, type GitHubFake, seedRepo, startGitHub } from './github-fixture';
 import { send } from './helpers-fixture';
 
@@ -51,7 +43,9 @@ test.beforeEach(async () => {
     // tests that need one to stay hold the wake back for longer than they run.
     env: {
       ...githubEnv(github),
-      ...(test.info().title.includes(' waiting ') && { ATOLL_WAKE_WINDOW: '300s' }),
+      ...(test.info().title.includes(' waiting ') && {
+        ATOLL_WAKE_WINDOW: '300s',
+      }),
     },
   });
   const seeded = await seedRepo(m, github, root);
@@ -75,14 +69,8 @@ async function waitStatus(threadID: string, status: string) {
     .toBe(status);
 }
 
-// prThread is the newest thread of Coder, after four idle ones that make the tree fold into
-// "N more", the one from which the threads popup opens. Its Bot opened pull request n.
+// prThread is a thread of Coder whose Bot opened pull request n.
 async function prThread(n: number, text = fix) {
-  for (let i = 0; i < 4; i++) {
-    const idle = await openThreadAPI(m, coder.id, prompts.pong);
-    await waitStatus(idle.id, 'done');
-    await api(m, 'POST', `/api/threads/${idle.id}/opened`);
-  }
   const t = await api(m, 'POST', `/api/bots/${coder.id}/threads`, {
     text,
     repo_id: repo.id,
@@ -183,7 +171,9 @@ for (const [what, first] of [
   }) => {
     const id = await prThread(1, first);
     if (what === 'an approval') {
-      await api(m, 'POST', `/api/threads/${id}/messages`, { text: prompts.write });
+      await api(m, 'POST', `/api/threads/${id}/messages`, {
+        text: prompts.write,
+      });
       await waitStatus(id, 'waiting');
     }
     await away(page);
@@ -256,4 +246,42 @@ test('a message sent to a merged thread from the popup brings it back to the tre
   await away(page);
   await expect(inTree(page, id)).toHaveCount(1);
   await expect(rowOf(page, id)).toHaveAttribute('data-marker', 'running');
+});
+
+test('a message sent to a merged thread brings it back for good: it is still in the tree after that run ends', async ({
+  page,
+}) => {
+  const id = await prThread(1);
+  await away(page);
+  await merged(id, 1);
+  await woken(id);
+  await expect(inTree(page, id)).toHaveCount(0, { timeout: 10_000 });
+
+  await page.goto(`${m.url}/bots/${coder.id}/threads/${id}`);
+  await send(page, finish);
+  await expect(page.getByRole('log', { name: 'Messages' })).toContainText('Done.', {
+    timeout: 30_000,
+  });
+  await waitStatus(id, 'done');
+  await away(page);
+  await expect(inTree(page, id)).toHaveCount(1);
+  await page.reload();
+  await expect(inTree(page, id)).toHaveCount(1);
+  await expect(rowOf(page, id)).not.toHaveAttribute('data-marker', 'running');
+});
+
+test('a Bot whose only open thread merged shows 1 more, which opens the popup with that thread', async ({
+  page,
+}) => {
+  const id = await prThread(1);
+  await away(page);
+  await merged(id, 1);
+  await woken(id);
+  await expect(inTree(page, id)).toHaveCount(0, { timeout: 10_000 });
+
+  await expect(threadTree(page, 'Coder').getByRole('button', { name: /^1 more$/ })).toBeVisible();
+  const popup = await openPopup(page);
+  await expect(
+    popup.getByRole('list', { name: 'Other open threads' }).locator(`a[href$="/threads/${id}"]`),
+  ).toHaveCount(1);
 });
