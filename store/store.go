@@ -131,8 +131,7 @@ type (
 	}
 
 	// Bot is a configured agent. Provider is "claude" or "codex". Connections are the ids of the
-	// connections it may use. Cost24hUSD is what its runs that ended in the last 24 hours cost; only
-	// Bots fills it.
+	// connections it may use.
 	Bot struct {
 		ID                string     `json:"id"`
 		Name              string     `json:"name"`
@@ -145,7 +144,6 @@ type (
 		State             string     `json:"state,omitempty"`
 		Activity          string     `json:"activity,omitempty"`
 		LastActivity      *time.Time `json:"last_activity,omitempty"`
-		Cost24hUSD        *float64   `json:"cost_24h_usd,omitempty"`
 		RepoAccess        RepoAccess `json:"repo_access"`
 		Connections       []string   `json:"connections"`
 		Skills            []string   `json:"skills"`
@@ -482,21 +480,35 @@ func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
 // first.
 func (s *Store) Bots(ctx context.Context) ([]Bot, error) {
 	return query(ctx, s.db,
-		"SELECT "+_botColumns+", pinned_at IS NOT NULL, coalesce(group_id, ''), c.cost FROM bots "+
-			`LEFT JOIN (SELECT t.bot_id, sum(r.cost_usd) AS cost FROM runs r
-			            JOIN threads t ON t.id = r.thread_id
-			            WHERE r.cost_usd IS NOT NULL AND r.finished_at >= ? GROUP BY t.bot_id) c
-			 ON c.bot_id = bots.id `+
+		"SELECT "+_botColumns+", pinned_at IS NOT NULL, coalesce(group_id, '') FROM bots "+
 			"WHERE removed = 0 "+
 			"ORDER BY id = 'chief' DESC, pinned_at IS NULL, pinned_at, rowid",
-		func(r *sql.Rows) (Bot, error) {
-			var cost sql.NullFloat64
-			b, err := scanBotWith(r, &cost)
-			if cost.Valid {
-				b.Cost24hUSD = &cost.Float64
-			}
-			return b, err
+		scanBot)
+}
+
+// BotCosts24h is what each Bot's runs that ended in the last 24 hours cost, by Bot id; a Bot with
+// no priced run is absent.
+func (s *Store) BotCosts24h(ctx context.Context) (map[string]float64, error) {
+	rows, err := query(ctx, s.db,
+		`SELECT t.bot_id, sum(r.cost_usd) FROM runs r JOIN threads t ON t.id = r.thread_id
+		 WHERE r.cost_usd IS NOT NULL AND r.finished_at >= ? GROUP BY t.bot_id`,
+		func(r *sql.Rows) (botCost, error) {
+			var c botCost
+			return c, r.Scan(&c.id, &c.usd)
 		}, time.Now().Add(-24*time.Hour).UnixMicro())
+	if err != nil {
+		return nil, fmt.Errorf("read bot costs: %w", err)
+	}
+	costs := make(map[string]float64, len(rows))
+	for _, c := range rows {
+		costs[c.id] = c.usd
+	}
+	return costs, nil
+}
+
+type botCost struct {
+	id  string
+	usd float64
 }
 
 // SetPinned pins the Bot with id, or unpins it. Pinning a pinned Bot keeps its place.
