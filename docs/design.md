@@ -139,10 +139,9 @@ repos, MCP servers and signed-in models and record no change.
   reading them, and a Read allow-rule scoped to `~/.claude` does not hold under Auto or Full access
   (Claude Code 2.1.319, real runs).* Whether a skill attached to Chief loads under `--tools ""` is
   unverified. No other Bot gets `--tools ""`.
-- Local files: Chief reads an agent file with `import_agent(path)` and a skill folder with
-  `import_skill(path)`, both in the server and limited to the folders in Prompt, so neither reaches
-  a repo. `import_agent` is a read tool. It adds no reach for other platform Bots: a Bot with a
-  shell can already read `~/.claude/agents`.
+- Local files: only through the server tools `import_agent` and `import_skill` (Prompt), limited
+  to their folders, so neither reaches a repo. They add no reach for other platform Bots: a Bot
+  with a shell can already read `~/.claude/agents`.
 - Provider: Chief prefers Claude and must run for a user who has only Codex, since onboarding runs
   through Chief. A Codex model stays allowed for it in `PUT`, `edit_bot` and the picker, and Chief
   is never refused a run for lack of Claude. A first launch creates Chief on Claude's default model
@@ -187,10 +186,9 @@ after a failed undo counts a Bot that is already gone as removed.
   exits after replying. No agent process lives between messages.
 - A thread records when the user last opened it (`POST /api/threads/{id}/opened`, sent by the
   thread view when it opens and when a run ends while it is on screen; never by a read, which the
-  UI polls). A thread whose newest run ended after that with a reply (or a `tell_user` message, Delegation) is
-  Replied until the user opens it, and one whose newest run failed is Failed until then (App and UI,
-  thread labels); this survives a restart. Threads that were already there when this shipped start
-  as read. A run that ended `done` with no reply, and a background run that called no `tell_user`,
+  UI polls). The Replied and Failed labels (App and UI, Thread labels) compare the newest run's
+  end with it and survive a restart. Threads that were already there when this shipped start as
+  read. A run that ended `done` with no reply, and a background run that called no `tell_user`,
   do not count.
 - A thread can be pinned to the sidebar (`POST`/`DELETE /api/threads/{id}/pin`), at most 3 open
   threads per Bot. A 4th pin answers `409` unless it names a pin to replace (`{replace}`), done in
@@ -239,9 +237,9 @@ after a failed undo counts a Bot that is already gone as removed.
   - Delivery: when the going run ends other than stopped by the user, the thread's queued messages
     start one run together: oldest first, texts joined by a blank line in the prompt, images in
     order. Each keeps its `id` and becomes a normal message of that run, so the bubble stays in
-    place. A held message from a Bot (Delegation) joins the same run: every message held for the
-    thread is delivered as one run (Delegation, Waking the boss). Queued messages survive a restart
-    and are dropped with a closed thread, as every held message.
+    place. Messages held from Bots and Reef join the same run (Delegation, One run for what is
+    held). Queued messages survive a restart and are dropped with a closed thread, as every held
+    message.
   - Edit and remove: `PATCH /api/threads/{id}/messages/{mid}` with `{text}` answers `200` with the
     message; `DELETE` answers `204`. Both work only while it is queued: after delivery `409`
     `already sent`, an unknown id `404`, an empty text with no image `400`.
@@ -425,19 +423,12 @@ Decision (proposed):
 Not measured: whether a boss with the hand-off decides as well as with the full history (the first
 follow-up runs that trial), warm-cache compaction cost, Codex on resume.
 
-Follow-ups, not filed:
+Follow-ups:
 
-1. `feat: start a fresh session with a hand-off when a thread's context passes 100k`
-   - A thread whose last run's context (from the stored usage) is 100k or more starts its next run
-     on a fresh session, with the notice `Context was long; starting a fresh session.`; the
-     thread's messages and the pending wake are unchanged. Proved with scripted providers for
-     Claude and Codex.
-   - The first message holds `Hand-off:` with the owner's messages, the boss's last reply and
-     the helper lines, within 30 KB; a helper over the cap drops its reply line before its id.
-   - Real `claude`, a recorded boss thread of 60 wakes: after a reset the boss `continue`s an
-     older helper by an id from the hand-off, and the context of the next run is under 60k.
-   - Depends on #193's stored usage.
-2. `chore: let Claude compact a long thread that is not a boss thread`
+1. #352, the rotation: the thread says `Context was long; starting a fresh session.` and the first
+   message holds `Hand-off:`; a helper over the cap drops its reply line before its id. The
+   acceptance lines are in the issue.
+2. Not filed: `chore: let Claude compact a long thread that is not a boss thread`
    - A Claude run sets `autoCompactWindow` in `--settings` (value from the trial); a resumed run
      over it shows `compact_boundary` with `trigger: auto` and still ends with its reply.
    - The run's cost counts the compaction (`total_cost_usd` difference), and its zero `usage` is
@@ -470,9 +461,8 @@ Follow-ups, not filed:
 
 ## Delegation
 
-- A Bot may delegate only to Bots on its delegate list: empty by default, set in Bot settings or by
-  Chief; deleting a Bot removes it from every list. Depth 1: a delegated run cannot delegate.
-  *Cycles become impossible.*
+- A Bot may delegate only to Bots on its delegate list (Bots). Depth 1: a delegated run cannot
+  delegate. *Cycles become impossible.*
 - A delegation is a thread where the parent Bot is the asker. Reef's MCP server lists
   `delegate(bot, brief, repo?, read_only?)` and `continue(thread, message)` only in runs of a Bot with a
   non-empty delegate list, in a thread that is not a helper thread (depth 1). Continue for the same
@@ -513,7 +503,9 @@ Follow-ups, not filed:
     reason and wakes its boss on start, one message for all the boss thread's interrupted helper
     runs (below);
   - stopped by a provider usage limit (`rate_limited`, see App and UI): `{Helper} is out until
-    {time}.` and `Do not send it work until then.`, never the provider's text;
+    {time}.` and `Do not send it work until then.`, never the provider's text; `{time}` is
+    `resets_at` in UTC, `2026-11-11T15:42:00Z`, or `its {provider} limit resets` with no
+    `resets_at`. A `continue` to that helper is not refused;
   - stopped by the user: `The user stopped {Helper}`;
   - Bot deleted mid-run: `{Helper} was deleted`.
   A helper's question is its reply; the boss answers with `continue`.
@@ -540,8 +532,7 @@ Follow-ups, not filed:
 - Background runs. A run that starts only with Reef notices (a helper finished, a PR merged, CI
   finished, a ticket closed) is a background run, for every Bot that is not in a helper thread.
   Its final message is never a chat message and does not make the thread Replied: it becomes the
-  Bot's status line, shown above the composer in the region where the helpers show (the newest
-  line only). The run lists `tell_user(text)`; each call adds one message from the Bot to the chat
+  Bot's status line (App and UI). The run lists `tell_user(text)`; each call adds one message from the Bot to the chat
   and makes the thread Replied. Reef starts the prompt with one line: `Reef: background run. {user}
   does not see your final message, so end with one line of status. If {user} must act (a PR to
   merge, a decision, a failure you cannot fix), tell them with tell_user.` A run with any message
@@ -609,8 +600,10 @@ Follow-ups, not filed:
   longer has access. Existing worktrees stay where they are.
 - A thread gets a worktree on its first edit, at `~/Reef/worktrees/<repo>/<branch-folder>` (root is
   a setting). Read-only threads use a clean checkout.
-- The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs, test) at first edit; the app
-  makes it lowercase, short and unique (`-2`). Fixed once created.
+- The Bot names the branch `<type>/<slug>` (feat, fix, chore, docs, test) at first edit, fixed
+  once created. The slug is lowercased, every run of characters outside `[a-z0-9]` becomes `-`,
+  it is cut to 40 characters and made unique (`-2`). The worktree folder is the branch with `/`
+  replaced by `-`.
 - The worktree is removed when the GitLab MR merges or the thread closes; uncommitted work is
   saved first.
   A helper's worktree goes with its boss's (see Delegation).
@@ -625,21 +618,16 @@ Follow-ups, not filed:
   `Note: local main is 2 commits behind origin/HEAD (c3b1f0e); the checkout is at origin/HEAD`
   (`1 commit` for one; the commit is origin/HEAD's). It is said once, in the first message, not at
   later runs.
-- Reef's git disables hooks and fsmonitor, and uses `GIT_DIR` and `GIT_COMMON_DIR` from stored
-  worktree IDs. It pins repo-local filter keys to the user's global value. Reef checks for
-  symlinks before snapshot and removal, and cleans up a failed worktree setup. See Bots above for
-  the access and remaining risks.
-- `start_work` accepts types `feat`, `fix`, `chore`, `docs` and `test`. An optional `base` names
-  a plain branch on origin, such as `test/x`. It refuses an invalid or missing remote branch,
-  a ref or SHA, or the new branch name, before creating anything. Without a base, a new branch
-  starts at `origin/HEAD` when it resolves, else HEAD. The server never fetches.
+- How Reef's own git stays safe (hooks, fsmonitor, filters, symlink checks) and what a Bot can
+  still reach: Bots, Mode.
+- `start_work` takes an optional `base`, a plain branch on origin such as `test/x`. It refuses an
+  invalid or missing remote branch, a ref or SHA, or the new branch name, before creating
+  anything. Without a base, a new branch starts at `origin/HEAD` when it resolves, else HEAD.
 - start_work's reply names the base, as the ref and its short commit (`origin/HEAD ee6ad1b`, or
   `HEAD ee6ad1b` without an origin, or `origin/test/x ee6ad1b` for a requested base). When the local
   default branch (the one origin/HEAD points at) is ahead of origin/HEAD, the reply adds a `note`:
   `local main is 1 commit ahead (b11bedc); not included`. A thread that already has a worktree
   gets its path and branch back, with no base.
-- The slug is lowercased, every run of characters outside `[a-z0-9]` becomes `-`, and it is cut to
-  40 characters. The worktree folder is the branch with `/` replaced by `-`.
 - Repo names are unique, because the worktree folder uses them. A name is one folder name: letters,
   digits, `.`, `-` and `_`, never `.` or `..`.
 - Unfinished work is saved as a commit at `refs/atoll/unfinished/<thread id>` before removal. A
@@ -671,9 +659,8 @@ Follow-ups, not filed:
   thread uses its own Bot's connection only.
 - A merged GitLab MR with a worktree is cleaned up like a closed thread, only while no run is going
   in the thread; a woken run counts, so the release comes after the wake run ends. A closed MR
-  keeps its worktree. A merged GitHub PR keeps its worktree until the thread closes; the poll
-  updates its state and chip only and, below, the thread leaves the
-  sidebar tree.
+  keeps its worktree. A merged GitHub PR keeps its worktree until the thread closes (Known gap);
+  the poll updates its state and chip only and, below, the thread leaves the sidebar tree.
 - A thread the person started whose PR merged leaves the sidebar tree but stays open (not closed:
   a closed thread refuses messages, which would block "the merge broke X, fix it"). It is hidden
   while its PR's merge (`mr_changed_at`) is later than the person's last message in it (a message
@@ -719,15 +706,13 @@ Follow-ups, not filed:
 - A wake is stored in the same transaction as the state it reports, so a restart cannot repeat it
   or lose it: the thread's `mr_state` changes and the inbox row is added together (one store
   call); for CI the thread's `mr_woke` (the head commit whose CI was reported) changes with it.
-  The row then goes the way every held message goes (Delegation): it starts a run at once when
-  none is going, waits while one is, survives a restart (delivered on start) and is dropped for a
-  closed thread. A run the user stopped starts none: a wake held then is delivered when the
-  thread's next run ends. A helper thread with its own MR is woken the same way, held while its
-  boss has 3 helper runs going. The wake works with one run per held row; when held messages
-  arrive as one run, a wake joins it like any other row.
+  The row then goes the way every held message goes (Delegation): held while a run is going or
+  after a Stop, kept across a restart, dropped with a closed thread; outside a helper thread it
+  joins the one run of what is held. A helper thread with its own MR is woken the same way, held
+  while its boss has 3 helper runs going.
 - Inbox rows and messages have a `kind`: empty for the user's and a helper's, `merged`, `closed`,
-  `ci` or `base` for a Reef wake; a message with a `kind` is from Reef (`from_bot_id` stays empty). The
-  migration adds `kind TEXT NOT NULL DEFAULT ''` to both, forward-only. Storing merged or closed
+  `ci` or `base` for a Reef wake; a message with a `kind` is from Reef (`from_bot_id` stays
+  empty). Storing merged or closed
   deletes the thread's held `ci` row in the same transaction, so does a new head commit or a newer
   `ci` wake, so a lead is never woken for CI of a commit that is no longer the head or after the
   PR is done. A held row of another kind is never dropped.
@@ -779,7 +764,6 @@ Follow-ups, not filed:
   failures. Review comments and reopening wake nothing.
 - Known gap: CI re-run on the same commit (a failed check re-run passes) is not seen: reads stop
   once the commit is reported, and the chip keeps the first result.
-- Known gap: a merged GitHub PR keeps its worktree until the thread closes.
 - Known gap: a stopped thread hears a wake only when its next run ends, and a merged GitLab MR's
   worktree can be released before that wake is delivered.
 - Fixtures (what the poll reads; GitHub base is the API base `CheckGitHubToken` uses, so
@@ -808,7 +792,10 @@ Follow-ups, not filed:
 - Claude Code and Codex. A Providers page shows, per provider: found or not (login-shell PATH plus
   common install folders), version, signed in, enable switch, path override, and a read-only list of
   the provider's own MCP servers and skills marked "not used by Bots". Checked on start, before each
-  run and on Refresh. *A Finder-launched app lacks the shell PATH.*
+  run, on Refresh and when a sign-in finishes, and cached between: never on the sidebar's poll.
+  Chief's `list_models` and the model check of `create_bot` and `edit_bot` read the same cached
+  state as `GET /api/providers` and start no provider process. *A Finder-launched app lacks the
+  shell PATH.*
 - The enable switch and the path override are stored per provider in the settings table, kept in
   memory from start-up (so a Bot list poll reads no setting), and set with
   `PUT /api/providers/{name}` (`enabled`, `path_override`; an empty path clears it, a relative one is
@@ -1064,8 +1051,7 @@ Follow-ups, not filed:
     The strip hides the address; it is not a boundary. A same-user process can also kill the host
     keyring daemon by signal, and a run failed with "failed to unlock collection" when one did.
 - Transport: Codex through `codex app-server` (JSON-RPC over stdio). Claude Code as
-  `claude -p --input-format stream-json --output-format stream-json`, driven from Go. Copy both
-  adapters from old Reef (`agent/codex`, `agent/claude`). *The Claude Agent SDK runs the same CLI
+  `claude -p --input-format stream-json --output-format stream-json`, driven from Go. *The Claude Agent SDK runs the same CLI
   but needs a Node helper; revisit if stream-json gets hard to follow.*
 - Verified on codex-cli 0.165 and Claude Code 2.1.317: copying Codex's `auth.json` breaks logins
   (single-use refresh tokens); a fresh `CLAUDE_CONFIG_DIR` is signed out until logged in there; with
@@ -1130,8 +1116,7 @@ Follow-ups, not filed:
   `pending` without asking GitHub or GitLab, and a `slow_down` adds 5s to it (RFC 8628). *GitHub
   answers every poll at the old pace `slow_down` again, so a UI that kept its pace never connected.*
 - A Bot reaches GitLab and GitHub only through a connection Reef gave it, never through the user's
-  own logins. Every run gets empty CLI configs and cleared credential helpers; only a connection
-  fills them. Concretely, every run gets `GLAB_CONFIG_DIR` and `GH_CONFIG_DIR` set to empty folders
+  own logins. Every run gets `GLAB_CONFIG_DIR` and `GH_CONFIG_DIR` set to empty folders
   Reef owns (`<data dir>/empty/glab`, `<data dir>/empty/gh`) and a git credential helper list cleared
   through env (`GIT_CONFIG_*`), and loses the token variables above. `HOME` stays the user's. A run
   has no SSH identity: `GIT_SSH_COMMAND` is `ssh -F /dev/null` with no key, agent or user config, so a
@@ -1149,10 +1134,9 @@ Follow-ups, not filed:
   `ssh://git@<host>/`) to HTTPS as GitLab's, and a `github` entry in its MCP config next to Reef's own: the
   hosted server's URL with `Authorization: Bearer <token>` (Claude `--mcp-config` headers, Codex
   `mcp_servers.github.http_headers`). A GitHub tool call goes to the user as an approval named
-  `mcp__github__<tool>`, like every tool that is not Reef's own: the tools can push, merge and close
-  issues. Codex gets `default_tools_approval_mode = "prompt"` on it, since its default skips tools
-  that declare themselves read-only. Only Reef's own tools need none. A Bot with GitLab and GitHub gets both helpers, in one `GIT_CONFIG_*` list after
-  the clearing entry. The token is never written to a file or log. `ATOLL_GITHUB_URL` and
+  `mcp__github__<tool>`, as for every server that is not Reef's own (MCP servers): the tools can
+  push, merge and close issues. A Bot with GitLab and GitHub gets both helpers, in one
+  `GIT_CONFIG_*` list after the clearing entry. The token is never written to a file or log. `ATOLL_GITHUB_URL` and
   `ATOLL_GITHUB_MCP_URL` replace the real URLs for tests.
 - Settings > Connections has a GitHub card ("Bots get gh, git and GitHub tools."). Connect GitHub
   starts the device flow, opens `github.com/login/device` and shows the code; a connection that
@@ -1162,8 +1146,8 @@ Follow-ups, not filed:
 - A GitHub token has no refresh and no expiry. Before a run uses one, `GET /user` must accept it;
   a 401 marks that connection `needs_sign_in`, the run stops before the provider starts with
   "GitHub needs sign-in", and signing in again keeps the connection and its Bots. The OS secret
-  store holds the bare token under `github:<connection id>`. A run checks it with `GET /user`; the
-  MR watcher does not, it uses the token on its own reads and treats a `401` the same way. A
+  store holds the bare token under `github:<connection id>`. The MR watcher does not check first:
+  it uses the token on its own reads and treats a `401` the same way. A
   thread's reads use the host's connection only, so a GitHub failure never stops GitLab polling.
 - GitLab OAuth records include the refresh token and expiry in the secret store. Before a run uses
   one, it refreshes a token that expires within ten minutes. Reads, refreshes and sign-in writes for
@@ -1277,8 +1261,7 @@ Follow-ups, not filed:
       rewritten.
   - Chief's reply on `refused` names the skill and each file, line and path, and says how to fix
     it: edit the skill so it stops using that path, or copy the file into the skill folder and
-    point at it as `~/.claude/skills/<folder>/<file>` (which then rewrites). Its prompt's import
-    line says "refused" in place of "flagged"; the platform block stays within 2000 bytes.
+    point at it as `~/.claude/skills/<folder>/<file>` (which then rewrites).
   - Settings > Skills shows the same reason and list inline on Re-import. A skill row carries no
     warning.
   - A skill imported before this stays as stored until Re-import.
@@ -1357,8 +1340,7 @@ Follow-ups, not filed:
   `mcp:<id>:oauth`: never the database, a file, a log or an API reply (the authorize URL names the
   client and is the one exception). Remove deletes the entry. *Reef owns the tokens; providers never
   run their own MCP OAuth.* A run gets the server as a remote entry with
-  `Authorization: Bearer <access token>` (Claude `headers`, Codex `http_headers`), and Claude stays
-  `--strict-mcp-config`.
+  `Authorization: Bearer <access token>` (Claude `headers`, Codex `http_headers`).
 - `DELETE /api/mcp-servers/{id}` on a catalog server with a sign-in (Notion, Figma, Cloudflare,
   Slack) is Sign out: it deletes the `mcp:<id>:oauth` entry and sets `not_connected`; on Context7 it
   is `404`. Slack keeps its saved Client ID: the app still exists, and Set up again replaces it.
@@ -1658,11 +1640,10 @@ Voice
 - Thread tree: under each Bot, at most 3 thread rows (32 px, no gap) hang from one thin rail under
   the creature's centre (28 px from the row's left edge; rows start 14 px right of it, at 42 px).
   The rail starts at the bottom of the Bot row and ends in a rounded hook at the middle of the last row, the overflow line included; it never touches a row. A Bot with
-  nothing to show is its plain row. A row is the title and one marker at its right end: "Needs
-  you" and a light dot; three wave dots while running; "Failed" with the red dot; `Out until 3 PM`,
-  muted, while the provider's usage limit holds; a blue dot and a bold title for Replied; a pin
-  when pinned and nothing else applies (a pinned thread that needs you, has a label or runs shows
-  that instead). One marker per row, in that order (thread labels, below). Only the open thread and the hovered row have a box. *The tick tree started inside the
+  nothing to show is its plain row. A row is the title and one marker at its right end, the
+  thread's label (Thread labels, below): "Needs you" and a light dot; three wave dots for Working;
+  "Failed" with the red dot; `Out until 3 PM`, muted; a blue dot and a bold title for Replied; a
+  pin when pinned and no label applies. Only the open thread and the hovered row have a box. *The tick tree started inside the
   Bot row and collided with the row boxes; the user picked one rail with a hook.* Slots go to needs
   you (never hidden, so there may be more than 3), then pinned, replied and running; the
   thread on screen always shows and is never Replied. When those already fill 3 or more, nothing else is added. One last line
@@ -1689,8 +1670,8 @@ Voice
 - Bot list poll (`GET /api/bots`, every 2 s): the Bots with their summary, each with every open
   thread as `{id, title, state, pinned, helper?, hidden?}` (`hidden`: a merged thread the tree leaves
   out, see the watcher; the client counts it in `N more`), newest activity first; `state` is `needs_you`,
-  `running`, `failed`, `limited`, `new` (shown as Replied) or empty. Two queries, a Bots query and a threads query; `new` reads
-  the column `threads.last_heard` (migration 029). The threads query reads each
+  `running`, `failed`, `limited`, `new` (shown as Replied) or empty. Two queries, a Bots query and
+  a threads query. The threads query reads each
   thread row once and never joins every thread to its newest run. It reads a run only for the
   threads with a live run (database status `running` or `waiting`, a closed thread included, which
   feeds the Bot's state and its boss's marker) and for each Bot's newest thread with a run (its
@@ -1700,13 +1681,12 @@ Voice
   opened it (`last_heard`, after `created` too) and no run is live. A run that ends with a reply, a
   failure or a stop sets `last_heard` in the transaction that ends it, a run failed at start-up
   included; one that ends `done` with no reply sets only `last_activity`, which still orders the
-  rows. *A column, not a scan of the runs since the last open, so the poll stays one row read.* A test on an all-open seed and on a seed with
-  nine in ten closed fails when the plan reads `runs` inside the loop over the threads, or when a poll takes
-  other than two queries (neither reads a clock, which varies with the machine); a second test pins `new` for a thread with no run, a message after the thread was
-  opened, a run failed at restart, a helper thread and a closed thread. *Joining every thread to
+  rows. *A column, not a scan of the runs since the last open, so the poll stays one row read.*
+  Tests pin the plan (no read of `runs` inside the loop over the threads, two queries per poll)
+  and the `new` cases. *Joining every thread to
   its newest run cost 36 ms a poll with every thread open; the thread rows are most of the rest.*
   - Known gap: the live scan reads the whole `runs` table each poll, so it grows with run history;
-    an index on `runs.status` would fix it and needs a migration, which this change does not add.
+    an index on `runs.status` would fix it.
 - New thread: `+` on Bot row hover, the Bot's right-click menu (New thread, Pin to sidebar, Move
   to group, Bot settings), or `⌘N` for the open Bot. A thread row shows `×` on hover (Close thread,
   saving unfinished work as before); right-click has Rename and Close.
@@ -1845,10 +1825,10 @@ Voice
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `·
   Stopped by you after 4s`). Inside the run, above the footer: Chief's changes, then saved memory.
   Spacing: 18 px between messages, 24 px between the blocks of one reply
-  (prose, changes, memories, footer), 14 px between paragraphs and list items.
-- The run footer ends with a usage segment in the same muted line: `Sonnet 5.5, 7 calls` (`1 call`).
-  No cost shows until the usage and analytics page. A Claude model id shows as its name and version
-  (`claude-sonnet-5-5` is `Sonnet 5.5`); any other id as it is. A run without `usage` has no segment.
+  (prose, changes, memories, footer), 14 px between paragraphs and list items. The footer ends
+  with a usage segment in the same muted line: `Sonnet 5.5, 7 calls` (`1 call`), no cost (Threads
+  and runs). A Claude model id shows as its name and version (`claude-sonnet-5-5` is
+  `Sonnet 5.5`); any other id as it is. A run without `usage` has no segment.
 - Errors are designed, never raw. One component, `ErrorNotice` (`web/src/components/error-notice.tsx`),
   shows every failure a person can cause: a `role="alert"` block with a title in plain words, one
   line of what to do next, an action button when there is one, and a collapsed `Details` button
@@ -1960,9 +1940,8 @@ Voice
   state, title, the CI summary and `change` (`tracked` from `track_mr`; `state`, `title` or `ci`
   from the watcher), sent when any of them changes, and `GET /api/threads/{id}` gives `mr_ci`, so
   the chip changes without a reload and survives one. Only `tracked` with state `opened` toasts.
-  The MR is not repeated in the log. A Reef wake shows in the thread as one muted line with
-  Reef's mark and the sentence (`PR #7 merged`), not as a bubble of the user's or a Bot's. A new
-  thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
+  The MR is not repeated in the log. A Reef wake shows as one quiet line (Repos and worktrees).
+  A new thread with no messages shows the creature, "What should <Bot> work on?", its setup as chips, the
   composer in the middle and starters; a starter sends its text as the first message. A send that
   fails, the first message of a thread included, puts its text and images back in the box and
   shows the error under it; text typed meanwhile stays, on a new line after the restored text.
@@ -2019,8 +1998,8 @@ Voice
   helper thread. The island shows one small creature per such helper
   after the boss's name (`Tester: working`, `needs you` with a light dot),
   the count includes helper approvals, and the boss's sidebar row does not say "Needs you" for a
-  helper; the line under it does. A helper thread is not in the sidebar tree (see Threads and
-  runs); its header is a breadcrumb (the boss thread's title with the boss creature, `›`, the
+  helper; the line under it does. A helper thread is not in the sidebar tree (Thread tree); its
+  header is a breadcrumb (the boss thread's title with the boss creature, `›`, the
   helper Bot) and the
   composer is replaced by "{Boss} is handling this thread. Talk to {Boss} to change it.", `Open
   {Boss}'s thread` and, while its run goes, `Stop`. *The boss thread's stream carries only the
@@ -2111,8 +2090,6 @@ Voice
   `releases/latest/download/latest.json`. The tag is the version; the committed one is not bumped.
   *Only the shell can replace the running app, so the web calls it for these two commands and
   nothing else; a progress bar can come later.*
-- Provider sign-in state is cached: checked on start, before each run, on Refresh and when a
-  sign-in finishes, never on the sidebar's poll.
 - A run that fails because its provider refused the sign-in (Claude `authentication_failed`, Codex
   `unauthorized`) is stored with `error_kind: "signed_out"` and the run's `provider`, and marks that
   provider signed out. The mark stays, whatever the CLI's status check says (a revoked token may
@@ -2138,11 +2115,7 @@ Voice
     again later`. The line comes from the run, so it is there again when the thread is reopened.
   - Reef does not block the Bot: a message at any time starts a run. Before `resets_at` the
     provider refuses it and it ends `rate_limited` again; after it the run goes as any other.
-  - The helper's wake (Delegation) says `{Helper} is out until {time}.`, then `Do not send it
-    work until then.`; `{time}` is `resets_at` in UTC, `2026-11-11T15:42:00Z`, or `its {provider}
-    limit resets` with no `resets_at`. A `continue` to that helper is not refused.
-- Chief's `list_models` and the model check of `create_bot` and `edit_bot` read the same cached
-  provider state as `GET /api/providers`; they start no provider process.
+  - A helper's limit reaches its boss as a wake (Delegation, Waking the boss).
 - Names: the UI says Reef. Repo, Go module, binary and bundle ID (`dev.atoll.desktop`) say
   `atoll`; app data lives in `~/Library/Application Support/Atoll`. *Runs beside the old Reef;
   rename when it retires.*
@@ -2184,8 +2157,7 @@ message and the boss's brief all render alike.
   `diff` and code render in Reef and on GitHub; `reef-metrics` and `reef-kv` render only in Reef
   chat. A Bot writing a PR, issue or comment with `gh` or `glab` therefore uses Markdown tables
   and code only.
-- Components read the theme tokens, never a literal colour; colour carries meaning (red only for
-  danger or failure).
+- Components read the theme tokens, never a literal colour (App and UI, Colour).
 
 ## Testing
 
