@@ -48,3 +48,8 @@ func (m *Manager) Changed(token string, c store.Change) {
 	}
 	m.publish(a, EventPlatformChanged, PlatformChanged{SourceBotID: c.SourceBotID, ThreadID: c.SourceThreadID, RunID: c.SourceRunID, Change: c})
 }
+
+// ThreadRead tells every notice stream that the user opened the thread.
+func (m *Manager) ThreadRead(threadID string) {
+	m.announce(threadID, "", EventThreadRead, struct{}{})
+}

@@ -104,7 +104,7 @@ export function FinishedNotice({ notice, look }: { notice: EarlierNotice; look?:
 }
 
 export function NotificationList({
-  notifications: { needs, earlier, markAllRead, markAllReadError },
+  notifications: { needs, earlier, dismissEarlier, markAllRead, markAllReadError },
   waiting,
   looks,
   onClose,
@@ -184,7 +184,7 @@ export function NotificationList({
           </div>
           <ul aria-label="Earlier" className="flex flex-col gap-0.5">
             {earlier.map((n) => (
-              <li key={n.id}>
+              <li key={n.id} className="group relative">
                 <Link
                   to={threadPath(n)}
                   onClick={onClose}
@@ -197,10 +197,19 @@ export function NotificationList({
                       <span className="block truncate text-xs text-muted">{n.detail}</span>
                     )}
                   </span>
-                  <span className="text-xs text-muted">
+                  <span className="text-xs text-muted group-focus-within:hidden group-hover:hidden">
                     {relativeTime(new Date(n.at).toISOString())}
                   </span>
+                  <span className="w-4" />
                 </Link>
+                <button
+                  type="button"
+                  aria-label={`Dismiss ${n.text}`}
+                  onClick={() => dismissEarlier(n)}
+                  className="absolute top-1/2 right-3 -translate-y-1/2 text-base leading-none text-muted opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:text-ink focus:opacity-100"
+                >
+                  ×
+                </button>
               </li>
             ))}
           </ul>

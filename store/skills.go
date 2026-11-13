@@ -328,11 +328,22 @@ func (s *Store) Changes(ctx context.Context, threadID string) ([]Change, error) 
 		scanChange, threadID)
 }
 
-// ChangesSince lists the platform changes made after since, oldest first.
+// ChangesSince lists the platform changes made after since and not dismissed from the island,
+// oldest first.
 func (s *Store) ChangesSince(ctx context.Context, since time.Time) ([]Change, error) {
 	return query(ctx, s.db,
-		"SELECT "+_changeColumns+" FROM changes WHERE created > ? ORDER BY rowid",
+		"SELECT "+_changeColumns+" FROM changes WHERE created > ? AND dismissed_at = 0 ORDER BY rowid",
 		scanChange, since.UnixMicro())
+}
+
+// DismissChange hides a platform change from the island.
+func (s *Store) DismissChange(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE changes SET dismissed_at = ? WHERE id = ?",
+		time.Now().UTC().UnixMicro(), id)
+	if err != nil {
+		return fmt.Errorf("dismiss change: %w", err)
+	}
+	return found(res, "change", id)
 }
 
 // Change returns one recorded platform change.

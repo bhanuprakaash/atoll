@@ -102,6 +102,7 @@ func (a *api) markOpened(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	a.runs.ThreadRead(r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -321,6 +322,38 @@ func (a *api) earlier(ctx context.Context) ([]earlierNotice, error) {
 
 func (a *api) markIslandSeen(w http.ResponseWriter, r *http.Request) {
 	if err := a.st.MarkIslandSeen(context.WithoutCancel(r.Context())); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// dismissIsland clears one Earlier row: a run row marks its thread read, an MR row and a platform
+// change row are hidden.
+func (a *api) dismissIsland(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Type string `json:"type"`
+		ID   string `json:"id"`
+	}
+	if json.NewDecoder(r.Body).Decode(&body) != nil || body.ID == "" {
+		fail(w, http.StatusBadRequest, "type and id are required")
+		return
+	}
+	var err error
+	switch body.Type {
+	case run.EventRunFinished:
+		if err = a.st.MarkOpened(r.Context(), body.ID); err == nil {
+			a.runs.ThreadRead(body.ID)
+		}
+	case run.EventMRUpdated:
+		err = a.st.DismissMR(r.Context(), body.ID)
+	case run.EventPlatformChanged:
+		err = a.st.DismissChange(r.Context(), body.ID)
+	default:
+		fail(w, http.StatusBadRequest, "unknown type")
+		return
+	}
+	if err != nil {
 		a.fail(w, r, err)
 		return
 	}

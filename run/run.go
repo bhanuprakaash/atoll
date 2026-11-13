@@ -54,6 +54,7 @@ const (
 	EventApproval    = "approval"        // Approval
 	EventApprovalEnd = "approval_closed" // ApprovalClosed
 	EventRunFinished = "run_finished"    // Finished
+	EventThreadRead  = "thread_read"     // nothing: the user opened the thread
 
 	EventWorktreeCreated = "worktree_created" // WorktreeCreated
 	EventMRUpdated       = "mr_updated"       // MRUpdated
@@ -1335,7 +1336,7 @@ func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data
 		}
 	}
 	switch typ {
-	case EventApproval, EventApprovalEnd, EventRunFinished, EventMRUpdated, EventPlatformChanged:
+	case EventApproval, EventApprovalEnd, EventRunFinished, EventMRUpdated, EventPlatformChanged, EventThreadRead:
 	default:
 		return
 	}

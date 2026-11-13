@@ -6,3 +6,11 @@ export function useMarkIslandSeen() {
     mutationFn: () => api<void>('/island/seen', { method: 'POST', keepalive: true }),
   });
 }
+
+export type Dismissal = { type: string; id: string };
+
+export function useDismissEarlier() {
+  return useMutation({
+    mutationFn: (body: Dismissal) => api<void>('/island/dismiss', { method: 'POST', body }),
+  });
+}

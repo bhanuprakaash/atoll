@@ -140,6 +140,7 @@ func New(
 	mux.HandleFunc("GET /api/threads/{id}/events", a.events)
 	mux.HandleFunc("GET /api/events", a.notices)
 	mux.HandleFunc("POST /api/island/seen", a.markIslandSeen)
+	mux.HandleFunc("POST /api/island/dismiss", a.dismissIsland)
 	mux.HandleFunc("GET /api/threads/{id}/file", a.threadFile)
 	mux.HandleFunc("GET /api/attachments/{id}", a.getAttachment)
 	mux.HandleFunc("GET /api/runs/{id}", a.getRun)
