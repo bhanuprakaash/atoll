@@ -112,7 +112,10 @@ test("an approval in another Bot's thread drops the island open; Esc leaves a re
 
   await page.keyboard.press('Escape');
   await expect(header.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
-  const island = header.getByRole('button', { name: 'Notifications, 1 waiting', exact: true });
+  const island = header.getByRole('button', {
+    name: 'Notifications, 1 waiting',
+    exact: true,
+  });
   await expect(island).toBeVisible();
   await expect(header).toContainText('1');
   expect(page.url()).toBe(url);
@@ -139,4 +142,67 @@ test('a run ending in another thread widens the island for about 4 s, then it re
   await expect(finished).toHaveCount(0, { timeout: 6_000 });
   await expect(header.getByRole('heading', { level: 1, name: 'Pilot' })).toBeVisible();
   await expect(header.getByRole('heading', { name: threadTitle(prompts.keep) })).toBeVisible();
+});
+
+// islandWidth is the width of the open island once its opening motion has settled.
+async function islandWidth(page: Page) {
+  const island = page.locator('header [data-island]');
+  await page.waitForTimeout(900);
+  return (await island.boundingBox())!.width;
+}
+
+// approvalFrom gives a Bot with this name a thread that waits on an approval.
+async function approvalFrom(name: string) {
+  const bot = await newBotAPI(m, name);
+  const t = await openThreadAPI(m, bot.id, prompts.write);
+  await waitStatus(t.id, 'waiting');
+  return t;
+}
+
+test('the open island keeps one width whatever its rows say, and long lines end truncated', async ({
+  page,
+}) => {
+  const { header } = await viewA(page);
+  const short = await approvalFrom('Scout');
+  await expect(header.getByRole('button', { name: 'Allow', exact: true })).toBeVisible();
+  const narrow = await islandWidth(page);
+  await header.getByRole('button', { name: 'Allow', exact: true }).click();
+  await waitStatus(short.id, 'done');
+  await expect(header.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
+
+  const longName = Array.from({ length: 60 }, () => 'wordy')
+    .join(' ')
+    .slice(0, 300);
+  expect(longName).toHaveLength(300);
+  await approvalFrom(longName);
+  await expect(header.getByRole('button', { name: 'Allow', exact: true })).toBeVisible();
+  const wide = await islandWidth(page);
+  expect(wide).toBe(narrow);
+
+  const line = header.getByText(longName.slice(0, 40)).first();
+  const cut = await line.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      overflow: s.textOverflow,
+      clipped: el.scrollWidth > el.clientWidth,
+    };
+  });
+  expect(cut).toEqual({ overflow: 'ellipsis', clipped: true });
+});
+
+test('at 420 px wide the page does not scroll sideways with the island open', async ({ page }) => {
+  await page.setViewportSize({ width: 420, height: 800 });
+  const pilot = await newBotAPI(m, 'Pilot');
+  await page.goto(`${m.url}/bots/${pilot.id}`);
+  const longName = Array.from({ length: 60 }, () => 'wordy')
+    .join(' ')
+    .slice(0, 300);
+  await approvalFrom(longName);
+  const header = page.locator('header');
+  await expect(header.getByRole('button', { name: 'Allow', exact: true })).toBeVisible();
+  await page.waitForTimeout(900);
+  const sideways = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(sideways).toBeLessThanOrEqual(0);
 });

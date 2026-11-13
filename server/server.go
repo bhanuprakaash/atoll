@@ -365,6 +365,7 @@ type threadSummary struct {
 	ParentBotID string          `json:"parent_bot_id"`
 	Helpers     []threadSummary `json:"helpers"`
 	MRCI        json.RawMessage `json:"mr_ci"`
+	Ready       bool            `json:"ready,omitempty"`
 }
 
 func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, error) {
@@ -407,6 +408,7 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 			return out, err
 		}
 		out.RunStatus, out.RunErrorKind = ru.Status, ru.ErrorKind
+		out.Ready = ru.Report != nil && len(ru.Report.Ready) > 0
 	}
 	_, approvals, _ := a.runs.Active(t.ID)
 	if len(approvals) > 0 {

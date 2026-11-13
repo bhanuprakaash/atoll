@@ -10,7 +10,6 @@ import { ThreadTree, Wave } from '@/modules/bots/components/thread-tree';
 import { sidebarOrder } from '@/modules/bots/utils/sidebar-order';
 import { threadTree } from '@/modules/bots/utils/thread-tree';
 import { relativeTime } from '@/utils/time';
-import { cost } from '@/utils/usage';
 
 function PinButton({ bot }: { bot: Bot }) {
   const pin = usePinBot(bot.id);
@@ -95,14 +94,7 @@ function BotRow({
             <span className="flex justify-between gap-2 text-[15px]">
               <span className="truncate">{bot.name}</span>
               <span className="flex flex-none items-center gap-1.5">
-                <span className="text-xs text-muted">
-                  {[
-                    bot.cost_24h_usd === undefined ? '' : cost(bot.cost_24h_usd),
-                    relativeTime(bot.last_activity),
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </span>
+                <span className="text-xs text-muted">{relativeTime(bot.last_activity)}</span>
                 {bot.id !== 'chief' && <PinButton bot={bot} />}
               </span>
             </span>

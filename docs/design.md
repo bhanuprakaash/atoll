@@ -346,8 +346,9 @@ after a failed undo counts a Bot that is already gone as removed.
     earlier turn: ignored, and `total` is thread-wide): `input_tokens` is `inputTokens` minus
     `cachedInputTokens`, `cache_read_tokens` is `cachedInputTokens`, `cache_write_tokens` is
     `cacheWriteInputTokens`. No `cost_usd` (no Codex prices).
-  - Each Bot on `GET /api/bots` has `cost_24h_usd`: the sum of `cost_usd` of its runs that ended in
-    the last 24 hours; absent when there is none.
+  - Cost is recorded but not shown: the run footer reads "Opus 5.5, 19 calls" and `GET /api/bots`
+    has no cost, until the usage and analytics page. `cost_usd` per run and
+    `threads.session_cost_usd` are still kept for it.
 - Claude cancels an MCP tool call after 60 s unless `MCP_TOOL_TIMEOUT` says otherwise, and the
   permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes). *The
   variable covers every MCP server of the run, not only Reef's: Claude Code has no per-server
@@ -501,7 +502,7 @@ Follow-ups, not filed:
   Chief; deleting a Bot removes it from every list. Depth 1: a delegated run cannot delegate.
   *Cycles become impossible.*
 - A delegation is a thread where the parent Bot is the asker. Reef's MCP server lists
-  `delegate(bot, brief, repo?)` and `continue(thread, message)` only in runs of a Bot with a
+  `delegate(bot, brief, repo?, read_only?)` and `continue(thread, message)` only in runs of a Bot with a
   non-empty delegate list, in a thread that is not a helper thread (depth 1). Continue for the same
   work; start a new one for different work.
 - `delegate` returns `{"thread_id"}` at once (plus `branch` and `note` when the helper gets a
@@ -510,10 +511,11 @@ Follow-ups, not filed:
   with no repo (Chief) may pass a registered repo's name, else the helper has none. The helper
   starts a fresh provider session. The tool's description tells the boss to end every brief with
   `Once a PR is called ready it is frozen: new work goes in a follow-up PR.`
-- When the boss thread has no worktree, the repo is on GitHub and the helper has no connected
-  GitHub connection, `delegate` still starts the helper and adds a `note`: `{Helper} can read
-  {repo} but cannot edit it until it has the GitHub connection.` Its `start_work` would fail, so
-  the boss learns it now instead of from a wake.
+- `delegate` takes an optional `read_only` boolean. When the boss thread has no worktree, the repo
+  is on GitHub and the helper has no connected GitHub connection, `delegate` refuses and starts no
+  thread: `{Helper} has no GitHub connection, so it cannot edit {repo}. Add it in {Helper}'s
+  settings, or pass read_only for a read-only task.` Its `start_work` would fail, so the boss learns
+  it now instead of from a wake. With `read_only` the helper starts as usual.
 - Refusals are tool results with `isError`, so the run goes on: a Bot not on the list (the text
   names the Bots on it); a helper whose repo access does not allow the repo (`Tester has no access
   to atoll`); a repo with no commit; a fourth helper while 3 helper runs of the boss thread are
@@ -1584,9 +1586,8 @@ Voice
   line shows only while a run works (the live verb, "Running make build", with three wave dots) or
   while an approval waits ("Needs you: ..." in the same colour as a thread's "Needs you") or, with
   no approval, while one of its open threads has a waiting item ("Waiting on you", same colour); an
-  idle, asleep or failed Bot is one line. The row's first line shows the Bot's
-  `cost_24h_usd` as muted text before the time (`$0.19 · 2m`; `<$0.01` under a cent; nothing when
-  absent). *Two lines for every Bot made the list twice as tall as
+  idle, asleep or failed Bot is one line. The row's first line shows the time, no cost (cost
+  waits for the analytics page). *Two lines for every Bot made the list twice as tall as
   Claude's; the user wanted a calm list.* `+` at the top opens New Bot and New
   group; the bottom user row opens Settings. No group chats. A thread's activity time moves when a run
   starts, an approval opens or closes, and a run ends (also one failed at start-up), not on every
@@ -1716,7 +1717,8 @@ Voice
   screen, the same Bot's other threads included (`GET /api/events`). An approval drops the island
   open: the Bot, the thread, the exact command or path, Open thread, Deny and Allow; Allow lets
   that run go on without leaving the thread on screen. It stays until answered; Esc or a click
-  away shrinks it to a count on the pill. A finished run widens the island for about 4 s
+  away shrinks it to a count on the pill. Open, it is one fixed width, 25rem or the page minus
+  7rem if narrower, whatever its rows say; long lines end in `…`. A finished run widens the island for about 4 s
   ("reviewer finished Review !42", View), with no buttons, then it returns to rest. Clicking the
   island opens the notification list: Needs you (Allow and Deny inline), then Waiting on you (an
   item of another thread: its question with Open thread, a blocker's text, a ready PR's row), then
@@ -1798,11 +1800,9 @@ Voice
   then a Blocked line (from `finish_run`'s `blocked`) whose dot hangs in the margin so its text
   starts at the reply's edge. Spacing: 18 px between messages, 24 px between the blocks of one reply
   (prose, changes, memories, Blocked line, footer), 14 px between paragraphs and list items.
-- The run footer ends with a usage segment in the same muted line: `Sonnet 5.5, 7 calls, $0.19`
-  (`1 call`; `<$0.01` under a cent). A Claude model id shows as its name and version
-  (`claude-sonnet-5-5` is `Sonnet 5.5`); any other id as it is. A run without `cost_usd` (Codex)
-  has no dollars: `gpt-5.6-sol, 3 calls`. A run without `usage` has no segment. *Evidence over claims: what
-  a run cost shows where the run ends, with no page of its own.*
+- The run footer ends with a usage segment in the same muted line: `Sonnet 5.5, 7 calls` (`1 call`).
+  No cost shows until the usage and analytics page. A Claude model id shows as its name and version
+  (`claude-sonnet-5-5` is `Sonnet 5.5`); any other id as it is. A run without `usage` has no segment.
 - Errors are designed, never raw. One component, `ErrorNotice` (`web/src/components/error-notice.tsx`),
   shows every failure a person can cause: a `role="alert"` block with a title in plain words, one
   line of what to do next, an action button when there is one, and a collapsed `Details` button
@@ -1999,12 +1999,14 @@ Voice
     messages, not the person's) with no real `blocked` and no question, a question being a reply
     whose last line ends with `?`. *Reef does not guess intent: a status reply that ends in `?`
     stays visible, the safe error.* The run's `status`, `done` and `blocked` come with each
-    message in `GET /api/threads/{id}/messages` (`run_status`, `done`, `blocked`), so the chat
+    message in `GET /api/threads/{id}/messages` (`run_status`, `done`, `blocked`, and `ready` and `ask` on a bot message; a helper thread's
+    summary carries `ready`), so the chat
     makes no request per reply. A handoff line and a Reef wake line between folded events
     join the block as lines.
   - Not folded: the person's messages; a boss reply to a message of the person's (they asked); a
-    boss reply with a real `blocked` or a question; a helper's report with a real `blocked` (that
-    is for the person to fix); approvals; a failed run of the boss itself. Each ends the block, and
+    boss reply with a real `blocked`, a question, a `ready` PR or an `ask`; a helper's report with
+    a real `blocked` (that is for the person to fix) or a `ready` PR (it waits on the person);
+    approvals; a failed run of the boss itself. Each ends the block, and
     the next folded event starts a new one below it, so the thread keeps its order and a decision
     stands right after what led to it. A decision also shows as the "Waiting on you" card (#147,
     which lands with that ticket); this rule only keeps it a message.

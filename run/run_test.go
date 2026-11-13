@@ -707,7 +707,7 @@ func TestRun_DelegateHelpersLineFails(t *testing.T) {
 	e.m.mu.Unlock()
 
 	ctx := canceledOnceHelperRuns{Context: t.Context(), m: e.m, seen: &atomic.Bool{}}
-	h, err := e.m.Delegate(ctx, token, "Tester", "do it", "")
+	h, err := e.m.Delegate(ctx, token, "Tester", "do it", "", false)
 	if err != nil || h.ThreadID == "" || h.Helpers != "" {
 		t.Fatalf("Delegate = %+v, %v; want the started helper without a helpers line", h, err)
 	}

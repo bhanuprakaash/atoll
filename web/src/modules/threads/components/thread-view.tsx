@@ -549,6 +549,8 @@ export function ThreadView({
     !fromUser.has(m.run_id) &&
     m.run_status === 'done' &&
     !realBlocked(m.blocked) &&
+    !m.ready &&
+    !m.ask &&
     !isQuestion(m.text);
   const unanswered = (m: Message) => m.role === 'user' && !answered.has(m.run_id);
   const asked = new Set(messages.filter(unanswered).map((m) => m.run_id));
@@ -680,6 +682,7 @@ export function ThreadView({
       const report = helperReport(m.text);
       if (!report.state || report.blocked) return null;
       const helper = helpers.find((h) => h.id === report.threadId);
+      if (helper?.ready) return null;
       const bot = bots[m.from_bot_id ?? ''];
       return {
         id: m.id,

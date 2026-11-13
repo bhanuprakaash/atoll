@@ -20,7 +20,14 @@ const looks = {
   Coder: 'crab',
 };
 type Name = keyof typeof looks;
-type Report = { done: string; tried?: string; blocked?: string; next?: string };
+type Report = {
+  done: string;
+  tried?: string;
+  blocked?: string;
+  next?: string;
+  ready?: { url: string; sha: string }[];
+  ask?: { question: string; options: string[] };
+};
 
 const today = new Date();
 const at = (minute: number, second = 0) =>
@@ -539,6 +546,105 @@ test('a Reef wake line joins the ledger, and the lead reply to the run that took
     await expect(messages(page).getByText(ack(1))).toHaveCount(0);
   } finally {
     c.m.stop();
+  }
+});
+
+test('a lead reply with ready or ask and a helper report with ready stay messages that end a ledger', async ({
+  page,
+}) => {
+  const review = 'Reviewed the change and proved it. Squash-merge it when you are happy.';
+  const choice = 'Both ways work and I need your pick. The card below has the options.';
+  const pr = { url: 'https://github.com/acme/app/pull/12', sha: 'a'.repeat(40) };
+  const d = await startLead((s) => {
+    s.person(19, 'Review the change.', 'On it.');
+    s.wake(
+      21,
+      'Tester',
+      { reply: prose(1), report: { done: done(1) } },
+      { reply: ack(1), report: { done: 'Noted item-01' } },
+    );
+    s.wake(
+      23,
+      'Reviewer',
+      { reply: prose(2), report: { done: done(2) } },
+      { reply: review, report: { done: 'Reviewed the change.', ready: [pr] } },
+    );
+    s.wake(
+      25,
+      'Tester',
+      { reply: prose(3), report: { done: done(3) } },
+      {
+        reply: choice,
+        report: { done: 'Asked for a pick.', ask: { question: 'Which way?', options: ['A', 'B'] } },
+      },
+    );
+    s.wake(27, 'Coder', {
+      reply: prose(4),
+      report: { done: done(4), ready: [pr] },
+      mr: [pr.url, 'opened'],
+    });
+    s.wake(
+      29,
+      'Tester',
+      { reply: prose(5), report: { done: done(5) } },
+      { reply: ack(5), report: { done: 'Noted item-05' } },
+    );
+  });
+  try {
+    await open(page, d);
+    const log = messages(page);
+    const lists = ledgers(page);
+    await expect(lists).toHaveCount(3);
+
+    await expect(lists.nth(0).getByRole('listitem')).toHaveCount(3);
+    await expect(lists.nth(0)).toContainText(done(1));
+    await expect(lists.nth(0)).toContainText('Noted item-01');
+    await expect(lists.nth(0)).toContainText(done(2));
+    await expect(lists.nth(1).getByRole('listitem')).toHaveCount(1);
+    await expect(lists.nth(1)).toContainText(done(3));
+    await expect(lists.nth(2).getByRole('listitem')).toHaveCount(2);
+    await expect(lists.nth(2)).toContainText(done(5));
+    await expect(lists.nth(2)).toContainText('Noted item-05');
+
+    for (const text of [review, choice]) {
+      await expect(log.getByText(text)).toBeVisible();
+      await expect(lists.getByText(text)).toHaveCount(0);
+    }
+    const helper = log.getByRole('article', { name: 'Coder' });
+    await expect(helper).toContainText(prose(4));
+    await expect(lists.getByText(prose(4))).toHaveCount(0);
+    await expect(lists.getByText(done(4))).toHaveCount(0);
+
+    const first = await box(lists.nth(0));
+    const second = await box(lists.nth(1));
+    const third = await box(lists.nth(2));
+    const reviewed = await box(log.getByText(review));
+    const asked = await box(log.getByText(choice));
+    const reported = await box(helper);
+    expect(reviewed.y).toBeGreaterThanOrEqual(first.y + first.height);
+    expect(reviewed.y + reviewed.height).toBeLessThanOrEqual(second.y);
+    expect(asked.y).toBeGreaterThanOrEqual(second.y + second.height);
+    expect(asked.y + asked.height).toBeLessThanOrEqual(reported.y);
+    expect(reported.y + reported.height).toBeLessThanOrEqual(third.y);
+    await expect(log.getByText(ack(1))).toHaveCount(0);
+    await expect(log.getByText(ack(5))).toHaveCount(0);
+
+    const msgs: { role: string; text: string; ready?: boolean; ask?: boolean }[] = await api(
+      d.m,
+      'GET',
+      `/api/threads/${d.thread}/messages`,
+    );
+    const bot = (text: string) => msgs.find((m) => m.role === 'bot' && m.text === text)!;
+    expect(bot(review).ready).toBe(true);
+    expect(bot(review).ask).toBeFalsy();
+    expect(bot(choice).ask).toBe(true);
+    expect(bot(choice).ready).toBeFalsy();
+    for (const text of ['On it.', ack(1), ack(5)]) {
+      expect(bot(text).ready).toBeFalsy();
+      expect(bot(text).ask).toBeFalsy();
+    }
+  } finally {
+    d.m.stop();
   }
 });
 

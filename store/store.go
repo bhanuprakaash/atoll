@@ -131,8 +131,7 @@ type (
 	}
 
 	// Bot is a configured agent. Provider is "claude" or "codex". Connections are the ids of the
-	// connections it may use. Cost24hUSD is what its runs that ended in the last 24 hours cost; only
-	// Bots fills it.
+	// connections it may use.
 	Bot struct {
 		ID                string     `json:"id"`
 		Name              string     `json:"name"`
@@ -145,7 +144,6 @@ type (
 		State             string     `json:"state,omitempty"`
 		Activity          string     `json:"activity,omitempty"`
 		LastActivity      *time.Time `json:"last_activity,omitempty"`
-		Cost24hUSD        *float64   `json:"cost_24h_usd,omitempty"`
 		RepoAccess        RepoAccess `json:"repo_access"`
 		Connections       []string   `json:"connections"`
 		Skills            []string   `json:"skills"`
@@ -233,10 +231,13 @@ type (
 		// NotRead is set on a user message whose run failed because a secret could not be read.
 		NotRead bool `json:"not_read"`
 		// RunStatus is the status of the message's run; Done and Blocked are the run's finish_run
-		// report, so a chat that folds status replies needs no request per run.
+		// report, so a chat that folds status replies needs no request per run. On a bot message,
+		// Ready and Ask say that report lists a ready PR or asks a decision.
 		RunStatus string `json:"run_status"`
 		Done      string `json:"done"`
 		Blocked   string `json:"blocked"`
+		Ready     bool   `json:"ready,omitempty"`
+		Ask       bool   `json:"ask,omitempty"`
 		// Answered are the approvals this message denied by replying.
 		Answered []AnsweredApproval `json:"answered_approvals,omitempty"`
 	}
@@ -479,21 +480,35 @@ func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
 // first.
 func (s *Store) Bots(ctx context.Context) ([]Bot, error) {
 	return query(ctx, s.db,
-		"SELECT "+_botColumns+", pinned_at IS NOT NULL, coalesce(group_id, ''), c.cost FROM bots "+
-			`LEFT JOIN (SELECT t.bot_id, sum(r.cost_usd) AS cost FROM runs r
-			            JOIN threads t ON t.id = r.thread_id
-			            WHERE r.cost_usd IS NOT NULL AND r.finished_at >= ? GROUP BY t.bot_id) c
-			 ON c.bot_id = bots.id `+
+		"SELECT "+_botColumns+", pinned_at IS NOT NULL, coalesce(group_id, '') FROM bots "+
 			"WHERE removed = 0 "+
 			"ORDER BY id = 'chief' DESC, pinned_at IS NULL, pinned_at, rowid",
-		func(r *sql.Rows) (Bot, error) {
-			var cost sql.NullFloat64
-			b, err := scanBotWith(r, &cost)
-			if cost.Valid {
-				b.Cost24hUSD = &cost.Float64
-			}
-			return b, err
+		scanBot)
+}
+
+// BotCosts24h is what each Bot's runs that ended in the last 24 hours cost, by Bot id; a Bot with
+// no priced run is absent.
+func (s *Store) BotCosts24h(ctx context.Context) (map[string]float64, error) {
+	rows, err := query(ctx, s.db,
+		`SELECT t.bot_id, sum(r.cost_usd) FROM runs r JOIN threads t ON t.id = r.thread_id
+		 WHERE r.cost_usd IS NOT NULL AND r.finished_at >= ? GROUP BY t.bot_id`,
+		func(r *sql.Rows) (botCost, error) {
+			var c botCost
+			return c, r.Scan(&c.id, &c.usd)
 		}, time.Now().Add(-24*time.Hour).UnixMicro())
+	if err != nil {
+		return nil, fmt.Errorf("read bot costs: %w", err)
+	}
+	costs := make(map[string]float64, len(rows))
+	for _, c := range rows {
+		costs[c.id] = c.usd
+	}
+	return costs, nil
+}
+
+type botCost struct {
+	id  string
+	usd float64
 }
 
 // SetPinned pins the Bot with id, or unpins it. Pinning a pinned Bot keeps its place.
@@ -1558,7 +1573,9 @@ func (s *Store) Messages(ctx context.Context, threadID string) ([]Message, error
 		`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
             CASE WHEN m.kind != '' AND m.created != 0 THEN m.created WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
             m.role = 'user' AND m.kind = '' AND r.error_kind = 'secret_store',
-            r.status, coalesce(json_extract(r.report, '$.done'), ''), coalesce(json_extract(r.report, '$.blocked'), '')
+            r.status, coalesce(json_extract(r.report, '$.done'), ''), coalesce(json_extract(r.report, '$.blocked'), ''),
+            m.role = 'bot' AND coalesce(json_array_length(json_extract(r.report, '$.ready')), 0) > 0,
+            m.role = 'bot' AND json_extract(r.report, '$.ask') IS NOT NULL
          FROM messages m JOIN runs r ON r.id = m.run_id WHERE m.thread_id = ? ORDER BY m.rowid`,
 		threadID)
 }
@@ -1570,7 +1587,9 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 			`SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
                 CASE WHEN m.kind != '' AND m.created != 0 THEN m.created WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END,
                 m.role = 'user' AND m.kind = '' AND r.error_kind = 'secret_store',
-                r.status, coalesce(json_extract(r.report, '$.done'), ''), coalesce(json_extract(r.report, '$.blocked'), '')
+                r.status, coalesce(json_extract(r.report, '$.done'), ''), coalesce(json_extract(r.report, '$.blocked'), ''),
+            m.role = 'bot' AND coalesce(json_array_length(json_extract(r.report, '$.ready')), 0) > 0,
+            m.role = 'bot' AND json_extract(r.report, '$.ask') IS NOT NULL
              FROM messages m JOIN runs r ON r.id = m.run_id
              WHERE m.thread_id = ? AND m.rowid > (
                  SELECT rowid FROM messages WHERE id = ? AND thread_id = ?
@@ -1578,12 +1597,14 @@ func (s *Store) MessagePage(ctx context.Context, threadID, before, after string)
 			threadID, after, threadID)
 	}
 	return s.messages(ctx,
-		`SELECT id, thread_id, role, text, run_id, from_bot_id, kind, at, not_read, status, done, blocked FROM (
+		`SELECT id, thread_id, role, text, run_id, from_bot_id, kind, at, not_read, status, done, blocked, ready, ask FROM (
             SELECT m.id, m.thread_id, m.role, m.text, m.run_id, m.from_bot_id, m.kind,
                 CASE WHEN m.kind != '' AND m.created != 0 THEN m.created WHEN m.role = 'bot' AND r.finished_at != 0 THEN r.finished_at ELSE r.started_at END AS at,
                 m.role = 'user' AND m.kind = '' AND r.error_kind = 'secret_store' AS not_read,
                 r.status AS status, coalesce(json_extract(r.report, '$.done'), '') AS done,
                 coalesce(json_extract(r.report, '$.blocked'), '') AS blocked,
+                m.role = 'bot' AND coalesce(json_array_length(json_extract(r.report, '$.ready')), 0) > 0 AS ready,
+                m.role = 'bot' AND json_extract(r.report, '$.ask') IS NOT NULL AS ask,
                 m.rowid
             FROM messages m JOIN runs r ON r.id = m.run_id
             WHERE m.thread_id = ?
@@ -1599,7 +1620,7 @@ func (s *Store) messages(ctx context.Context, querySQL string, args ...any) ([]M
 	msgs, err := query(ctx, s.db, querySQL,
 		func(r *sql.Rows) (m Message, err error) {
 			var at int64
-			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &m.Kind, &at, &m.NotRead, &m.RunStatus, &m.Done, &m.Blocked)
+			err = r.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Text, &m.RunID, &m.FromBotID, &m.Kind, &at, &m.NotRead, &m.RunStatus, &m.Done, &m.Blocked, &m.Ready, &m.Ask)
 			if at != 0 {
 				m.CreatedAt = time.UnixMicro(at).UTC()
 			}

@@ -65,9 +65,9 @@ export function ApprovalDrop({
       <div className="flex items-center gap-3">
         <Creature look={look} state="needs_you" size={32} />
         <div className="min-w-0 flex-1 text-sm">
-          <div className="truncate">
-            <span className="font-medium">{approval.bot_name}</span>
-            <span className="text-muted"> · {approval.title}</span>
+          <div className="flex gap-1">
+            <span className="truncate font-medium">{approval.bot_name}</span>
+            <span className="truncate text-muted">· {approval.title}</span>
           </div>
           <div className="text-[13px] text-muted">{approvalVerb(approval.tool)}</div>
         </div>
