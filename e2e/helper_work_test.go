@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -167,10 +168,24 @@ func TestHelperWork_BranchesOffTheBoss(t *testing.T) {
 	}
 }
 
+// delegateReadOnlyCall is delegateCall with read_only set.
+func delegateReadOnlyCall(bot, brief string) fake.MCPCall {
+	b, _ := json.Marshal(map[string]any{"bot": bot, "brief": escaped(brief), "read_only": true})
+	return fake.MCPCall{Server: "atoll", Tool: "delegate", Args: b}
+}
+
+// helperThreads is the Bot's threads.
+func helperThreads(t *testing.T, s *server, b bot) []thread {
+	t.Helper()
+	var threads []thread
+	s.do(t, "GET", "/api/bots/"+b.ID+"/threads", nil, &threads, http.StatusOK)
+	return threads
+}
+
 // TestHelperWork_GitHubConnectionOnlyOwnBranch: on a GitHub repo, a helper without the GitHub
-// connection gets its worktree off a boss branch, but its start_work for a branch of its own (boss
-// with no worktree) is refused as today, and delegate notes that up front. A helper with the
-// connection gets no such note.
+// connection gets its worktree off a boss branch, but a boss with no worktree is refused at
+// delegate, in words, with no helper thread, unless read_only is set. A helper with the
+// connection is handed off as before.
 func TestHelperWork_GitHubConnectionOnlyOwnBranch(t *testing.T) {
 	t.Parallel()
 	for _, p := range _providers {
@@ -200,15 +215,21 @@ func TestHelperWork_GitHubConnectionOnlyOwnBranch(t *testing.T) {
 			}
 
 			exploring := f.thread(t, poteto, repo)
-			h = handedOff(t, useAtoll(t, f.s, exploring, f.s.events(t, exploring), delegateCall("Tester", _githubFixPrompt, ""))[0])
-			const note = "Tester can read octo-hello but cannot edit it until it has the GitHub connection."
-			if h.ThreadID == "" || h.Branch != "" || h.Note != note {
-				t.Errorf("delegate from a boss with no worktree: %+v, want a thread, no branch and note %q", h, note)
+			const refused = "atoll/delegate: Tester has no GitHub connection, so it cannot edit octo-hello. Add it in Tester's settings, or pass read_only for a read-only task."
+			if got := useAtoll(t, f.s, exploring, f.s.events(t, exploring), delegateCall("Tester", _githubFixPrompt, "")); !slices.Equal(got, []string{refused}) {
+				t.Errorf("delegate to a helper without the GitHub connection, boss with no worktree: reply %q, want %q", got, refused)
+			}
+			if got := helperThreads(t, f.s, tester); len(got) != 1 {
+				t.Errorf("Tester's threads after the refusal: %+v, want only the one on the boss's branch", got)
+			}
+
+			h = handedOff(t, useAtoll(t, f.s, exploring, f.s.events(t, exploring), delegateReadOnlyCall("Tester", _githubFixPrompt))[0])
+			if h.Branch != "" || h.Note != "" {
+				t.Errorf("read_only delegate to a helper without the GitHub connection: %+v, want a thread, no branch and no note", h)
 			}
 			helper = settled(t, f.s, h.ThreadID)
-			if helper.Status != "done" || !strings.Contains(helper.Reply, "start_work failed: ") || !strings.Contains(helper.Reply, "give this Bot the GitHub connection") {
-				t.Errorf("helper without the GitHub connection, boss with no worktree: status %q, reply %q, error %q; want start_work refused with %q",
-					helper.Status, helper.Reply, helper.Error, "give this Bot the GitHub connection")
+			if helper.Status != "done" {
+				t.Errorf("read_only helper: status %q, error %q; want done", helper.Status, helper.Error)
 			}
 
 			withConn := f.thread(t, poteto, repo)
