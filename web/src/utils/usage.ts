@@ -14,13 +14,7 @@ function modelName(model: string) {
 
 export type RunUsage = { model: string; calls: number; cost_usd?: number };
 
-// usageLine is the end of a run's footer: "Sonnet 5.5, 7 calls, $0.19". No dollars without a price.
-export function usageLine({ model, calls, cost_usd }: RunUsage) {
-  return [
-    modelName(model),
-    `${calls} ${calls === 1 ? 'call' : 'calls'}`,
-    cost_usd === undefined ? '' : cost(cost_usd),
-  ]
-    .filter(Boolean)
-    .join(', ');
+// usageLine is the end of a run's footer: "Sonnet 5.5, 7 calls". Cost is not shown until the analytics page.
+export function usageLine({ model, calls }: RunUsage) {
+  return `${modelName(model)}, ${calls} ${calls === 1 ? 'call' : 'calls'}`;
 }

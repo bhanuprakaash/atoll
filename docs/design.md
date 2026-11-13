@@ -346,8 +346,9 @@ after a failed undo counts a Bot that is already gone as removed.
     earlier turn: ignored, and `total` is thread-wide): `input_tokens` is `inputTokens` minus
     `cachedInputTokens`, `cache_read_tokens` is `cachedInputTokens`, `cache_write_tokens` is
     `cacheWriteInputTokens`. No `cost_usd` (no Codex prices).
-  - Each Bot on `GET /api/bots` has `cost_24h_usd`: the sum of `cost_usd` of its runs that ended in
-    the last 24 hours; absent when there is none.
+  - Cost is recorded but not shown: the run footer reads "Opus 5.5, 19 calls" and `GET /api/bots`
+    has no cost, until the usage and analytics page. `cost_usd` per run and
+    `threads.session_cost_usd` are still kept for it.
 - Claude cancels an MCP tool call after 60 s unless `MCP_TOOL_TIMEOUT` says otherwise, and the
   permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes). *The
   variable covers every MCP server of the run, not only Reef's: Claude Code has no per-server
@@ -1584,9 +1585,8 @@ Voice
   line shows only while a run works (the live verb, "Running make build", with three wave dots) or
   while an approval waits ("Needs you: ..." in the same colour as a thread's "Needs you") or, with
   no approval, while one of its open threads has a waiting item ("Waiting on you", same colour); an
-  idle, asleep or failed Bot is one line. The row's first line shows the Bot's
-  `cost_24h_usd` as muted text before the time (`$0.19 · 2m`; `<$0.01` under a cent; nothing when
-  absent). *Two lines for every Bot made the list twice as tall as
+  idle, asleep or failed Bot is one line. The row's first line shows the time, no cost (cost
+  waits for the analytics page). *Two lines for every Bot made the list twice as tall as
   Claude's; the user wanted a calm list.* `+` at the top opens New Bot and New
   group; the bottom user row opens Settings. No group chats. A thread's activity time moves when a run
   starts, an approval opens or closes, and a run ends (also one failed at start-up), not on every
@@ -1798,11 +1798,9 @@ Voice
   then a Blocked line (from `finish_run`'s `blocked`) whose dot hangs in the margin so its text
   starts at the reply's edge. Spacing: 18 px between messages, 24 px between the blocks of one reply
   (prose, changes, memories, Blocked line, footer), 14 px between paragraphs and list items.
-- The run footer ends with a usage segment in the same muted line: `Sonnet 5.5, 7 calls, $0.19`
-  (`1 call`; `<$0.01` under a cent). A Claude model id shows as its name and version
-  (`claude-sonnet-5-5` is `Sonnet 5.5`); any other id as it is. A run without `cost_usd` (Codex)
-  has no dollars: `gpt-5.6-sol, 3 calls`. A run without `usage` has no segment. *Evidence over claims: what
-  a run cost shows where the run ends, with no page of its own.*
+- The run footer ends with a usage segment in the same muted line: `Sonnet 5.5, 7 calls` (`1 call`).
+  No cost shows until the usage and analytics page. A Claude model id shows as its name and version
+  (`claude-sonnet-5-5` is `Sonnet 5.5`); any other id as it is. A run without `usage` has no segment.
 - Errors are designed, never raw. One component, `ErrorNotice` (`web/src/components/error-notice.tsx`),
   shows every failure a person can cause: a `role="alert"` block with a title in plain words, one
   line of what to do next, an action button when there is one, and a collapsed `Details` button
