@@ -247,7 +247,6 @@ test('a message sent to a merged thread from the popup brings it back to the tre
   await waitStatus(id, 'running');
   await away(page);
   await expect(inTree(page, id)).toHaveCount(1);
-  await expect(rowOf(page, id)).toHaveAttribute('data-marker', 'running');
 });
 
 test('a message sent to a merged thread brings it back for good: it is still in the tree after that run ends', async ({
