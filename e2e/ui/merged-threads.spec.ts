@@ -165,7 +165,7 @@ for (const [what, first] of [
   ['an ask', askFix],
   ['a blocker', blockedFix],
 ] as const) {
-  test(`a merged thread with ${what} waiting stays in the tree until it is answered`, async ({
+  test(`a merged thread with ${what} waiting stays in the tree while it waits`, async ({
     page,
     context,
   }) => {
@@ -210,7 +210,9 @@ for (const [what, first] of [
         return bots.flatMap((b) => b.threads ?? []).find((t) => t.id === id)?.waiting ?? [];
       })
       .toEqual([]);
-    await expect(inTree(page, id)).toHaveCount(0, { timeout: 15_000 });
+    // Allow leaves the thread; an answer by message is the person's message after the merge, so
+    // the thread stays for good.
+    await expect(inTree(page, id)).toHaveCount(what === 'an approval' ? 0 : 1, { timeout: 15_000 });
     expect((await api(m, 'GET', `/api/threads/${id}`)).closed).toBe(false);
   });
 }
