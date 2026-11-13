@@ -8,7 +8,7 @@ import { BotGroup, botDragType } from '@/modules/bots/components/bot-group';
 import { GroupNameField } from '@/modules/bots/components/group-name-field';
 import { ThreadTree, Wave } from '@/modules/bots/components/thread-tree';
 import { sidebarOrder } from '@/modules/bots/utils/sidebar-order';
-import { threadTree } from '@/modules/bots/utils/thread-tree';
+import { threadTree, workersByBoss, type Worker } from '@/modules/bots/utils/thread-tree';
 import { relativeTime } from '@/utils/time';
 
 function PinButton({ bot }: { bot: Bot }) {
@@ -54,6 +54,7 @@ function BotRow({
   onCloseThread,
   onRenameThread,
   titled,
+  workers,
 }: {
   bot: Bot;
   open: { botId?: string; threadId?: string };
@@ -66,6 +67,7 @@ function BotRow({
   onCloseThread: (threadId: string) => void;
   onRenameThread: (threadId: string, title: string) => void;
   titled: SidebarThread[];
+  workers: Map<string, Worker[]>;
 }) {
   const navigate = useNavigate();
   const pin = usePinBot(bot.id);
@@ -143,6 +145,7 @@ function BotRow({
         onCloseThread={onCloseThread}
         onRenameThread={onRenameThread}
         only={titled.length > 0 ? titled : undefined}
+        workers={workers}
       />
       {menu && (
         <Menu
@@ -214,9 +217,14 @@ export function BotList({
     ).more?.kind !== 'running'
   )
     setUnfolded(null);
+  const workers = workersByBoss(bots);
   const query = search.toLowerCase();
   const titled = (bot: Bot) =>
-    query ? (bot.threads ?? []).filter((t) => t.title.toLowerCase().includes(query)) : [];
+    query
+      ? (bot.threads ?? []).filter(
+          (t) => !t.parent_thread_id && t.title.toLowerCase().includes(query),
+        )
+      : [];
   const matching = bots.filter(
     (bot) => bot.name.toLowerCase().includes(query) || titled(bot).length > 0,
   );
@@ -235,6 +243,7 @@ export function BotList({
       onCloseThread={onCloseThread}
       onRenameThread={onRenameThread}
       titled={titled(bot)}
+      workers={workers}
     />
   );
   const needsYou = (members: Bot[]) =>
