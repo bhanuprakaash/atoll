@@ -15,16 +15,19 @@ import (
 )
 
 // sidebarThread is an open thread of a Bot with the one marker the sidebar shows. Helper is set
-// for a thread another Bot handed to this one: the user cannot close it.
+// for a thread another Bot handed to this one: the user cannot close it. ParentThreadID is its
+// boss thread, and Step what its run does now.
 type sidebarThread struct {
-	ID           string    `json:"id"`
-	Title        string    `json:"title"`
-	State        string    `json:"state"` // "needs_you", "waiting", "running", "new" or ""
-	Pinned       bool      `json:"pinned"`
-	Helper       bool      `json:"helper,omitempty"`
-	Branch       string    `json:"branch"`
-	MRURL        string    `json:"mr_url"`
-	LastActivity time.Time `json:"last_activity"`
+	ID             string    `json:"id"`
+	Title          string    `json:"title"`
+	State          string    `json:"state"` // "needs_you", "waiting", "running", "new" or ""
+	Pinned         bool      `json:"pinned"`
+	Helper         bool      `json:"helper,omitempty"`
+	ParentThreadID string    `json:"parent_thread_id"`
+	Step           string    `json:"step,omitempty"`
+	Branch         string    `json:"branch"`
+	MRURL          string    `json:"mr_url"`
+	LastActivity   time.Time `json:"last_activity"`
 	// Waiting is what waits on the person in the thread.
 	Waiting []store.Waiting `json:"waiting,omitempty"`
 }
@@ -40,7 +43,7 @@ type notice struct {
 }
 
 // sidebarThreads keeps the open threads in the order given and marks each: needs_you when its run
-// or a helper's waits on an approval, waiting when something else waits on the person, running when
+// waits on an approval, waiting when something else waits on the person, running when
 // its run or a helper's goes, new when its newest run finished after the user last opened it.
 func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread {
 	byBoss := map[string][]store.ThreadRun{}
@@ -53,8 +56,12 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 			continue
 		}
 		state := a.marker(t, byBoss[t.ThreadID], len(t.Waiting) > 0)
+		step := ""
+		if t.ParentThreadID != "" && (state == "running" || state == "needs_you") {
+			step = a.liveStep(t.ThreadID)
+		}
 		out = append(out, sidebarThread{
-			ID: t.ThreadID, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
+			ID: t.ThreadID, ParentThreadID: t.ParentThreadID, Step: step, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
 			Branch: t.Branch, MRURL: t.MRURL, LastActivity: t.LastActivity,
 			Waiting: t.Waiting,
 		})
@@ -62,7 +69,7 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 	return out
 }
 
-// marker is the state of thread t with its helpers.
+// marker is the state of thread t. A helper's approval is not t's: it shows on the line under t.
 func (a *api) marker(t store.ThreadRun, helpers []store.ThreadRun, waits bool) string {
 	state := ""
 	needs := func(tr store.ThreadRun) bool {
@@ -74,8 +81,8 @@ func (a *api) marker(t store.ThreadRun, helpers []store.ThreadRun, waits bool) s
 		return len(approvals) > 0
 	}
 	for _, h := range helpers {
-		if needs(h) {
-			return "needs_you"
+		if h.Status == store.StatusRunning || h.Status == store.StatusWaiting {
+			state = "running"
 		}
 	}
 	if needs(t) {

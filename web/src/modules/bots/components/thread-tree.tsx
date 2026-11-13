@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { NavLink } from 'react-router';
+import { Creature } from '@/components/creature';
 import { Menu } from '@/components/menu';
 import { TextField } from '@/components/text-field';
 import type { Bot, SidebarThread } from '@/modules/bots/api/bots';
-import { threadTree } from '@/modules/bots/utils/thread-tree';
+import { threadTree, workerNames, type Worker } from '@/modules/bots/utils/thread-tree';
 
 const marker = (t: SidebarThread) =>
   t.state ? t.state.replace('_', '-') : t.pinned ? 'pinned' : undefined;
@@ -122,6 +123,53 @@ function RenameField({ title, onDone }: { title: string; onDone: (title?: string
   );
 }
 
+function HelpersLine({
+  botId,
+  threadId,
+  workers,
+}: {
+  botId: string;
+  threadId: string;
+  workers: Worker[];
+}) {
+  const needsYou = workers[0].needsYou;
+  return (
+    <li data-line="helpers">
+      <NavLink
+        to={`/bots/${botId}/threads/${threadId}`}
+        state={{ helpers: true }}
+        className="flex h-8 items-center gap-2 rounded-lg px-2 text-[13px] text-muted hover:bg-field"
+      >
+        <span aria-hidden="true" className="flex flex-none items-center -space-x-1">
+          {workers.slice(0, 3).map((w) => (
+            <Creature
+              key={w.id}
+              look={w.bot.look}
+              state={w.needsYou ? 'needs_you' : 'working'}
+              size={18}
+            />
+          ))}
+        </span>
+        <span className="flex-none text-ink">
+          {needsYou ? workers[0].bot.name : workerNames(workers)}
+        </span>
+        {needsYou ? (
+          <>
+            <span className="flex-none text-ink">Needs you</span>
+            <Dot className="bg-accent" />
+            {workers.length > 1 && <span className="flex-none">+{workers.length - 1}</span>}
+          </>
+        ) : (
+          <>
+            <span className="min-w-0 flex-1 truncate">{workers[0].step || 'Working'}</span>
+            <Wave />
+          </>
+        )}
+      </NavLink>
+    </li>
+  );
+}
+
 export function ThreadTree({
   bot,
   selected,
@@ -132,6 +180,7 @@ export function ThreadTree({
   onCloseThread,
   onRenameThread,
   only,
+  workers,
 }: {
   bot: Pick<Bot, 'id' | 'name' | 'threads'>;
   selected: boolean;
@@ -142,13 +191,15 @@ export function ThreadTree({
   onCloseThread: (threadId: string) => void;
   onRenameThread: (threadId: string, title: string) => void;
   only?: SidebarThread[];
+  workers: Map<string, Worker[]>;
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number; thread: SidebarThread } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const { rows, more } = only
-    ? { rows: only, more: null }
+  const { rows, hidden, more } = only
+    ? { rows: only, hidden: [], more: null }
     : threadTree(bot.threads ?? [], openThreadId, unfolded);
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && !more) return null;
+  const hiddenWorkers = hidden.flatMap((t) => workers.get(t.id) ?? []);
   return (
     <>
       <ul
@@ -156,63 +207,67 @@ export function ThreadTree({
         className={`relative mb-1.5 flex flex-col gap-0.5 pr-1 pl-10.5 before:absolute before:top-0 before:bottom-4 before:left-[27.25px] before:w-2.5 before:rounded-bl-[9px] before:border-b-[1.5px] before:border-l-[1.5px] before:border-composer-line ${selected ? 'mt-1' : ''}`}
       >
         {rows.map((thread) => (
-          <li
-            key={thread.id}
-            data-marker={marker(thread)}
-            className="group relative"
-            onContextMenu={(event) => {
-              event.preventDefault();
-              setMenu({ x: event.clientX, y: event.clientY, thread });
-            }}
-          >
-            {renaming === thread.id ? (
-              <RenameField
-                title={thread.title}
-                onDone={(title) => {
-                  setRenaming(null);
-                  if (title && title !== thread.title) onRenameThread(thread.id, title);
-                }}
-              />
-            ) : (
-              <>
-                <NavLink
-                  to={`/bots/${bot.id}/threads/${thread.id}`}
-                  className={({ isActive }) =>
-                    `${rowStyle} ${thread.helper ? '' : 'group-hover:pr-9'} ${isActive ? 'bg-selected' : 'hover:bg-field'}`
-                  }
-                >
-                  <span
-                    className={`min-w-0 flex-1 truncate ${thread.state === 'new' ? 'font-semibold' : ''}`}
+          <Fragment key={thread.id}>
+            <li
+              data-marker={marker(thread)}
+              className="group relative"
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenu({ x: event.clientX, y: event.clientY, thread });
+              }}
+            >
+              {renaming === thread.id ? (
+                <RenameField
+                  title={thread.title}
+                  onDone={(title) => {
+                    setRenaming(null);
+                    if (title && title !== thread.title) onRenameThread(thread.id, title);
+                  }}
+                />
+              ) : (
+                <>
+                  <NavLink
+                    to={`/bots/${bot.id}/threads/${thread.id}`}
+                    className={({ isActive }) =>
+                      `${rowStyle} ${thread.helper ? '' : 'group-hover:pr-9'} ${isActive ? 'bg-selected' : 'hover:bg-field'}`
+                    }
                   >
-                    {thread.title || 'Empty thread'}
-                  </span>
-                  <ThreadMarker thread={thread} />
-                </NavLink>
-                {!thread.helper && (
-                  <button
-                    type="button"
-                    aria-label="Close thread"
-                    title="Close thread"
-                    onClick={() => onCloseThread(thread.id)}
-                    className="absolute top-1/2 right-2 flex size-5 -translate-y-1/2 items-center justify-center rounded-md bg-tile text-ink opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                  >
-                    <svg
-                      aria-hidden="true"
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.6"
-                      strokeLinecap="round"
+                    <span
+                      className={`min-w-0 flex-1 truncate ${thread.state === 'new' ? 'font-semibold' : ''}`}
                     >
-                      <path d="M6 6l12 12M18 6L6 18" />
-                    </svg>
-                  </button>
-                )}
-              </>
+                      {thread.title || 'Empty thread'}
+                    </span>
+                    <ThreadMarker thread={thread} />
+                  </NavLink>
+                  {!thread.helper && (
+                    <button
+                      type="button"
+                      aria-label="Close thread"
+                      title="Close thread"
+                      onClick={() => onCloseThread(thread.id)}
+                      className="absolute top-1/2 right-2 flex size-5 -translate-y-1/2 items-center justify-center rounded-md bg-tile text-ink opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.6"
+                        strokeLinecap="round"
+                      >
+                        <path d="M6 6l12 12M18 6L6 18" />
+                      </svg>
+                    </button>
+                  )}
+                </>
+              )}
+            </li>
+            {workers.get(thread.id) && (
+              <HelpersLine botId={bot.id} threadId={thread.id} workers={workers.get(thread.id)!} />
             )}
-          </li>
+          </Fragment>
         ))}
         {more && (
           <li>
@@ -226,6 +281,7 @@ export function ThreadTree({
               <span className="min-w-0 flex-1 truncate">
                 {more.kind === 'less' ? 'Show less' : `${more.count} more`}
                 {more.kind === 'running' && ' running'}
+                {hiddenWorkers.length > 0 && ` · ${workerNames(hiddenWorkers)} working`}
               </span>
               {more.kind === 'running' && <Wave />}
               {more.kind === 'more' && more.dot && <Dot className="bg-kind" />}

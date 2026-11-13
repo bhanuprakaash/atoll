@@ -1631,7 +1631,14 @@ Voice
   stands for the rest: `N more running` (wave dots) when a hidden thread is running, which unfolds
   only the hidden running threads in place, then `Show less`; a row leaves when its run ends, and
   switching Bot folds it again. Otherwise `N more` (a blue dot when a hidden thread is New) opens
-  the threads popup. A helper thread is listed under its own Bot, without close or pin. *The
+  the threads popup. A helper thread is never a row of its own Bot's tree, running or
+  finished, except while it is the thread on screen. While it runs, one line under its boss thread
+  (not a row, not counted in the 3) shows the helper Bots' creatures, their names and the step of
+  the one that acted last, or the one that needs the person first with `Needs you`, which shows
+  nowhere else; clicking it opens the boss thread at its helpers panel (`Working with {Boss}`). A
+  folded boss thread adds `· {Helper} working` to the `N more` line. A finished helper thread is
+  counted in its own Bot's `N more`, which so stays when every open thread is hidden. *The
+  server sends each thread's `parent_thread_id` and, for a live helper, its `step`.* *The
   server sends each Bot's open threads with their marker on `GET /api/bots`; the client picks the
   rows, since only it knows the thread on screen and what is unfolded.*
 - Selected row: the sidebar marks where you are once, on the most specific item. With a thread
@@ -1981,8 +1988,10 @@ Voice
   creature, not the user's bubble, when the person must act on it, else a line of the lead's ledger
   (below). The island shows one small creature per such helper
   after the boss's name (`Tester: working`, `needs you` with a light dot),
-  the count includes helper approvals, and the boss's sidebar row says "Needs you" while a
-  helper waits. A helper thread is listed under its Bot in the sidebar tree, with no close; the
+  the count includes helper approvals, and the boss's sidebar row does not say "Needs you" for a
+  helper; the line under it does. A helper thread is not in the sidebar tree (see Threads and
+  runs); its header is a breadcrumb (the boss thread's title with the boss creature, `›`, the
+  helper Bot) and the
   composer is replaced by "{Boss} is handling this thread. Talk to {Boss} to change it.", `Open
   {Boss}'s thread` and, while its run goes, `Stop`. *The boss thread's stream carries only the
   boss's events, so the UI polls: a thread summary (`GET /api/threads/{id}`, `GET

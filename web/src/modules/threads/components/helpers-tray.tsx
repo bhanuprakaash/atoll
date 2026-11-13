@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { quiet } from '@/components/button';
 import { useStopRun } from '@/modules/threads/api/runs';
@@ -125,17 +125,22 @@ function Row({
 // thread are doing, the approval that needs the person, and a popover with one row per helper.
 // It sits in the composer's form, which must be positioned.
 export function HelpersTray({
+  boss,
   helpers,
   bots,
   reports,
   seen,
 }: {
+  boss: string;
   helpers: Thread[];
   bots: Bots;
   reports: Map<string, string>;
   seen: (helperId: string, reportId: string) => boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [lit, setLit] = useState(false);
+  const section = useRef<HTMLElement>(null);
+  const location = useLocation();
   const show = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const rows = helpers.filter((h) => {
@@ -145,6 +150,14 @@ export function HelpersTray({
     return ended.includes(h.run_status) && !(report && seen(h.id, report));
   });
   const shown = rows.length > 0;
+  const fromSidebar = shown && (location.state as { helpers?: boolean } | null)?.helpers === true;
+  useEffect(() => {
+    if (!fromSidebar) return;
+    section.current?.scrollIntoView({ block: 'nearest' });
+    setLit(true);
+    const timer = setTimeout(() => setLit(false), 1500);
+    return () => clearTimeout(timer);
+  }, [fromSidebar, location.key]);
   const isOpen = open && shown;
   const now = useNow(isOpen);
 
@@ -195,8 +208,9 @@ export function HelpersTray({
   return (
     <>
       <section
+        ref={section}
         aria-label="Helpers"
-        className="-mt-1.5 -mr-2.5 -ml-4.5 border-b border-composer-line text-[13px]"
+        className={`${lit ? 'bg-selected' : ''} -mt-1.5 -mr-2.5 -ml-4.5 border-b border-composer-line text-[13px]`}
       >
         <div className="flex h-8 items-center gap-2.5 px-4.5">
           <span className="flex items-center -space-x-1">
@@ -209,6 +223,7 @@ export function HelpersTray({
               />
             ))}
           </span>
+          <span className="text-ink">Working with {boss}</span>
           <span className="text-muted">
             {[working && `${working} working`, reported && `${reported} reported`]
               .filter(Boolean)

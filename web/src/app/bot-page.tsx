@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   Navigate,
+  Link,
   Outlet,
   useLocation,
   useOutletContext,
@@ -33,6 +34,7 @@ import { helperState, isLiveHelper, type HelperState } from '@/modules/threads/u
 export function BotHeader({
   bot,
   thread,
+  boss,
   helpers = [],
   waiting = 0,
   waitingOnYou = 0,
@@ -43,6 +45,7 @@ export function BotHeader({
 }: {
   bot?: Bot;
   thread?: Thread;
+  boss?: { bot: Bot; threadId: string; title: string };
   helpers?: { id: string; name: string; look?: CreatureLook; state: HelperState }[];
   waiting?: number;
   waitingOnYou?: number;
@@ -62,20 +65,42 @@ export function BotHeader({
         className={`relative z-30 col-start-2 flex flex-col overflow-hidden border border-composer-line bg-composer shadow-[0_12px_32px_rgba(0,0,0,.4)] transition-[min-width,max-height,border-radius] duration-420 ease-[cubic-bezier(.32,1.25,.5,1)] motion-reduce:transition-none ${open ? 'max-h-[60vh] min-w-[min(25rem,calc(100vw-7rem))] max-w-[min(25rem,calc(100vw-7rem))] rounded-[22px]' : 'max-h-10 min-w-0 rounded-[20px]'}`}
       >
         <div className="relative flex h-9.5 flex-none items-center justify-center gap-2.5 px-3 whitespace-nowrap">
-          {bot && <Creature look={bot.look} state={bot.state} size={22} />}
-          <div className="flex min-w-0 items-center gap-1.5">
-            <h1 className="text-sm">{bot?.name}</h1>
-            {title && (
-              <>
-                <span aria-hidden="true" className="hidden text-label @min-[32rem]:inline">
-                  ·
-                </span>
-                <h2 className="hidden max-w-50 truncate text-sm font-normal text-muted @min-[32rem]:block">
-                  {title}
-                </h2>
-              </>
-            )}
-          </div>
+          {boss ? (
+            <nav
+              aria-label="Breadcrumb"
+              className="relative z-10 flex min-w-0 items-center gap-1.5 text-sm"
+            >
+              <Creature look={boss.bot.look} state={boss.bot.state} size={22} />
+              <Link
+                to={`/bots/${boss.bot.id}/threads/${boss.threadId}`}
+                className="max-w-40 truncate text-muted hover:text-ink"
+              >
+                {boss.title}
+              </Link>
+              <span aria-hidden="true" className="text-label">
+                ›
+              </span>
+              {bot && <Creature look={bot.look} state={bot.state} size={18} />}
+              <h1>{bot?.name}</h1>
+            </nav>
+          ) : (
+            <>
+              {bot && <Creature look={bot.look} state={bot.state} size={22} />}
+              <div className="flex min-w-0 items-center gap-1.5">
+                <h1 className="text-sm">{bot?.name}</h1>
+                {title && (
+                  <>
+                    <span aria-hidden="true" className="hidden text-label @min-[32rem]:inline">
+                      ·
+                    </span>
+                    <h2 className="hidden max-w-50 truncate text-sm font-normal text-muted @min-[32rem]:block">
+                      {title}
+                    </h2>
+                  </>
+                )}
+              </div>
+            </>
+          )}
           {helpers.length > 0 && (
             <div className="flex items-center gap-1">
               {helpers.map((h) => (
@@ -209,6 +234,12 @@ function BotFrame() {
         })),
       ),
   );
+  const current = threads.find((thread) => thread.id === threadId);
+  const bossThread = current?.parent_thread_id
+    ? bots
+        .flatMap((b) => (b.threads ?? []).map((t) => ({ bot: b, thread: t })))
+        .find(({ thread }) => thread.id === current.parent_thread_id)
+    : undefined;
   const helpers = (threads.find((thread) => thread.id === threadId)?.helpers ?? [])
     .filter(isLiveHelper)
     .map((helper) => {
@@ -229,6 +260,13 @@ function BotFrame() {
           onNotifications={() => setList(!list)}
           open={expanded || !!widened}
           thread={threads.find((thread) => thread.id === threadId)}
+          boss={
+            bossThread && {
+              bot: bossThread.bot,
+              threadId: bossThread.thread.id,
+              title: bossThread.thread.title,
+            }
+          }
           helpers={helpers}
           waiting={notifications.needs.length + waiting.length}
           waitingOnYou={
