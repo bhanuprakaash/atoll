@@ -94,9 +94,7 @@ function BotRow({
             <span className="flex justify-between gap-2 text-[15px]">
               <span className="truncate">{bot.name}</span>
               <span className="flex flex-none items-center gap-1.5">
-                <span className="text-xs text-muted">
-                  {relativeTime(bot.last_activity)}
-                </span>
+                <span className="text-xs text-muted">{relativeTime(bot.last_activity)}</span>
                 {bot.id !== 'chief' && <PinButton bot={bot} />}
               </span>
             </span>
