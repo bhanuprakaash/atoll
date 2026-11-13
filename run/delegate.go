@@ -41,7 +41,7 @@ type Handoff struct {
 
 // Delegate starts a helper thread for the Bot botName and sends it the brief.
 func (m *Manager) Delegate(
-	ctx context.Context, token, botName, brief, repoName string,
+	ctx context.Context, token, botName, brief, repoName string, readOnly bool,
 ) (Handoff, error) {
 	a, err := m.byToken(token)
 	if err != nil {
@@ -74,6 +74,10 @@ func (m *Manager) Delegate(
 		}
 		if !repo.HasCommit(ctx, rp.Path) {
 			return Handoff{}, RefusedError(rp.Name + " has no commit yet")
+		}
+		if t.Worktree == "" && !readOnly && RepoHost(ctx, rp.Path) == _hostGitHub && !m.hasGitHub(ctx, helper) {
+			return Handoff{}, RefusedError(helper.Name + " has no GitHub connection, so it cannot edit " +
+				rp.Name + ". Add it in " + helper.Name + "'s settings, or pass read_only for a read-only task.")
 		}
 	}
 	h, path, err := m.startHelper(ctx, boss, helper, t, rp, brief)
@@ -116,8 +120,6 @@ func (m *Manager) startHelper(
 		h.Note = "Uncommitted changes in your worktree are not included."
 		first += _workOn + h.Branch + " and commit there. Do not push or open a PR: " +
 			boss.Name + " merges it.\n\n"
-	} else if rp.ID != "" && RepoHost(ctx, rp.Path) == _hostGitHub && !m.hasGitHub(ctx, helper) {
-		h.Note = helper.Name + " can read " + rp.Name + " but cannot edit it until it has the GitHub connection."
 	}
 	ht, err := m.cfg.Store.CreateHelperThread(ctx, t.ID, helper.ID, rp.ID)
 	if err != nil {

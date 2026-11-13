@@ -501,7 +501,7 @@ Follow-ups, not filed:
   Chief; deleting a Bot removes it from every list. Depth 1: a delegated run cannot delegate.
   *Cycles become impossible.*
 - A delegation is a thread where the parent Bot is the asker. Reef's MCP server lists
-  `delegate(bot, brief, repo?)` and `continue(thread, message)` only in runs of a Bot with a
+  `delegate(bot, brief, repo?, read_only?)` and `continue(thread, message)` only in runs of a Bot with a
   non-empty delegate list, in a thread that is not a helper thread (depth 1). Continue for the same
   work; start a new one for different work.
 - `delegate` returns `{"thread_id"}` at once (plus `branch` and `note` when the helper gets a
@@ -510,10 +510,11 @@ Follow-ups, not filed:
   with no repo (Chief) may pass a registered repo's name, else the helper has none. The helper
   starts a fresh provider session. The tool's description tells the boss to end every brief with
   `Once a PR is called ready it is frozen: new work goes in a follow-up PR.`
-- When the boss thread has no worktree, the repo is on GitHub and the helper has no connected
-  GitHub connection, `delegate` still starts the helper and adds a `note`: `{Helper} can read
-  {repo} but cannot edit it until it has the GitHub connection.` Its `start_work` would fail, so
-  the boss learns it now instead of from a wake.
+- `delegate` takes an optional `read_only` boolean. When the boss thread has no worktree, the repo
+  is on GitHub and the helper has no connected GitHub connection, `delegate` refuses and starts no
+  thread: `{Helper} has no GitHub connection, so it cannot edit {repo}. Add it in {Helper}'s
+  settings, or pass read_only for a read-only task.` Its `start_work` would fail, so the boss learns
+  it now instead of from a wake. With `read_only` the helper starts as usual.
 - Refusals are tool results with `isError`, so the run goes on: a Bot not on the list (the text
   names the Bots on it); a helper whose repo access does not allow the repo (`Tester has no access
   to atoll`); a repo with no commit; a fourth helper while 3 helper runs of the boss thread are
