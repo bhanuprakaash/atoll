@@ -22,6 +22,7 @@ type sidebarThread struct {
 	State        string    `json:"state"` // "needs_you", "waiting", "running", "new" or ""
 	Pinned       bool      `json:"pinned"`
 	Helper       bool      `json:"helper,omitempty"`
+	Hidden       bool      `json:"hidden,omitempty"` // PR merged: open and in the popup, not in the tree
 	Branch       string    `json:"branch"`
 	MRURL        string    `json:"mr_url"`
 	LastActivity time.Time `json:"last_activity"`
@@ -39,8 +40,8 @@ type notice struct {
 	Data           any    `json:"data"`
 }
 
-// sidebarThreads keeps the open threads in the order given and marks each: needs_you when its run
-// or a helper's waits on an approval, waiting when something else waits on the person, running when
+// sidebarThreads keeps the open threads in the order given, hides a merged one nothing needs, and marks each: needs_you
+// when its run or a helper's waits on an approval, waiting when something else waits on the person, running when
 // its run or a helper's goes, new when its newest run finished after the user last opened it.
 func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread {
 	byBoss := map[string][]store.ThreadRun{}
@@ -57,6 +58,7 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 			ID: t.ThreadID, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
 			Branch: t.Branch, MRURL: t.MRURL, LastActivity: t.LastActivity,
 			Waiting: t.Waiting,
+			Hidden:  t.Merged && !t.Pinned && (state == "" || state == "new"),
 		})
 	}
 	return out

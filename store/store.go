@@ -944,8 +944,11 @@ type ThreadRun struct {
 	Pinned         bool
 	LastActivity   time.Time
 	Unseen         bool
-	Status         string
-	Reply          string
+	// Merged is set for an open thread of the person's whose PR merged after the person's last
+	// message in it.
+	Merged bool
+	Status string
+	Reply  string
 	// Waiting is what waits on the person in the thread.
 	Waiting []Waiting
 }
@@ -991,6 +994,10 @@ func (s *Store) threadRuns(ctx context.Context, waiting, with, where string, arg
 		        t.last_activity,
 		        t.last_heard > t.last_opened_at AND t.last_heard > t.created
 		          AND coalesce(p.status, '') NOT IN ('running', 'waiting'),
+		        CASE WHEN t.mr_state = 'merged' AND t.closed = 0 AND t.parent_thread_id = ''
+		          THEN t.mr_changed_at > coalesce((SELECT max(m.created) FROM messages m
+		            WHERE m.thread_id = t.id AND m.role = 'user' AND m.from_bot_id = '' AND m.kind = ''), 0)
+		          ELSE 0 END,
 		        coalesce(p.status, ''), coalesce(p.reply, ''),
 		        coalesce(w.runs, ''), coalesce(rp.replied, 0), coalesce(tk.trackers, '')
 		 FROM threads t
@@ -1004,7 +1011,7 @@ func (s *Store) threadRuns(ctx context.Context, waiting, with, where string, arg
 			var active, replied int64
 			var runs, trackers string
 			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &tr.Title, &tr.Branch, &tr.MRURL, &tr.Closed,
-				&tr.Pinned, &active, &tr.Unseen, &tr.Status, &tr.Reply, &runs, &replied, &trackers)
+				&tr.Pinned, &active, &tr.Unseen, &tr.Merged, &tr.Status, &tr.Reply, &runs, &replied, &trackers)
 			if err != nil {
 				return tr, err
 			}

@@ -24,7 +24,8 @@ const rank = (t: SidebarThread) =>
             ? 4
             : 5;
 
-// Needs-you, waiting, pinned and the open thread always show, even past maxRows.
+// Needs-you, waiting, pinned and the open thread always show, even past maxRows; a hidden thread
+// only counts toward `N more`.
 export function threadTree(
   threads: SidebarThread[],
   openId: string | undefined,
@@ -35,7 +36,10 @@ export function threadTree(
     .sort((a, b) => rank(a) - rank(b));
   const kept = ranked.filter((t) => rank(t) <= 2 || t.id === openId);
   const room = Math.max(0, maxRows - kept.length);
-  const shown = new Set([...kept, ...ranked.filter((t) => !kept.includes(t)).slice(0, room)]);
+  const shown = new Set([
+    ...kept,
+    ...ranked.filter((t) => !t.hidden && !kept.includes(t)).slice(0, room),
+  ]);
   const hidden = ranked.filter((t) => !shown.has(t));
   const running = hidden.filter((t) => t.state === 'running');
   if (running.length > 0 && unfolded)

@@ -11,6 +11,7 @@ export type SidebarThread = {
   state: 'needs_you' | 'waiting' | 'running' | 'new' | '';
   pinned: boolean;
   helper?: boolean;
+  hidden?: boolean;
   waiting?: Waiting[];
   branch: string;
   mr_url: string;

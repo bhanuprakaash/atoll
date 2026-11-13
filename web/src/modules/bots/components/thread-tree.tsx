@@ -148,7 +148,7 @@ export function ThreadTree({
   const { rows, more } = only
     ? { rows: only, more: null }
     : threadTree(bot.threads ?? [], openThreadId, unfolded);
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && !more) return null;
   return (
     <>
       <ul
