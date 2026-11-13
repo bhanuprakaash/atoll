@@ -1716,7 +1716,8 @@ Voice
   screen, the same Bot's other threads included (`GET /api/events`). An approval drops the island
   open: the Bot, the thread, the exact command or path, Open thread, Deny and Allow; Allow lets
   that run go on without leaving the thread on screen. It stays until answered; Esc or a click
-  away shrinks it to a count on the pill. A finished run widens the island for about 4 s
+  away shrinks it to a count on the pill. Open, it is one fixed width, 25rem or the page minus
+  7rem if narrower, whatever its rows say; long lines end in `…`. A finished run widens the island for about 4 s
   ("reviewer finished Review !42", View), with no buttons, then it returns to rest. Clicking the
   island opens the notification list: Needs you (Allow and Deny inline), then Waiting on you (an
   item of another thread: its question with Open thread, a blocker's text, a ready PR's row), then
