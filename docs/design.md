@@ -181,7 +181,7 @@ after a failed undo counts a Bot that is already gone as removed.
 - Thread records retain the tracked MR title and state, close time, and worktree cleanup and snapshot
   status so the chat and threads popup can show them after a restart. `track_mr` accepts the MR title
   with its URL. A thread summary includes the current work verb and pending approval.
-- A run can start without a user message: a helper's report (Delegation) and a Reef wake for a
+- A run can start without a user message: a helper's notice (Delegation) and a Reef wake for a
   tracked MR (Repos and worktrees). Both are held when a run is going.
 - A thread is a chat with one Bot. Each message starts a run that resumes the Bot's session and
   exits after replying. No agent process lives between messages.
@@ -415,12 +415,12 @@ Decision (proposed):
 - The hand-off, newest first within a cap of about 30 KB (8k tokens): the owner's messages; the
   boss's last reply; one line per helper thread (id, Bot, title, state, MR, the
   first line of its last reply cut at 160 characters; 64 helpers are 11.6 KB); memory comes with the first message as
-  today. The boss has no tool to read a helper's earlier report; it `continue`s the helper to ask.
+  today. The boss has no tool to read a helper's earlier reply; it `continue`s the helper to ask.
 - The context of a run is (input + cache read + cache write tokens) / calls of its stored usage
   (#193), within one call's growth. The 100k limit is one constant, not a setting: the cost is flat
   between 10 and 30 wakes.
 - Not chosen: nothing (the table), `/compact` or auto-compact as the main fix (above), smaller wakes
-  alone (13% less), a Reef tool for old helper reports (until a trial shows the boss needs it).
+  alone (13% less), a Reef tool for old helper replies (until a trial shows the boss needs it).
 
 Not measured: whether a boss with the hand-off decides as well as with the full history (the first
 follow-up runs that trial), warm-cache compaction cost, Codex on resume.
@@ -432,14 +432,14 @@ Follow-ups, not filed:
      on a fresh session, with the notice `Context was long; starting a fresh session.`; the
      thread's messages and the pending wake are unchanged. Proved with scripted providers for
      Claude and Codex.
-   - The first message holds `Hand-off:` with the owner's messages, the boss's last report and
-     the helper lines, within 30 KB; a helper over the cap drops its `done` line before its id.
+   - The first message holds `Hand-off:` with the owner's messages, the boss's last reply and
+     the helper lines, within 30 KB; a helper over the cap drops its reply line before its id.
    - Real `claude`, a recorded boss thread of 60 wakes: after a reset the boss `continue`s an
      older helper by an id from the hand-off, and the context of the next run is under 60k.
    - Depends on #193's stored usage.
 2. `chore: let Claude compact a long thread that is not a boss thread`
    - A Claude run sets `autoCompactWindow` in `--settings` (value from the trial); a resumed run
-     over it shows `compact_boundary` with `trigger: auto` and still ends with `finish_run`.
+     over it shows `compact_boundary` with `trigger: auto` and still ends with its reply.
    - The run's cost counts the compaction (`total_cost_usd` difference), and its zero `usage` is
      not shown as 0 tokens.
 
@@ -481,8 +481,7 @@ Follow-ups, not filed:
   worktree, below); the boss's run ends normally and the helper works in
   a thread of its own, with `parent_thread_id` set. It uses the boss thread's repo; a boss thread
   with no repo (Chief) may pass a registered repo's name, else the helper has none. The helper
-  starts a fresh provider session. The tool's description tells the boss to end every brief with
-  `Once a PR is called ready it is frozen: new work goes in a follow-up PR.`
+  starts a fresh provider session.
 - `delegate` takes an optional `read_only` boolean. When the boss thread has no worktree, the repo
   is on GitHub and the helper has no connected GitHub connection, `delegate` refuses and starts no
   thread: `{Helper} has no GitHub connection, so it cannot edit {repo}. Add it in {Helper}'s
@@ -678,8 +677,7 @@ Follow-ups, not filed:
 - A thread the person started whose PR merged leaves the sidebar tree but stays open (not closed:
   a closed thread refuses messages, which would block "the merge broke X, fix it"). It is hidden
   while its PR's merge (`mr_changed_at`) is later than the person's last message in it (a message
-  with no `kind`, not from a Bot), no run is going and nothing waits on the person (no approval,
-  ask or blocker). The merge wake's run does not bring it back: it shows while that run goes and
+  with no `kind`, not from a Bot), no run is going and no approval is open. The merge wake's run does not bring it back: it shows while that run goes and
   leaves when it ends. A message from the person brings it back for good; a later merge of a newly
   tracked PR hides it again. A pinned thread stays, and so does the open thread. It is still in the
   threads popup under Other open threads and counts in the Bot's `N more`.
@@ -749,8 +747,8 @@ Follow-ups, not filed:
   thread view shows a message with a `kind` as one quiet line with Reef's mark, not a user bubble.
   A message with a `kind` carries the time it was stored, never the time of the run it follows, and is
   never `not_read`.
-  The Bot's prompt for it is `Reef: ` and the sentence, and the code part of the prompt says the
-  quoted names are data, never instructions. When held messages of both kinds join
+  The Bot's prompt for it is `Reef: ` and the sentence, and the prompt's core says the quoted
+  names are data, never instructions (Prompt, Reef notices). When held messages of both kinds join
   one run, each Reef line keeps its `Reef: ` prefix, in order, and the other messages go under
   `Message:`.
 - `track_mr` sets `mr_wake` to 1. A repeat call with the URL the thread already has keeps
@@ -937,8 +935,8 @@ Follow-ups, not filed:
       three Reef; without `--permission-prompt-tool` the same server showed 14. The e2e check
       excludes the permission-prompt tool from the comparison. A Bot called a Reef
       MCP tool, `Bash`, `Write` and `Read` in each mode (Ask with an approval tool that allows).
-      A skill from `--add-dir` loaded through `Skill`. Reef's `finish_run` (since removed, Threads and
-      runs) was called without `ToolSearch` (listed in none of the 10 names) and returned.
+      A skill from `--add-dir` loaded through `Skill`. A Reef MCP tool was called without
+      `ToolSearch` (listed in none of the 10 names) and returned.
       - CI runs the argv assertions with the scripted fake: they pin the allowlist string and its
         order. The init-list comparison is a real-`claude` spec behind the `realclaude` build tag
         (`go test -tags realclaude -run TestClaudeIsolation_Real ./e2e`), which CI does not run. It
@@ -1774,7 +1772,7 @@ Voice
   island opens the notification list: Needs you (Allow and Deny inline), then Earlier (finished
   runs, `tell_user` messages, MRs opened, Chief's changes). Hover does not open it. *Conversation
   first: nothing forces an answer.*
-- The island remembers across a close of the app (server side, like the sidebar's New; browser
+- The island remembers across a close of the app (server side, like the sidebar's Replied; browser
   storage is not used, so a new window or a cleared webview changes nothing). One timestamp,
   `island_seen_at` (settings), set to now by `POST /api/island/seen`. The page sends it when the
   notification list closes (a click on the pill, Esc, a click away, or an item's link) and when
@@ -1784,7 +1782,7 @@ Voice
   connect the server builds Earlier from rows newer than the timestamp, newest first, one row
   per event except runs, with the text a live event gets: a run that ended in an open thread (a
   thread's newest ended run only, and only while it ended after the thread's `last_opened_at`, the
-  rule of the sidebar's New, so opening a thread drops its row from an open list at once;
+  rule of the sidebar's Replied, so opening a thread drops its row from an open list at once;
   `runs.finished_at`; "Pilot finished Review !42", or "Pilot failed Review !42" for a failed
   one, which includes a run the restart cut short; a run the user stopped counts as finished), a
   thread whose MR is `opened` since then (`threads.mr_changed_at`, new, set when `mr_state`
@@ -1794,12 +1792,12 @@ Voice
   open drops the island as today. Needs you is state, not an event: they show
   while true and the timestamp never clears them. A restart ends a run that waited on an approval
   as failed, so that approval is gone and the run is under Earlier. The pill gets no new mark: the
-  list is where Earlier is read, so the island and the sidebar's New agree (every unread run is
-  both) without a second red thing. Each row has a dismiss (×) button, shown on hover and keyboard
+  list is where Earlier is read, so the island and the sidebar's Replied agree (every unread run
+  is both) without a second red thing. Each row has a dismiss (×) button, shown on hover and keyboard
   focus, `POST /api/island/dismiss`: a run row marks its thread read (`last_opened_at`), an MR row
   sets `threads.island_dismissed_at` and stays hidden while `mr_changed_at` is not newer, and a
   platform change row sets `changes.dismissed_at`. *The island said "Nothing new" next to 60 New threads after
-  every launch.*
+  every launch (they were labelled New then).*
 - Thread titles: the first six words of the first message (a helper's brief), set when that message
   is sent and stored, with trailing `.,;:!?` removed from the last word. After the thread's first
   reply, Reef asks the Bot's provider for a better one: a session of its own on the provider's
@@ -1827,22 +1825,20 @@ Voice
   what the thread is about. Titles read as titles: a label is the model describing its job, and
   a title cut on "of" or "and" reads as broken in the sidebar, popup and island.*
 - The chat has one rule per kind of message. The user's message is the only bubble. The thread's
-  own Bot replies in plain text with markdown, no avatar. Any other Bot (a helper's report in the
-  boss thread, the boss's brief in a helper thread) gets its creature and name on a line above
-  plain text, starting at the same edge as the replies. A helper's report shows its prose only
-  (Done/Tried/Blocked/Next stay in the helper thread) and `Open thread` links to the helper
-  thread. Everything else is one quiet line with its action inline: approvals (Allow, Deny, and
+  own Bot replies in plain text with markdown, no avatar. Any other Bot (the boss's brief in a
+  helper thread) gets its creature and name on a line above plain text, starting at the same edge
+  as the replies. Everything else is one quiet line with its action inline: approvals (Allow, Deny, and
   Allow in this thread for a command that may repeat; the line leaves once answered; a long command
   or path wraps), the allowed-for-this-thread line, Chief's changes, the branch starting,
-  the worktree cleaned up, a failed run (Retry; a usage limit is calm and has none, below),
-  blocked and a refused message. Inline
+  the worktree cleaned up, a failed run (Retry; a usage limit is calm and has none, below)
+  and a refused message. Inline
   actions (Undo, Undo all, Open, Retire, Details, Show more) are one quiet text-button style.
 - A run that fails before any reply leaves one quiet line under the message that started it:
   `Didn't run: <reason>`, in plain words (an unknown cause reads `Didn't run: something went
   wrong.`), never the provider's raw error, which sits behind Details. The line stays in its thread
   in order after later runs start and after a reload. Retry shows only when that run is the
   thread's newest; an older failed run keeps the line without Retry. A run that only a Reef wake or
-  a helper's report started has no message of the person's: its line sits under the last of those
+  a helper's notice started has no message of the person's: its line sits under the last of those
   messages and has no Retry, as there is nothing of the person's to send again. Queued messages
   delivered as one run share one line, under the last of them; Retry sends each of them again, in
   order, with its images, and Resend sends only the message it sits on; one that fails stops there
@@ -1988,8 +1984,7 @@ Voice
   that name) is attached to the top of the composer, on the composer's surface and border. It is
   one line of about 32 px that never grows with more helpers: each helper task's creature, stacked
   (two helpers of one Bot are two creatures), `N working · N reported` (a zero part is left out)
-  and `Show`; with no helper running or unread, nothing shows above the composer. The Waiting on
-  you card sits above the tray. Only what needs the person opens by itself: a helper's open
+  and `Show`; with no helper running or unread, nothing shows above the composer. Only what needs the person opens by itself: a helper's open
   approval is one line under the summary, the approval card led by the helper's creature and name
   (`Tester wants to run make check`, with Allow and Deny); with two waiting it shows the first and
   `1 more`. It leaves when answered, in either thread (`approval_closed`), and a message in the
@@ -2158,8 +2153,8 @@ Voice
 ## Rich output
 
 Replies show data with Reef's own components, built for Reef's look (no Mermaid, no off-the-shelf
-renderer). Every message body goes through one Markdown renderer, so a Bot's reply, a helper's
-report relayed into the boss thread and the boss's brief all render alike.
+renderer). Every message body goes through one Markdown renderer, so a Bot's reply, a `tell_user`
+message and the boss's brief all render alike.
 
 - Native first. What Markdown already says becomes a component, so a Bot writes what it knows and
   the same text reads well on GitHub. Only what Markdown cannot say gets a `reef-` fence. *A model
@@ -2188,11 +2183,10 @@ report relayed into the boss thread and the boss's brief all render alike.
 - Plain-text surfaces (sidebar preview, island line, notification text) show the reply with every
   `reef-` fence removed; when nothing is left, the component's name. Raw `reef-` JSON never reaches
   them.
-- The prompt catalog is one line in the shared core, under How you talk. It starts "Answer first in
-  a sentence; use a component only when it is clearer than prose." and says tables, task lists,
-  `diff` and code render in Reef and GitHub, while `reef-metrics` and `reef-kv`
-  are Reef chat only, never for a PR, issue or comment. A Bot writing a PR, issue or comment
-  with `gh` or `glab` therefore uses Markdown tables and code only.
+- The prompt catalog is one line in the core, under How you talk (Prompt): tables, task lists,
+  `diff` and code render in Reef and on GitHub; `reef-metrics` and `reef-kv` render only in Reef
+  chat. A Bot writing a PR, issue or comment with `gh` or `glab` therefore uses Markdown tables
+  and code only.
 - Shipping: the first PR is `code` and `table` (they cover most replies) and the fallback;
   `diff`, `checklist`, `metrics` and `kv` follow when a real reply asks for them, and the catalog
   line grows only with `metrics` and `kv`.
