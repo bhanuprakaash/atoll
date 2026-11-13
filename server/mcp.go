@@ -269,14 +269,15 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		return a.jsonText(item)
 	case provider.ToolDelegate:
 		var in struct {
-			Bot   string `json:"bot"`
-			Brief string `json:"brief"`
-			Repo  string `json:"repo"`
+			Bot      string `json:"bot"`
+			Brief    string `json:"brief"`
+			Repo     string `json:"repo"`
+			ReadOnly bool   `json:"read_only"`
 		}
 		if err := json.Unmarshal(call.Arguments, &in); err != nil || in.Bot == "" || in.Brief == "" {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		h, err := a.runs.Delegate(r.Context(), token, in.Bot, in.Brief, in.Repo)
+		h, err := a.runs.Delegate(r.Context(), token, in.Bot, in.Brief, in.Repo, in.ReadOnly)
 		if res, rpcErr := a.refusal(err); res != nil || rpcErr != nil {
 			return res, rpcErr
 		}
@@ -348,11 +349,14 @@ func (a *api) delegateTools(ctx context.Context, bot store.Bot) ([]json.RawMessa
 			"). Returns at once with {\"thread_id\"}; the helper works in a thread of its own and " +
 			"its replies come back to you. The brief must hold everything the helper needs. " +
 			"The helper works in this thread's repo; with no repo here, repo names a registered repo. " +
-			"End every brief with: " + run.FreezeSentence,
+			"Without a GitHub connection the helper cannot edit a GitHub repo and delegate refuses it; " +
+			"pass read_only for a read-only task. End every brief with: " + run.FreezeSentence,
 		"inputSchema": map[string]any{
-			"type":       "object",
-			"properties": map[string]any{"bot": str, "brief": str, "repo": str},
-			"required":   []string{"bot", "brief"},
+			"type": "object",
+			"properties": map[string]any{
+				"bot": str, "brief": str, "repo": str, "read_only": map[string]string{"type": "boolean"},
+			},
+			"required": []string{"bot", "brief"},
 		},
 	}, {
 		"name": provider.ToolContinue,
