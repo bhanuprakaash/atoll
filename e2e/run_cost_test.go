@@ -29,7 +29,6 @@ func TestRunCost_RecordsUsagePerRun(t *testing.T) {
 	for _, tc := range []struct {
 		provider      string
 		first, second wantUsage
-		botCost       *float64
 	}{
 		{
 			// result.usage is the process's; total_cost_usd and modelUsage are the session's, so the
@@ -37,7 +36,6 @@ func TestRunCost_RecordsUsagePerRun(t *testing.T) {
 			provider: "claude",
 			first:    wantUsage{"claude-sonnet-5-5", 7, 21, 1037, 71620, 13150, cost(0.19)},
 			second:   wantUsage{"claude-sonnet-5-5", 3, 8, 365, 40000, 700, cost(0.05)},
-			botCost:  cost(0.24),
 		},
 		{
 			// A resume first replays an update of the earlier turn and tokenUsage.total is the
@@ -60,21 +58,19 @@ func TestRunCost_RecordsUsagePerRun(t *testing.T) {
 			s.assertUsage(t, second.ID, tc.second)
 			s.assertUsage(t, first.ID, tc.first) // the later run leaves it alone
 
-			var bots []struct {
-				ID      string   `json:"id"`
-				Cost24h *float64 `json:"cost_24h_usd"`
-			}
+			// The cost stays in the run's usage, asserted above; the Bots list no longer carries it.
+			var bots []map[string]any
 			s.do(t, "GET", "/api/bots", nil, &bots, http.StatusOK)
+			found := false
 			for _, got := range bots {
-				if got.ID != b.ID {
-					continue
+				if _, ok := got["cost_24h_usd"]; ok {
+					t.Errorf("GET /api/bots: Bot %v has cost_24h_usd, want no such key", got["id"])
 				}
-				if !sameCost(got.Cost24h, tc.botCost) {
-					t.Errorf("GET /api/bots: cost_24h_usd %s, want %s", showCost(got.Cost24h), showCost(tc.botCost))
-				}
-				return
+				found = found || got["id"] == b.ID
 			}
-			t.Fatalf("GET /api/bots has no Bot %s", b.ID)
+			if !found {
+				t.Fatalf("GET /api/bots has no Bot %s", b.ID)
+			}
 		})
 	}
 }

@@ -1,6 +1,6 @@
 # Run cost test contract
 
-Issue #193; the design is in `docs/design.md` (Threads and runs, sidebar, run footer). The real
+The design is in `docs/design.md` (Threads and runs, sidebar, run footer). The real
 binary runs scripted Claude and Codex sessions; no product package is imported.
 
 Recordings `testdata/{claude,codex}/run-cost-1.jsonl` and `run-cost-2.jsonl` are a first run and a
@@ -18,10 +18,10 @@ thread-wide.
 | Codex 1 | 3 | 1200 | 125 | 26100 | 500 | none |
 | Codex 2 | 2 | 200 | 75 | 18500 | 200 | none |
 
-`GET /api/bots` gives the Claude Bot `cost_24h_usd` 0.24 and the Codex Bot none (or 0). The run
-footer ends with `Sonnet 5.5, 7 calls, $0.19` (Codex `gpt-5.6-sol, 3 calls`, no `$`) in the muted
-colour of the run's time. The sidebar row shows `$0.24` for the Claude Bot and no `$` for the
-Codex Bot or a Bot without runs.
+The cost is recorded per run (`usage.cost_usd` above) and shown nowhere yet. `GET /api/bots` has no
+`cost_24h_usd` key on any Bot. The run footer ends with `Sonnet 5.5, 7 calls` (Codex
+`gpt-5.6-sol, 3 calls`) in the muted colour of the run's time, with no `$`. The sidebar rows show
+no `$` for any Bot and keep their time.
 
 ## Acceptance mapping
 
@@ -29,6 +29,6 @@ Codex Bot or a Bot without runs.
 | --- | --- |
 | Claude run: `usage` with model, calls, four token counts, `cost_usd`; Codex: tokens, no cost | `TestRunCost_RecordsUsagePerRun` |
 | A resumed run counts only itself | `TestRunCost_RecordsUsagePerRun` (second run, first unchanged), `run-cost.spec.ts` footers |
-| Run footer one muted line; Bots list last-24 h cost | `run-cost.spec.ts` |
+| Run footer one muted line with no dollars; Bots list no dollars, no `cost_24h_usd` | `run-cost.spec.ts`, `TestRunCost_RecordsUsagePerRun` |
 | `make e2e` with fakes checks the fields exist | the same tests |
 | Real Claude total within 2% of the transcript's `cost-state` delta | owner (PR, Only you can check) |
