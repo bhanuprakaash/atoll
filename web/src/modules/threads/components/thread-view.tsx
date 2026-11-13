@@ -1030,7 +1030,15 @@ export function ThreadView({
               disabled={!connected || !!thread?.closed}
               onSent={(run) => begin(run.id)}
               context={context}
-              tray={<HelpersTray helpers={helpers} bots={bots} reports={reports} seen={seen} />}
+              tray={
+                <HelpersTray
+                  boss={botName}
+                  helpers={helpers}
+                  bots={bots}
+                  reports={reports}
+                  seen={seen}
+                />
+              }
             />
           )}
         </div>

@@ -133,6 +133,7 @@ export function ThreadsPopup({
       title: t.title,
       state: '',
       pinned: false,
+      parent_thread_id: t.parent_thread_id,
       branch: t.branch,
       mr_url: t.mr_url,
       last_activity: t.last_activity,

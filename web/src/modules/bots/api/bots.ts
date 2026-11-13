@@ -12,6 +12,8 @@ export type SidebarThread = {
   pinned: boolean;
   helper?: boolean;
   hidden?: boolean;
+  parent_thread_id: string;
+  step?: string;
   waiting?: Waiting[];
   branch: string;
   mr_url: string;
