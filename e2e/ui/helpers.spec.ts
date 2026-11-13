@@ -26,7 +26,9 @@ test('two helpers: one handoff line, a line each above the composer and in the i
     ['Reviewer', prompts.hang],
   ]);
   const log = page.getByRole('log', { name: 'Messages' });
-  const handedOff = log.getByText('Handed off to Tester and Reviewer', { exact: true });
+  const handedOff = log.getByText('Handed off to Tester and Reviewer', {
+    exact: true,
+  });
   await expect(handedOff).toHaveCount(1);
   await expect(log.getByText('Handed off to Tester', { exact: true })).toHaveCount(0);
 
@@ -131,25 +133,34 @@ test('a helper approval shows under its line, Allow works there, and the report 
   );
 });
 
-test('the helper thread is under its Bot in the sidebar and read-only; Allow there leaves the boss thread', async ({
+test('the helper thread is not in the sidebar and read-only; Allow there leaves the boss thread', async ({
   page,
   context,
 }) => {
-  const { poteto, boss, thread } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
-  const bossAllow = tray(page).getByRole('button', { name: 'Allow', exact: true });
+  const { poteto, bots, boss, thread } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
+  const bossAllow = tray(page).getByRole('button', {
+    name: 'Allow',
+    exact: true,
+  });
   await expect(bossAllow).toHaveCount(1);
 
   const helperPage = await context.newPage();
   await helperPage.goto(m.url);
-  const item = threadTree(helperPage, 'Tester').getByRole('listitem');
-  await expect(item).toHaveCount(1);
-  await item.getByRole('link').click();
-  await expect(helperPage).toHaveURL(new RegExp(`/threads/${thread('Tester')}$`));
+  await expect(
+    helperPage
+      .getByRole('navigation', { name: 'Bots' })
+      .getByRole('link', { name: /^Shark\b.*\bTester\b/ }),
+  ).toBeVisible();
+  await expect(threadTree(helperPage, 'Tester').getByRole('listitem')).toHaveCount(0);
+  await expect(
+    helperPage
+      .getByRole('navigation', { name: 'Bots' })
+      .locator(`a[href$="/threads/${thread('Tester')}"]`),
+  ).toHaveCount(0);
+  await helperPage.goto(`${m.url}/bots/${bots.Tester.id}/threads/${thread('Tester')}`);
   const helperLog = helperPage.getByRole('log', { name: 'Messages' });
   await expect(helperLog.getByRole('article', { name: 'Poteto' })).toContainText(reportPrompt);
   await expect(helperLog.getByRole('article', { name: 'You' })).toHaveCount(0);
-  await item.hover();
-  await expect(item.getByRole('button', { name: 'Close thread' })).toHaveCount(0);
 
   await expect(helperPage.getByRole('textbox', { name: /^Message/ })).toHaveCount(0);
   await expect(
