@@ -1672,8 +1672,8 @@ Voice
   failure or a stop sets `last_heard` in the transaction that ends it, a run failed at start-up
   included; one that ends `done` with no reply sets only `last_activity`, which still orders the
   rows. *A column, not a scan of the runs since the last open, so the poll stays one row read.* A test on an all-open seed and on a seed with
-  nine in ten closed fails when the plan reads `runs` inside the loop over the threads, or on a
-  p95 of 50 ms; a second test pins `new` for a thread with no run, a message after the thread was
+  nine in ten closed fails when the plan reads `runs` inside the loop over the threads, or when a poll takes
+  other than two queries (neither reads a clock, which varies with the machine); a second test pins `new` for a thread with no run, a message after the thread was
   opened, a run failed at restart, a helper thread and a closed thread. *Joining every thread to
   its newest run cost 36 ms a poll with every thread open; the thread rows are most of the rest.*
   - Known gap: the live scan reads the whole `runs` table each poll, so it grows with run history;
