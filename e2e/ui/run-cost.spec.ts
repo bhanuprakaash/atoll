@@ -1,5 +1,5 @@
-// What a run cost: the usage segment of the run footer and each Bot's last 24 h in the sidebar.
-// Contract: e2e/run-cost-contract.md and issue #193.
+// What a run shows of its usage: model and calls in the run footer, and no dollars in the footer
+// or the sidebar. Contract: e2e/run-cost-contract.md.
 import { expect, test } from '@playwright/test';
 import {
   type Machine,
@@ -38,15 +38,17 @@ async function twoRuns(name: string, provider: string) {
   return { bot, thread };
 }
 
-test('a Claude run ends with its model, calls and cost, counting only itself', async ({ page }) => {
+test('a Claude run ends with its model and calls, counting only itself, and no dollars', async ({
+  page,
+}) => {
   const { bot, thread } = await twoRuns('Costly', 'claude');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
   const log = page.getByRole('log', { name: 'Messages' });
-  const one = log.getByText(/Sonnet 5\.5, 7 calls, \$0\.19$/);
-  const two = log.getByText(/Sonnet 5\.5, 3 calls, \$0\.05$/);
+  const one = log.getByText(/Sonnet 5\.5, 7 calls$/);
+  const two = log.getByText(/Sonnet 5\.5, 3 calls$/);
   await expect(one).toHaveCount(1);
   await expect(two).toHaveCount(1);
-  await expect(log.getByText(/\$0\.24/)).toHaveCount(0);
+  expect(await log.innerText()).not.toContain('$');
 
   const replies = [
     log.getByText('The folder has no files; I looked six times.', {
@@ -76,13 +78,13 @@ test('a Codex run ends with its model and calls, and no dollars', async ({ page 
   expect(await log.innerText()).not.toContain('$');
 });
 
-test("the Bots list shows each Bot's cost of the last 24 hours", async ({ page }) => {
+test('the Bots list shows no dollars, and a Bot with runs keeps its time', async ({ page }) => {
   await twoRuns('Priced', 'claude');
   await twoRuns('Unpriced', 'codex');
   await newBotAPI(m, 'Resting', 'claude');
   await page.goto(m.url);
-  // Both runs: $0.19 + $0.05, not the session's running total of either.
-  await expect(sidebarRow(page, 'Priced')).toContainText('$0.24');
-  await expect(sidebarRow(page, 'Unpriced')).not.toContainText('$');
-  await expect(sidebarRow(page, 'Resting')).not.toContainText('$');
+  await expect(sidebarRow(page, 'Priced')).toBeVisible();
+  for (const name of ['Priced', 'Unpriced', 'Resting'])
+    await expect(sidebarRow(page, name)).not.toContainText('$');
+  await expect(sidebarRow(page, 'Priced')).toContainText(/\d{1,2}:\d{2}/);
 });
