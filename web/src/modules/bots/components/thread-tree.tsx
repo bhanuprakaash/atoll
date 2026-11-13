@@ -134,7 +134,10 @@ function HelpersLine({
 }) {
   const needsYou = workers[0].needsYou;
   return (
-    <li data-line="helpers">
+    <li
+      data-line="helpers"
+      className="relative pl-4 before:absolute before:-top-0.5 before:left-2 before:h-4.5 before:w-3.5 before:rounded-bl-[9px] before:border-b-[1.5px] before:border-l-[1.5px] before:border-composer-line"
+    >
       <NavLink
         to={`/bots/${botId}/threads/${threadId}`}
         state={{ helpers: true }}
