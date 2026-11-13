@@ -663,7 +663,7 @@ Follow-ups, not filed:
   (`ATOLL_REPO_POLL_INTERVAL`, a Go duration, the poll interval below) it reads each thread with a
   tracked MR and a worktree (`Store.Watched`; closing a thread removes its worktree, so a closed
   thread is never read). It reads the state (`opened`, `merged`, `closed`; GitLab's `locked`
-  counts as `opened`), the title and the CI summary. Fixtures lists the exact calls.
+  counts as `opened`), the title and, on GitHub, the CI summary. Fixtures lists the exact calls.
 - A GitLab MR is read with `glab mr view` and the Bot's GitLab environment. A GitHub PR is read
   with the REST API and the token of the Bot's first GitHub connection, from
   `connection.GitHubToken(id)` only. A Bot with no connection, or a thread whose Bot lost it, is
@@ -684,8 +684,7 @@ Follow-ups, not filed:
 - GitHub reads per thread: the PR; and, while it is open and its head commit has no stored CI
   result, the check runs and the combined status of that commit, with `per_page=100`, following
   `Link` until every item is read. Each read sends `If-None-Match` with the last ETag, kept in
-  memory; a `304` costs no rate limit. GitLab reads one `glab mr view` per thread, plus one call
-  for the head pipeline's jobs when the pipeline turns final.
+  memory; a `304` costs no rate limit. GitLab reads one `glab mr view` per thread.
 - After a failed read (offline, token rejected, MR or PR not found, rate limit) the thread is read
   again after twice the last wait: the poll interval times 1, 2, 4, 8, up to 15 times, back to the
   interval after a good read. A `403` or `429` with `X-RateLimit-Remaining: 0` or `Retry-After`
@@ -702,10 +701,8 @@ Follow-ups, not filed:
   pending when its `status` is `queued`, `in_progress`, `waiting`, `requested` or `pending`; once
   `completed` it passed on conclusion `success`, `neutral` or `skipped` and failed on `failure`,
   `timed_out`, `cancelled`, `action_required`, `stale` or `startup_failure`. A status passed on
-  `success`, failed on `failure` or `error`, and is pending on `pending`. GitLab: the head
-  pipeline's `status` is final on `success`, `failed` or `canceled`, and its jobs are counted the
-  same way (`success`, `skipped` passed; `failed`, `canceled` failed). A `skipped` pipeline, a
-  `manual` or `blocked` one, and a commit with no check never finish CI. *Checks of one commit
+  `success`, failed on `failure` or `error`, and is pending on `pending`. A commit with no check
+  never finishes CI. *Checks of one commit
   appear over a few seconds; a result seen on two reads in a row, for the same commit, is not a
   first check that finished before the next one registered.* A commit that two reads in a row found
   with no check is read again only every fifth poll, until a push changes the head: a check that
@@ -757,9 +754,11 @@ Follow-ups, not filed:
   head commit, passed, failed, pending, failed names; the last read), `mr_woke` and `mr_wake`
   (integer, default 0). *Sixteen of nineteen PR threads of the dogfood runs said `opened` after
   they merged.*
-- Known gap: a GitLab MR wakes nothing yet, neither for merged or closed nor for CI: the poll still
-  stores its state and releases a merged MR's worktree as before. Its read and the wake are the
-  next ticket.
+- Known gap: GitLab. An MR wakes nothing, neither for merged or closed nor for CI, and its CI is
+  not read: the poll stores its state and title and releases a merged MR's worktree. Designed,
+  not built: the head pipeline's `status` is final on `success`, `failed` or `canceled`, and its
+  jobs are counted like checks (`success`, `skipped` passed; `failed`, `canceled` failed); a
+  `skipped`, `manual` or `blocked` pipeline never finishes CI.
 - The merged sentence says where it went and what: the base branch as the API names it (cut at 60
   characters) and the first 7 characters of the head commit at the merge. When the
   base is not the repo's default branch (what `origin/HEAD` names, else the branch the repo has
@@ -780,8 +779,7 @@ Follow-ups, not filed:
   failures. Review comments and reopening wake nothing.
 - Known gap: CI re-run on the same commit (a failed check re-run passes) is not seen: reads stop
   once the commit is reported, and the chip keeps the first result.
-- Known gap: a GitLab pipeline that is `manual` or `blocked` never finishes. A merged GitHub PR
-  keeps its worktree until the thread closes (the release is its own ticket).
+- Known gap: a merged GitHub PR keeps its worktree until the thread closes.
 - Known gap: a stopped thread hears a wake only when its next run ends, and a merged GitLab MR's
   worktree can be released before that wake is delivered.
 - Fixtures (what the poll reads; GitHub base is the API base `CheckGitHubToken` uses, so
@@ -798,12 +796,12 @@ Follow-ups, not filed:
     is `403` or `429` with `X-RateLimit-Remaining: 0`, `X-RateLimit-Reset` (epoch seconds) or
     `Retry-After`; a rejected token is `401`; a missing PR is `404`.
   - GitLab: `glab mr view --output json -- <url>` with `state` (`opened`, `merged`, `closed`,
-    `locked`), `title` and `head_pipeline` with `id` and `status` (`running`, `success`, `failed`,
-    `canceled`, `skipped`, `manual`, `blocked`); and
+    `locked`) and `title`. For the CI read (not built): `head_pipeline` with `id` and `status`
+    (`running`, `success`, `failed`, `canceled`, `skipped`, `manual`, `blocked`), and
     `glab api --paginate projects/:fullpath/pipelines/<id>/jobs?per_page=100` giving `[]` of
     `name`, `status`; a pipeline has more than 20 jobs, GitLab's default page, and all are counted.
-    Unverified: no real `glab` was available; the field names come from GitLab's MR and jobs API
-    documentation, to be checked against `glab` when the fake is built.
+    Unverified: the field names come from GitLab's MR and jobs API documentation, not a real
+    `glab`.
 
 ## Providers
 
@@ -926,8 +924,7 @@ Follow-ups, not filed:
         reach the internet, not other sessions or the machine's sessions. `NotebookEdit` writes a
         file in the worktree, like `Edit`. `Glob` and `Grep` are named because Reef maps them
         (`run/run.go`); Claude Code 2.1.319 lists both in its init event when they are named.
-      - Delegation goes only through Reef's own tool (see Delegation). A dedicated helpers tool is
-        a later ticket (#205).
+      - Delegation goes only through Reef's own tools (see Delegation).
     - Run, `claude` 2.1.319 with Reef's other flags and a local MCP server standing in for Reef's:
       the `system/init` tool list in Ask, Auto and Full holds exactly the 10 built-in names above
       plus Reef's tools, except the permission-prompt tool (`approve`), which `claude` keeps out of
@@ -953,8 +950,8 @@ Follow-ups, not filed:
     - The Bash tool runs through `CLAUDE_CODE_SHELL_PREFIX`, a script that unsets every variable
       starting with `CLAUDE` or `ATOLL_MCP_` and then runs the command. A Bot's shell has no
       `CLAUDE_CONFIG_DIR`, and `env | grep -c CLAUDE` prints 0.
-      - `ATOLL_MCP_<n>` are what #173 retires (see "Same-user reads" below); the prefix still
-        unsets them until the fix lands.
+      - `ATOLL_MCP_<n>` no longer exist (#173, "Same-user reads" below); the script still names
+        them.
       - The script, exactly:
         ```sh
         #!/bin/bash
@@ -978,7 +975,7 @@ Follow-ups, not filed:
       entry (changes `claude` itself and signs it out); `BASH_ENV` (a login shell ignores it);
       `--setting-sources ""` and `CLAUDE_CODE_DISABLE_CLAUDE_MDS` (also drop the repo's files);
       a `!` negation in `claudeMdExcludes` (does not work).
-    - Same-user reads (issue #173; the fix builds this). Bots run as the same OS user as Reef, so
+    - Same-user reads (#173). Bots run as the same OS user as Reef, so
       what a process holds in its env or command line, another Bot's shell can read.
       - Reef drops the login tokens from its own env before anything else in `main`: `GH_TOKEN`,
         `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GITLAB_TOKEN`,
@@ -1903,7 +1900,7 @@ Voice
   the requests that failed meanwhile show nothing of their own. *One notice per failed request
   looked like ten bugs for one cause.* The gone pages (a deleted Bot or thread) are the full-page
   form of `not_found`: a sentence and one link, no Details, since nothing failed.
-- Chat type: Bot replies, the user's bubble and briefs are 16 px, line height 1.65, letter spacing
+- Chat type: Bot replies, the user's bubble and briefs are 15 px, line height 1.6, letter spacing
   0; the rest of the app keeps 14 px. *Replies read as a wall next to Claude's app; the user wanted
   more air.*
 - Chief's changes and saved memory are quiet lines, one per kind (new Bots, edits, saved memory),
@@ -2048,8 +2045,8 @@ Voice
 - New Bot is a full page with a centred form grouped into Basics, Brain and Access, and a link
   to ask Chief instead. Wide windows show a live card and sidebar row preview on the right. Create
   opens the new Bot's empty thread.
-- Settings: General (name, worktree folder, and in the desktop app the Software update group), Providers, Connections, Skills, Repos, Memory, one
-  list each. Content to the right of the section navigation is centred, with a maximum width of
+- Settings: General (name, worktree folder, and in the desktop app the Software update group),
+  Providers, Connections, Skills, MCP servers, Repos, Memory, one list each. Content to the right of the section navigation is centred, with a maximum width of
   720px. Add repo opens a dialog (name, path, Choose… for the native folder picker, which the Go
   sidecar opens with `osascript` on macOS and `zenity` on Linux, so the UI still talks to Go over
   HTTP only; with no `zenity` it answers `501` and the dialog says to type the path); with no
@@ -2187,9 +2184,6 @@ message and the boss's brief all render alike.
   `diff` and code render in Reef and on GitHub; `reef-metrics` and `reef-kv` render only in Reef
   chat. A Bot writing a PR, issue or comment with `gh` or `glab` therefore uses Markdown tables
   and code only.
-- Shipping: the first PR is `code` and `table` (they cover most replies) and the fallback;
-  `diff`, `checklist`, `metrics` and `kv` follow when a real reply asks for them, and the catalog
-  line grows only with `metrics` and `kv`.
 - Components read the theme tokens, never a literal colour; colour carries meaning (red only for
   danger or failure).
 
