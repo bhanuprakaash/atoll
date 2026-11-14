@@ -67,6 +67,12 @@ thread's unread reply or failure keeps its Earlier row and its sidebar label (`R
 when a quiet run follows it. A background run that called `tell_user` is under Earlier, live and
 after a reload. Tests read the boss's row by `Poteto finished …` or `Poteto failed …`.
 
+A quiet background run changes nothing the person sees in the Bot list: after it, `GET /api/bots` shows
+the Bot's previous `activity` (not the run's final message) and the thread keeps its place in the
+list (`last_activity` is not bumped by the run). Two threads of one Bot: the newer one holds the top
+and the Bot's activity; a quiet run in the older one moves neither. A `tell_user` run is not pinned
+here: it may still bump.
+
 The notice the boss reads is `Reef: {Helper} finished thread {id}:` on the first line, then the
 helper's reply, then the helpers line; no `Done:`, `Tried:`, `Blocked:` or `Next:`. Every notice
 starts `Reef: ` in the prompt. Whether the stored message text keeps the `Reef: ` (a PR wake's does
@@ -108,6 +114,7 @@ wording, so its description is only checked for the same two. Both pass on the b
 | One label per thread, in priority; clears when opened; helper never Replied | `TestThreadLabels_*`, `ui/thread-labels.spec.ts`, `ui/sidebar-tree.spec.ts` |
 | Background run adds no message, not Replied, final message shown nowhere | `TestBackgroundRun_HelperNoticeAddsNoMessage`, `TestPRWake_MergedWakesTheBot`, `TestPRWake_ClosedUnmergedWakesTheBot`, `ui/thread-labels.spec.ts` |
 | Quiet background run stays off the island; an unread reply or failure keeps its Earlier row | `ui/island-earlier.spec.ts` (quiet run, unread reply, unread failure, `tell_user`) |
+| Quiet background run leaves the Bot's activity and the thread order | `TestBackgroundRun_QuietRunLeavesActivityAndOrder` |
 | Background run lists `tell_user` and starts with the line; `tell_user` adds a message; person's run lists none | `TestBackgroundRun_TellUserReachesThePerson`, `TestBossQuiet_PersonTakesHeldReports`, `ui/thread-labels.spec.ts` |
 | Guard | `TestWake_HelperFailedStoppedDeleted`, `TestUsageLimit_WakeSaysHelperIsOut`, `TestPRWake_CIFinishedWakesOnce` |
 | Helper's report not in the boss chat; the notice text | `TestWake_ReportWakesBoss`, `TestFinalAnswer_HelperReplyRelaysFinalMessage`, `ui/helpers.spec.ts` |

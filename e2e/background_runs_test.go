@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Contract: no-report-contract.md, "Background runs".
@@ -114,6 +115,76 @@ func TestBackgroundRun_TellUserReachesThePerson(t *testing.T) {
 			}
 			if got := sidebarState(t, s, boss.BotID, boss.ID); got != "new" {
 				t.Errorf("boss thread state %q after tell_user, want new (Replied)", got)
+			}
+		})
+	}
+}
+
+// botRow is a Bot of GET /api/bots with its activity line and its threads, newest first.
+type botRow struct {
+	ID       string `json:"id"`
+	Activity string `json:"activity"`
+	Threads  []struct {
+		ID           string    `json:"id"`
+		LastActivity time.Time `json:"last_activity"`
+	} `json:"threads"`
+}
+
+func botRowOf(t *testing.T, s *server, botID string) botRow {
+	t.Helper()
+	var bots []botRow
+	s.do(t, "GET", "/api/bots", nil, &bots, http.StatusOK)
+	for _, b := range bots {
+		if b.ID == botID {
+			return b
+		}
+	}
+	t.Fatalf("GET /api/bots has no Bot %s: %+v", botID, bots)
+	return botRow{}
+}
+
+// A quiet background run (no tell_user) changes nothing the person sees: the Bot keeps its
+// previous activity and the older thread does not move above the newer one.
+func TestBackgroundRun_QuietRunLeavesActivityAndOrder(t *testing.T) {
+	t.Parallel()
+	for _, p := range _providers {
+		t.Run(p, func(t *testing.T) {
+			t.Parallel()
+			m, s, tester, older, ev := backgroundSetup(t, p)
+			ids, delegating := delegateTester(t, s, older, ev, _reportPrompt)
+			poteto := older.BotID
+			helpersEnd(t, s, ids[0])
+			newer := s.newThread(t, bot{ID: poteto})
+			if r := s.finished(t, s.events(t, newer), s.send(t, newer, _keepPrompt).ID); r.Status != "done" {
+				t.Fatalf("newer thread run: status %q, error %q; want done", r.Status, r.Error)
+			}
+			before := botRowOf(t, s, poteto)
+			if th := getThread(t, s, older.ID); th.RunID != delegating {
+				t.Fatalf("the notice's run started before the check (run %s after %s): the 3 s window is too short for this machine", th.RunID, delegating)
+			}
+			if len(before.Threads) != 2 || before.Threads[0].ID != newer.ID || before.Threads[1].ID != older.ID || before.Activity != "ok" {
+				t.Fatalf("before the quiet run: threads %+v, activity %q; want the newer thread %s above the older %s and activity %q", before.Threads, before.Activity, newer.ID, older.ID, "ok")
+			}
+
+			_, _, wake := woken(t, m, s, p, older.ID, tester.ID, 1)
+			if wake.Status != "done" || wake.Reply == "" {
+				t.Fatalf("boss run for the notice: status %q, reply %q, error %q; want done with a final message", wake.Status, wake.Reply, wake.Error)
+			}
+			if got := botMessagesOf(t, s, older.ID, wake.ID); len(got) != 0 {
+				t.Fatalf("the notice's run added the Bot messages %q, want none: it must be quiet", got)
+			}
+
+			after := botRowOf(t, s, poteto)
+			if after.Activity != before.Activity {
+				t.Errorf("Bot activity %q after a quiet run, want the previous %q (not the run's final message %q)", after.Activity, before.Activity, wake.Reply)
+			}
+			if len(after.Threads) != 2 || after.Threads[0].ID != newer.ID || after.Threads[1].ID != older.ID {
+				t.Errorf("threads %+v after a quiet run, want the newer thread %s still above the older %s", after.Threads, newer.ID, older.ID)
+			}
+			for _, th := range after.Threads {
+				if th.ID == older.ID && !th.LastActivity.Equal(before.Threads[1].LastActivity) {
+					t.Errorf("older thread last_activity %v after a quiet run, want unchanged %v", th.LastActivity, before.Threads[1].LastActivity)
+				}
 			}
 		})
 	}
