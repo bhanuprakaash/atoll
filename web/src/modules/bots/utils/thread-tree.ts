@@ -69,6 +69,33 @@ export function threadTree(
   return { rows, hidden, more: null };
 }
 
+const sectionLabels = ['Needs you', 'Running', 'Pinned', 'Recent'] as const;
+
+const sectionOf = (t: SidebarThread) =>
+  t.state === 'needs_you'
+    ? 'Needs you'
+    : t.state === 'running'
+      ? 'Running'
+      : t.pinned
+        ? 'Pinned'
+        : 'Recent';
+
+// threadSections splits a Bot's threads into the pane's sections, keeping the server's order and
+// leaving out the empty ones. The open thread is never Replied; a live helper thread is Running,
+// its Needs you shows on its boss thread's helper line.
+export function threadSections(all: SidebarThread[], openId: string | undefined) {
+  const threads = all.map((t) =>
+    isLiveHelper(t)
+      ? { ...t, state: 'running' as const }
+      : t.id === openId && t.state === 'new'
+        ? { ...t, state: '' as const }
+        : t,
+  );
+  return sectionLabels
+    .map((label) => ({ label, threads: threads.filter((t) => sectionOf(t) === label) }))
+    .filter((section) => section.threads.length > 0);
+}
+
 export type Worker = { id: string; bot: Bot; needsYou: boolean; step: string };
 
 // workersByBoss lists the helpers running for each boss thread: the one that needs the person

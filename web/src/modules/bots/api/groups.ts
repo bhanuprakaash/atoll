@@ -30,11 +30,6 @@ export const useUpdateGroup = () =>
     api<void>(`/groups/${id}`, { method: 'PATCH', body: changes }),
   );
 
-export const useMoveGroup = () =>
-  useGroupMutation(({ id, up }: { id: string; up: boolean }) =>
-    api<void>(`/groups/${id}/move`, { method: 'POST', body: { up } }),
-  );
-
 export const useDeleteGroup = () =>
   useGroupMutation((id: string) => api<void>(`/groups/${id}`, { method: 'DELETE' }));
 
