@@ -1,5 +1,5 @@
-// Bot groups: rail sections the user creates, fills, renames, orders and deletes; groups do not
-// fold on the rail. Contracts: e2e/sidebar-tree-contract.md, e2e/sidebar-rail-contract.md.
+// Bot groups: rail sections the user creates, fills, renames, drags into order (#246) and deletes;
+// groups do not fold on the rail. Contracts: e2e/sidebar-tree-contract.md, e2e/sidebar-rail-contract.md.
 import { expect, type Page, test } from '@playwright/test';
 import { type Machine, newBotAPI, sidebarRow, startAtoll } from './atoll';
 
@@ -41,7 +41,7 @@ const order = (page: Page) =>
     .getByRole('group')
     .evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
 
-test('New group, Move to group, drop on a line, Rename, Move up and down persist across restart', async ({
+test('New group, Move to group, drop on a line, Rename, drag a group above another persist across restart', async ({
   page,
 }) => {
   for (const name of ['Ivy', 'Oak', 'Elm']) await newBotAPI(m, name);
@@ -78,11 +78,11 @@ test('New group, Move to group, drop on a line, Rename, Move up and down persist
   await expect(group(page, 'Backend')).toHaveCount(0);
 
   await expect.poll(() => order(page)).toEqual(['Platform', 'Frontend', 'Ungrouped']);
-  await groupAction(page, 'Frontend', 'Move up');
+  await line(page, 'Frontend').dragTo(line(page, 'Platform'));
   await expect.poll(() => order(page)).toEqual(['Frontend', 'Platform', 'Ungrouped']);
-  await groupAction(page, 'Frontend', 'Move down');
+  await line(page, 'Platform').dragTo(line(page, 'Frontend'));
   await expect.poll(() => order(page)).toEqual(['Platform', 'Frontend', 'Ungrouped']);
-  await groupAction(page, 'Platform', 'Move down');
+  await line(page, 'Frontend').dragTo(line(page, 'Platform'));
   await expect.poll(() => order(page)).toEqual(['Frontend', 'Platform', 'Ungrouped']);
 
   m.kill();

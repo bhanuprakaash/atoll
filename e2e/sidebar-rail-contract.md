@@ -1,6 +1,6 @@
 # Sidebar rail and thread pane: test contract
 
-Issues #469–#472, slice #473. Design: `docs/design.md`, App and UI ("Sidebar", "Thread pane",
+Issues #469–#472 and #246, slice #473. Design: `docs/design.md`, App and UI ("Sidebar", "Thread pane",
 "Now", "Selected row", "Narrow windows", "Bot groups", "New thread"). Tests:
 `ui/sidebar-rail.spec.ts`, plus the specs retargeted to the rail and pane (`sidebar`,
 `sidebar-tree`, `sidebar-selection`, `sidebar-resize`, `bot-groups`, `helpers-sidebar`,
@@ -32,8 +32,14 @@ Rail
 - Each user group and Ungrouped is a `group` named by its name (`aria-label`), holding its faces,
   in rail order. Pinned Bots are not in a named `group`. A group's line is a focusable `button`
   named exactly the group's name; right-click on it opens the group `menu` (Rename, New Bot in this
-  group, Move up, Move down, Delete group); a face dropped on it moves the Bot there. Rename and New
-  group use a `textbox` named `Group name`.
+  group, Delete group). Rename and New group use a `textbox` named `Group name`.
+- Drag to reorder (#246, `ui/sidebar-drag.spec.ts`, `sidebar_place_test.go`): native HTML5 drag
+  and drop. Faces and group lines other than Chief's and Ungrouped's have `draggable="true"`; Chief's
+  face and every thread row link have `draggable="false"`; Ungrouped's line is not draggable. A face
+  dropped on the top half of another face lands before it, on the bottom half after it (after
+  Chief: first in Pinned); on a group's line, last in that group. A group's line dropped on another
+  group's line lands before that group. API: `PUT /api/bots/{id}/place {pinned, group_id, before}`
+  answers `204` (`409` for Chief); `POST /api/groups/{id}/move {before}` answers `204`.
 - Bottom: `button` `New` (menu: New Bot, New group) and `link` `Settings`.
 - Right-click on a face opens the Bot `menu`: New thread, Pin to sidebar (or Unpin), Move to group,
   Bot settings.

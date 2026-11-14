@@ -271,7 +271,7 @@ test.describe('#469 rail and the Bot pane', () => {
     await expect(tray(page)).toBeInViewport();
   });
 
-  test('a group line shows the group name and Bot count on hover and focus, opens the group menu on right-click, and takes a dropped Bot', async ({
+  test('a group line shows the group name and Bot count on hover and focus, and opens the group menu on right-click', async ({
     page,
   }) => {
     const bots: Record<string, { id: string }> = {};
@@ -295,19 +295,12 @@ test.describe('#469 rail and the Bot pane', () => {
     await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText([
       /^Rename/,
       /^New Bot in this group/,
-      /^Move up/,
-      /^Move down/,
       /^Delete group/,
     ]);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('menu')).toHaveCount(0);
 
-    await sidebarRow(page, 'Elm').dragTo(groupLine(page, 'Ops'));
-    await expect(group(page, 'Ops').getByRole('link', { name: /\bElm\b/ })).toBeVisible();
-    await expect(group(page, 'Ops').getByRole('link')).toHaveCount(2);
-    await expect
-      .poll(async () => (await api(m, 'GET', `/api/bots/${bots.Elm.id}`)).group_id)
-      .toBe(ops.id);
+    await api(m, 'PUT', `/api/bots/${bots.Elm.id}/group`, { group_id: ops.id });
     await groupLine(page, 'Ops').hover();
     await expect(tip).toContainText(/\b2\b/);
   });
@@ -393,6 +386,7 @@ test.describe('#469 rail and the Bot pane', () => {
     await api(m, 'PUT', `/api/bots/${bots.Ivy.id}/group`, { group_id: ops.id });
     await api(m, 'POST', `/api/bots/${bots.Fir.id}/pin`);
     await page.goto(`${m.url}/settings`);
+    await expect(nowButton(page)).toBeVisible();
     await expect
       .poll(async () => (await faceOrder(page)).slice(0, 3))
       .toEqual(['/bots/chief', `/bots/${bots.Fir.id}`, `/bots/${bots.Ivy.id}`]);
