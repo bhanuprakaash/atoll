@@ -87,7 +87,7 @@ func (m *Manager) pollIssues(w *watcher) {
 }
 
 func (m *Manager) checkIssue(w *watcher, wi *watchedIssue, connID, token, api string, t memory.Ticket) error {
-	body, hdr, err := m.githubGet(w, connID, token, api+"/issues/"+strings.TrimPrefix(t.Number, "#"), wi.etag)
+	body, hdr, err := m.githubGet(w, "", connID, token, api+"/issues/"+strings.TrimPrefix(t.Number, "#"), wi.etag)
 	if err != nil {
 		return err
 	}

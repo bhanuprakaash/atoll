@@ -982,6 +982,9 @@ Follow-ups:
   - Codex: `skills.bundled.enabled=false`; plugins, remote plugins and apps off; each skill in
     `~/.agents/skills` disabled by the path of its `SKILL.md`, since a skill's name can differ from
     its folder (Codex finds that folder through `HOME`).
+- The server writes each log line (JSON) to stderr and appends it to `<data dir>/logs/server.log`,
+  since the Mac app's sidecar stderr lands nowhere. A start moves a file over 10 MB to
+  `server.log.1`.
 - Env knobs, for tests and dev: `ATOLL_DATA_DIR` replaces `~/Library/Application Support/Atoll`;
   `ATOLL_PROVIDER_PATH` (PATH syntax) is the only place discovery looks; `ATOLL_CLAUDE_PATH` and
   `ATOLL_CODEX_PATH` are the path override when none is stored; `ATOLL_SECRET_STORE_UNAVAILABLE`
@@ -1101,13 +1104,19 @@ Follow-ups:
 - Settings > Connections has a GitHub card ("Bots get gh, git and GitHub tools."). Connect GitHub
   starts the device flow, opens `github.com/login/device` and shows the code. A connection that
   needs sign-in, or is pending with no sign-in running in the page (abandoned, denied, expired, app
-  restarted), offers Sign in again. A failed sign-in shows its error on the card.
+  restarted), offers Sign in again. A failed sign-in shows its error on the card. A GitHub or GitLab
+  connection that needs sign-in says when it lost it: `Signed out <time>` in the card's detail line.
+  The API carries that time as `signed_out_at` (RFC 3339, UTC), set when the connection goes
+  `needs_sign_in` and kept while it stays there; any other status drops it.
 - A GitHub token has no refresh and no expiry. Before a run uses one, `GET /user` must accept it; a
   401 marks the connection `needs_sign_in`, the run stops before the provider starts with "GitHub
   needs sign-in", and signing in again keeps the connection and its Bots. The OS secret store holds
   the bare token under `github:<connection id>`. The MR watcher does not check first: it uses the
   token on its own reads and treats a `401` the same way. A thread's reads use the host's connection
-  only, so a GitHub failure never stops GitLab polling.
+  only, so a GitHub failure never stops GitLab polling. Each 401 that marks the connection writes
+  one WARN line `GitHub sign-in lost` to `logs/server.log` with `connection_id`, `bot_id` (empty for
+  the issue watcher, which acts for no Bot), `endpoint`, `github_message` (the reply's `message`)
+  and `github_request_id` (`X-GitHub-Request-Id`); never the token.
 - GitLab OAuth records (refresh token and expiry too) are in the secret store. Before a run uses
   one, a token expiring within ten minutes is refreshed. Reads, refreshes and sign-in writes for one
   connection run one at a time (refresh tokens are single-use). A rejected refresh marks the

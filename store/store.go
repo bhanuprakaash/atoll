@@ -196,6 +196,8 @@ type (
 		Kind        string `json:"kind"`
 		InstanceURL string `json:"instance_url"`
 		Status      string `json:"status"`
+		// SignedOutAt is when the connection went needs_sign_in; nil for any other status.
+		SignedOutAt *time.Time `json:"signed_out_at,omitempty"`
 	}
 
 	// Thread is a chat with one Bot. Session is the provider session its runs resume; empty
@@ -725,7 +727,7 @@ func (s *Store) CreateConnection(ctx context.Context, kind, instanceURL string) 
 // Connection returns the connection with id.
 func (s *Store) Connection(ctx context.Context, id string) (Connection, error) {
 	rows, err := query(ctx, s.db,
-		"SELECT id, kind, instance_url, status FROM connections WHERE id = ?", scanConnection, id)
+		"SELECT id, kind, instance_url, status, signed_out_at FROM connections WHERE id = ?", scanConnection, id)
 	if err != nil {
 		return Connection{}, fmt.Errorf("read connection %s: %w", id, err)
 	}
@@ -738,12 +740,15 @@ func (s *Store) Connection(ctx context.Context, id string) (Connection, error) {
 // Connections lists every connection, oldest first.
 func (s *Store) Connections(ctx context.Context) ([]Connection, error) {
 	return query(ctx, s.db,
-		"SELECT id, kind, instance_url, status FROM connections ORDER BY rowid", scanConnection)
+		"SELECT id, kind, instance_url, status, signed_out_at FROM connections ORDER BY rowid", scanConnection)
 }
 
-// SetConnectionStatus sets the status of the connection with id.
+// SetConnectionStatus sets the status of the connection with id. Going needs_sign_in records the
+// time; staying there keeps the first one.
 func (s *Store) SetConnectionStatus(ctx context.Context, id, status string) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE connections SET status = ? WHERE id = ?", status, id)
+	res, err := s.db.ExecContext(ctx, `UPDATE connections SET status = ?1,
+		signed_out_at = CASE WHEN ?1 != ?2 THEN NULL WHEN status = ?2 THEN signed_out_at ELSE ?3 END
+		WHERE id = ?4`, status, ConnectionNeedsSignIn, time.Now().UTC().UnixMicro(), id)
 	if err != nil {
 		return fmt.Errorf("set connection status: %w", err)
 	}
@@ -1983,7 +1988,15 @@ func scanRepo(r *sql.Rows) (rp Repo, err error) {
 }
 
 func scanConnection(r *sql.Rows) (c Connection, err error) {
-	return c, r.Scan(&c.ID, &c.Kind, &c.InstanceURL, &c.Status)
+	var signedOut sql.NullInt64
+	if err := r.Scan(&c.ID, &c.Kind, &c.InstanceURL, &c.Status, &signedOut); err != nil {
+		return Connection{}, err
+	}
+	if signedOut.Valid {
+		when := time.UnixMicro(signedOut.Int64).UTC()
+		c.SignedOutAt = &when
+	}
+	return c, nil
 }
 
 type queryer interface {

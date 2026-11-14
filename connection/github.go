@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,6 +29,27 @@ const (
 
 // ErrGitHubNeedsSignIn is GitHub rejecting the token.
 var ErrGitHubNeedsSignIn = errors.New("GitHub needs sign-in")
+
+// GitHubRejection is a 401 from GitHub; it matches ErrGitHubNeedsSignIn.
+type GitHubRejection struct {
+	Endpoint  string
+	Message   string // the message of GitHub's reply
+	RequestID string // X-GitHub-Request-Id
+}
+
+// RejectedBy reads the 401 resp from endpoint.
+func RejectedBy(endpoint string, resp *http.Response) *GitHubRejection {
+	var reply struct {
+		Message string `json:"message"`
+	}
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&reply)
+	return &GitHubRejection{Endpoint: endpoint, Message: reply.Message, RequestID: resp.Header.Get("X-GitHub-Request-Id")}
+}
+
+func (e *GitHubRejection) Error() string { return ErrGitHubNeedsSignIn.Error() }
+
+// Is matches ErrGitHubNeedsSignIn.
+func (e *GitHubRejection) Is(target error) bool { return target == ErrGitHubNeedsSignIn }
 
 // GitHubURL is the base URL of GitHub's sign-in and the one git's credential helper is scoped
 // to: ATOLL_GITHUB_URL, else github.com.
@@ -132,7 +154,8 @@ func PollGitHubToken(ctx context.Context, c *http.Client, deviceCode string) (st
 
 // CheckGitHubToken returns ErrGitHubNeedsSignIn when GitHub rejects the token.
 func CheckGitHubToken(ctx context.Context, c *http.Client, token string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, GitHubAPI()+"/user", nil)
+	endpoint := GitHubAPI() + "/user"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("create GitHub request: %w", err)
 	}
@@ -146,7 +169,7 @@ func CheckGitHubToken(ctx context.Context, c *http.Client, token string) error {
 	case http.StatusOK:
 		return nil
 	case http.StatusUnauthorized:
-		return ErrGitHubNeedsSignIn
+		return RejectedBy(endpoint, resp)
 	}
 	return fmt.Errorf("GitHub HTTP status: %d", resp.StatusCode)
 }

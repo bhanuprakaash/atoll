@@ -24,6 +24,7 @@ import {
 } from '@/modules/connections/api/connections';
 import { ErrorNotice } from '@/components/error-notice';
 import { ApiError } from '@/lib/api-client';
+import { messageTime } from '@/utils/time';
 
 type Bot = { id: string; name: string; look: CreatureLook; connections: string[] };
 
@@ -109,6 +110,9 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
     </Tag>
   );
 
+  const signedOut = (c: Connection) =>
+    c.signed_out_at ? `Signed out ${messageTime(c.signed_out_at)}` : '';
+
   // The notice of a failed sign-in already offers Sign in again: one button, not two.
   const noticeSignsIn =
     pollFailure?.error instanceof ApiError &&
@@ -137,7 +141,12 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
               <Tile className="bg-gitlab-bg">
                 <BrandLogo brand="gitlab" className="size-[22px]" />
               </Tile>
-              <RowText title="GitLab" detail={c.instance_url.replace(/^https?:\/\//, '')} />
+              <RowText
+                title="GitLab"
+                detail={[c.instance_url.replace(/^https?:\/\//, ''), signedOut(c)]
+                  .filter(Boolean)
+                  .join(' · ')}
+              />
               {users.length > 0 && <UsedBy bots={users} />}
               {statusTag(c)}
               {signInAgainButton(c)}
@@ -157,7 +166,10 @@ export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
           <Tile className="bg-line">
             <BrandLogo brand="github" className="size-5" />
           </Tile>
-          <RowText title="GitHub" detail="Bots get gh, git and GitHub tools." />
+          <RowText
+            title="GitHub"
+            detail={(github && signedOut(github)) || 'Bots get gh, git and GitHub tools.'}
+          />
           {githubUsers.length > 0 && <UsedBy bots={githubUsers} />}
           {github ? statusTag(github) : <Tag tone="warn">Not connected</Tag>}
           {github && signInAgainButton(github)}
