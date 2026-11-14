@@ -879,13 +879,7 @@ export function ThreadView({
           })}
           {Object.entries(runs).map(([id, run]) => (
             <div key={id} className="flex flex-col gap-6">
-              <LiveRun
-                id={id}
-                threadId={threadId}
-                run={run}
-                answered={answered.has(id)}
-                look={look}
-              />
+              <LiveRun id={id} run={run} answered={answered.has(id)} look={look} />
               {run.finished && !answered.has(id) && (
                 <>
                   {afterRun?.(id)}

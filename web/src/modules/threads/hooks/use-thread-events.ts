@@ -115,12 +115,22 @@ export function useThreadEvents(threadId: string) {
             : [...run.parts, { text: d.text }],
       };
     });
-    on<{ kind: ToolKind; target: string; name: string; verb: string }>('tool_call', (d, run) => {
+    on<{
+      kind: ToolKind;
+      target: string;
+      name: string;
+      verb: string;
+      input?: { description?: string };
+    }>('tool_call', (d, run) => {
       const tool = { kind: d.kind, target: d.target, name: d.name, verb: d.verb };
+      const described = !!d.input?.description && d.input.description === d.target;
       return {
         ...run,
         tool,
-        parts: [...run.parts, { step: d.name.endsWith('finish_run') ? '' : toolLine(tool) }],
+        parts: [
+          ...run.parts,
+          { step: d.name.endsWith('finish_run') ? '' : described ? d.target : toolLine(tool) },
+        ],
       };
     });
     on<LiveRun['approvals'][number]>('approval', (d, run) => withApproval(run, d));
