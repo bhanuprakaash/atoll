@@ -196,6 +196,9 @@ func (a adapter) chat(ctx context.Context, args []string, w io.Writer) error {
 			if !ok {
 				return fmt.Errorf("%s exited before the turn ended", a.name)
 			}
+			if ev.Other {
+				continue
+			}
 			switch ev.Kind {
 			case provider.KindText:
 				reply.WriteString(ev.Text)

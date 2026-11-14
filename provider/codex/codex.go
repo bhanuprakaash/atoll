@@ -4,6 +4,7 @@ package codex
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -488,11 +489,27 @@ func (s *Session) serverRequest(m message) bool {
 
 // handle emits the event for m and reports whether to keep reading. Text of a commentary agent
 // message, Codex's working notes, is dropped. A break goes before the text of a second answer
-// message in a turn.
+// message in a turn. Reef's turn is the one turn/start answered; the text and tool calls of any
+// other turn go out marked Other, and nothing else of it counts.
 func (s *Session) handle(m message) bool {
+	if m.Method == "" && m.Error == nil {
+		var res struct {
+			Turn struct {
+				ID string `json:"id"`
+			} `json:"turn"`
+		}
+		if json.Unmarshal(m.Result, &res) == nil && res.Turn.ID != "" {
+			s.turnID = res.Turn.ID
+		}
+		return true
+	}
+	turn := cmp.Or(m.body().TurnID, m.body().Turn.ID)
+	other := turn != "" && turn != s.turnID
 	switch m.Method {
 	case "turn/started":
-		s.turnID = m.body().Turn.ID
+		if other {
+			return true
+		}
 		s.msgID, s.wrote = "", false
 		clear(s.notes)
 		clear(s.changes)
@@ -533,6 +550,9 @@ func (s *Session) handle(m message) bool {
 		if s.notes[itemID] {
 			return true
 		}
+		if other {
+			break
+		}
 		if s.wrote && itemID != s.msgID &&
 			!s.emit(provider.Event{Kind: provider.KindText, Text: _messageBreak}) {
 			return false
@@ -549,6 +569,10 @@ func (s *Session) handle(m message) bool {
 			s.usage.OutputTokens += last.OutputTokens
 		}
 	case "turn/completed":
+		if other {
+			return true
+		}
+		s.turnID = ""
 		if s.usage.Calls > 0 {
 			u := s.usage
 			u.Model = s.model
@@ -571,6 +595,7 @@ func (s *Session) handle(m message) bool {
 	if ev.Limited {
 		ev.ResetsAt = s.resetsAt
 	}
+	ev.Other = other
 	return s.emit(ev)
 }
 

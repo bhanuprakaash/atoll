@@ -4,7 +4,10 @@
 // --mcp-config when a recording uses their tools, and asks --permission-prompt-tool before a call
 // the recording marks with a "fake" ask line, unless --allowedTools allows it. Signed in means
 // CLAUDE_CONFIG_DIR (default ~/.claude) holds .credentials.json; a revoked one (fake.Refused)
-// fails the next turn as the real CLI does. Every call is logged to <executable>.log.
+// fails the next turn as the real CLI does. Every call is logged to <executable>.log, and the order
+// of the user lines it read and the result and command_lifecycle lines it printed to
+// <executable>.log.trace. A recording prints a command_lifecycle line only when it holds one, and
+// "$COMMAND_UUID" in a line is the uuid of the user line being answered ("" when it had none).
 package main
 
 import (
@@ -40,6 +43,7 @@ type (
 		Type      string  `json:"type"`
 		Subtype   string  `json:"subtype"`
 		SessionID string  `json:"session_id"`
+		UUID      string  `json:"uuid"`
 		IsReplay  bool    `json:"isReplay"`
 		Message   message `json:"message"`
 		RequestID string  `json:"request_id"`
@@ -123,7 +127,7 @@ func stream(log *fake.Log, args []string) error {
 	if err != nil {
 		return err
 	}
-	p, err := newPlayer(args)
+	p, err := newPlayer(args, log)
 	if err != nil {
 		return err
 	}
@@ -135,13 +139,31 @@ func stream(log *fake.Log, args []string) error {
 	}
 	resume := flag(args, "--resume")
 	titling := strings.HasPrefix(flag(args, "--append-system-prompt"), fake.TitleSystem)
+	// Lines are read as they arrive, so the log shows a line Reef writes while a recording plays.
 	in := fake.Lines()
-	for in.Scan() {
-		if err := log.Stdin(in.Text()); err != nil {
-			return err
+	lines := make(chan []byte)
+	go func() {
+		defer close(lines)
+		for in.Scan() {
+			b := slices.Clone(in.Bytes())
+			if err := log.Stdin(string(b)); err != nil {
+				fmt.Fprintln(os.Stderr, "fake claude:", err)
+				os.Exit(1)
+			}
+			var l line
+			if json.Unmarshal(b, &l) == nil && l.Type == "user" {
+				prompt, _ := text(l.Message.Content)
+				if err := log.Trace(fake.Trace{Kind: "read", Detail: "user", UUID: l.UUID, Text: prompt[:min(len(prompt), 80)]}); err != nil {
+					fmt.Fprintln(os.Stderr, "fake claude:", err)
+					os.Exit(1)
+				}
+			}
+			lines <- b
 		}
+	}()
+	for b := range lines {
 		var l line
-		if json.Unmarshal(in.Bytes(), &l) != nil {
+		if json.Unmarshal(b, &l) != nil {
 			continue
 		}
 		if l.Type == "control_request" && l.Request.Subtype == "initialize" {
@@ -188,6 +210,15 @@ func stream(log *fake.Log, args []string) error {
 		if at, ok := fake.Limited(fake.ConfigDir("CLAUDE_CONFIG_DIR", ".claude"), ".credentials.json"); ok {
 			rec, _ := find(recs, prompt, resume)
 			limited(cmp.Or(rec.session, resume, "0b5e7a1c-3f2d-4c8e-9a61-7d4f2e8b1c90"), at)
+		}
+		p.commandUUID = l.UUID
+		if p.pending != nil {
+			next := p.pending
+			p.pending = nil
+			if err := p.play(next); err != nil {
+				return err
+			}
+			continue
 		}
 		rec, ok := find(recs, prompt, resume)
 		if !ok {

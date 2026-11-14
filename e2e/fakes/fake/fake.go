@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // _testdata is e2e/testdata. The harness sets it with -ldflags -X, so the fake needs no env
@@ -91,6 +92,32 @@ func (l *Log) MCPConfig(config any) error {
 		return err
 	}
 	return l.write(Record{MCPConfig: b})
+}
+
+// Trace is one line of <executable>.log.trace: a line the fake read from Reef or printed to it, in
+// the order it happened. Kind is "read" or "emit". For a user line Detail is "user", UUID its
+// uuid ("" when it carried none) and Text the start of its text; for a printed line Detail is
+// "result" ("result+origin" when it has an origin) or "command_lifecycle:<state>" with UUID the
+// command_uuid.
+type Trace struct {
+	PID    int       `json:"pid"`
+	At     time.Time `json:"at"`
+	Kind   string    `json:"kind"`
+	Detail string    `json:"detail"`
+	UUID   string    `json:"uuid"`
+	Text   string    `json:"text,omitempty"`
+}
+
+// Trace appends t to <executable>.log.trace, a file apart from the log so no reader of that log
+// sees it.
+func (l *Log) Trace(t Trace) error {
+	f, err := os.OpenFile(l.f.Name()+".trace", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	t.PID, t.At = os.Getpid(), time.Now()
+	return json.NewEncoder(f).Encode(t)
 }
 
 func (l *Log) write(r Record) error {

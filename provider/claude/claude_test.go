@@ -242,11 +242,75 @@ func TestStartWritesMCPConfigLargerThanPipe(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
+	const delta = `{"type":"stream_event","event":{"type":"content_block_delta",` +
+		`"delta":{"type":"text_delta","text":"hi"}}}`
+	const result = `{"type":"result","is_error":false,"result":"ok"}`
+	cost := 0.5
 	tests := []struct {
-		name string
-		line string
-		want []provider.Event
+		name  string
+		state state
+		line  string
+		want  []provider.Event
 	}{
+		{
+			name:  "text between queued and started is other",
+			state: state{req: request{uuid: "u", queued: true}},
+			line:  delta,
+			want:  []provider.Event{{Kind: provider.KindText, Text: "hi", Other: true}},
+		},
+		{
+			name:  "text after started is Reef's",
+			state: state{req: request{uuid: "u", queued: true, started: true}},
+			line:  delta,
+			want:  []provider.Event{{Kind: provider.KindText, Text: "hi"}},
+		},
+		{
+			name:  "text after the request ended is other",
+			state: state{req: request{uuid: "u", queued: true, started: true, ended: true}},
+			line:  delta,
+			want:  []provider.Event{{Kind: provider.KindText, Text: "hi", Other: true}},
+		},
+		{
+			name:  "result with an origin gives the cost only",
+			state: state{req: request{uuid: "u", queued: true, started: true}},
+			line: `{"type":"result","is_error":false,"result":"","total_cost_usd":0.5,` +
+				`"origin":{"kind":"task-notification"}}`,
+			want: []provider.Event{{Kind: provider.KindUsage, Other: true,
+				Usage: &provider.Usage{SessionCostUSD: &cost}}},
+		},
+		{
+			name:  "result waits for the terminal state",
+			state: state{req: request{uuid: "u", queued: true, started: true}},
+			line:  result,
+			want:  []provider.Event{{Kind: provider.KindText, Text: "ok"}},
+		},
+		{
+			name:  "result after the terminal state ends the request",
+			state: state{req: request{uuid: "u", queued: true, started: true, terminal: "completed"}},
+			line:  result,
+			want: []provider.Event{
+				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd},
+			},
+		},
+		{
+			name:  "terminal state after the result ends the request",
+			state: state{req: request{uuid: "u", queued: true, started: true, final: &provider.Event{Kind: provider.KindTurnEnd}}},
+			line:  `{"type":"command_lifecycle","command_uuid":"u","state":"completed"}`,
+			want:  []provider.Event{{Kind: provider.KindTurnEnd}},
+		},
+		{
+			name:  "terminal state of another command is not Reef's",
+			state: state{req: request{uuid: "u", queued: true, started: true}},
+			line:  `{"type":"command_lifecycle","command_uuid":"x","state":"completed"}`,
+		},
+		{
+			name:  "result with no lifecycle events ends the request",
+			state: state{req: request{uuid: "u"}},
+			line:  result,
+			want: []provider.Event{
+				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd},
+			},
+		},
 		{
 			name: "assistant tool calls, text skipped",
 			line: `{"type":"assistant","message":{"content":[{"type":"text","text":"hi"},` +
@@ -265,7 +329,7 @@ func TestParse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := parse([]byte(tt.line), &state{}); !reflect.DeepEqual(got, tt.want) {
+			if got := parse([]byte(tt.line), &tt.state); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("parse = %+v, want %+v", got, tt.want)
 			}
 		})

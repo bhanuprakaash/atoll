@@ -204,6 +204,19 @@ func TestSession_handleText(t *testing.T) {
 			},
 			want: "one\n\ntwo",
 		},
+		{
+			name: "another turn's text is not the reply",
+			give: []string{
+				`{"id":3,"result":{"turn":{"id":"t1"}}}`,
+				`{"method":"turn/started","params":{"turn":{"id":"t1"}}}`,
+				`{"method":"item/agentMessage/delta","params":{"turnId":"t1","itemId":"a","delta":"one"}}`,
+				`{"method":"turn/started","params":{"turn":{"id":"t2"}}}`,
+				`{"method":"item/agentMessage/delta","params":{"turnId":"t2","itemId":"x","delta":"other"}}`,
+				`{"method":"turn/completed","params":{"turn":{"id":"t2","status":"completed"}}}`,
+				`{"method":"item/agentMessage/delta","params":{"turnId":"t1","itemId":"a","delta":" two"}}`,
+			},
+			want: "one two",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -213,7 +226,7 @@ func TestSession_handleText(t *testing.T) {
 			go func() {
 				defer close(drained)
 				for ev := range s.events {
-					if ev.Kind == provider.KindText {
+					if ev.Kind == provider.KindText && !ev.Other {
 						reply.WriteString(ev.Text)
 					}
 				}

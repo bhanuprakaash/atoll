@@ -28,6 +28,9 @@ type (
 		args        []string
 		session     string // from the init line
 		started     bool
+		log         *fake.Log
+		commandUUID string   // of the user line being answered
+		pending     []string // the lines after a "next-turn" directive: they answer the next user line
 	}
 
 	mcpConfig struct {
@@ -62,8 +65,8 @@ type (
 	}
 )
 
-func newPlayer(args []string) (*player, error) {
-	p := &player{servers: map[string]*fake.MCP{}, denied: map[string]string{}, uses: map[string]toolUse{}, mcpConfig: mcpConfig{MCPServers: map[string]mcpServer{}}, prompt: flag(args, "--permission-prompt-tool"),
+func newPlayer(args []string, log *fake.Log) (*player, error) {
+	p := &player{log: log, servers: map[string]*fake.MCP{}, denied: map[string]string{}, uses: map[string]toolUse{}, mcpConfig: mcpConfig{MCPServers: map[string]mcpServer{}}, prompt: flag(args, "--permission-prompt-tool"),
 		partial: slices.Contains(args, "--include-partial-messages"), args: args}
 	for _, name := range []string{"--allowedTools", "--allowed-tools"} {
 		for _, v := range values(args, name) {
@@ -124,7 +127,7 @@ func (p *player) play(lines []string) error {
 	var last *toolUse
 	answer, skip := "", false
 	repoReply := ""
-	for _, s := range lines {
+	for i, s := range lines {
 		switch directive := fake.Directive([]byte(s)); directive {
 		case "platform-create", "platform-edit", "platform-denied", "platform-configure", "platform-import", "platform-skill-import", "platform-read", "platform-bots", "platform-call", "platform-calls":
 			var err error
@@ -268,6 +271,23 @@ func (p *player) play(lines []string) error {
 				fake.Hang()
 			}
 			continue
+		case "next-turn":
+			if !skip {
+				p.pending = lines[i+1:]
+				return nil
+			}
+			continue
+		case "exit":
+			if !skip {
+				var d struct {
+					Code   int    `json:"code"`
+					Stderr string `json:"stderr"`
+				}
+				_ = json.Unmarshal([]byte(s), &d)
+				fmt.Fprintln(os.Stderr, d.Stderr)
+				os.Exit(d.Code)
+			}
+			continue
 		}
 		if skip {
 			continue
@@ -275,6 +295,7 @@ func (p *player) play(lines []string) error {
 		encoded, _ := json.Marshal(repoReply)
 		s = strings.ReplaceAll(s, "$REPO_REPLY", string(encoded[1:len(encoded)-1]))
 		s = strings.ReplaceAll(s, `"$READY"`, fake.ReadyArg(p.userMessage))
+		s = strings.ReplaceAll(s, "$COMMAND_UUID", p.commandUUID)
 		var m map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(s), &m); err != nil {
 			return err
@@ -296,10 +317,29 @@ func (p *player) play(lines []string) error {
 			if s, err = p.result(m, s); err != nil {
 				return err
 			}
+		case typ == "result" || typ == "command_lifecycle":
+			if err := p.trace(typ, m); err != nil {
+				return err
+			}
 		}
 		fmt.Println(s)
 	}
 	return nil
+}
+
+// trace logs a result or command_lifecycle line before it is printed.
+func (p *player) trace(typ string, m map[string]json.RawMessage) error {
+	t := fake.Trace{Kind: "emit", Detail: typ}
+	switch typ {
+	case "result":
+		if m["origin"] != nil {
+			t.Detail += "+origin"
+		}
+	case "command_lifecycle":
+		t.Detail += ":" + str(m["state"])
+		t.UUID = str(m["command_uuid"])
+	}
+	return p.log.Trace(t)
 }
 
 // mcpUse calls each tool the prompt names on the configured server, as claude would: it prints the

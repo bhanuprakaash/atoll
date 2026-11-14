@@ -285,7 +285,8 @@ func sseUntil(r io.Reader, done func([]byte) bool) bool {
 // Directive is a line of a scenario that is not provider output but tells the fake what to do:
 // "ask" for permission for the tool call just printed, "allow" and "deny" start the branch played
 // for that answer, "hang" blocks until killed, "resumed" (claude) plays the recording only on a
-// resumed session.
+// resumed session, "next-turn" (claude) holds the lines after it for the next user line of the
+// process, "exit" (claude) prints "stderr" and exits with "code".
 func Directive(line []byte) string {
 	var d struct {
 		Fake string `json:"fake"`
