@@ -28,7 +28,7 @@ const _tools = `{"tools":[
 "properties":{"type":{"type":"string","enum":["feat","fix","chore","docs","test"]},"slug":{"type":"string"},"base":{"type":"string","description":"Optional plain branch name on origin, e.g. test/x"}},
 "required":["type","slug"]}},
 {"name":"track_mr",
-"description":"When the change is ready, commit, push, open a merge request, call this tool with its URL and title, and include the URL in your reply. Never merge.",
+"description":"When the change is ready, commit, push, open a merge request, call this tool with its URL and title, and include the URL in your reply.",
 "inputSchema":{"type":"object","properties":{"url":{"type":"string"},"title":{"type":"string"}},"required":["url","title"]}},
 {"name":"approve",
 "description":"Permission prompt: asks the user whether a tool call may go ahead.",
