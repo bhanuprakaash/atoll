@@ -291,7 +291,7 @@ export function ThreadPane({
       style={{
         width: onWidth ? width : `min(${width}px, calc(100vw - ${RAIL_WIDTH + DRAWER_GUTTER}px))`,
       }}
-      className="relative flex flex-none flex-col border-r border-sidebar-line bg-card"
+      className={`flex flex-none flex-col border-r border-sidebar-line bg-card ${onWidth ? 'relative' : 'fixed inset-y-0 left-19 z-40'}`}
     >
       {now ? (
         <NowPane bots={bots} openThreadId={openThreadId} />

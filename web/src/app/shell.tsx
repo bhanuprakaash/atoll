@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router';
+import {
+  NavLink,
+  Outlet,
+  useLocation,
+  useMatch,
+  useNavigate,
+  useNavigationType,
+} from 'react-router';
 import { BotRail } from '@/modules/bots/components/bot-rail';
 import { Menu } from '@/components/menu';
 import { Switcher } from '@/app/switcher';
@@ -12,9 +19,9 @@ import { inDesktopApp, useAppUpdate } from '@/lib/app-update';
 const NARROW = '(max-width: 899.98px)';
 const isMac = /Mac/.test(navigator.platform);
 
-// Below 900 px the sidebar is a drawer, closed whenever the window turns narrow and after any
-// navigation.
-function useDrawer() {
+// Below 900 px the thread pane floats over the thread column, closed whenever the window turns
+// narrow and after any navigation except a face's own (it opens the pane, then redirects).
+function useFloatingPane() {
   const narrow = useSyncExternalStore(
     (notify) => {
       const query = matchMedia(NARROW);
@@ -24,8 +31,12 @@ function useDrawer() {
     () => matchMedia(NARROW).matches,
   );
   const [open, setOpen] = useState(false);
-  const { key } = useLocation();
-  useEffect(() => setOpen(false), [narrow, key]);
+  const { key, pathname } = useLocation();
+  const navigationType = useNavigationType();
+  useEffect(() => setOpen(false), [narrow]);
+  useEffect(() => {
+    if (navigationType !== 'REPLACE' && !/^\/bots\/[^/]+$/.test(pathname)) setOpen(false);
+  }, [key, pathname, navigationType]);
   return [narrow, narrow && open, setOpen] as const;
 }
 
@@ -41,8 +52,16 @@ export function Shell() {
   const navigate = useNavigate();
   const [paneWidth, setPaneWidth] = usePaneWidth();
   const [paneHidden, setPaneHidden] = useState(false);
-  const [narrow, drawerOpen, setDrawerOpen] = useDrawer();
-  const toggleButton = useRef<HTMLButtonElement>(null);
+  const [narrow, paneOpen, setPaneOpen] = useFloatingPane();
+  const opener = useRef<HTMLElement | null>(null);
+  const openPane = (from: Element | null) => {
+    opener.current = from as HTMLElement | null;
+    setPaneOpen(true);
+  };
+  const closePane = () => {
+    setPaneOpen(false);
+    opener.current?.focus();
+  };
   const notifications = useNotifications();
   const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
   const [creatingGroup, setCreatingGroup] = useState<{ botId?: string } | null>(null);
@@ -59,16 +78,16 @@ export function Shell() {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((isMac ? event.metaKey : event.ctrlKey) && event.key === 'b') {
         event.preventDefault();
-        if (narrow) setDrawerOpen((open) => !open);
-        else setPaneHidden((hidden) => !hidden);
-      } else if (event.key === 'Escape' && drawerOpen && !event.defaultPrevented) {
-        setDrawerOpen(false);
-        toggleButton.current?.focus();
+        if (!narrow) setPaneHidden((hidden) => !hidden);
+        else if (paneOpen) closePane();
+        else openPane(document.activeElement);
+      } else if (event.key === 'Escape' && paneOpen && !event.defaultPrevented) {
+        closePane();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [narrow, drawerOpen, setDrawerOpen]);
+  });
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!botId || !event.metaKey || event.key !== 'n') return;
@@ -96,43 +115,14 @@ export function Shell() {
   return (
     <div className="flex h-screen">
       {inDesktopApp && <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-10 h-3" />}
-      {narrow && (
-        <button
-          ref={toggleButton}
-          type="button"
-          aria-label="Sidebar"
-          aria-expanded={drawerOpen}
-          onClick={() => {
-            setDrawerOpen(!drawerOpen);
-            if (drawerOpen) toggleButton.current?.focus();
-          }}
-          className={`fixed top-3.5 z-50 flex size-10 items-center justify-center rounded-full text-muted ${inDesktopApp ? 'left-20' : 'left-3'}`}
-        >
-          <svg
-            aria-hidden="true"
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          >
-            <rect x="3.5" y="4.5" width="17" height="15" rx="3" />
-            <path d="M9.5 4.5v15" />
-          </svg>
-        </button>
-      )}
-      {drawerOpen && (
+      {paneOpen && (
         <div
           aria-hidden="true"
-          onClick={() => setDrawerOpen(false)}
-          className="fixed inset-0 z-30 bg-scrim"
+          onClick={closePane}
+          className="fixed inset-y-0 right-0 left-19 z-30 bg-scrim"
         />
       )}
-      <div
-        className={`flex-none ${narrow ? `fixed inset-y-0 left-0 z-40 ${drawerOpen ? 'flex' : 'hidden'}` : 'flex'}`}
-      >
+      <div className="flex flex-none">
         <nav
           aria-label="Bots"
           className="flex w-19 flex-none flex-col border-r border-sidebar-line bg-card pt-4 pb-3"
@@ -142,7 +132,10 @@ export function Shell() {
             <BotRail
               view={view}
               openBotId={botId}
-              onView={setView}
+              onView={(next, from) => {
+                setView(next);
+                openPane(from);
+              }}
               creatingGroup={creatingGroup}
               onCreatingGroup={setCreatingGroup}
             />
@@ -194,7 +187,7 @@ export function Shell() {
             </NavLink>
           </div>
         </nav>
-        {view && !(paneHidden && !narrow) && (
+        {view && (narrow ? paneOpen : !paneHidden) && (
           <ThreadPane
             view={view}
             openThreadId={threadId}

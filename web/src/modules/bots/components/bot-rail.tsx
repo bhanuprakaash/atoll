@@ -40,13 +40,13 @@ function NowButton({
 }: {
   current: boolean;
   count: number;
-  onClick: () => void;
+  onClick: (button: HTMLButtonElement) => void;
 }) {
   return (
     <button
       type="button"
       data-current={current ? 'true' : undefined}
-      onClick={onClick}
+      onClick={(event) => onClick(event.currentTarget)}
       className={`${faceStyle} ${current ? 'text-ink' : ''}`}
     >
       {current && <Bar />}
@@ -88,7 +88,7 @@ function BotFace({
 }: {
   bot: Bot;
   current: boolean;
-  onSelect: () => void;
+  onSelect: (link: HTMLAnchorElement) => void;
   onNewGroup: () => void;
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -102,7 +102,7 @@ function BotFace({
         data-marker={bot.state === 'needs_you' ? 'needs-you' : undefined}
         draggable={bot.id !== 'chief'}
         onDragStart={(event) => event.dataTransfer.setData(botDragType, bot.id)}
-        onClick={onSelect}
+        onClick={(event) => onSelect(event.currentTarget)}
         onContextMenu={(event) => {
           event.preventDefault();
           setMenu({ x: event.clientX, y: event.clientY });
@@ -230,7 +230,7 @@ export function BotRail({
 }: {
   view?: string;
   openBotId?: string;
-  onView: (view: string) => void;
+  onView: (view: string, from: HTMLElement) => void;
   creatingGroup: { botId?: string } | null;
   onCreatingGroup: (creating: { botId?: string } | null) => void;
 }) {
@@ -248,7 +248,7 @@ export function BotRail({
       key={bot.id}
       bot={bot}
       current={view === bot.id || openBotId === bot.id}
-      onSelect={() => onView(bot.id)}
+      onSelect={(link) => onView(bot.id, link)}
       onNewGroup={() => onCreatingGroup({ botId: bot.id })}
     />
   );
@@ -258,7 +258,7 @@ export function BotRail({
       <NowButton
         current={view === 'now' && !openBotId}
         count={needsYou}
-        onClick={() => onView('now')}
+        onClick={(button) => onView('now', button)}
       />
       <div className="flex flex-col">{top.map(face)}</div>
       {groups.map((group) => {
