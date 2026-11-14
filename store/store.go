@@ -226,6 +226,7 @@ type (
 		SnapshotRef     string     `json:"snapshot_ref"`
 		ClosedAt        *time.Time `json:"closed_at"`
 		Closed          bool       `json:"closed"`
+		Pinned          bool       `json:"pinned"`
 		Created         time.Time  `json:"created_at"`
 		LastActivity    time.Time  `json:"last_activity"`
 	}
@@ -339,7 +340,7 @@ const (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake, mr_head, mr_base_woke, session_cost_usd"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake, mr_head, mr_base_woke, session_cost_usd, pinned_at IS NOT NULL"
 	_messagePageSize = 50
 )
 
@@ -1929,7 +1930,7 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
 		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
 		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir, &t.MRCI, &t.MRWoke, &wake, &t.MRHead, &baseWoke,
-		&t.SessionCostUSD)
+		&t.SessionCostUSD, &t.Pinned)
 	if err != nil {
 		return Thread{}, err
 	}

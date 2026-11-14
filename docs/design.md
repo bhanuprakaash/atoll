@@ -189,7 +189,7 @@ counts a Bot that is already gone as removed.
   a background run that called no `tell_user`, do not count.
 - Pinning to the sidebar (`POST`/`DELETE /api/threads/{id}/pin`): at most 3 open threads per Bot.
   A 4th pin answers `409` unless it names a pin to replace (`{replace}`), done in one transaction.
-  Closing a thread drops its pin; helper threads cannot be pinned.
+  Closing a thread drops its pin; helper threads cannot be pinned. A thread's summary says `pinned`.
 - `GET /api/events` is one SSE stream for the whole app: `approval`, `approval_closed`,
   `run_finished`, `told`, `mr_updated` and `platform_changed` from every thread, each as
   `{thread_id, bot_id, bot_name, title, data}` with `data` as on the thread's own stream. On connect it sends
