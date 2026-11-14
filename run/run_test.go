@@ -321,7 +321,7 @@ func TestRun_Finish(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			tt.give.onSend = func(n int) {
+			tt.give.onSend = func(int) {
 				if tt.stopped {
 					e.m.mu.Lock()
 					e.m.runs[e.thread.ID].stopped = true

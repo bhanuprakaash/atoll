@@ -232,7 +232,7 @@ func TestNotices_ApprovalsFirstAndRunOnce(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	ending, endingRun := start(finishing.ID)
-	if err := st.FinishRun(ctx, endingRun, store.RunResult{Status: store.StatusDone}, nil); err != nil {
+	if err := st.FinishRun(ctx, endingRun, store.RunResult{Status: store.StatusDone, Reply: "ok"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	thread, cancelThread := runs.Subscribe(finishing.ID)

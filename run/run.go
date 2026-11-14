@@ -176,6 +176,10 @@ type (
 		priorCostUSD float64
 		kind         string // of the wake the run answers; empty when any message is not a wake
 		msgs         []store.InboxItem
+		// background: every message is a Reef notice, so the final message is a status line. guard:
+		// a notice holds a failure Reef knows of. told: the run called tell_user. The Manager's mu
+		// guards them.
+		background, guard, told bool
 	}
 
 	// Event is one event on a thread's stream. Data is one of the types below. ThreadID is the
@@ -700,6 +704,7 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 		res = store.RunResult{Status: store.StatusStopped}
 	}
 	quiet := a.quiet
+	res.StatusLine = a.background && (a.told || !a.guard)
 	m.mu.Unlock()
 	res.Provider = a.bot.Provider
 	res.Usage, res.SessionCostUSD = a.usageResult()
@@ -723,7 +728,7 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	// Dropped before run_finished: a client may send the next message the moment it sees it.
 	m.drop(a)
 	m.publish(a, EventRunFinished, Finished{RunID: a.run.ID, Status: res.Status, Error: res.Error})
-	if res.Status == store.StatusDone && res.Reply != "" {
+	if res.Status == store.StatusDone && res.Reply != "" && !res.StatusLine {
 		m.wg.Add(1)
 		go func() {
 			defer m.wg.Done()
@@ -871,8 +876,10 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if thread.Session != "" {
 		a.priorCostUSD = thread.SessionCostUSD
 	}
+	msgs, background := asNotices(thread, a.msgs)
 	m.mu.Lock()
-	a.bot = bot
+	a.bot, a.background = bot, background
+	a.guard = background && slices.ContainsFunc(msgs, failure)
 	m.mu.Unlock()
 	m.cfg.Log.Info("run started", "run_id", a.run.ID, "thread_id", a.threadID,
 		"provider", bot.Provider)
@@ -976,8 +983,10 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if rp.ID != "" && thread.Session == "" && thread.Worktree == "" {
 		behind = repo.BehindNote(a.ctx, rp.Path)
 	}
-	msgs, _ := asNotices(thread, a.msgs)
 	prompt := messagePrompt(msgs, items, counts, thread, rp, cfg.Cwd, behind, stale)
+	if background {
+		prompt = backgroundLine(user) + "\n\n" + prompt
+	}
 	var githubToken string
 	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {

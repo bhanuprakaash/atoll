@@ -29,6 +29,8 @@ const (
 	_readTimeout  = 30 * time.Second
 	_pauseDefault = time.Minute
 	_wakeBase     = "base"
+	// _ciFailed follows the failed count in the wake of a CI run with a failed check.
+	_ciFailed = " failed ("
 )
 
 var _waitsFor = regexp.MustCompile(`^Waits for #(\d+)`)
@@ -460,7 +462,7 @@ func ciText(label string, c ciResult) string {
 	if more := c.Failed - len(c.Names); more > 0 {
 		names = append(names, fmt.Sprintf("and %d more", more))
 	}
-	return fmt.Sprintf("%s, %d failed (%s)", text, c.Failed, strings.Join(names, ", "))
+	return fmt.Sprintf("%s, %d"+_ciFailed+"%s)", text, c.Failed, strings.Join(names, ", "))
 }
 
 func quoteName(s string) string { return `"` + cleanName(s) + `"` }

@@ -641,13 +641,15 @@ func (s *Store) FinishedRunsSince(ctx context.Context, since time.Time) ([]Threa
 		 WHERE r.finished_at > ? AND r.finished_at > t.last_opened_at AND t.closed = 0
 		   AND r.rowid = (SELECT r2.rowid FROM runs r2
 		                  WHERE r2.thread_id = r.thread_id AND r2.status IN (?, ?, ?)
-		                  ORDER BY r2.finished_at DESC, r2.rowid DESC LIMIT 1)`,
+		                  ORDER BY r2.finished_at DESC, r2.rowid DESC LIMIT 1)
+		   AND (r.status != ? OR EXISTS (SELECT 1 FROM messages m
+		        WHERE m.thread_id = r.thread_id AND m.run_id = r.id AND m.role = ?))`,
 		func(r *sql.Rows) (e ThreadEvent, err error) {
 			var at int64
 			err = r.Scan(&e.ThreadID, &e.RunID, &at, &e.Status, &e.Error)
 			e.At = time.UnixMicro(at).UTC()
 			return e, err
-		}, since.UnixMicro(), StatusDone, StatusFailed, StatusStopped)
+		}, since.UnixMicro(), StatusDone, StatusFailed, StatusStopped, StatusDone, RoleBot)
 }
 
 // OpenedMRsSince lists the threads whose MR is open, became so after since and has not been
@@ -914,8 +916,10 @@ func (s *Store) LatestRun(ctx context.Context, threadID string) (string, error) 
 // thread with no run, and, in a poll, for a thread that has no live run and is not its Bot's
 // newest with a run; Reply is only its first 300 characters: enough for a one-line preview.
 // Unseen is set when the thread was heard from after the user last opened it and has no live run:
-// a run that ends with a reply, a failure or a stop sets the thread's last heard; one that ends done
-// with no reply does not.
+// a reply, a tell_user message or a guard post sets the thread's last heard; a run that ends done
+// with no reply, a stop and a quiet background run do not. Failed is set when a run failed after the
+// user last opened it. LimitedUntil is when the provider's usage limit, which the thread's newest
+// finished run hit, resets; zero when it has none.
 type ThreadRun struct {
 	BotID          string
 	ThreadID       string
@@ -927,6 +931,8 @@ type ThreadRun struct {
 	Pinned         bool
 	LastActivity   time.Time
 	Unseen         bool
+	Failed         bool
+	LimitedUntil   time.Time
 	// Merged is set for an open thread of the person's whose PR merged after the person's last
 	// message in it.
 	Merged bool
@@ -974,6 +980,7 @@ func (s *Store) threadRuns(ctx context.Context, with, where string, args ...any)
 		        t.last_activity,
 		        t.last_heard > t.last_opened_at AND t.last_heard > t.created
 		          AND coalesce(p.status, '') NOT IN ('running', 'waiting'),
+		        t.last_failed > t.last_opened_at, t.limited_until,
 		        CASE WHEN t.mr_state = 'merged' AND t.closed = 0 AND t.parent_thread_id = ''
 		          THEN t.mr_changed_at > coalesce((SELECT max(m.created) FROM messages m
 		            WHERE m.thread_id = t.id AND m.role = 'user' AND m.from_bot_id = '' AND m.kind = ''), 0)
@@ -984,10 +991,13 @@ func (s *Store) threadRuns(ctx context.Context, with, where string, args ...any)
 		 WHERE `+where+`
 		 ORDER BY t.last_activity DESC, t.rowid DESC`,
 		func(r *sql.Rows) (tr ThreadRun, err error) {
-			var active int64
+			var active, limited int64
 			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &tr.Title, &tr.Branch, &tr.MRURL, &tr.Closed,
-				&tr.Pinned, &active, &tr.Unseen, &tr.Merged, &tr.Status, &tr.Reply)
+				&tr.Pinned, &active, &tr.Unseen, &tr.Failed, &limited, &tr.Merged, &tr.Status, &tr.Reply)
 			tr.LastActivity = time.UnixMicro(active).UTC()
+			if limited != 0 {
+				tr.LimitedUntil = time.UnixMicro(limited).UTC()
+			}
 			return tr, err
 		}, args...)
 }
@@ -1248,6 +1258,39 @@ func (s *Store) AddReply(
 	return m, nil
 }
 
+// AddBotMessage stores text as a message of the Bot in the thread, under the run runID, and marks
+// the thread as heard from.
+func (s *Store) AddBotMessage(ctx context.Context, threadID, runID, text string) error {
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, "UPDATE threads SET last_activity = ?1, last_heard = ?1 WHERE id = ?2",
+			time.Now().UTC().UnixMicro(), threadID)
+		if err != nil {
+			return fmt.Errorf("touch thread: %w", err)
+		}
+		if err := found(res, "thread", threadID); err != nil {
+			return err
+		}
+		return insertMessage(ctx, tx, Message{ID: newID(), ThreadID: threadID, Role: RoleBot, Text: text, RunID: runID})
+	})
+}
+
+// StatusLine is the final message of the thread's newest run when that run ended done and posted no
+// message to the chat: a background run that told nobody anything. It is empty otherwise.
+func (s *Store) StatusLine(ctx context.Context, threadID string) (string, error) {
+	var line string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT r.reply FROM (SELECT id, thread_id, status, reply FROM runs
+		                      WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1) r
+		 WHERE r.status = ? AND r.reply != ''
+		   AND NOT EXISTS (SELECT 1 FROM messages m
+		                   WHERE m.thread_id = r.thread_id AND m.run_id = r.id AND m.role = ?)`,
+		threadID, StatusDone, RoleBot).Scan(&line)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("read status line of thread %s: %w", threadID, err)
+	}
+	return line, nil
+}
+
 // OldestInbox returns the oldest held message; ok is false when none.
 func (s *Store) OldestInbox(ctx context.Context, threadID string) (it InboxItem, ok bool, err error) {
 	items, err := s.inbox(ctx, "data", "WHERE thread_id = ? ORDER BY rowid LIMIT 1", threadID)
@@ -1337,6 +1380,9 @@ type RunResult struct {
 	ErrorKind string
 	ResetsAt  time.Time // when the provider's usage limit resets, if it said
 	Provider  string    // the provider the run used
+	// StatusLine is set for a background run that posts nothing: its reply is the thread's status
+	// line, not a message, and the thread has not been heard from.
+	StatusLine bool
 	// Usage is what the run used, nil when the provider reported nothing. SessionCostUSD is what
 	// the session has cost in total after it, nil when the provider reports no price.
 	Usage          *Usage
@@ -1353,7 +1399,7 @@ type Wake struct {
 }
 
 // FinishRun ends a run with res. A non-empty reply also becomes the thread's bot message, in the
-// same transaction. When wake is not nil and the run is a helper's, the message wake returns is
+// same transaction, unless it is the run's status line. When wake is not nil and the run is a helper's, the message wake returns is
 // held for the boss thread in the same transaction.
 func (s *Store) FinishRun(
 	ctx context.Context, runID string, res RunResult, wake func(Wake) string,
@@ -1387,17 +1433,32 @@ func (s *Store) FinishRun(
 		if err != nil {
 			return fmt.Errorf("finish run: %w", err)
 		}
+		var limited *int64
+		switch {
+		case res.ErrorKind == ErrorRateLimited:
+			until := int64(0)
+			if !res.ResetsAt.IsZero() {
+				until = res.ResetsAt.UnixMicro()
+			}
+			limited = &until
+		case res.Status == StatusDone:
+			limited = new(int64)
+		}
+		posts := res.Reply != "" && !res.StatusLine
 		_, err = tx.ExecContext(ctx,
 			`UPDATE threads SET last_activity = ?1, session_cost_usd = coalesce(?2, session_cost_usd),
-			   last_heard = CASE WHEN ?3 THEN ?1 ELSE last_heard END WHERE id = ?4`,
-			time.Now().UTC().UnixMicro(), res.SessionCostUSD, res.Status != StatusDone || res.Reply != "", threadID)
+			   last_heard = CASE WHEN ?3 THEN ?1 ELSE last_heard END,
+			   last_failed = CASE WHEN ?4 THEN ?1 ELSE last_failed END,
+			   limited_until = coalesce(?5, limited_until) WHERE id = ?6`,
+			time.Now().UTC().UnixMicro(), res.SessionCostUSD, res.Status == StatusDone && posts,
+			res.Status == StatusFailed, limited, threadID)
 		if err != nil {
 			return fmt.Errorf("touch thread: %w", err)
 		}
 		if err := enqueueWake(ctx, tx, runID, wake); err != nil {
 			return err
 		}
-		if res.Reply == "" {
+		if !posts {
 			return nil
 		}
 		return insertMessage(ctx, tx,
@@ -1430,7 +1491,7 @@ func (s *Store) FailUnfinished(
 		now := time.Now().UTC().UnixMicro()
 		for _, id := range ids {
 			if _, err := tx.ExecContext(ctx,
-				"UPDATE threads SET last_activity = ?, last_heard = ? WHERE id = (SELECT thread_id FROM runs WHERE id = ?)",
+				"UPDATE threads SET last_activity = ?, last_failed = ? WHERE id = (SELECT thread_id FROM runs WHERE id = ?)",
 				now, now, id); err != nil {
 				return fmt.Errorf("touch thread of run %s: %w", id, err)
 			}

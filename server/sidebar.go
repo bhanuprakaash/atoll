@@ -20,7 +20,7 @@ import (
 type sidebarThread struct {
 	ID             string    `json:"id"`
 	Title          string    `json:"title"`
-	State          string    `json:"state"` // "needs_you", "running", "new" or ""
+	State          string    `json:"state"` // "needs_you", "running", "failed", "limited", "new" or ""
 	Pinned         bool      `json:"pinned"`
 	Helper         bool      `json:"helper,omitempty"`
 	ParentThreadID string    `json:"parent_thread_id"`
@@ -29,6 +29,8 @@ type sidebarThread struct {
 	Branch         string    `json:"branch"`
 	MRURL          string    `json:"mr_url"`
 	LastActivity   time.Time `json:"last_activity"`
+	// ResetsAt is when the provider's usage limit ends, for a limited thread.
+	ResetsAt string `json:"resets_at,omitempty"`
 }
 
 // notice is one /api/events payload: an event of a thread with the thread's Bot and title.
@@ -41,9 +43,10 @@ type notice struct {
 	Data           any    `json:"data"`
 }
 
-// sidebarThreads keeps the open threads in the order given and marks each: needs_you when its run
-// waits on an approval, running when its run or a helper's goes, new when its newest run finished
-// after the user last opened it.
+// sidebarThreads keeps the open threads in the order given and marks each, the first that holds:
+// needs_you when its run waits on an approval, running when its run or a helper's goes, failed when
+// a run failed after the user last opened it, limited while the provider's usage limit lasts, new
+// when it replied after the user last opened it.
 func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread {
 	byBoss := map[string][]store.ThreadRun{}
 	for _, h := range helpers {
@@ -55,13 +58,17 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 			continue
 		}
 		state := a.marker(t, byBoss[t.ThreadID])
+		resetsAt := ""
+		if state == "limited" {
+			resetsAt = t.LimitedUntil.Format(time.RFC3339)
+		}
 		step := ""
 		if t.ParentThreadID != "" && (state == "running" || state == "needs_you") {
 			step = a.liveStep(t.ThreadID)
 		}
 		out = append(out, sidebarThread{
 			ID: t.ThreadID, ParentThreadID: t.ParentThreadID, Step: step, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
-			Branch: t.Branch, MRURL: t.MRURL, LastActivity: t.LastActivity,
+			Branch: t.Branch, MRURL: t.MRURL, LastActivity: t.LastActivity, ResetsAt: resetsAt,
 			Hidden: t.Merged && !t.Pinned && (state == "" || state == "new"),
 		})
 	}
@@ -87,10 +94,17 @@ func (a *api) marker(t store.ThreadRun, helpers []store.ThreadRun) string {
 	if needs(t) {
 		return "needs_you"
 	}
-	if state == "" && t.Unseen {
+	switch {
+	case state != "":
+		return state
+	case t.Failed:
+		return "failed"
+	case t.LimitedUntil.After(time.Now()):
+		return "limited"
+	case t.Unseen && t.ParentThreadID == "":
 		return "new"
 	}
-	return state
+	return ""
 }
 
 func (a *api) markOpened(w http.ResponseWriter, r *http.Request) {

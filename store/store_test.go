@@ -239,8 +239,8 @@ func TestStore_FailUnfinished(t *testing.T) {
 			}
 			if len(want) > 0 {
 				threads, err := st.ThreadRuns(ctx, bot.ID)
-				if err != nil || len(threads) != 1 || !threads[0].Unseen {
-					t.Fatalf("recovered thread = %+v, %v; want New", threads, err)
+				if err != nil || len(threads) != 1 || !threads[0].Failed {
+					t.Fatalf("recovered thread = %+v, %v; want Failed", threads, err)
 				}
 			}
 			for _, id := range want {
@@ -945,6 +945,85 @@ func TestStore_ThreadRuns_New(t *testing.T) {
 	}
 	if status, finished := state(); status != "done" || finished {
 		t.Errorf("done with no reply: status %q, finished after opened %v; want done, false", status, finished)
+	}
+}
+
+func TestStore_ThreadLabels(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	th, _ := st.CreateThread(ctx, bot.ID, "")
+	resets := time.Now().Add(time.Hour).UTC().Truncate(time.Microsecond)
+	finish := func(res store.RunResult) string {
+		t.Helper()
+		_, ru, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.FinishRun(ctx, ru.ID, res, nil); err != nil {
+			t.Fatal(err)
+		}
+		return ru.ID
+	}
+	type labels struct {
+		Unseen, Failed bool
+		LimitedUntil   time.Time
+		StatusLine     string
+	}
+	read := func() labels {
+		t.Helper()
+		runs, err := st.ThreadRuns(ctx, bot.ID)
+		if err != nil || len(runs) != 1 {
+			t.Fatalf("ThreadRuns = %v, %v", runs, err)
+		}
+		line, err := st.StatusLine(ctx, th.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return labels{runs[0].Unseen, runs[0].Failed, runs[0].LimitedUntil, line}
+	}
+	open := func() {
+		t.Helper()
+		if err := st.MarkOpened(ctx, th.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	steps := []struct {
+		name string
+		do   func()
+		want labels
+	}{
+		{"a reply", func() { finish(store.RunResult{Status: store.StatusDone, Reply: "ok"}) }, labels{Unseen: true}},
+		{"opened", open, labels{}},
+		{"a status line", func() {
+			finish(store.RunResult{Status: store.StatusDone, Reply: "all quiet", StatusLine: true})
+		}, labels{StatusLine: "all quiet"}},
+		{"a failed run", func() { finish(store.RunResult{Status: store.StatusFailed, Error: "boom"}) }, labels{Failed: true}},
+		{"opened after the failure", open, labels{}},
+		{"a stopped run", func() { finish(store.RunResult{Status: store.StatusStopped}) }, labels{}},
+		{"a usage limit", func() {
+			finish(store.RunResult{Status: store.StatusFailed, ErrorKind: store.ErrorRateLimited, ResetsAt: resets})
+			open()
+		}, labels{LimitedUntil: resets}},
+		{"a run after the reset", func() { finish(store.RunResult{Status: store.StatusDone}) }, labels{}},
+		{"tell_user in a quiet run", func() {
+			id := finish(store.RunResult{Status: store.StatusDone, Reply: "told", StatusLine: true})
+			if err := st.AddBotMessage(ctx, th.ID, id, "Look at this."); err != nil {
+				t.Fatal(err)
+			}
+		}, labels{Unseen: true}},
+	}
+	for _, tt := range steps {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.do()
+			if got := read(); got != tt.want {
+				t.Errorf("labels %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
 

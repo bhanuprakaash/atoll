@@ -53,6 +53,11 @@ const _tools = `{"tools":[
 "inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}
 ]}`
 
+// _tellUserTool is listed only in a background run: a run that starts with Reef notices alone.
+const _tellUserTool = `{"name":"tell_user",
+"description":"Send the user a message in the chat. Each call adds one message, shown as Markdown. Use it when the user must act: a PR to merge, a decision, a failure you cannot fix.",
+"inputSchema":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}}`
+
 type (
 	rpcRequest struct {
 		ID     json.RawMessage `json:"id"`
@@ -118,9 +123,11 @@ func (a *api) dispatch(r *http.Request, req rpcRequest) (any, *rpcError) {
 			"serverInfo":      map[string]any{"name": "atoll", "version": "0"},
 		}, nil
 	case "tools/list":
-		bot, thread, _, err := a.runs.Source(r.PathValue("token"))
+		token := r.PathValue("token")
+		bot, thread, _, err := a.runs.Source(token)
 		boss := err == nil && len(bot.Delegates) > 0 && thread.ParentThreadID == ""
-		if err != nil || (!bot.CanManagePlatform && !boss) {
+		background := err == nil && a.runs.Background(token)
+		if err != nil || (!bot.CanManagePlatform && !boss && !background) {
 			return json.RawMessage(_tools), nil
 		}
 		var base struct {
@@ -138,6 +145,9 @@ func (a *api) dispatch(r *http.Request, req rpcRequest) (any, *rpcError) {
 				return nil, a.toolError(err)
 			}
 			base.Tools = append(base.Tools, extra...)
+		}
+		if background {
+			base.Tools = append(base.Tools, json.RawMessage(_tellUserTool))
 		}
 		return base, nil
 	case "tools/call":
@@ -159,6 +169,17 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		return a.platformCall(r.Context(), token, call.Name, call.Arguments)
 	}
 	switch call.Name {
+	case provider.ToolTellUser:
+		var in struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(call.Arguments, &in); err != nil || strings.TrimSpace(in.Text) == "" {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
+		}
+		if err := a.runs.TellUser(r.Context(), token, in.Text); err != nil {
+			return a.refusal(err)
+		}
+		return text("Sent."), nil
 	case provider.ToolStartWork:
 		var in struct {
 			Type string `json:"type"`
