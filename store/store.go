@@ -641,9 +641,9 @@ func (s *Store) FinishedRunsSince(ctx context.Context, since time.Time) ([]Threa
 		 WHERE r.finished_at > ? AND r.finished_at > t.last_opened_at AND t.closed = 0
 		   AND r.rowid = (SELECT r2.rowid FROM runs r2
 		                  WHERE r2.thread_id = r.thread_id AND r2.status IN (?, ?, ?)
-		                  ORDER BY r2.finished_at DESC, r2.rowid DESC LIMIT 1)
-		   AND (r.status != ? OR EXISTS (SELECT 1 FROM messages m
-		        WHERE m.thread_id = r.thread_id AND m.run_id = r.id AND m.role = ?))`,
+		                    AND (r2.status != ? OR EXISTS (SELECT 1 FROM messages m
+		                         WHERE m.thread_id = r2.thread_id AND m.run_id = r2.id AND m.role = ?))
+		                  ORDER BY r2.finished_at DESC, r2.rowid DESC LIMIT 1)`,
 		func(r *sql.Rows) (e ThreadEvent, err error) {
 			var at int64
 			err = r.Scan(&e.ThreadID, &e.RunID, &at, &e.Status, &e.Error)

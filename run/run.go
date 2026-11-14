@@ -242,6 +242,9 @@ type (
 		RunID  string `json:"run_id"`
 		Status string `json:"status"`
 		Error  string `json:"error"`
+		// quiet marks a background run that ended with nothing posted to the chat: the thread's
+		// own stream gets it, the island's does not.
+		quiet bool
 	}
 
 	eventLine struct {
@@ -705,6 +708,7 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	}
 	quiet := a.quiet
 	res.StatusLine = a.background && (a.told || !a.guard)
+	told := a.told
 	m.mu.Unlock()
 	res.Provider = a.bot.Provider
 	res.Usage, res.SessionCostUSD = a.usageResult()
@@ -727,7 +731,10 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 		"duration", time.Since(start))
 	// Dropped before run_finished: a client may send the next message the moment it sees it.
 	m.drop(a)
-	m.publish(a, EventRunFinished, Finished{RunID: a.run.ID, Status: res.Status, Error: res.Error})
+	m.publish(a, EventRunFinished, Finished{
+		RunID: a.run.ID, Status: res.Status, Error: res.Error,
+		quiet: res.Status == store.StatusDone && res.StatusLine && !told,
+	})
 	if res.Status == store.StatusDone && res.Reply != "" && !res.StatusLine {
 		m.wg.Add(1)
 		go func() {
@@ -1289,6 +1296,9 @@ func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data
 	switch typ {
 	case EventApproval, EventApprovalEnd, EventRunFinished, EventMRUpdated, EventPlatformChanged, EventThreadRead:
 	default:
+		return
+	}
+	if f, ok := data.(Finished); ok && f.quiet {
 		return
 	}
 	for ch := range m.all {
