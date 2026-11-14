@@ -9,26 +9,33 @@ import (
 	"atoll/store"
 )
 
+// Every notice kind a wake is written with has a row: a new kind that is a failure needs the guard.
 func TestFailure(t *testing.T) {
+	helper := func(status, errorKind string) string {
+		return store.Wake{Run: store.Run{Status: status, ErrorKind: errorKind}}.Notice()
+	}
 	tests := []struct {
 		name string
-		give store.InboxItem
+		give string
 		want bool
 	}{
-		{"helper finished", store.InboxItem{Kind: _helperNotice, Text: "Tester finished thread t1:\nrun failed: no"}, false},
-		{"helper failed", store.InboxItem{Kind: _helperNotice, Text: "Tester's run failed: boom\n(thread t1)"}, true},
-		{"helper stopped", store.InboxItem{Kind: _helperNotice, Text: "The user stopped Tester\n(thread t1)"}, true},
-		{"helper out of limit", store.InboxItem{Kind: _helperNotice, Text: "Tester is out until 2026-11-11T15:42:00Z.\nDo not send it work until then."}, true},
-		{"helper deleted", store.InboxItem{Kind: _helperNotice, Text: "Tester was deleted\n(thread t1)"}, false},
-		{"restart", store.InboxItem{Kind: "restart", Text: "A restart interrupted 2 helper runs."}, true},
-		{"CI passed", store.InboxItem{Kind: "ci", Text: "CI finished on PR #1: 4 passed"}, false},
-		{"CI failed", store.InboxItem{Kind: "ci", Text: `CI finished on PR #1: 2 passed, 1 failed ("unit")`}, true},
-		{"merged", store.InboxItem{Kind: "merged", Text: "PR #1 merged into main at abc1234"}, false},
+		{"helper finished", helper(store.StatusDone, ""), false},
+		{"helper failed", helper(store.StatusFailed, ""), true},
+		{"helper stopped", helper(store.StatusStopped, ""), true},
+		{"helper out of limit", helper(store.StatusFailed, store.ErrorRateLimited), true},
+		{"helper deleted", store.NoticeHelperDeleted, true},
+		{"restart", store.NoticeRestart, true},
+		{"CI passed", ciNotice(ciResult{Passed: 4}), false},
+		{"CI failed", ciNotice(ciResult{Passed: 2, Failed: 1}), true},
+		{"merged", store.NoticeMerged, false},
+		{"closed", store.NoticeClosed, false},
+		{"base merged", store.NoticeBase, false},
+		{"person's message", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := failure(tt.give); got != tt.want {
-				t.Errorf("failure(%+v) = %v, want %v", tt.give, got, tt.want)
+			if got := failure(store.InboxItem{Notice: tt.give}); got != tt.want {
+				t.Errorf("failure(notice %q) = %v, want %v", tt.give, got, tt.want)
 			}
 		})
 	}

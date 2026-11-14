@@ -194,7 +194,7 @@ func (m *Manager) readBase(w *watcher, connID, token, api string, t store.Thread
 		ws.base, ws.baseETag = base, hdr.Get("ETag")
 	}
 	if ws.base.State == "closed" && ws.base.Merged {
-		r.BaseWoke, r.WakeKind = true, _wakeBase
+		r.BaseWoke, r.WakeKind, r.Notice = true, _wakeBase, store.NoticeBase
 		r.WakeText = fmt.Sprintf("PR #%s merged; %s was waiting for it", match[1], label)
 	}
 	return nil
@@ -269,7 +269,7 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, 
 	}
 	r.Woke = head
 	if t.MRWake {
-		r.WakeKind, r.WakeText = "ci", ciText(label, res)
+		r.WakeKind, r.WakeText, r.Notice = "ci", ciText(label, res), ciNotice(res)
 	}
 	return nil
 }
@@ -320,7 +320,7 @@ func statusOutcome(state string) string {
 func (m *Manager) update(t store.Thread, label string, r store.MRRead, note string) error {
 	r.URL, r.Prev = t.MRURL, t.MRState
 	if label != "" && t.MRWake && r.State != t.MRState && (r.State == _mrMerged || r.State == _mrClosed) {
-		r.WakeKind, r.DropCI = r.State, true
+		r.WakeKind, r.DropCI, r.Notice = r.State, true, r.State
 		if r.WakeText == "" || r.State == _mrClosed {
 			r.WakeText = label + " " + r.State
 		}
@@ -463,6 +463,13 @@ func ciText(label string, c ciResult) string {
 		names = append(names, fmt.Sprintf("and %d more", more))
 	}
 	return fmt.Sprintf("%s, %d"+_ciFailed+"%s)", text, c.Failed, strings.Join(names, ", "))
+}
+
+func ciNotice(c ciResult) string {
+	if c.Failed > 0 {
+		return store.NoticeCIFailed
+	}
+	return store.NoticeCIPassed
 }
 
 func quoteName(s string) string { return `"` + cleanName(s) + `"` }

@@ -221,18 +221,17 @@ func WakeText(w store.Wake, helpers string) string {
 	if w.BossBranch != "" && strings.HasPrefix(w.Branch, w.BossBranch+"--") {
 		merge = w.Branch
 	}
-	switch run.Status {
-	case store.StatusDone:
+	switch w.Notice() {
+	case store.NoticeHelperDone:
 		var b strings.Builder
 		fmt.Fprintf(&b, "%s finished thread %s:\n%s\n", helper, threadID, run.Reply)
 		if merge != "" {
 			fmt.Fprintf(&b, "\nMerge %s into your branch.", merge)
 		}
 		return strings.TrimSpace(b.String()) + "\n\n" + helpers
-	case store.StatusStopped:
+	case store.NoticeHelperStopped:
 		return fmt.Sprintf("The user stopped %s\n(thread %s)\n\n%s", helper, threadID, helpers)
-	}
-	if run.ErrorKind == store.ErrorRateLimited {
+	case store.NoticeHelperLimited:
 		until := "its Claude limit resets"
 		if run.Provider == "codex" {
 			until = "its Codex limit resets"

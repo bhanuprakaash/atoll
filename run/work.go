@@ -254,7 +254,7 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 		}
 		if stopped && t.ParentThreadID != "" {
 			wakes = append(wakes, store.InboxItem{
-				ThreadID: t.ParentThreadID, FromBotID: botID,
+				ThreadID: t.ParentThreadID, FromBotID: botID, Notice: store.NoticeHelperDeleted,
 				Text: fmt.Sprintf("%s was deleted\n(thread %s)", bot.Name, t.ID),
 			})
 		}

@@ -128,7 +128,8 @@ func TestReadCI_NoChecksReadAgainLater(t *testing.T) {
 	if r := poll(); reads.Load() != 2 || r.Woke != "" || r.WakeKind != "" {
 		t.Fatalf("slow poll: %d reads, woke %q, wake %q; want 2 reads, woke cleared, no wake", reads.Load(), r.Woke, r.WakeKind)
 	}
-	if r := poll(); reads.Load() != 2 || r.Woke != "abc" || r.WakeKind != "ci" {
-		t.Errorf("next poll: %d reads, woke %q, wake %q; want 2 reads, woke abc, wake ci", reads.Load(), r.Woke, r.WakeKind)
+	if r := poll(); reads.Load() != 2 || r.Woke != "abc" || r.WakeKind != "ci" || r.Notice != store.NoticeCIPassed {
+		t.Errorf("next poll: %d reads, woke %q, wake %q, notice %q; want 2 reads, woke abc, wake ci, notice ci_passed",
+			reads.Load(), r.Woke, r.WakeKind, r.Notice)
 	}
 }

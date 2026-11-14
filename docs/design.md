@@ -527,9 +527,11 @@ Follow-ups:
   listed. A helper thread has no background runs: every final message a helper writes goes to its
   boss, its own CI wake included.
   - Guard: when a background run's notices include a failure Reef knows of (a helper failed,
-    stopped or hit its limit; CI failed) and the run ends without a `tell_user`, its final message
-    is posted to the chat as an ordinary reply and the thread is Replied. *A missed `tell_user`
-    would otherwise be silence; the guard reads only facts Reef holds, never the text's meaning.*
+    stopped, hit its limit or was deleted; a restart cut helpers short; CI failed) and the run ends
+    without a `tell_user`, its final message is posted to the chat as an ordinary reply and the
+    thread is Replied. The guard reads the inbox row's `notice`, which Reef sets where it writes the
+    wake, never the text. `tell_user` counts as called once its message is stored. *A missed `tell_user` would otherwise be silence; the guard reads only facts
+    Reef holds, never the text's meaning.*
   *Quiet by default, loud on purpose: posting reports into the chat made the person read each one
   twice, and one blocker five times (#396), and the old "write no reply" rule was a request the
   boss broke. Spike 2026-11-13: with the rule only in the system prompt, Sonnet wrote a blocker as
@@ -692,6 +694,13 @@ Follow-ups:
   empty). Storing merged or closed deletes the thread's held `ci` row in the same transaction, as
   does a new head commit or a newer `ci` wake, so a lead is never woken for CI of a commit that is
   no longer the head or after the PR is done. A held row of another kind is never dropped.
+- An inbox row also has a `notice`, which the chat and the prompt never read: empty for a person's
+  message, else what the wake is. Helper wakes: `helper_done`, `helper_failed`, `helper_stopped`,
+  `helper_limited`, `helper_deleted`; `restart` for the restart message; PR wakes: `ci_passed`,
+  `ci_failed`, `merged`, `closed`, `base`. It is separate from `kind` because a helper's wake has
+  no `kind` and `ci` covers a failed and a passed run. The background guard (Delegation) reads
+  `notice` for `helper_failed`, `helper_stopped`, `helper_limited`, `helper_deleted`, `restart`
+  and `ci_failed`.
 - The wake is one plain sentence built by Reef from fixed words, the MR as the thread names it
   (`PR #7`, `MR !7`), numbers and check names; no PR title, body, commit message or other API text
   is joined into it: `PR #7 merged into main at aff4bd0`, `PR #7 closed`,
