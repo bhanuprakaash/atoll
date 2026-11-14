@@ -9,155 +9,33 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"atoll/e2e/fakes/fake"
 )
 
 // Contract: ready-names-commit-contract.md.
 
-const (
-	_readyPrompt = "Fix the seeded bug, open a PR and report it ready. READY="
-	_freezeLine  = "- Once a PR is called ready it is frozen: new work goes in a follow-up PR."
-	_draftLine   = "- On top of an unmerged PR's branch, open yours with `gh pr create --draft`, body starting `Waits for #<n>`; mark it ready when woken that #<n> merged."
-	_freezeText  = "Once a PR is called ready it is frozen: new work goes in a follow-up PR."
-)
+const _freezeText = "Once a PR is called ready it is frozen: new work goes in a follow-up PR."
 
-// readyEntry is one of finish_run's ready entries as the run's report gives it back.
-type readyEntry struct {
-	URL     string `json:"url"`
-	SHA     string `json:"sha"`
-	Changed bool   `json:"changed"`
-}
-
-// readyOf is the report.ready of a run.
-func (f *prWakeFixture) readyOf(t *testing.T, runID string) []readyEntry {
-	t.Helper()
-	var got struct {
-		Report *struct {
-			Ready []readyEntry `json:"ready"`
-		} `json:"report"`
-	}
-	f.s.do(t, "GET", "/api/runs/"+runID, nil, &got, 200)
-	if got.Report == nil {
-		t.Fatalf("run %s has no report", runID)
-	}
-	return got.Report.Ready
-}
-
-// prURL is the URL of pull request n of the fake GitHub's octo/hello.
-func (f *prWakeFixture) prURL(n int) string {
-	return fmt.Sprintf("%s/octo/hello/pull/%d", f.gh.URL, n)
-}
-
-// reportReady has a new thread's Bot open a pull request and call finish_run with ready entries
-// [{url, sha}], and returns the thread and its run. The fake GitHub numbers pull requests from 1.
-func (f *prWakeFixture) reportReady(t *testing.T, entries ...map[string]string) (thread, runInfo) {
-	t.Helper()
-	th := f.thread(t, f.boss, f.repo)
-	ch := f.s.events(t, th)
-	payload, _ := json.Marshal(entries)
-	r := f.s.send(t, th, _readyPrompt+string(payload))
-	until(t, ch, r.ID, "run_finished")
-	done := f.s.run(t, r.ID)
-	if done.Status != "done" {
-		t.Fatalf("run that opens the pull request and reports it ready: %+v", done)
-	}
-	return th, done
-}
-
-func ready(url, sha string) map[string]string { return map[string]string{"url": url, "sha": sha} }
-
-const _otherSHA = "cccccccccccccccccccccccccccccccccccccccc"
-
-// finish_run's ready entries carry the PR head the Bot saw, and the report says when the head has
-// moved since: the data the "Waiting on you" row shows (the row itself lands with #147).
-func TestReadyNamesCommit_ReportCarriesHeadSHA(t *testing.T) {
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			f := newPRWakeFixture(t, p)
-			sha := headSHA(1)
-			th, run := f.reportReady(t, ready(f.prURL(1), sha))
-
-			if got, want := f.readyOf(t, run.ID), []readyEntry{{f.prURL(1), sha, false}}; len(got) != 1 || got[0] != want[0] {
-				t.Fatalf("report.ready %+v, want %+v", got, want)
-			}
-
-			f.gh.setHead(1, _otherSHA)
-			eventually(t, 30*time.Second, "report.ready says the head changed since ready", func() bool {
-				got := f.readyOf(t, run.ID)
-				return len(got) == 1 && got[0].Changed && got[0].SHA == sha
-			})
-			f.quiet(t, 1, "a push after ready", th, 0, 0)
-
-			f.gh.setHead(1, sha)
-			eventually(t, 30*time.Second, "report.ready is unchanged again once the head is the ready commit", func() bool {
-				got := f.readyOf(t, run.ID)
-				return len(got) == 1 && !got[0].Changed
-			})
-		})
-	}
-}
-
-// A ready entry without a PR url or without a 40-hex sha is a tool error, and nothing is stored.
-func TestReadyNamesCommit_BadReadyEntryIsRefused(t *testing.T) {
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			f := newPRWakeFixture(t, p)
-			call := func(entry map[string]string) fake.MCPCall {
-				args, _ := json.Marshal(map[string]any{"done": "d", "tried": "t", "blocked": "", "next": "n", "ready": []map[string]string{entry}})
-				return fake.MCPCall{Server: "atoll", Tool: "finish_run", Args: args}
-			}
-			th := f.s.newThread(t, f.boss)
-			lines := useAtoll(t, f.s, th, f.s.events(t, th), call(ready(f.prURL(1), "abc123")), call(ready("", headSHA(1))))
-			if len(lines) != 2 {
-				t.Fatalf("reply %q, want one line per call", lines)
-			}
-			for i, word := range []string{"sha", "url"} {
-				line := strings.ToLower(lines[i])
-				if strings.Contains(line, "report saved") || !strings.Contains(line, "ready") || !strings.Contains(line, word) {
-					t.Errorf("finish_run call %d answered %q, want a tool error naming the ready entry's %s", i+1, lines[i], word)
-				}
-			}
-			if got := f.readyOf(t, f.s.thread(t, th.ID).RunID); len(got) != 0 {
-				t.Errorf("report.ready %+v after refused entries, want none", got)
-			}
-		})
-	}
-}
-
-// The merge wake says where the PR went and at which commit, and says so when that is not the commit
-// the Bot called ready.
+// The merge wake says where the PR went and at which commit: the head the watcher read at the
+// merge, whether or not it moved since the PR was opened.
 func TestReadyNamesCommit_MergeWakeNamesTheCommit(t *testing.T) {
 	for _, p := range _providers {
-		for _, c := range []struct {
-			name, ready, moved, suffix string
-		}{
-			{"no ready entry", "", "", ""},
-			{"ready is the merged commit", headSHA(1), "", ""},
-			{"ready was another commit", _otherSHA, "", " (ready was " + _otherSHA[:7] + ")"},
-			{"head moved after ready", headSHA(1), "dddddddddddddddddddddddddddddddddddddddd", " (ready was " + headSHA(1)[:7] + ")"},
+		for _, c := range []struct{ name, moved string }{
+			{"head as opened", ""},
+			{"head moved before the merge", "dddddddddddddddddddddddddddddddddddddddd"},
 		} {
 			t.Run(p+"/"+c.name, func(t *testing.T) {
 				f := newPRWakeFixture(t, p)
-				var entries []map[string]string
-				if c.ready != "" {
-					entries = append(entries, ready(f.prURL(1), c.ready))
-				}
-				th, run := f.reportReady(t, entries...)
+				th := f.openPR(t, 1)
 				head := headSHA(1)
 				if c.moved != "" {
 					head = c.moved
 					f.gh.setHead(1, head)
-					eventually(t, 30*time.Second, "the head change is read", func() bool {
-						got := f.readyOf(t, run.ID)
-						return len(got) > 0 && got[0].Changed
-					})
 				}
 
 				f.gh.setPull(1, "closed", true)
 				w := f.waitWake(t, th, 1)
 
-				want := "PR #1 merged into main at " + head[:7] + c.suffix
+				want := "PR #1 merged into main at " + head[:7]
 				if w.Kind != "merged" || w.Text != want || w.FromBotID != "" {
 					t.Errorf("wake message %+v, want kind merged, text %q, no from_bot_id", w, want)
 				}
@@ -249,8 +127,8 @@ func TestReadyNamesCommit_StackedFixWaitsAsDraft(t *testing.T) {
 			if w.Kind != "base" || w.Text != "PR #1 merged; PR #2 was waiting for it" || w.FromBotID != "" {
 				t.Errorf("stacked fix's wake %+v, want kind base, text %q, no from_bot_id", w, "PR #1 merged; PR #2 was waiting for it")
 			}
-			if run := f.s.run(t, f.s.thread(t, fix.ID).RunID); run.Status != "done" || run.Reply != "Ready noted." {
-				t.Errorf("run of the base wake %+v, want done with reply %q", run, "Ready noted.")
+			if run := f.s.run(t, f.s.thread(t, fix.ID).RunID); run.Status != "done" {
+				t.Errorf("run of the base wake %+v, want done", run)
 			}
 			want := []string{"create #1 base=main draft=false", "create #2 base=" + branch + " draft=true", "edit #2 base=main", "ready #2"}
 			if got := f.gh.prCalls(); !equalStrings(got, want) {
@@ -267,9 +145,9 @@ func TestReadyNamesCommit_StackedFixWaitsAsDraft(t *testing.T) {
 
 func equalStrings(a, b []string) bool { return strings.Join(a, "\n") == strings.Join(b, "\n") }
 
-// The freeze sentence and the draft rule are in the code part of every Bot with repo access, and a
-// Bot without repo access has neither.
-func TestReadyNamesCommit_CodePartCarriesFreezeAndDraftRules(t *testing.T) {
+// The freeze sentence and the draft rule moved out of Reef's prompt into the repo's own
+// instructions: no Bot's system prompt carries either.
+func TestReadyNamesCommit_PromptHasNoFreezeOrDraftRules(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
@@ -277,79 +155,76 @@ func TestReadyNamesCommit_CodePartCarriesFreezeAndDraftRules(t *testing.T) {
 			s.do(t, "POST", "/api/bots", map[string]any{"name": "Coder", "persona": "Fixes things.", "provider": p, "repo_access": "all"}, &coder, http.StatusCreated)
 			s.do(t, "POST", "/api/bots", map[string]any{"name": "Plain", "persona": "Answers.", "provider": p, "repo_access": []string{}}, &plain, http.StatusCreated)
 
-			system := heySystem(t, s, p, coder)
-			lines := strings.Split(system, "\n")
-			work := -1
-			for i, l := range lines {
-				if l == "How you work" {
-					work = i
-				}
-			}
-			for _, want := range []string{_freezeLine, _draftLine} {
-				found := false
-				for _, l := range lines[work+1:] {
-					if l == "" {
-						break
+			for _, b := range []bot{coder, plain} {
+				system := heySystem(t, s, p, b)
+				for _, gone := range []string{"frozen", "Waits for", "--draft"} {
+					if strings.Contains(system, gone) {
+						t.Errorf("%s's system prompt has %q, want it only in the repo's instructions:\n%s", b.Name, gone, system)
 					}
-					found = found || l == want
 				}
-				if work < 0 || !found {
-					t.Errorf("How you work has no line %q:\n%s", want, system)
-				}
-			}
-			if system := heySystem(t, s, p, plain); strings.Contains(system, "frozen") || strings.Contains(system, "Waits for") {
-				t.Errorf("a Bot without repo access has the code part's freeze or draft rule:\n%s", system)
 			}
 		})
 	}
 }
 
-// The delegate tool's description, as the boss's run lists it, tells the boss to end every brief with
-// the freeze sentence.
-func TestReadyNamesCommit_DelegateBriefCarriesFreezeSentence(t *testing.T) {
+// listedTools is what tools/list answers to a boss's run, tool name to description.
+func listedTools(t *testing.T, p string) map[string]string {
+	t.Helper()
+	m, s := start(t, p)
+	boss, helper := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
+	setDelegates(t, s, boss, helper)
+	th := s.newThread(t, boss)
+	events := s.events(t, th)
+	run := s.send(t, th, _hangPrompt)
+	until(t, events, run.ID, "tool_call")
+	sessions := m.sessions(t, p)
+	atoll, ok := mcpServersOf(t, p, sessions[len(sessions)-1])["atoll"]
+	if !ok {
+		t.Fatal("the boss's run has no atoll MCP server")
+	}
+	req, _ := http.NewRequest("POST", atoll.URL, bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range atoll.Headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	var listed struct {
+		Result struct {
+			Tools []struct{ Name, Description string } `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &listed); err != nil {
+		t.Fatalf("tools/list answered %s: %v", body, err)
+	}
+	out := map[string]string{}
+	for _, tool := range listed.Result.Tools {
+		out[tool.Name] = tool.Description
+	}
+	return out
+}
+
+// The delegate tool's description no longer ends the brief with the freeze sentence, and neither
+// delegate's nor track_mr's description names finish_run or a frozen PR.
+func TestReadyNamesCommit_ToolDescriptionsHaveNoFreezeSentence(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
-			m, s := start(t, p)
-			boss, helper := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
-			setDelegates(t, s, boss, helper)
-			th := s.newThread(t, boss)
-			events := s.events(t, th)
-			run := s.send(t, th, _hangPrompt)
-			until(t, events, run.ID, "tool_call")
-			sessions := m.sessions(t, p)
-			atoll, ok := mcpServersOf(t, p, sessions[len(sessions)-1])["atoll"]
-			if !ok {
-				t.Fatal("the boss's run has no atoll MCP server")
-			}
-
-			req, _ := http.NewRequest("POST", atoll.URL, bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)))
-			req.Header.Set("Content-Type", "application/json")
-			for k, v := range atoll.Headers {
-				req.Header.Set(k, v)
-			}
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = resp.Body.Close() }()
-			body, _ := io.ReadAll(resp.Body)
-			var listed struct {
-				Result struct {
-					Tools []struct{ Name, Description string } `json:"tools"`
-				} `json:"result"`
-			}
-			if err := json.Unmarshal(body, &listed); err != nil {
-				t.Fatalf("tools/list answered %s: %v", body, err)
-			}
-			for _, tool := range listed.Result.Tools {
-				if tool.Name == "delegate" {
-					if !strings.Contains(tool.Description, _freezeText) {
-						t.Errorf("delegate description %q lacks %q", tool.Description, _freezeText)
+			tools := listedTools(t, p)
+			for _, name := range []string{"delegate", "track_mr"} {
+				desc, ok := tools[name]
+				if !ok {
+					t.Fatalf("tools/list has no %s: %v", name, tools)
+				}
+				for _, gone := range []string{_freezeText, "frozen", "finish_run"} {
+					if strings.Contains(desc, gone) {
+						t.Errorf("%s description %q holds %q", name, desc, gone)
 					}
-					return
 				}
 			}
-			t.Errorf("tools/list has no delegate: %s", body)
 		})
 	}
 }
