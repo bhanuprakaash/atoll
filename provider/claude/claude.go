@@ -58,6 +58,8 @@ type Session struct {
 	log     *slog.Logger // set by start; nil logs nothing
 	sentMu  sync.Mutex   // guards sent
 	sent    string       // uuid of the user line Send wrote last
+
+	resultWait time.Duration // how long a request waits for the one of its two signals that is missing
 }
 
 type (
@@ -170,6 +172,8 @@ func New() *Session {
 		events: make(chan provider.Event),
 		quit:   make(chan struct{}),
 		done:   make(chan struct{}),
+
+		resultWait: _resultWait,
 	}
 }
 
@@ -589,7 +593,7 @@ func (s *Session) read(stdout io.Reader) {
 		var timeout <-chan time.Time
 		if st.req.waiting() {
 			if deadline.IsZero() {
-				deadline = time.Now().Add(_resultWait)
+				deadline = time.Now().Add(s.resultWait)
 			}
 			timeout = time.After(time.Until(deadline))
 		} else {
