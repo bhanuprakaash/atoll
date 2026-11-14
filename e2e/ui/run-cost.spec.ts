@@ -44,8 +44,8 @@ test('a Claude run ends with its model and calls, counting only itself, and no d
   const { bot, thread } = await twoRuns('Costly', 'claude');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
   const log = page.getByRole('log', { name: 'Messages' });
-  const one = log.getByText(/Sonnet 5\.5, 7 calls$/);
-  const two = log.getByText(/Sonnet 5\.5, 3 calls$/);
+  const one = log.getByText(/Sonnet 5\.5, 6 calls$/);
+  const two = log.getByText(/Sonnet 5\.5, 2 calls$/);
   await expect(one).toHaveCount(1);
   await expect(two).toHaveCount(1);
   expect(await log.innerText()).not.toContain('$');

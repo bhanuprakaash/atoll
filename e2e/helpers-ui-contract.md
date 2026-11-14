@@ -78,6 +78,5 @@ Not covered here: the island's `done` and `failed` states and a row's `Failed` a
 (when a stopped or failed helper's row leaves is not pinned), a reply in the boss's composer
 answering a helper's approval (`approvals-contract.md`), the colours (Needs you, red only for a failed
 CI), the elapsed time's exact value, a helper with a PR whose CI
-changes on the same commit (the watcher's known gap), Codex, the Waiting on you card above the tray
-(#147), and the real-provider run with an approval answered after more than 60s (only the user
+changes on the same commit (the watcher's known gap), Codex, and the real-provider run with an approval answered after more than 60s (only the user
 checks it). `docs/design.md` matching its Helpers paragraph is checked in review.

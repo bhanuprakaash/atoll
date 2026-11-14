@@ -1,6 +1,6 @@
 // A thread the person started whose PR merged leaves the sidebar tree but stays open: it is in
 // the threads popup under "Other open threads", opens with its history and comes back to the tree
-// when the person writes in it. Waiting items and pins keep it in the tree. GitHub is a scripted
+// when the person writes in it. An open approval and a pin keep it in the tree. GitHub is a scripted
 // server the PR watcher reads. Contract: e2e/helpers-sidebar-contract.md.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,19 +12,10 @@ import { send } from './helpers-fixture';
 
 const fix = 'Fix the seeded bug and open a PR.';
 
-// finish ends a turn through the atoll MCP server's finish_run, so a follow-up message in a thread
-// that has a session plays: the recordings only match a thread's first message.
-const finish = `Use MCP tools. [{"server":"atoll","tool":"finish_run","args":${JSON.stringify({
-  done: 'Done.',
-  tried: 'none',
-  blocked: '',
-  next: 'none',
-})}}]`;
-
-// These recordings fix the bug and open the pull request as `fix` does, then end the run with a
-// decision for the person or a blocker.
-const askFix = 'Fix the seeded bug, open a PR and ask how to ship it.';
-const blockedFix = 'Fix the seeded bug, open a PR and report the sign-in blocker.';
+// recall is a follow-up message that plays through the atoll MCP server's recall tool, so a
+// follow-up message in a thread that has a session plays: the recordings only match a thread's
+// first message. Its reply starts with the tool's name.
+const recall = 'Use MCP tools. [{"server":"atoll","tool":"recall","args":{"query":"x"}}]';
 
 let m: Machine;
 let github: GitHubFake;
@@ -160,62 +151,32 @@ test('a thread whose PR merged leaves the sidebar tree, stays open in the thread
   await expect(log).toContainText('Merge noted.');
 });
 
-for (const [what, first] of [
-  ['an approval', fix],
-  ['an ask', askFix],
-  ['a blocker', blockedFix],
-] as const) {
-  test(`a merged thread with ${what} waiting stays in the tree while it waits`, async ({
-    page,
-    context,
-  }) => {
-    const id = await prThread(1, first);
-    if (what === 'an approval') {
-      await api(m, 'POST', `/api/threads/${id}/messages`, {
-        text: prompts.write,
-      });
-      await waitStatus(id, 'waiting');
-    }
-    await away(page);
-    await expect(inTree(page, id)).toHaveCount(1);
+test('a merged thread with an approval waiting stays in the tree while it waits', async ({
+  page,
+  context,
+}) => {
+  const id = await prThread(1, fix);
+  await api(m, 'POST', `/api/threads/${id}/messages`, { text: prompts.write });
+  await waitStatus(id, 'waiting');
+  await away(page);
+  await expect(inTree(page, id)).toHaveCount(1);
+  await expect(rowOf(page, id)).toHaveAttribute('data-marker', 'needs-you');
 
-    await expect(rowOf(page, id)).toHaveAttribute(
-      'data-marker',
-      what === 'an approval' ? 'needs-you' : 'waiting',
-    );
+  await merged(id, 1);
+  await expect(inTree(page, id)).toHaveCount(1);
+  await expect(rowOf(page, id)).toHaveAttribute('data-marker', 'needs-you');
 
-    await merged(id, 1);
-    await expect(inTree(page, id)).toHaveCount(1);
-    await expect(rowOf(page, id)).toHaveAttribute(
-      'data-marker',
-      what === 'an approval' ? 'needs-you' : 'waiting',
-    );
-
-    if (what === 'an approval') {
-      const answering = await context.newPage();
-      await answering.goto(`${m.url}/bots/${coder.id}/threads/${id}`);
-      await answering
-        .getByRole('log', { name: 'Messages' })
-        .getByRole('button', { name: 'Allow', exact: true })
-        .click();
-    } else await api(m, 'POST', `/api/threads/${id}/messages`, { text: finish });
-    await waitStatus(id, 'done');
-    await expect
-      .poll(async () => {
-        const bots: { threads?: { id: string; waiting?: unknown[] }[] }[] = await api(
-          m,
-          'GET',
-          '/api/bots',
-        );
-        return bots.flatMap((b) => b.threads ?? []).find((t) => t.id === id)?.waiting ?? [];
-      })
-      .toEqual([]);
-    // Allow leaves the thread; an answer by message is the person's message after the merge, so
-    // the thread stays for good.
-    await expect(inTree(page, id)).toHaveCount(what === 'an approval' ? 0 : 1, { timeout: 15_000 });
-    expect((await api(m, 'GET', `/api/threads/${id}`)).closed).toBe(false);
-  });
-}
+  const answering = await context.newPage();
+  await answering.goto(`${m.url}/bots/${coder.id}/threads/${id}`);
+  await answering
+    .getByRole('log', { name: 'Messages' })
+    .getByRole('button', { name: 'Allow', exact: true })
+    .click();
+  await waitStatus(id, 'done');
+  // Allow ends the wait: the merged thread leaves the tree again, still open.
+  await expect(inTree(page, id)).toHaveCount(0, { timeout: 15_000 });
+  expect((await api(m, 'GET', `/api/threads/${id}`)).closed).toBe(false);
+});
 
 test('a pinned thread whose PR merged stays in the sidebar tree', async ({ page }) => {
   const id = await prThread(1);
@@ -259,8 +220,8 @@ test('a message sent to a merged thread brings it back for good: it is still in 
   await expect(inTree(page, id)).toHaveCount(0, { timeout: 10_000 });
 
   await page.goto(`${m.url}/bots/${coder.id}/threads/${id}`);
-  await send(page, finish);
-  await expect(page.getByRole('log', { name: 'Messages' })).toContainText('Done.', {
+  await send(page, recall);
+  await expect(page.getByRole('log', { name: 'Messages' })).toContainText('atoll/recall', {
     timeout: 30_000,
   });
   await waitStatus(id, 'done');

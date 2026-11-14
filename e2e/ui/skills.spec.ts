@@ -50,7 +50,7 @@ test("Chief creates a skill and Bot in chat, and Undo removes the Bot", async ({
     .toBe(false);
 });
 
-test("a reply that created 2 Bots folds into one line: Undo all works folded, the line opens and folds, Blocked stays out", async ({
+test("a reply that created 2 Bots folds into one line: Undo all works folded, the line opens and folds", async ({
   page,
 }) => {
   await page.goto("/");
@@ -90,11 +90,7 @@ test("a reply that created 2 Bots folds into one line: Undo all works folded, th
     change.getByRole("button", { name: "Undo", exact: true }),
   ).toHaveCount(0);
 
-  const blocked = log.getByText(
-    "Blocked: Comment Sicko needs a GitLab connection to review MRs.",
-  );
-  await expect(blocked).toBeVisible();
-  await expect(log.getByRole("button", { name: /Blocked:/ })).toHaveCount(0);
+  await expect(log.getByText(/Blocked:/)).toHaveCount(0);
 
   await line.click();
   await expect(line).toHaveAttribute("aria-expanded", "true");
@@ -116,7 +112,6 @@ test("a reply that created 2 Bots folds into one line: Undo all works folded, th
   await expect(
     change.getByRole("button", { name: "Undo", exact: true }),
   ).toHaveCount(0);
-  await expect(blocked).toBeVisible();
 
   const response = await page.request.get("/api/bots");
   expect(response.status()).toBe(200);
