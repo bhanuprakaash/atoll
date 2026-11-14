@@ -223,11 +223,13 @@ function BotGroup({
 
 export function BotRail({
   view,
+  openBotId,
   onView,
   creatingGroup,
   onCreatingGroup,
 }: {
   view?: string;
+  openBotId?: string;
   onView: (view: string) => void;
   creatingGroup: { botId?: string } | null;
   onCreatingGroup: (creating: { botId?: string } | null) => void;
@@ -245,7 +247,7 @@ export function BotRail({
     <BotFace
       key={bot.id}
       bot={bot}
-      current={view === bot.id}
+      current={view === bot.id || openBotId === bot.id}
       onSelect={() => onView(bot.id)}
       onNewGroup={() => onCreatingGroup({ botId: bot.id })}
     />
@@ -253,7 +255,11 @@ export function BotRail({
   const moveTo = (groupId: string | null) => (botId: string) => setGroup.mutate({ botId, groupId });
   return (
     <div className="flex flex-col">
-      <NowButton current={view === 'now'} count={needsYou} onClick={() => onView('now')} />
+      <NowButton
+        current={view === 'now' && !openBotId}
+        count={needsYou}
+        onClick={() => onView('now')}
+      />
       <div className="flex flex-col">{top.map(face)}</div>
       {groups.map((group) => {
         const members = inGroup(group.id);

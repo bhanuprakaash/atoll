@@ -10,7 +10,12 @@ import { useBots, type Bot, type SidebarThread } from '@/modules/bots/api/bots';
 import { useGroups } from '@/modules/bots/api/groups';
 import { BotMenu } from '@/modules/bots/components/bot-menu';
 import { ThreadSection } from '@/modules/bots/components/thread-tree';
-import { isLiveHelper, threadSections, workersByBoss } from '@/modules/bots/utils/thread-tree';
+import {
+  isLiveHelper,
+  nowSections,
+  threadSections,
+  workersByBoss,
+} from '@/modules/bots/utils/thread-tree';
 import {
   useCloseThread,
   usePinThread,
@@ -18,6 +23,7 @@ import {
   useThreads,
 } from '@/modules/threads/api/threads';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
+import { relativeTime } from '@/utils/time';
 
 const WIDTH_DEFAULT = 284;
 const WIDTH_MIN = 240;
@@ -52,6 +58,78 @@ export function usePaneWidth() {
   return [width, (next: number) => setWidth(clampWidth(next))] as const;
 }
 
+function matchesQuery(t: SidebarThread, words: string[]) {
+  const text = [t.title, t.branch, mrRef(t.mr_url)].join(' ').toLowerCase();
+  return words.every((w) => text.includes(w));
+}
+
+function ThreadSearch({ query, onQuery }: { query: string; onQuery: (query: string) => void }) {
+  return (
+    <div className="px-3 pb-1">
+      <TextField
+        size="bare"
+        aria-label="Search threads"
+        placeholder="Search threads"
+        value={query}
+        onChange={(event) => onQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onQuery('');
+        }}
+        className="h-8.5 rounded-[10px] bg-field px-3"
+      />
+    </div>
+  );
+}
+
+const scroller =
+  'min-h-0 flex-1 overflow-y-auto px-2 pb-3 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-segment';
+
+function NowPane({ bots, openThreadId }: { bots: Bot[]; openThreadId?: string }) {
+  const [query, setQuery] = useState('');
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const owners = new Map<string, { bot: Bot; note: string }>();
+  const threads = bots.flatMap((bot) =>
+    (bot.threads ?? []).filter((t) => matchesQuery(t, words)).map((t) => ({ bot, t })),
+  );
+  for (const { bot, t } of threads)
+    owners.set(t.id, {
+      bot,
+      note:
+        (t.state === 'needs_you' || t.state === 'running') && bot.activity
+          ? bot.activity
+          : relativeTime(t.last_activity),
+    });
+  const sections = nowSections(
+    threads.map(({ t }) => t),
+    openThreadId,
+  );
+  const workers = workersByBoss(bots);
+  return (
+    <>
+      <span className="px-3.5 pt-4 pb-3 text-[15px]">Now</span>
+      <ThreadSearch query={query} onQuery={setQuery} />
+      <div className={scroller}>
+        {sections.map(({ label, threads }) => (
+          <ThreadSection
+            key={label}
+            label={label}
+            threads={threads}
+            openThreadId={openThreadId}
+            workers={workers}
+            bosses={new Map()}
+            owners={owners}
+          />
+        ))}
+        {sections.length === 0 && (
+          <p className="px-2 py-3 text-sm text-muted">
+            {words.length > 0 ? 'No threads match' : 'Nothing needs you'}
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
 function BotPane({
   bot,
   bots,
@@ -80,10 +158,7 @@ function BotPane({
     }),
   );
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const matching = (bot.threads ?? []).filter((t) => {
-    const text = [t.title, t.branch, mrRef(t.mr_url)].join(' ').toLowerCase();
-    return words.every((w) => text.includes(w));
-  });
+  const matching = (bot.threads ?? []).filter((t) => matchesQuery(t, words));
   const sections = threadSections(matching, openThreadId);
   const setPinned = (thread: SidebarThread, pinned: boolean, replace?: string) =>
     pin.mutate(
@@ -146,23 +221,11 @@ function BotPane({
           </svg>
         </button>
       </div>
-      <div className="px-3 pb-1">
-        <TextField
-          size="bare"
-          aria-label="Search threads"
-          placeholder="Search threads"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') setQuery('');
-          }}
-          className="h-8.5 rounded-[10px] bg-field px-3"
-        />
-      </div>
+      <ThreadSearch query={query} onQuery={setQuery} />
       {pin.isError && !isPinLimit(pin.error) && (
         <ErrorNotice error={pin.error} className="px-3 pb-2" />
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-segment">
+      <div className={scroller}>
         {sections.map(({ label, threads }) => (
           <ThreadSection
             key={label}
@@ -234,10 +297,7 @@ export function ThreadPane({
       className="relative flex flex-none flex-col border-r border-sidebar-line bg-card"
     >
       {now ? (
-        <>
-          <span className="px-3.5 pt-4 pb-3 text-[15px]">Now</span>
-          <p className="px-3.5 text-sm text-muted">Nothing needs you</p>
-        </>
+        <NowPane bots={bots} openThreadId={openThreadId} />
       ) : (
         <BotPane
           key={bot!.id}

@@ -3,14 +3,14 @@ import { Link } from 'react-router';
 import { Creature } from '@/components/creature';
 import { Menu } from '@/components/menu';
 import { TextField } from '@/components/text-field';
-import type { SidebarThread } from '@/modules/bots/api/bots';
+import type { Bot, SidebarThread } from '@/modules/bots/api/bots';
 import { workerNames, type Worker } from '@/modules/bots/utils/thread-tree';
 import { clockTime } from '@/utils/time';
 
 const marker = (t: SidebarThread) =>
   t.state ? t.state.replace('_', '-') : t.pinned ? 'pinned' : undefined;
 
-const rowStyle = 'flex h-8 items-center gap-2.5 rounded-lg px-2 text-sm';
+const rowStyle = 'flex items-center gap-2.5 rounded-lg px-2 text-sm';
 
 function Dot({ className = '' }: { className?: string }) {
   return <span aria-hidden="true" className={`size-1.5 flex-none rounded-full ${className}`} />;
@@ -97,7 +97,7 @@ function RenameField({ title, onDone }: { title: string; onDone: (title?: string
         if (event.key === 'Escape') onDone();
         if (event.key === 'Enter') onDone(event.currentTarget.value.trim());
       }}
-      className={`${rowStyle} w-full border border-outline bg-field`}
+      className={`${rowStyle} h-8 w-full border border-outline bg-field`}
     />
   );
 }
@@ -157,19 +157,21 @@ export function ThreadSection({
   openThreadId,
   workers,
   bosses,
+  owners,
   onPinThread,
   onCloseThread,
   onRenameThread,
 }: {
   label: string;
   threads: SidebarThread[];
-  botId: string;
+  botId?: string;
   openThreadId?: string;
   workers: Map<string, Worker[]>;
   bosses: Map<string, string>;
-  onPinThread: (thread: SidebarThread) => void;
-  onCloseThread: (threadId: string) => void;
-  onRenameThread: (threadId: string, title: string) => void;
+  owners?: Map<string, { bot: Bot; note: string }>;
+  onPinThread?: (thread: SidebarThread) => void;
+  onCloseThread?: (threadId: string) => void;
+  onRenameThread?: (threadId: string, title: string) => void;
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number; thread: SidebarThread } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -184,12 +186,15 @@ export function ThreadSection({
       <div role="list" aria-label={label} className="flex flex-col gap-0.5">
         {threads.map((thread) => {
           const selected = thread.id === openThreadId;
+          const owner = owners?.get(thread.id);
+          const ownerId = owner?.bot.id ?? botId!;
           return (
             <Fragment key={thread.id}>
               <div
                 role="listitem"
                 data-marker={marker(thread)}
                 onContextMenu={(event) => {
+                  if (!onRenameThread) return;
                   event.preventDefault();
                   setMenu({ x: event.clientX, y: event.clientY, thread });
                 }}
@@ -200,23 +205,35 @@ export function ThreadSection({
                     title={thread.title}
                     onDone={(title) => {
                       setRenaming(null);
-                      if (title && title !== thread.title) onRenameThread(thread.id, title);
+                      if (title && title !== thread.title) onRenameThread?.(thread.id, title);
                     }}
                   />
                 ) : (
                   <>
-                    <Link
-                      to={`/bots/${botId}/threads/${thread.id}`}
-                      aria-current={selected ? 'page' : undefined}
-                      draggable={false}
-                      className={`${rowStyle} min-w-0 flex-1 after:absolute after:inset-0 after:rounded-lg`}
-                    >
-                      <span
-                        className={`min-w-0 truncate ${thread.state === 'new' ? 'font-semibold' : ''}`}
-                      >
-                        {thread.title || 'Empty thread'}
+                    {owner && (
+                      <span className="flex-none pl-2">
+                        <Creature look={owner.bot.look} state={owner.bot.state} size={22} />
                       </span>
-                    </Link>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <Link
+                        to={`/bots/${ownerId}/threads/${thread.id}`}
+                        aria-current={selected ? 'page' : undefined}
+                        draggable={false}
+                        className={`${rowStyle} ${owner ? 'h-5 pl-0' : 'h-8'} after:absolute after:inset-0 after:rounded-lg`}
+                      >
+                        <span
+                          className={`min-w-0 truncate ${thread.state === 'new' ? 'font-semibold' : ''}`}
+                        >
+                          {thread.title || 'Empty thread'}
+                        </span>
+                      </Link>
+                      {owner && (
+                        <span className="block truncate text-xs text-muted">
+                          {owner.bot.name} · {owner.note}
+                        </span>
+                      )}
+                    </span>
                     {bosses.get(thread.id) && (
                       <span className="flex-none text-xs text-muted">
                         for {bosses.get(thread.id)}
@@ -227,7 +244,7 @@ export function ThreadSection({
                     >
                       <ThreadMarker thread={thread} />
                     </span>
-                    {!thread.helper && (
+                    {!thread.helper && onPinThread && onCloseThread && (
                       <span className="relative z-10 mr-2 hidden flex-none items-center gap-1 group-focus-within:flex group-hover:flex">
                         <button
                           type="button"
@@ -262,7 +279,11 @@ export function ThreadSection({
                 )}
               </div>
               {workers.get(thread.id) && (
-                <HelpersLine botId={botId} threadId={thread.id} workers={workers.get(thread.id)!} />
+                <HelpersLine
+                  botId={ownerId}
+                  threadId={thread.id}
+                  workers={workers.get(thread.id)!}
+                />
               )}
             </Fragment>
           );
@@ -274,7 +295,7 @@ export function ThreadSection({
           onClose={() => setMenu(null)}
           items={[
             { label: 'Rename', onSelect: () => setRenaming(menu.thread.id) },
-            ...(menu.thread.helper
+            ...(menu.thread.helper || !onCloseThread
               ? []
               : [{ label: 'Close', onSelect: () => onCloseThread(menu.thread.id) }]),
           ]}

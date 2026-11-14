@@ -30,6 +30,24 @@ export function threadSections(all: SidebarThread[], openId: string | undefined)
     .filter((section) => section.threads.length > 0);
 }
 
+const nowLabels = [
+  ['Needs you', 'needs_you'],
+  ['Running', 'running'],
+  ['Replied', 'new'],
+] as const;
+
+// nowSections splits every Bot's threads into Now's sections, newest activity first, leaving out
+// the empty ones. A live helper thread is no row of its own (its boss thread's helper line shows
+// it), a merged thread the watcher hides is none, and the open thread is never Replied.
+export function nowSections(all: SidebarThread[], openId: string | undefined) {
+  const threads = all
+    .filter((t) => !isLiveHelper(t) && !t.hidden && !(t.id === openId && t.state === 'new'))
+    .sort((a, b) => Date.parse(b.last_activity) - Date.parse(a.last_activity));
+  return nowLabels
+    .map(([label, state]) => ({ label, threads: threads.filter((t) => t.state === state) }))
+    .filter((section) => section.threads.length > 0);
+}
+
 export type Worker = { id: string; bot: Bot; needsYou: boolean; step: string };
 
 // workersByBoss lists the helpers running for each boss thread: the one that needs the person

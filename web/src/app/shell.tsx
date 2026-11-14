@@ -141,6 +141,7 @@ export function Shell() {
           <div className="mt-2 min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
             <BotRail
               view={view}
+              openBotId={botId}
               onView={setView}
               creatingGroup={creatingGroup}
               onCreatingGroup={setCreatingGroup}
