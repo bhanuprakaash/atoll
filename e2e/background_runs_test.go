@@ -48,7 +48,7 @@ func botMessagesOf(t *testing.T, s *server, threadID, runID string) []string {
 }
 
 // A run that starts only with a helper's notice adds no chat message and does not make the thread
-// Replied: the person had opened it, and it is not New after the run.
+// Replied: the person had opened it, and it is not Replied after the run.
 func TestBackgroundRun_HelperNoticeAddsNoMessage(t *testing.T) {
 	t.Parallel()
 	for _, p := range _providers {
