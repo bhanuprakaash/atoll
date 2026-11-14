@@ -19,7 +19,7 @@ func TestPRWake_MergedWakesTheBot(t *testing.T) {
 			w := f.waitWake(t, th, 1)
 
 			f.wantWake(t, th, w, "merged", "PR #1 merged")
-			f.wantReply(t, th, "Merge noted.", first)
+			f.wantQuietRun(t, th, first)
 			if got := f.mrState(t, th); got != "merged" {
 				t.Errorf("thread mr_state %q after the merge, want merged", got)
 			}
@@ -38,7 +38,7 @@ func TestPRWake_ClosedUnmergedWakesTheBot(t *testing.T) {
 			w := f.waitWake(t, th, 1)
 
 			f.wantWake(t, th, w, "closed", "PR #1 closed")
-			f.wantReply(t, th, "Close noted.", first)
+			f.wantQuietRun(t, th, first)
 			if got := f.mrState(t, th); got != "closed" {
 				t.Errorf("thread mr_state %q after closing unmerged, want closed", got)
 			}
@@ -71,7 +71,7 @@ func TestPRWake_CIFinishedWakesOnce(t *testing.T) {
 				`CI finished on PR #1: 2 passed, 2 failed ("deploy/preview", "unit")`; w.Text != one && w.Text != other {
 				t.Errorf("wake %q, want %q up to the order of the names", w.Text, one)
 			}
-			f.wantReply(t, th, "CI noted.", first)
+			f.wantGuardReply(t, th, "CI noted.", first)
 			if got := f.mrState(t, th); got != "opened" {
 				t.Errorf("thread mr_state %q after CI finished, want opened", got)
 			}
@@ -186,15 +186,51 @@ func (f *prWakeFixture) wantWake(t *testing.T, th thread, w wakeMessage, kind, s
 	}
 }
 
-// wantReply checks the Bot answered the wake in a new run of the thread.
-func (f *prWakeFixture) wantReply(t *testing.T, th thread, reply, firstRun string) {
+// wakeRun is the new run of the thread that answered the wake, which must have ended done.
+func (f *prWakeFixture) wakeRun(t *testing.T, th thread, firstRun string) runInfo {
 	t.Helper()
 	got := f.s.thread(t, th.ID)
 	if got.RunID == firstRun {
 		t.Fatalf("thread's latest run is still %s, the run that opened the pull request; want a new run for the wake", firstRun)
 	}
-	if run := f.s.run(t, got.RunID); run.Status != "done" || run.Reply != reply {
-		t.Errorf("run of the wake %+v, want done with reply %q", run, reply)
+	run := f.s.run(t, got.RunID)
+	if run.Status != "done" {
+		t.Fatalf("run of the wake %+v, want done", run)
+	}
+	return run
+}
+
+// wantQuietRun checks the wake's run is a background run that called no tell_user: it adds no
+// message of the Bot to the chat and leaves the thread, which the person had opened, not Replied.
+func (f *prWakeFixture) wantQuietRun(t *testing.T, th thread, firstRun string) {
+	t.Helper()
+	run := f.wakeRun(t, th, firstRun)
+	for _, m := range bossMessages(t, f.s, th.ID) {
+		if m.Role == "bot" && m.RunID == run.ID {
+			t.Errorf("the wake's run %s added the Bot message %q, want none", run.ID, m.Text)
+		}
+	}
+	if got := sidebarState(t, f.s, f.boss.ID, th.ID); got != "" {
+		t.Errorf("thread state %q after a quiet wake, want none (not Replied)", got)
+	}
+}
+
+// wantGuardReply checks the wake's run, whose notice held a failure Reef knows of and which called
+// no tell_user, posted its final message as a reply and left the thread Replied.
+func (f *prWakeFixture) wantGuardReply(t *testing.T, th thread, reply, firstRun string) {
+	t.Helper()
+	run := f.wakeRun(t, th, firstRun)
+	var got []string
+	for _, m := range bossMessages(t, f.s, th.ID) {
+		if m.Role == "bot" && m.RunID == run.ID {
+			got = append(got, m.Text)
+		}
+	}
+	if len(got) != 1 || got[0] != reply {
+		t.Errorf("Bot messages of the wake's run %s: %q, want its final message %q posted once", run.ID, got, reply)
+	}
+	if state := sidebarState(t, f.s, f.boss.ID, th.ID); state != "new" {
+		t.Errorf("thread state %q after a failure wake, want new (Replied)", state)
 	}
 }
 
