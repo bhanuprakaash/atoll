@@ -55,5 +55,6 @@ func (m *Manager) TellUser(ctx context.Context, token, text string) error {
 	m.mu.Lock()
 	a.told = true
 	m.mu.Unlock()
+	m.publish(a, EventTold, Told{RunID: a.run.ID})
 	return nil
 }

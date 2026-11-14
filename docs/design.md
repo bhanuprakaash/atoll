@@ -190,8 +190,8 @@ counts a Bot that is already gone as removed.
   A 4th pin answers `409` unless it names a pin to replace (`{replace}`), done in one transaction.
   Closing a thread drops its pin; helper threads cannot be pinned.
 - `GET /api/events` is one SSE stream for the whole app: `approval`, `approval_closed`,
-  `run_finished`, `mr_updated` and `platform_changed` from every thread, each as `{thread_id,
-  bot_id, bot_name, title, data}` with `data` as on the thread's own stream. On connect it sends
+  `run_finished`, `told`, `mr_updated` and `platform_changed` from every thread, each as
+  `{thread_id, bot_id, bot_name, title, data}` with `data` as on the thread's own stream. On connect it sends
   the approvals open now, then one `earlier` event: the island's Earlier list, built from rows
   (see the island), each with `at` as RFC 3339. A live event for something `earlier` lists (a run
   that finished while it was built, the same MR, the same change) is not sent again. Every
@@ -520,7 +520,7 @@ Follow-ups:
   finished, a ticket closed) is a background run, for every Bot not in a helper thread. Its final
   message is never a chat message, does not make the thread Replied and shows nowhere (App and
   UI). The run lists `tell_user(text)`; each call adds one message from the Bot to
-  the chat and makes the thread Replied. Reef starts the prompt with one line: `Reef: background
+  the chat at once, while the run goes, and makes the thread Replied. Reef starts the prompt with one line: `Reef: background
   run. {user} does not see your final message, so end with one line of status. If {user} must act
   (a PR to merge, a decision, a failure you cannot fix), tell them with tell_user.` A run with any
   message from the person is an ordinary run: its final message is the reply and `tell_user` is not
@@ -1716,6 +1716,10 @@ Voice
       after the thread's `last_opened_at` (the rule of the sidebar's Replied). `runs.finished_at`;
       "Pilot finished Review !42", or "Pilot failed Review !42" for a failed one, which includes a
       run the restart cut short; a run the user stopped counts as finished.
+    - A thread whose background run still goes and has stored a `tell_user` message since then and
+      since the thread was last opened: "Pilot messaged Review !42". The `told` event, sent when
+      the message is stored, makes the same row live and the thread's own stream refreshes its
+      messages. One row per thread: the run's end replaces it with the finished row.
     - A thread whose MR is `opened` since then (`threads.mr_changed_at`, new, set when `mr_state`
       changes or `track_mr` gives a different URL): "Pilot opened !42", the MR title as detail.
     - A platform change (`changes.created_at`): "Chief created Bot Lagoon".

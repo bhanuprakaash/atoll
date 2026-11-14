@@ -670,6 +670,22 @@ func (s *Store) FinishedRunsSince(ctx context.Context, since time.Time) ([]Threa
 		}, since.UnixMicro(), StatusDone, StatusFailed, StatusStopped, StatusDone, RoleBot)
 }
 
+// ToldSince lists, for each open thread whose run goes on, that run when it stored a message of the
+// Bot after since and after the user last opened the thread, with the time of the newest.
+func (s *Store) ToldSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
+	return query(ctx, s.db,
+		`SELECT r.thread_id, r.id, max(m.created)
+		 FROM runs r JOIN threads t ON t.id = r.thread_id JOIN messages m ON m.run_id = r.id AND m.role = ?
+		 WHERE r.status IN (?, ?) AND t.closed = 0 AND m.created > ? AND m.created > t.last_opened_at
+		 GROUP BY r.id`,
+		func(r *sql.Rows) (e ThreadEvent, err error) {
+			var at int64
+			err = r.Scan(&e.ThreadID, &e.RunID, &at)
+			e.At = time.UnixMicro(at).UTC()
+			return e, err
+		}, RoleBot, StatusRunning, StatusWaiting, since.UnixMicro())
+}
+
 // OpenedMRsSince lists the threads whose MR is open, became so after since and has not been
 // dismissed from the island since.
 func (s *Store) OpenedMRsSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {

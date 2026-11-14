@@ -283,6 +283,8 @@ func eventKey(data any) string {
 	switch d := data.(type) {
 	case run.Finished:
 		return "run " + d.RunID
+	case run.Told:
+		return "told " + d.RunID
 	case run.MRUpdated:
 		return "mr " + d.URL + " " + d.State
 	case run.PlatformChanged:
@@ -291,8 +293,8 @@ func eventKey(data any) string {
 	return ""
 }
 
-// earlier lists, newest first, what happened after the island was last read: runs that ended, MRs
-// opened and platform changes.
+// earlier lists, newest first, what happened after the island was last read: runs that ended,
+// tell_user messages of runs that go on, MRs opened and platform changes.
 func (a *api) earlier(ctx context.Context) ([]earlierNotice, error) {
 	out := []earlierNotice{}
 	since, err := a.st.IslandSeenAt(ctx)
@@ -310,6 +312,13 @@ func (a *api) earlier(ctx context.Context) ([]earlierNotice, error) {
 	}
 	for _, e := range runs {
 		add(run.EventRunFinished, e.At, e.ThreadID, run.Finished{RunID: e.RunID, Status: e.Status, Error: e.Error})
+	}
+	told, err := a.st.ToldSince(ctx, since)
+	if err != nil {
+		return out, err
+	}
+	for _, e := range told {
+		add(run.EventTold, e.At, e.ThreadID, run.Told{RunID: e.RunID})
 	}
 	mrs, err := a.st.OpenedMRsSince(ctx, since)
 	if err != nil {
@@ -351,7 +360,7 @@ func (a *api) dismissIsland(w http.ResponseWriter, r *http.Request) {
 	}
 	var err error
 	switch body.Type {
-	case run.EventRunFinished:
+	case run.EventRunFinished, run.EventTold:
 		if err = a.st.MarkOpened(r.Context(), body.ID); err == nil {
 			a.runs.ThreadRead(body.ID)
 		}
