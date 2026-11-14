@@ -37,7 +37,7 @@ the boss Bot, Tester and Reviewer its helpers; Tester's look is the shark.
 - Header island: one element per running helper labelled `Tester: working`, `Tester: needs you`
   (also `done`, `failed`), right of the boss's name (`h1`). The island's waiting count
   includes helper approvals (`Notifications, 1 waiting`, see
-  [sidebar-tree-contract.md](sidebar-tree-contract.md)). The boss's sidebar row shows `Needs you`.
+  [sidebar-tree-contract.md](sidebar-tree-contract.md)). The boss's sidebar Bot row has no second line and never shows `Needs you`.
 - Helper thread: a row in the helper Bot's sidebar tree, with no `Close thread`. No
   textbox named `Message…`; instead the text
   `Poteto is handling this thread. Talk to Poteto to change it.`, a link or button
@@ -72,7 +72,7 @@ GitHub locally with the routes of the watcher (`pulls/{n}`, `commits/{sha}/check
 | PR and CI in the row; none for a helper with no PR; the resting line unchanged (comment)   | `helpers-pr.spec.ts`: `a helper row shows its PR and CI as the watcher read them; …`                                          |
 | Helper thread in its Bot's tree, read-only: the text, Open Poteto's thread, Stop           | `two helpers: …; Stop in the helper thread`, `the helper thread is under its Bot in the sidebar and …`                        |
 | One quiet handoff line; the report is a message from the helper Bot with its creature      | `two helpers: …`, `a helper approval shows under its line, …`                                                                 |
-| Island creature per helper after the boss's name; the count; boss's sidebar row Needs you  | `two helpers: …`, `a helper approval shows under its line, …`                                                                 |
+| Island creature per helper after the boss's name; the count; boss's Bot row one line| `two helpers: …`, `a helper approval shows under its line, …`                                                                 |
 
 Not covered here: the island's `done` and `failed` states and a row's `Failed` and `Stopped`
 (when a stopped or failed helper's row leaves is not pinned), a reply in the boss's composer

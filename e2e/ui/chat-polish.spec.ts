@@ -43,7 +43,7 @@ test('the six-word title is in the thread header and the sidebar tree', async ({
   await expect(threadTree(page, 'Titles').getByRole('listitem')).toContainText(title);
 });
 
-test('sidebar activity is the current verb or the approval prompt; an idle Bot shows none', async ({
+test('a Bot row never shows a second line: idle, working or waiting on approval', async ({
   page,
 }) => {
   const reply = await newBotAPI(m, 'Reply activity');
@@ -63,8 +63,19 @@ test('sidebar activity is the current verb or the approval prompt; an idle Bot s
   expect((await api(m, 'GET', `/api/bots/${reply.id}`)).activity).toBe('ok');
   await expect(sidebarRow(page, 'Reply activity')).not.toContainText('ok');
   await expect(sidebarRow(page, 'Reply activity')).not.toContainText('Done');
-  await expect(sidebarRow(page, 'Working activity')).toContainText('Running Run the build');
-  await expect(sidebarRow(page, 'Approval activity')).toContainText('Needs you: Write hello.txt');
+  expect((await api(m, 'GET', `/api/bots/${working.id}`)).activity).toBe('Running Run the build');
+  expect((await api(m, 'GET', `/api/bots/${approval.id}`)).activity).toBe(
+    'Needs you: Write hello.txt',
+  );
+  await expect(
+    sidebarRow(page, 'Working activity').getByRole('img', { name: /, working$/ }),
+  ).toBeVisible();
+  await expect(
+    sidebarRow(page, 'Approval activity').getByRole('img', { name: /, needs you$/ }),
+  ).toBeVisible();
+  await expect(sidebarRow(page, 'Working activity')).not.toContainText('Running');
+  await expect(sidebarRow(page, 'Approval activity')).not.toContainText('Needs you');
+  await expect(sidebarRow(page, 'Approval activity')).not.toContainText('Waiting on you');
 });
 
 test('message times use the locale clock in muted 12px text', async ({ page }) => {

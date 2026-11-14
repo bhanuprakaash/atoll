@@ -31,5 +31,5 @@ The reply is "The build is green and all 4 checks pass." (only the text after th
   reconnect of the event stream.
 - Scrolled up (`Jump to latest` shown), `log.scrollTop` stays within 2 px while the text streams
   and the run ends.
-- The sidebar row's second line and the header island show the status line's words and never the
-  streamed text.
+- The header island shows the status line's words and never the
+  streamed text. The sidebar Bot row has no second line, so it shows neither.

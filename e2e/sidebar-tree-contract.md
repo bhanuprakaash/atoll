@@ -36,10 +36,10 @@ Accessible roles and names first. Where the eye sees a dot or a pin, the row car
 ## Bot row (issue #111)
 
 - The creature `img` in a Bot row is 36px wide (±1).
-- The activity line shows only while a run works (the live verb, e.g. `Running Run the build`,
-  and three wave dots: CSS animations named `wave` inside the Bot's `link`) or while an approval
-  waits (`Needs you: …`, the same computed colour as the thread row's `Needs you`). An idle Bot
-  row shows neither its API `activity` nor wave dots; the line goes when the run stops or ends.
+- A Bot row is one line in every state: it never shows its API `activity` (the live verb, e.g.
+  `Running Run the build`, or `Needs you: …`) nor wave dots (CSS animations named `wave` inside
+  the Bot's `link`). While a run works the three wave dots are in the thread tree; a waiting
+  thread row shows `Needs you`.
 - The rail is the `::before` of the `{Bot} threads` list. Its centre (left plus half its left
   border) is within 1px of the creature's centre x; thread rows (`listitem`s) start 14px (±1)
   right of it.
@@ -89,7 +89,7 @@ its title.
 | 6 running: `N more running`, unfold, rows leave, switching Bot folds | `sidebar-tree`: `six running threads show N more running; it unfolds only running …`            |
 | Two needs-you rows plus 3 others: both show                          | `sidebar-tree`: `two threads needing approval both show beside three others`                    |
 | Clicking a Bot opens its latest thread                               | `sidebar-tree`: `clicking a Bot opens its latest thread`                                        |
-| Idle row one line, 36px creature; verb or Needs you only in a run    | `sidebar`: `an idle Bot row is one line with a 36px creature; …`; `chat-polish` activity test   |
+| Bot row one line, 36px creature, in every state                        | `sidebar`: `a Bot row is one line with a 36px creature in every state; …`; `chat-polish` activity test |
 | Rail under the 36px creature's centre; rows 14px right of it         | `sidebar-tree`: `the tree rail runs under the 36px creature centre and rows start 14px …`       |
 | `+` on hover, right-click › New thread, `⌘N`                         | `sidebar-tree`: three `… starts a new thread with that Bot` tests                               |
 | Hover × closes and saves unfinished work; right-click › Rename       | `sidebar-tree`: `thread hover × closes the thread and saves …`, `thread right-click › Rename …` |

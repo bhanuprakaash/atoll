@@ -50,7 +50,7 @@ test('sidebar rows show each state on the creature, Chief first', async ({ page 
   ]) {
     await expect(sidebarRow(page, name).getByRole('img', { name: img, exact: true })).toBeVisible();
   }
-  await expect(sidebarRow(page, 'Asker')).toContainText(/hello\.txt/);
+  await expect(sidebarRow(page, 'Asker')).not.toContainText(/hello\.txt/);
 });
 
 test('reduced motion stops the animations', async ({ page }) => {
@@ -84,7 +84,7 @@ const waves = (el: Locator) =>
         .filter((a) => (a as CSSAnimation).animationName === 'wave').length,
   );
 
-test('an idle Bot row is one line with a 36px creature; the activity line shows only while a run works or an approval waits', async ({
+test('a Bot row is one line with a 36px creature in every state; the thread rows carry the working and needs-you state', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -104,8 +104,9 @@ test('an idle Bot row is one line with a 36px creature; the activity line shows 
   const busy = await openThreadAPI(m, bot.id, prompts.hang);
   await waitStatus(busy.id, 'running');
   await expect(row.getByRole('img', { name: 'Whale, working', exact: true })).toBeVisible();
-  await expect(row).toContainText('Running Run the build');
-  await expect.poll(() => waves(row)).toBe(3);
+  await expect(row).not.toContainText('Running');
+  expect(await waves(row)).toBe(0);
+  await expect.poll(() => waves(threadTree(page, 'Calm'))).toBe(3);
 
   await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
   await waitStatus(busy.id, 'stopped');
@@ -117,12 +118,10 @@ test('an idle Bot row is one line with a 36px creature; the activity line shows 
 
   const asking = await openThreadAPI(m, bot.id, prompts.write);
   await waitStatus(asking.id, 'waiting');
-  const needs = row.getByText(/^Needs you: /);
-  await expect(needs).toHaveText('Needs you: Write hello.txt');
-  const needsInk = await threadTree(page, 'Calm')
-    .getByText('Needs you', { exact: true })
-    .evaluate((el) => getComputedStyle(el).color);
-  await expect(needs).toHaveCSS('color', needsInk);
+  await expect(row.getByRole('img', { name: 'Whale, needs you', exact: true })).toBeVisible();
+  await expect(threadTree(page, 'Calm').getByText('Needs you', { exact: true })).toBeVisible();
+  await expect(row).not.toContainText('Needs you');
+  await expect(row).not.toContainText('Write hello.txt');
 
   const { approval } = await api(m, 'GET', `/api/threads/${asking.id}`);
   await api(m, 'POST', `/api/approvals/${approval.id}`, { approve: true });
@@ -149,8 +148,9 @@ test('a running older thread supplies the Bot activity when a newer thread has f
     const summary = (await api(m, 'GET', '/api/bots')).find((b: { id: string }) => b.id === bot.id);
     expect(summary.state).toBe('working');
     expect(summary.activity).toBe('Running Run the build');
-    await expect(row).toContainText('Running Run the build');
-    await expect.poll(() => waves(row)).toBe(3);
+    await expect(row).not.toContainText('Running');
+    expect(await waves(row)).toBe(0);
+    await expect.poll(() => waves(threadTree(page, 'Older worker'))).toBe(3);
   } finally {
     await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
     await waitStatus(busy.id, 'stopped');
@@ -166,6 +166,7 @@ test('an older thread awaiting approval takes priority over a newer finished thr
 
   await page.goto(m.url);
   const row = sidebarRow(page, 'Older approval');
-  await expect(row).toContainText('Needs you: Write hello.txt');
+  expect((await api(m, 'GET', `/api/bots/${bot.id}`)).activity).toBe('Needs you: Write hello.txt');
+  await expect(row).not.toContainText('Needs you');
   await expect(row).not.toContainText('ok');
 });

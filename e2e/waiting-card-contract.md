@@ -49,7 +49,7 @@ wake plays `pr-wake-merged` / `pr-wake-closed` (`Merge noted.`, `Close noted.`).
   thread's `mr_head` is another commit, and a link `Open` to the PR.
 - The header pill of the open thread reads `N waiting on you` (decision, blocker and ready PRs
   counted); the sidebar thread row has `data-marker="waiting"` and `Waiting on you`; the Bot row
-  says `Waiting on you`; a folded group has `data-marker="needs-you"`; from another page the island
+  has no second line and never says `Waiting on you`; a folded group has `data-marker="needs-you"`; from another page the island
   button is named `Notifications, N waiting` and its list `Waiting on you` has the item with
   `Open thread`. An item never drops the island open.
 - An option button posts its text as the person's message (`article` `You`), the same as the
@@ -63,7 +63,7 @@ wake plays `pr-wake-merged` / `pr-wake-closed` (`Merge noted.`, `Close noted.`).
 | Acceptance (#147 and the extension) | Test |
 | --- | --- |
 | A Bot asks a decision through Reef; a "Waiting on you" card with options as buttons and free text | `a decision from finish_run is a Waiting on you card…`, `finish_run refuses an ask with one option, five options or no question` |
-| Sidebar row and island show Waiting on you until answered; a folded group shows the dot | `the sidebar row, the Bot row, a folded group and the island show Waiting on you until it is answered` |
+| Sidebar row and island show Waiting on you until answered; a folded group shows the dot | `the sidebar thread row, a folded group and the island show Waiting on you until it is answered` |
 | Answering by button or composer posts the answer as the person's message and closes the card | `an option button posts its text…`, `answering in the composer posts the text…` |
 | The question is not repeated in later runs while open (one card, updated) | `a wake while the decision is open leaves one card, updated; the Bot is told it is open` |
 | Blocked stays for what only the user can fix | `a real blocked keeps its Blocked line and is a row of the card; a reply closes it` (and the first test: a question has no Blocked line) |

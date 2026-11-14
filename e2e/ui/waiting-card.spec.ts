@@ -139,7 +139,7 @@ test('finish_run refuses an ask with one option, five options or no question', a
   });
 });
 
-test('the sidebar row, the Bot row, a folded group and the island show Waiting on you until it is answered', async ({
+test('the sidebar thread row, a folded group and the island show Waiting on you until it is answered', async ({
   page,
 }) => {
   const nav = page.getByRole('navigation', { name: 'Bots' });
@@ -166,7 +166,7 @@ test('the sidebar row, the Bot row, a folded group and the island show Waiting o
   const t = await thread(pilot, say.ask);
   await expect(ops).toHaveAttribute('data-marker', 'needs-you');
   await ops.getByRole('button', { name: 'Ops', exact: true }).click();
-  await expect(sidebarRow(page, 'Pilot')).toContainText('Waiting on you');
+  await expect(sidebarRow(page, 'Pilot')).not.toContainText('Waiting on you');
   const row = threadTree(page, 'Pilot')
     .getByRole('listitem')
     .filter({
@@ -298,7 +298,7 @@ test('a real blocked keeps its Blocked line and is a row of the card; a reply cl
   await expect(card(page)).toContainText(blocker);
   await expect(card(page).getByRole('button')).toHaveCount(0);
   await expect(header(page)).toContainText('1 waiting on you');
-  await expect(sidebarRow(page, 'Pilot')).toContainText('Waiting on you');
+  await expect(threadTree(page, 'Pilot').locator('[data-marker="waiting"]')).toHaveCount(1);
 
   await composer(page).fill('I reconnected it.');
   await page.getByRole('button', { name: 'Send' }).click();
@@ -328,7 +328,6 @@ test('a ready PR is a row: #n, title, checks, age and Open; the sidebar and the 
   await expect(row.getByRole('link', { name: 'Open' })).toHaveAttribute('href', pr(201));
   await expect(card(page).getByRole('button')).toHaveCount(0);
   await expect(header(page)).toContainText('1 waiting on you');
-  await expect(sidebarRow(page, 'Pilot')).toContainText('Waiting on you');
   await expect(threadTree(page, 'Pilot').locator('[data-marker="waiting"]')).toHaveCount(1);
 
   // The same PR from another page: the island counts it.
@@ -487,7 +486,7 @@ test.describe('a ready PR the watcher reads', () => {
       await expect(row).toHaveCount(1);
       await expect(row).toContainText('#1');
       await expect(row.getByRole('link', { name: 'Open' })).toHaveAttribute('href', url);
-      await expect(sidebarRow(page, 'Pilot')).toContainText('Waiting on you');
+      await expect(threadTree(page, 'Pilot').locator('[data-marker="waiting"]')).toHaveCount(1);
       const run = (await api(m, 'GET', `/api/threads/${t.id}`)).run_id;
 
       pull = { ...pull!, state: 'closed', merged };
@@ -573,5 +572,5 @@ test('two ready PRs and one decision make 3 waiting on you; answering the decisi
   await expect(ready(page).getByRole('listitem')).toHaveCount(2);
   await waitStatus(t.id, 'done');
   await expect(header(page)).toContainText('2 waiting on you');
-  await expect(sidebarRow(page, 'Pilot')).toContainText('Waiting on you');
+  await expect(threadTree(page, 'Pilot').locator('[data-marker="waiting"]')).toHaveCount(1);
 });

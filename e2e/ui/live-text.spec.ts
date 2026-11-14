@@ -245,7 +245,7 @@ test("scrolled up, streaming text and the run ending do not move the view", asyn
   await expect(jump).toBeVisible();
 });
 
-test("the sidebar row and the island keep the short verb and never show the text", async ({
+test("the island keeps the short verb and never shows the text; the Bot row shows neither", async ({
   page,
 }) => {
   const { live, status } = await openRun(page, "Quiet");
@@ -253,15 +253,15 @@ test("the sidebar row and the island keep the short verb and never show the text
   const header = page.locator("header");
 
   await expect(live).toContainText(openingStart);
-  await expect(row).toContainText("Thinking");
   await expect(header).toContainText("Thinking");
+  await expect(row).not.toContainText("Thinking");
   for (const part of [row, header]) {
     await expect(part).not.toContainText(openingStart);
   }
 
   await expect(live).toContainText(closingStart);
   const verb = (await status.textContent())!.trim();
-  await expect(row).toContainText(verb);
+  await expect(row).not.toContainText(verb);
   for (const part of [row, header]) {
     await expect(part).not.toContainText(openingStart);
     await expect(part).not.toContainText(closingStart);
