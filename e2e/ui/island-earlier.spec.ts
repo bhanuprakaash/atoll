@@ -297,7 +297,7 @@ const blockedJob = 'Run the checks, then say what blocks you.';
 
 // handOff has Poteto hand Tester a job that waits on an approval and returns once Poteto's run
 // for that hand-off has ended. approve lets the job go on and returns once Poteto's run for
-// Tester's notice has ended and left its final message as the status line. start makes Poteto's
+// Tester's notice has ended. start makes Poteto's
 // thread, which says where the person is while it is made.
 async function handOff(job: string, start: (text: string) => Promise<string>, preamble = '') {
   const boss = await start(delegate([['Tester', job]], preamble));
@@ -309,13 +309,18 @@ async function handOff(job: string, start: (text: string) => Promise<string>, pr
     .not.toBe('');
   await expect.poll(() => runStatus(m, boss), { timeout: 15_000 }).not.toBe('running');
   const approve = async () => {
+    const before = (await api(m, 'GET', `/api/threads/${boss}`)).run_id;
     const approval = (await api(m, 'GET', `/api/threads/${helper.id}`)).approval.id;
     await api(m, 'POST', `/api/approvals/${approval}`, { approve: true });
     await expect
-      .poll(async () => (await api(m, 'GET', `/api/threads/${boss}`)).status_line ?? '', {
-        timeout: 30_000,
-      })
-      .not.toBe('');
+      .poll(
+        async () => {
+          const thread = await api(m, 'GET', `/api/threads/${boss}`);
+          return thread.run_id !== before && thread.run_status !== 'running';
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
   };
   return { boss, approve };
 }

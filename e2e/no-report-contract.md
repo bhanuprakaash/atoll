@@ -2,7 +2,7 @@
 
 Extends [request-lifecycle-contract.md](request-lifecycle-contract.md). Design: `docs/design.md`,
 Threads and runs (the reply, "A run has no report"), Delegation (waking the boss, background runs,
-the guard), Prompt, App and UI (thread labels, the status line). Tests build the real server with
+the guard), Prompt, App and UI (thread labels, quiet background runs). Tests build the real server with
 the scripted fake providers; the real-provider lines and the before/after timings of the ticket are
 checked by hand.
 
@@ -51,9 +51,8 @@ whether a rate-limited run reads Failed or Out until before the person opens it.
 
 A run whose messages are all Reef's (a helper's notice, a PR wake) is a background run. It adds no
 Bot message and does not make the thread Replied (the person opened it first); the Bot's final
-message is the status line above the composer, muted (`#9B9B9B`, asserted as `rgb(155, 155, 155)`),
-newest only. The line sits between the chat and the composer (a pin: the design says "in the
-helpers' region" and the tests do not rely on a role for it). The prompt starts with
+message is shown nowhere in the thread (no element on the page holds its text, after a reload too),
+and `GET /api/threads/{id}` has no `status_line`. The prompt starts with
 the line `Reef: background run. {user} does not see your final message, so end with one line of
 status. If {user} must act (a PR to merge, a decision, a failure you cannot fix), tell them with
 tell_user.` and the run lists `tell_user`; each call adds one Bot message and makes the thread
@@ -61,11 +60,6 @@ Replied. A run with a message of the person lists no `tell_user`, has no such li
 message is the reply. Guard: a notice that holds a failure Reef knows of (a helper failed, was
 stopped or hit its limit; CI failed) with no `tell_user` posts the final message as a reply and the
 thread is Replied. A deleted helper is not in the design's list, so no test pins its wake either way.
-
-The status line is one line: the last non-empty line of the final message, as tall as its line
-height, cut with `…` when it does not fit (CSS ellipsis or text), and the whole final message is
-the element's `title`. The `title` is pinned as holding every line of the message, not only the
-last.
 
 A background run that called no `tell_user` is quiet. It sends the island nothing live (the island
 does not widen for it and Earlier gets no row), and after a reload Earlier and the sidebar agree: a
@@ -112,16 +106,15 @@ wording, so its description is only checked for the same two. Both pass on the b
 | Final message is the reply; earlier text is progress | `TestFinalAnswer_ReplyIsFinalMessage`, `TestFinalAnswer_EarlierTextStillStreams`, `TestFinalAnswer_NoToolCallKeepsWholeText` |
 | `finish_run` in no tool list; no nudge; no `report`/`waiting`; stored rows kept | `TestNoReport_FinishRunIsInNoToolList` (plus `TestBackgroundRun_TellUserReachesThePerson` for the background run), `TestNoReport_NoNudgeIsSent`, `TestRequestLifecycle_NothingIsSentAfterTheRequest`, `TestNoReport_APIHasNoReportOrWaiting`, `TestNoReport_StoredReportKeepsItsRow` |
 | One label per thread, in priority; clears when opened; helper never Replied | `TestThreadLabels_*`, `ui/thread-labels.spec.ts`, `ui/sidebar-tree.spec.ts` |
-| Background run adds no message, not Replied, status line | `TestBackgroundRun_HelperNoticeAddsNoMessage`, `TestPRWake_MergedWakesTheBot`, `TestPRWake_ClosedUnmergedWakesTheBot`, `ui/thread-labels.spec.ts` |
+| Background run adds no message, not Replied, final message shown nowhere | `TestBackgroundRun_HelperNoticeAddsNoMessage`, `TestPRWake_MergedWakesTheBot`, `TestPRWake_ClosedUnmergedWakesTheBot`, `ui/thread-labels.spec.ts` |
 | Quiet background run stays off the island; an unread reply or failure keeps its Earlier row | `ui/island-earlier.spec.ts` (quiet run, unread reply, unread failure, `tell_user`) |
-| Status line is one line, cut with `…`, whole text in `title` | `ui/thread-labels.spec.ts` |
 | Background run lists `tell_user` and starts with the line; `tell_user` adds a message; person's run lists none | `TestBackgroundRun_TellUserReachesThePerson`, `TestBossQuiet_PersonTakesHeldReports`, `ui/thread-labels.spec.ts` |
 | Guard | `TestWake_HelperFailedStoppedDeleted`, `TestUsageLimit_WakeSaysHelperIsOut`, `TestPRWake_CIFinishedWakesOnce` |
 | Helper's report not in the boss chat; the notice text | `TestWake_ReportWakesBoss`, `TestFinalAnswer_HelperReplyRelaysFinalMessage`, `ui/helpers.spec.ts` |
 | Prompt word for word; budgets | `TestPromptText_*`, `TestMemory_PromptGoldenAndBudget`, `TestPrompt_ChiefPlatformBlock` |
 | `Never merge` appended once | `TestNeverMerge_AppendedOnceToBotsWithRepoAccess` |
 | `delegate` and `track_mr` descriptions | `TestReadyNamesCommit_ToolDescriptionsHaveNoFreezeSentence` |
-| No Waiting card, Blocked line, ready card, ledger; status line as #399 | `ui/thread-labels.spec.ts`, `ui/chat.spec.ts` |
+| No Waiting card, Blocked line, ready card, ledger | `ui/thread-labels.spec.ts`, `ui/chat.spec.ts` |
 
 Deleted with the subjects they tested (test-guard flags them): the `finish_run` report, refusal and
 nudge tests, the Waiting on you card, the ready-PR rows and the lead's ledger.

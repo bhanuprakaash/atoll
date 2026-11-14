@@ -972,7 +972,6 @@ func TestStore_ThreadLabels(t *testing.T) {
 	type labels struct {
 		Unseen, Failed bool
 		LimitedUntil   time.Time
-		StatusLine     string
 	}
 	read := func() labels {
 		t.Helper()
@@ -980,11 +979,7 @@ func TestStore_ThreadLabels(t *testing.T) {
 		if err != nil || len(runs) != 1 {
 			t.Fatalf("ThreadRuns = %v, %v", runs, err)
 		}
-		line, err := st.StatusLine(ctx, th.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return labels{runs[0].Unseen, runs[0].Failed, runs[0].LimitedUntil, line}
+		return labels{runs[0].Unseen, runs[0].Failed, runs[0].LimitedUntil}
 	}
 	open := func() {
 		t.Helper()
@@ -999,9 +994,9 @@ func TestStore_ThreadLabels(t *testing.T) {
 	}{
 		{"a reply", func() { finish(store.RunResult{Status: store.StatusDone, Reply: "ok"}) }, labels{Unseen: true}},
 		{"opened", open, labels{}},
-		{"a status line", func() {
+		{"a quiet run", func() {
 			finish(store.RunResult{Status: store.StatusDone, Reply: "all quiet", StatusLine: true})
-		}, labels{StatusLine: "all quiet"}},
+		}, labels{}},
 		{"a failed run", func() { finish(store.RunResult{Status: store.StatusFailed, Error: "boom"}) }, labels{Failed: true}},
 		{"opened after the failure", open, labels{}},
 		{"a stopped run", func() { finish(store.RunResult{Status: store.StatusStopped}) }, labels{}},
@@ -1015,7 +1010,7 @@ func TestStore_ThreadLabels(t *testing.T) {
 			if err := st.AddBotMessage(ctx, th.ID, id, "Look at this."); err != nil {
 				t.Fatal(err)
 			}
-		}, labels{Unseen: true, StatusLine: "told"}},
+		}, labels{Unseen: true}},
 	}
 	for _, tt := range steps {
 		t.Run(tt.name, func(t *testing.T) {

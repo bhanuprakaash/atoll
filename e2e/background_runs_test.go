@@ -68,7 +68,7 @@ func TestBackgroundRun_HelperNoticeAddsNoMessage(t *testing.T) {
 				t.Errorf("notice %q starts %q, want %q", msg.Text, got, want)
 			}
 			if got := botMessagesOf(t, s, boss.ID, wake.ID); len(got) != 0 {
-				t.Errorf("the notice's run added the Bot messages %q, want none: its final message is a status line", got)
+				t.Errorf("the notice's run added the Bot messages %q, want none: a quiet run's final message is not posted", got)
 			}
 			if n := len(bossMessages(t, s, boss.ID)); n != before+1 {
 				t.Errorf("boss thread has %d messages after the notice, want the %d it had plus the notice itself", n, before+1)

@@ -1,10 +1,10 @@
 // Thread labels and quiet background runs: a thread shows one label (Needs you, Working, Failed,
 // Out until <time>, Replied), a run only Reef's notices started adds no chat message and shows its
-// final message as one status line above the composer, and nothing waits on the person as a card.
+// final message nowhere in the thread, and nothing waits on the person as a card.
 // Contract: e2e/no-report-contract.md.
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, openThreadAPI, prompts, startAtoll, threadTitle, threadTree } from './atoll';
-import { delegate, helperThreads, makeBoss, reportPrompt, startThread } from './helpers-fixture';
+import { delegate, helperThreads, makeBoss, reportPrompt, runStatus, startThread } from './helpers-fixture';
 
 let m: Machine;
 test.beforeEach(async () => {
@@ -27,6 +27,24 @@ async function away(page: Page) {
   elsewhere ??= await newBotAPI(m, 'Elsewhere');
   await page.goto(`${m.url}/bots/${elsewhere.id}`);
   await expect(page.getByRole('heading', { name: 'What should Elsewhere work on?' })).toBeVisible();
+}
+
+// quietRunEnded waits for the thread's newest run to be a different one from before and to have
+// ended.
+async function quietRunEnded(threadID: string, before: string) {
+  await expect
+    .poll(
+      async () => {
+        const thread = await api(m, 'GET', `/api/threads/${threadID}`);
+        return thread.run_id !== before && thread.run_status !== 'running';
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+}
+
+async function hasStatusLine(threadID: string) {
+  return 'status_line' in (await api(m, 'GET', `/api/threads/${threadID}`));
 }
 
 const row = (page: Page, bot: string, title: string) =>
@@ -64,8 +82,8 @@ test('a thread of a provider at its usage limit reads Out until the reset time',
 });
 
 // The boss hands its work to Tester, which answers at once; the boss's run for Reef's notice calls
-// no tell_user, so what it writes last is a status line, not a message.
-test('a background run adds no message: its final message is one muted status line above the composer', async ({
+// no tell_user, so what it writes last is shown nowhere in the thread.
+test('a background run adds no message and its final message shows nowhere in the thread', async ({
   page,
 }) => {
   await makeBoss(m, ['Tester']);
@@ -77,33 +95,30 @@ test('a background run adds no message: its final message is one muted status li
       timeout: 15_000,
     })
     .not.toBe('');
+  await expect.poll(() => runStatus(m, boss), { timeout: 15_000 }).not.toBe('running');
+  const before = (await api(m, 'GET', `/api/threads/${boss}`)).run_id;
   const approval = (await api(m, 'GET', `/api/threads/${helper.id}`)).approval.id;
   await api(m, 'POST', `/api/approvals/${approval}`, { approve: true });
+  await quietRunEnded(boss, before);
+  await page.reload();
 
   const log = page.getByRole('log', { name: 'Messages' });
-  const status = page.getByText('Thanks, Tester.', { exact: true });
-  await expect(status).toHaveCount(1, { timeout: 30_000 });
-  await expect(log.getByText('Thanks, Tester.')).toHaveCount(0);
+  await expect(log.getByRole('article').first()).toBeVisible();
   await expect(log.getByRole('article', { name: 'Poteto' })).toHaveCount(0);
   await expect(log.getByRole('article', { name: 'Tester' })).toHaveCount(0);
-
-  const composer = await page.getByRole('textbox', { name: /^Message/ }).boundingBox();
-  const line = await status.boundingBox();
-  const chat = await log.boundingBox();
-  expect(line!.y, 'above the composer').toBeLessThan(composer!.y);
-  expect(line!.y, 'below the chat').toBeGreaterThanOrEqual(chat!.y + chat!.height - 2);
-  expect(await status.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(155, 155, 155)');
+  await expect(page.getByText('Thanks, Tester.')).toHaveCount(0);
 
   // Nothing waits on the person as a card, a Blocked line, a ready PR card or a ledger.
   await expect(page.getByText('Waiting on you')).toHaveCount(0);
   await expect(page.getByText(/^Blocked:/)).toHaveCount(0);
   await expect(log.getByRole('list', { name: 'Updates' })).toHaveCount(0);
   await expect(page.getByRole('region', { name: /Waiting on you|Ready/ })).toHaveCount(0);
+  expect(await hasStatusLine(boss), 'the API has no status_line').toBe(false);
 });
 
-// tell_user is the way a background run reaches the person: one Bot message for each call, and the
-// final message stays a status line, the newest one only.
-test('tell_user adds one Bot message per call and the final message replaces the status line', async ({
+// tell_user is the way a background run reaches the person: one Bot message for each call, and
+// the final message shows nowhere.
+test('tell_user adds one Bot message per call and the final message shows nowhere', async ({
   page,
 }) => {
   await makeBoss(m, ['Tester']);
@@ -122,56 +137,10 @@ test('tell_user adds one Bot message per call and the final message replaces the
   await expect(
     log.getByText('I will hold the changelog until you say how to get it access.'),
   ).toHaveCount(1);
-  await expect(page.getByText('Told the user about the blocker.', { exact: true })).toHaveCount(1);
-  await expect(log.getByText('Told the user about the blocker.')).toHaveCount(0);
+  await expect.poll(() => runStatus(m, boss), { timeout: 30_000 }).not.toBe('running');
+  await page.reload();
+  await expect(log.getByText('Tester is blocked: it cannot read the release notes.')).toHaveCount(1);
+  await expect(page.getByText('Told the user about the blocker.')).toHaveCount(0);
   await expect(page.getByText('Thanks, Tester.')).toHaveCount(0);
-});
-
-// The final message has several lines and the last one is longer than the column. The status line
-// is the last non-empty line on one line, cut with an ellipsis; the whole message is in its title.
-test('the status line is the last line of a long final message, on one line, with the whole text as its title', async ({
-  page,
-}) => {
-  await makeBoss(m, ['Tester']);
-  await page.goto(m.url);
-  const boss = await startThread(
-    page,
-    'Poteto',
-    delegate([['Tester', 'Run the checks, then summarize the log.']]),
-  );
-  const [helper] = await helperThreads(m, boss, 1);
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${helper.id}`)).approval?.id ?? '', {
-      timeout: 15_000,
-    })
-    .not.toBe('');
-  const approval = (await api(m, 'GET', `/api/threads/${helper.id}`)).approval.id;
-  await api(m, 'POST', `/api/approvals/${approval}`, { approve: true });
-
-  const lines = [
-    'Read the log summary.',
-    'Two checks ran and both passed.',
-    'Nothing needs you now, and this last line is long enough that it cannot fit on one line above the composer, so the status line has to cut it with an ellipsis before the end of the sentence.',
-  ];
-  const status = page.getByText('Nothing needs you now');
-  await expect(status).toHaveCount(1, { timeout: 30_000 });
-
-  const text = ((await status.textContent()) ?? '').trim();
-  const cut = text.endsWith('…') ? text.slice(0, -1) : text;
-  expect(lines[2].startsWith(cut), `shows the last line, not "${text}"`).toBe(true);
-
-  const shown = await status.evaluate((el) => {
-    const s = getComputedStyle(el);
-    return {
-      height: el.getBoundingClientRect().height,
-      lineHeight: parseFloat(s.lineHeight),
-      clipped:
-        s.textOverflow === 'ellipsis' && s.overflow !== 'visible' && el.scrollWidth > el.clientWidth,
-    };
-  });
-  expect(shown.height, 'one line high').toBeLessThanOrEqual(shown.lineHeight + 1);
-  expect(text.endsWith('…') || shown.clipped, 'cut with an ellipsis').toBe(true);
-
-  const title = (await status.getAttribute('title')) ?? '';
-  for (const line of lines) expect(title).toContain(line);
+  expect(await hasStatusLine(boss), 'the API has no status_line').toBe(false);
 });
