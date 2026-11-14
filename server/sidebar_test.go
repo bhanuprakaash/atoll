@@ -122,6 +122,78 @@ func TestSidebar_Routes(t *testing.T) {
 	}
 }
 
+func TestSidebar_ResetsAt(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil, "")
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "Ada", Persona: "p", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resets := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	tests := []struct {
+		name string
+		give store.RunResult
+		want string
+	}{
+		{"limited", store.RunResult{Status: store.StatusFailed, ErrorKind: store.ErrorRateLimited, ResetsAt: resets},
+			resets.Format(time.RFC3339)},
+		{"failed", store.RunResult{Status: store.StatusFailed, Error: "boom"}, ""},
+		{"done", store.RunResult{Status: store.StatusDone, Reply: "ok"}, ""},
+	}
+	for _, tt := range tests {
+		th, err := st.CreateThread(ctx, bot.ID, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, ru, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: tt.name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.FinishRun(ctx, ru.ID, tt.give, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.MarkOpened(ctx, th.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	req := httptest.NewRequestWithContext(ctx, "GET", "/api/bots", nil)
+	req.Host = "127.0.0.1:4317"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	var bots []struct {
+		ID      string           `json:"id"`
+		Threads []map[string]any `json:"threads"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &bots); rec.Code != 200 || err != nil {
+		t.Fatalf("status %d body %s: %v", rec.Code, rec.Body, err)
+	}
+	got := map[string]string{}
+	for _, b := range bots {
+		if b.ID != bot.ID {
+			continue
+		}
+		for _, th := range b.Threads {
+			title, _ := th["title"].(string)
+			at, _ := th["resets_at"].(string)
+			if _, has := th["resets_at"]; has != (at != "") {
+				t.Errorf("thread %q: resets_at present with value %q", title, at)
+			}
+			got[title] = at
+		}
+	}
+	for _, tt := range tests {
+		if at, ok := got[tt.name]; !ok || at != tt.want {
+			t.Errorf("thread %q: resets_at %q (listed %v), want %q", tt.name, at, ok, tt.want)
+		}
+	}
+}
+
 func TestNotices_ParentThread(t *testing.T) {
 	ctx := t.Context()
 	st, err := store.Open(t.TempDir())
@@ -232,7 +304,7 @@ func TestNotices_ApprovalsFirstAndRunOnce(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	ending, endingRun := start(finishing.ID)
-	if err := st.FinishRun(ctx, endingRun, store.RunResult{Status: store.StatusDone}, nil); err != nil {
+	if err := st.FinishRun(ctx, endingRun, store.RunResult{Status: store.StatusDone, Reply: "ok"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	thread, cancelThread := runs.Subscribe(finishing.ID)
@@ -296,9 +368,7 @@ func TestNotices_ApprovalsFirstAndRunOnce(t *testing.T) {
 		t.Fatalf("earlier %s, want run %s once", f.data, endingRun)
 	}
 
-	for range 2 {
-		ending.events <- provider.Event{Kind: provider.KindTurnEnd}
-	}
+	ending.events <- provider.Event{Kind: provider.KindTurnEnd}
 	for ev := range thread {
 		if ev.Type == run.EventRunFinished {
 			break

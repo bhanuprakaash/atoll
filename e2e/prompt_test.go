@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// Contract: prompt-contract.md.
+// Contract: prompt-contract.md. The text of each part is pinned in prompt_text_test.go.
 
 const _hey = "hey"
 
@@ -19,14 +19,14 @@ func promptParts(t *testing.T, system string) []string {
 	lines := strings.Split(system, "\n")
 	has := func(line string) bool { return slices.Contains(lines, line) }
 	var parts []string
-	core := []bool{has("How you talk"), has("Memory"), has("Finish")}
+	core := []bool{has("How you talk"), has("Ending a run"), has("Reef notices"), has("Memory")}
 	if slices.Contains(core, false) {
-		t.Fatalf("shared core incomplete (How you talk, Memory, Finish: %v):\n%s", core, system)
+		t.Fatalf("shared core incomplete (How you talk, Ending a run, Reef notices, Memory: %v):\n%s", core, system)
 	}
 	parts = append(parts, "core")
-	work, branch := has("How you work"), strings.Contains(system, "branch <type>/<short-slug>")
+	work, branch := has("Code"), strings.Contains(system, "worktree start_work gives you")
 	if work != branch {
-		t.Fatalf("half a code part (How you work %v, branch rule %v):\n%s", work, branch, system)
+		t.Fatalf("half a code part (Code %v, worktree rule %v):\n%s", work, branch, system)
 	}
 	if work {
 		parts = append(parts, "code")
@@ -140,7 +140,7 @@ func TestPrompt_ChiefHeyNoBranchNoWorktree(t *testing.T) {
 			ch := s.events(t, th)
 			r := s.send(t, th, _hey)
 			events := until(t, ch, r.ID, "run_finished")
-			if got := s.run(t, r.ID); got.Status != "done" || got.Reply != "Hello." || got.Report == nil {
+			if got := s.run(t, r.ID); got.Status != "done" || got.Reply != "Hello." {
 				t.Fatalf("Chief hey run: %+v", got)
 			}
 			for _, e := range events {

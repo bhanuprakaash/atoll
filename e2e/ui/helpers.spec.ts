@@ -81,7 +81,7 @@ test('a helper that hands off reads "Handing off" on its line, never "Setting up
   await expect(line).not.toContainText('Setting up');
 });
 
-test('a helper approval shows under its line, Allow works there, and the report comes from the helper', async ({
+test('a helper approval shows under its line and Allow works there; the helper’s reply stays out of the boss chat', async ({
   page,
   context,
 }) => {
@@ -115,18 +115,14 @@ test('a helper approval shows under its line, Allow works there, and the report 
   await expect(helperAllow).toHaveCount(0);
   await expect.poll(() => runStatus(m, thread('Tester')), { timeout: 30_000 }).toBe('done');
 
-  const fromTester = log.getByRole('article', { name: 'Tester' });
-  await expect(fromTester).toContainText(reportReply);
-  await expect(fromTester.getByRole('img', { name: /^Shark\b/ })).toBeVisible();
-  await expect(
-    log.getByRole('article', { name: 'You' }).filter({ hasText: reportReply }),
-  ).toHaveCount(0);
-  await expect(fromTester).not.toContainText('reported back from thread');
-  await expect(fromTester).not.toContainText('Done:');
-  await expect(log.getByRole('link', { name: 'Open thread' })).toHaveAttribute(
-    'href',
-    `/bots/${bots.Tester.id}/threads/${thread('Tester')}`,
-  );
+  // The helper's reply and Reef's notice to the boss are not messages of the boss chat.
+  await expect(log.getByRole('article', { name: 'Tester' })).toHaveCount(0);
+  await expect(log.getByRole('article', { name: 'You' }).filter({ hasText: reportReply })).toHaveCount(0);
+  await expect(log).not.toContainText(reportReply);
+  await expect(log).not.toContainText('finished thread');
+  await expect(log).not.toContainText('Done:');
+  await helperPage.reload();
+  await expect(helperPage.getByRole('log', { name: 'Messages' })).toContainText(reportReply);
   await expect(header.getByLabel('Tester: needs you', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Notifications/ })).toHaveAccessibleName(
     'Notifications',
@@ -145,7 +141,7 @@ test('the helper thread is not in the sidebar and read-only; Allow there leaves 
   await expect(bossAllow).toHaveCount(1);
 
   const helperPage = await context.newPage();
-  await helperPage.goto(m.url);
+  await helperPage.goto(`${m.url}/bots/${poteto.id}/threads/${boss}`);
   await expect(
     helperPage
       .getByRole('navigation', { name: 'Bots' })

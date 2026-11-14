@@ -22,18 +22,13 @@ const (
 )
 
 const _tools = `{"tools":[
-{"name":"finish_run",
-"description":"Report how this run went. Call it once in every run, when the work is done, after you write your answer. Call it last: nothing after it is shown.",
-"inputSchema":{"type":"object",
-"properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string","description":"What stopped the work that only the user can fix: a missing sign-in or token, no access, a denied approval, a failing service. Empty string if nothing. A question you asked in your reply is not blocked."},"next":{"type":"string"},"ready":{"type":"array","description":"The pull requests you call ready to merge, each with its head commit as you saw it.","items":{"type":"object","properties":{"url":{"type":"string"},"sha":{"type":"string","description":"The 40-hex head commit of the PR."},"note":{"type":"string","description":"One line about the PR, at most 120 characters. For a test PR that fails on main on purpose until its fix lands: fails on main for the right reason."}},"required":["url","sha"]}},"ask":{"type":"object","description":"A decision only the person can make, once. Reef shows it as a card with the options as buttons. A reply that only ends in a question is not a decision.","properties":{"question":{"type":"string","description":"One line, at most 300 characters."},"options":{"type":"array","description":"2 to 4 different choices, each at most 60 characters.","items":{"type":"string"}}},"required":["question","options"]}},
-"required":["done","tried","blocked","next"]}},
 {"name":"start_work",
 "description":"Repo threads start in a clean read-only checkout. Call before your first edit in a repo thread. Makes this thread's worktree on a new branch type/slug and returns its path and branch as JSON. Change into that path for your edits. Calling it again returns the same worktree.",
 "inputSchema":{"type":"object",
 "properties":{"type":{"type":"string","enum":["feat","fix","chore","docs","test"]},"slug":{"type":"string"},"base":{"type":"string","description":"Optional plain branch name on origin, e.g. test/x"}},
 "required":["type","slug"]}},
 {"name":"track_mr",
-"description":"When the change is ready, commit, push, open a merge request, call this tool with its URL and title, and include the URL in your reply. Never merge.",
+"description":"When the change is ready, commit, push, open a merge request, call this tool with its URL and title, and include the URL in your reply.",
 "inputSchema":{"type":"object","properties":{"url":{"type":"string"},"title":{"type":"string"}},"required":["url","title"]}},
 {"name":"approve",
 "description":"Permission prompt: asks the user whether a tool call may go ahead.",
@@ -57,6 +52,11 @@ const _tools = `{"tools":[
 "description":"Retire a memory item that is wrong or out of date, by id. It stops appearing in recall and in prompts; its history stays. Returns the item.",
 "inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}
 ]}`
+
+// _tellUserTool is listed only in a background run: a run that starts with Reef notices alone.
+const _tellUserTool = `{"name":"tell_user",
+"description":"Send the user a message in the chat. Each call adds one message, shown as Markdown. Use it when the user must act: a PR to merge, a decision, a failure you cannot fix.",
+"inputSchema":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}}`
 
 type (
 	rpcRequest struct {
@@ -123,9 +123,11 @@ func (a *api) dispatch(r *http.Request, req rpcRequest) (any, *rpcError) {
 			"serverInfo":      map[string]any{"name": "atoll", "version": "0"},
 		}, nil
 	case "tools/list":
-		bot, thread, _, err := a.runs.Source(r.PathValue("token"))
+		token := r.PathValue("token")
+		bot, thread, _, err := a.runs.Source(token)
 		boss := err == nil && len(bot.Delegates) > 0 && thread.ParentThreadID == ""
-		if err != nil || (!bot.CanManagePlatform && !boss) {
+		background := err == nil && a.runs.Background(token)
+		if err != nil || (!bot.CanManagePlatform && !boss && !background) {
 			return json.RawMessage(_tools), nil
 		}
 		var base struct {
@@ -143,6 +145,9 @@ func (a *api) dispatch(r *http.Request, req rpcRequest) (any, *rpcError) {
 				return nil, a.toolError(err)
 			}
 			base.Tools = append(base.Tools, extra...)
+		}
+		if background {
+			base.Tools = append(base.Tools, json.RawMessage(_tellUserTool))
 		}
 		return base, nil
 	case "tools/call":
@@ -164,21 +169,17 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		return a.platformCall(r.Context(), token, call.Name, call.Arguments)
 	}
 	switch call.Name {
-	case provider.ToolFinishRun:
-		var rep store.Report
-		if err := json.Unmarshal(call.Arguments, &rep); err != nil {
+	case provider.ToolTellUser:
+		var in struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(call.Arguments, &in); err != nil || strings.TrimSpace(in.Text) == "" {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		if strings.TrimSpace(rep.Done) == "" {
-			return failure("done is required."), nil
-		}
-		if !store.RealBlocked(rep.Blocked) {
-			rep.Blocked = ""
-		}
-		if err := a.runs.Report(r.Context(), token, rep); err != nil {
+		if err := a.runs.TellUser(r.Context(), token, in.Text); err != nil {
 			return a.refusal(err)
 		}
-		return a.withHelpers(r, token, "Report saved.")
+		return text("Sent."), nil
 	case provider.ToolStartWork:
 		var in struct {
 			Type string `json:"type"`
@@ -350,7 +351,7 @@ func (a *api) delegateTools(ctx context.Context, bot store.Bot) ([]json.RawMessa
 			"its replies come back to you. The brief must hold everything the helper needs. " +
 			"The helper works in this thread's repo; with no repo here, repo names a registered repo. " +
 			"Without a GitHub connection the helper cannot edit a GitHub repo and delegate refuses it; " +
-			"pass read_only for a read-only task. End every brief with: " + run.FreezeSentence,
+			"pass read_only for a read-only task.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{

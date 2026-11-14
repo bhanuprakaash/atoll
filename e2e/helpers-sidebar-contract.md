@@ -2,8 +2,7 @@
 
 Tests: `ui/helpers-sidebar.spec.ts`, `ui/merged-threads.spec.ts` (fixture: `ui/github-fixture.ts`),
 and the sidebar part of `ui/helpers.spec.ts`. Fake Claude and the scripted GitHub the PR watcher
-reads. No new Go fake; two recordings (`repo-github-fix-ask`, `repo-github-fix-blocked`) are
-`repo-github-fix` ending its run with a decision or a blocker.
+reads. No new Go fake.
 
 ## Hooks
 

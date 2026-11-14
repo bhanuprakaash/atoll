@@ -4,6 +4,7 @@ package codex
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -54,6 +55,8 @@ type (
 		used     bool
 		msgID    string // agent message item the last text delta belonged to; owned by run
 		wrote    bool   // the turn in progress has sent text; owned by run
+		final    string // text of the turn's final_answer agent message; owned by run
+		last     string // text of the turn's last agent message; owned by run
 		changes  map[string]json.RawMessage
 		tools    map[string]string // server to its last started MCP tool, which names an elicitation
 		notes    map[string]bool   // commentary agent message items of the turn; owned by run
@@ -488,12 +491,28 @@ func (s *Session) serverRequest(m message) bool {
 
 // handle emits the event for m and reports whether to keep reading. Text of a commentary agent
 // message, Codex's working notes, is dropped. A break goes before the text of a second answer
-// message in a turn.
+// message in a turn. Reef's turn is the one turn/start answered; the text and tool calls of any
+// other turn go out marked Other, and nothing else of it counts.
 func (s *Session) handle(m message) bool {
+	if m.Method == "" && m.Error == nil {
+		var res struct {
+			Turn struct {
+				ID string `json:"id"`
+			} `json:"turn"`
+		}
+		if json.Unmarshal(m.Result, &res) == nil && res.Turn.ID != "" {
+			s.turnID = res.Turn.ID
+		}
+		return true
+	}
+	turn := cmp.Or(m.body().TurnID, m.body().Turn.ID)
+	other := turn != "" && turn != s.turnID
 	switch m.Method {
 	case "turn/started":
-		s.turnID = m.body().Turn.ID
-		s.msgID, s.wrote = "", false
+		if other {
+			return true
+		}
+		s.msgID, s.wrote, s.final, s.last = "", false, "", ""
 		clear(s.notes)
 		clear(s.changes)
 		clear(s.tools)
@@ -528,10 +547,25 @@ func (s *Session) handle(m message) bool {
 				s.tools[it.Server] = it.Tool
 			}
 		}
+	case "item/completed":
+		var it struct {
+			Type  string `json:"type"`
+			Phase string `json:"phase"`
+			Text  string `json:"text"`
+		}
+		if !other && json.Unmarshal(m.body().Item, &it) == nil && it.Type == "agentMessage" {
+			s.last = it.Text
+			if it.Phase == "final_answer" {
+				s.final = it.Text
+			}
+		}
 	case "item/agentMessage/delta":
 		itemID := m.body().ItemID
 		if s.notes[itemID] {
 			return true
+		}
+		if other {
+			break
 		}
 		if s.wrote && itemID != s.msgID &&
 			!s.emit(provider.Event{Kind: provider.KindText, Text: _messageBreak}) {
@@ -549,6 +583,10 @@ func (s *Session) handle(m message) bool {
 			s.usage.OutputTokens += last.OutputTokens
 		}
 	case "turn/completed":
+		if other {
+			return true
+		}
+		s.turnID = ""
 		if s.usage.Calls > 0 {
 			u := s.usage
 			u.Model = s.model
@@ -571,6 +609,10 @@ func (s *Session) handle(m message) bool {
 	if ev.Limited {
 		ev.ResetsAt = s.resetsAt
 	}
+	if ev.Kind == provider.KindTurnEnd {
+		ev.Text = cmp.Or(s.final, s.last)
+	}
+	ev.Other = other
 	return s.emit(ev)
 }
 

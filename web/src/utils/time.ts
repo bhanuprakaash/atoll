@@ -14,15 +14,6 @@ export function relativeTime(value: string) {
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
-// age is how long ago value was: "now", "12m", "2h" or "3d".
-export function age(value: string) {
-  const minutes = Math.floor((Date.now() - Date.parse(value)) / 60_000);
-  if (!(minutes >= 1)) return 'now';
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
-  return `${Math.floor(minutes / 1440)}d`;
-}
-
 // messageTime is a message time: the clock today, else the day and the clock.
 export function messageTime(createdAt: string) {
   const date = new Date(createdAt);

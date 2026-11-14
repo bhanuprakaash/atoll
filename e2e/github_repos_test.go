@@ -47,7 +47,7 @@ func TestGitHubRepos_BotPushesAndOpensAPullRequest(t *testing.T) {
 			r := f.s.send(t, th, _githubFixPrompt)
 			es := until(t, ch, r.ID, "run_finished")
 			done := f.s.run(t, r.ID)
-			if done.Status != "done" || done.Report == nil {
+			if done.Status != "done" {
 				t.Fatalf("run: %+v", done)
 			}
 			if wt := repoEvent(t, es, "worktree_created"); wt.Data["repo_id"] != repo.ID || wt.Data["branch"] != "fix/seeded-bug" {

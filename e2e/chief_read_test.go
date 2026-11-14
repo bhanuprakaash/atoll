@@ -68,7 +68,7 @@ func TestChiefRead_Tools(t *testing.T) {
 			events := until(t, ch, r.ID, "run_finished")
 			// The fake fails the run with "platform tool missing: <name>" when tools/list lacks one.
 			done := s.run(t, r.ID)
-			if done.Status != "done" || done.Report == nil {
+			if done.Status != "done" {
 				t.Fatalf("read run: %+v", done)
 			}
 			var got map[string][]map[string]any

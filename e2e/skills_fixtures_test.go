@@ -114,7 +114,7 @@ func TestSkillsFixtures_ProviderScenarios(t *testing.T) {
 					case "initialize":
 						result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{}, "serverInfo": map[string]string{"name": "fixture", "version": "0"}}
 					case "tools/list":
-						tools := []map[string]any{{"name": "finish_run", "inputSchema": map[string]any{"type": "object"}}}
+						tools := []map[string]any{}
 						if mode != "denied" {
 							for _, name := range append(fake.PlatformTools(), fake.ReadTools()...) {
 								tools = append(tools, map[string]any{"name": name, "inputSchema": map[string]any{"type": "object"}})
@@ -174,7 +174,6 @@ func TestSkillsFixtures_ProviderScenarios(t *testing.T) {
 							value = map[string]any{"id": "dynamic-bot-id", "persona": "A lagoon guide."}
 						case "list_bots", "list_skills", "list_connections", "list_repos", "list_models":
 							value = _readResults[req.Params.Name]
-						case "finish_run":
 						default:
 							t.Errorf("unexpected tool: %s", req.Params.Name)
 						}
@@ -261,27 +260,27 @@ func TestSkillsFixtures_ProviderScenarios(t *testing.T) {
 				}
 				mu.Lock()
 				defer mu.Unlock()
-				expected := []string{"finish_run"}
+				expected := []string{}
 				if mode == "denied" {
-					expected = []string{"create_bot", "finish_run"}
+					expected = []string{"create_bot"}
 				}
 				if mode == "create" || mode == "create-codex" {
-					expected = []string{"create_skill", "create_bot", "finish_run"}
+					expected = []string{"create_skill", "create_bot"}
 				}
 				if mode == "worktree" {
-					expected = []string{"start_work", "finish_run"}
+					expected = []string{"start_work"}
 				}
 				if mode == "configure" {
-					expected = []string{"edit_skill", "register_repo", "attach_connection", "finish_run"}
+					expected = []string{"edit_skill", "register_repo", "attach_connection"}
 				}
 				if mode == "edit" {
-					expected = []string{"edit_bot", "finish_run"}
+					expected = []string{"edit_bot"}
 				}
 				if mode == "read" {
-					expected = append(fake.ReadTools(), "finish_run")
+					expected = fake.ReadTools()
 				}
 				if mode == "bots" {
-					expected = []string{"list_bots", "finish_run"}
+					expected = []string{"list_bots"}
 				}
 				if !slices.Equal(calls, expected) {
 					t.Fatalf("calls %v, want %v", calls, expected)

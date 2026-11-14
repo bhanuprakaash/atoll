@@ -83,7 +83,7 @@ no longer declined but becomes an approval (answered `{action: "accept"}` or `{a
   tool does (`approval` event, run `waiting` until answered, `POST /api/approvals/{id}`). The
   event's `tool` plus its `input`, as text, contain the server's name and the tool's name (Claude:
   `tool` is `mcp__<server>__<tool>`; Codex: the elicitation's `serverName`, `message` and `_meta`).
-  Atoll's own tools (`finish_run`, `approve`, the platform tools) still need none: the tests count
+  Atoll's own tools (`approve`, the platform tools) still need none: the tests count
   the approvals of a run and expect exactly one per call to a user-added server. Denied, the call
   never reaches the server.
 - **Edit and Remove apply from the next run**: a live run keeps the config it started with while

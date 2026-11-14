@@ -26,7 +26,6 @@ import {
   ApprovalDrop,
   FinishedNotice,
   NotificationList,
-  type WaitingNotice,
 } from '@/modules/threads/components/notifications';
 import type { Notifications } from '@/modules/threads/hooks/use-notifications';
 import { helperState, isLiveHelper, type HelperState } from '@/modules/threads/utils/helper-state';
@@ -37,7 +36,6 @@ export function BotHeader({
   boss,
   helpers = [],
   waiting = 0,
-  waitingOnYou = 0,
   open = false,
   onNotifications,
   onSettings,
@@ -48,7 +46,6 @@ export function BotHeader({
   boss?: { bot: Bot; threadId: string; title: string };
   helpers?: { id: string; name: string; look?: CreatureLook; state: HelperState }[];
   waiting?: number;
-  waitingOnYou?: number;
   open?: boolean;
   onNotifications?: () => void;
   onSettings?: () => void;
@@ -127,9 +124,6 @@ export function BotHeader({
             thread.run_error_kind !== 'secret_store' && (
               <span className="text-[13px] text-muted">Run failed</span>
             )
-          )}
-          {waitingOnYou > 0 && (
-            <span className="text-[13px] text-ink">{waitingOnYou} waiting on you</span>
           )}
           {waiting > 0 && (
             <span
@@ -221,19 +215,6 @@ function BotFrame() {
   }, [expanded, dismiss]);
   const bot = bots.find((item) => item.id === botId);
   const looks = Object.fromEntries(bots.map((item) => [item.id, item.look]));
-  const waiting: WaitingNotice[] = bots.flatMap((b) =>
-    (b.threads ?? [])
-      .filter((t) => t.id !== threadId)
-      .flatMap((t) =>
-        (t.waiting ?? []).map((item) => ({
-          bot_id: b.id,
-          bot_name: b.name,
-          thread_id: t.id,
-          title: t.title,
-          item,
-        })),
-      ),
-  );
   const current = threads.find((thread) => thread.id === threadId);
   const bossThread = current?.parent_thread_id
     ? bots
@@ -268,15 +249,11 @@ function BotFrame() {
             }
           }
           helpers={helpers}
-          waiting={notifications.needs.length + waiting.length}
-          waitingOnYou={
-            bot?.threads?.find((thread) => thread.id === threadId)?.waiting?.length ?? 0
-          }
+          waiting={notifications.needs.length}
         >
           {list ? (
             <NotificationList
               notifications={notifications}
-              waiting={waiting}
               looks={looks}
               onClose={() => setList(false)}
             />

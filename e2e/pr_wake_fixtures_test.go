@@ -373,6 +373,7 @@ func (f *prWakeFixture) openPR(t *testing.T, n int) thread {
 	if got := len(f.gh.pullRequests()); got != n {
 		t.Fatalf("the fake GitHub has %d pull requests, want %d", got, n)
 	}
+	f.s.do(t, "POST", "/api/threads/"+th.ID+"/opened", nil, nil, http.StatusNoContent)
 	var got struct {
 		MRURL string `json:"mr_url"`
 	}

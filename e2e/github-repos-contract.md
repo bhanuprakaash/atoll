@@ -80,7 +80,7 @@ Roles and texts Playwright selects on.
   prompt `Fix the seeded bug and open a PR.`): the `repo-fix` scenario for a GitHub repo.
   `start_work` (`fix`, `Seeded BUG`), writes `answer.txt` `42`, commits, `git push -u origin
   <branch>`, `gh pr create --head <branch> --base main --title "fix: correct seeded answer" --body
-  "Correct the fixture answer."`, then `track_mr` with `{url, title}` and `finish_run`. When
+  "Correct the fixture answer."`, then `track_mr` with `{url, title}`. When
   `start_work` is a tool error it stops there and replies `start_work failed: <the error text>`.
 
 ## Acceptance mapping

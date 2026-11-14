@@ -167,9 +167,11 @@ function DraftThreadPage() {
 function StartPage() {
   const { data: bots } = useBots();
   if (!bots) return null;
-  const latest = [...bots]
-    .filter((bot) => bot.last_activity)
-    .sort((a, b) => b.last_activity.localeCompare(a.last_activity))[0];
+  const own = (bot: Bot) =>
+    (bot.threads ?? [])
+      .filter((t) => !t.parent_thread_id)
+      .reduce((at, t) => (t.last_activity > at ? t.last_activity : at), '');
+  const latest = [...bots].filter(own).sort((a, b) => own(b).localeCompare(own(a)))[0];
   return <Navigate to={`/bots/${latest?.id ?? 'chief'}`} replace />;
 }
 

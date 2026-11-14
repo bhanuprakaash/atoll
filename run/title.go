@@ -105,6 +105,9 @@ func (m *Manager) writeTitle(ctx context.Context, name, message, reply string) (
 			if !ok {
 				return "", errors.New("provider exited before the title")
 			}
+			if ev.Other {
+				continue
+			}
 			switch ev.Kind {
 			case provider.KindText:
 				b.WriteString(ev.Text)

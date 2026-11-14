@@ -1,5 +1,5 @@
 // Slice 6 chat: one working line by tool kind, never raw tool calls; a summary line above the
-// reply; the user's message as the only bubble; approvals with Allow and Deny; blocked; Stop.
+// reply; the user's message as the only bubble; approvals with Allow and Deny; Stop.
 import { expect, test } from '@playwright/test';
 import {
   api,
@@ -46,7 +46,7 @@ test('one working line by tool kind, a summary above the reply, the user message
     /Searching selectedRepo/,
     /Reading repo-step\.tsx/,
     /Editing wizard\.tsx/,
-    /Running Run the tests/,
+    /^Run the tests$/,
   ]) {
     await expect(working).toHaveCount(1);
     await expect(working).toHaveText(step);
@@ -72,7 +72,7 @@ test('one working line by tool kind, a summary above the reply, the user message
   await expect(log.getByText(/ · Worked \d+(m \d+)?s · /)).toContainText('edited 1');
 });
 
-test('an approval shows Allow and Deny, leaves once answered; Deny ends in a blocked line', async ({
+test('an approval shows Allow and Deny, leaves once answered; Deny ends in the reply, with no Blocked line', async ({
   page,
 }) => {
   await emptyThread(page, 'Ash');
@@ -93,8 +93,11 @@ test('an approval shows Allow and Deny, leaves once answered; Deny ends in a blo
   await send(page, prompts.write);
   await log.getByRole('button', { name: 'Deny', exact: true }).click();
   await expect(
-    log.getByText('Blocked: User rejected the Write action, so hello.txt was not created.'),
+    log.getByText("I didn't create hello.txt because you rejected the Write call.", {
+      exact: false,
+    }),
   ).toBeVisible();
+  await expect(log.getByText(/Blocked:/)).toHaveCount(0);
   await expect(log.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
 });
 
@@ -106,7 +109,7 @@ test('Stop ends a running run and the chat says it was stopped', async ({ page }
   const stop = page.getByRole('button', { name: 'Stop' });
   await expect(stop).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
-  await expect(log.getByRole('status')).toHaveText(/Running Run the build/);
+  await expect(log.getByRole('status')).toHaveText(/^Run the build$/);
   await stop.click();
 
   await expect(log.getByText(/Stopped by you after \d+(m \d+)?s/)).toBeVisible();

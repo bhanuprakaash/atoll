@@ -11,7 +11,7 @@ export type LiveRun = {
   parts: LivePart[];
   tool?: { kind: ToolKind; target: string; name: string; verb: string };
   approvals: { id: string; tool: string; input: unknown; allow_in_thread?: boolean }[];
-  finished?: { status: string; error: string; blocked?: string };
+  finished?: { status: string; error: string };
   settled?: boolean;
 };
 type Data<T> = T & { run_id: string };
@@ -115,12 +115,19 @@ export function useThreadEvents(threadId: string) {
             : [...run.parts, { text: d.text }],
       };
     });
-    on<{ kind: ToolKind; target: string; name: string; verb: string }>('tool_call', (d, run) => {
+    on<{
+      kind: ToolKind;
+      target: string;
+      name: string;
+      verb: string;
+      input?: { description?: string };
+    }>('tool_call', (d, run) => {
       const tool = { kind: d.kind, target: d.target, name: d.name, verb: d.verb };
+      const described = !!d.input?.description && d.input.description === d.target;
       return {
         ...run,
         tool,
-        parts: [...run.parts, { step: d.name.endsWith('finish_run') ? '' : toolLine(tool) }],
+        parts: [...run.parts, { step: described ? d.target : toolLine(tool) }],
       };
     });
     on<LiveRun['approvals'][number]>('approval', (d, run) => withApproval(run, d));
@@ -128,7 +135,7 @@ export function useThreadEvents(threadId: string) {
       closedApprovals.current.add(d.id);
       return { ...run, approvals: run.approvals.filter((x) => x.id !== d.id) };
     });
-    on<{ status: string; error: string; blocked?: string }>('run_finished', (d, run) => ({
+    on<{ status: string; error: string }>('run_finished', (d, run) => ({
       ...run,
       finished: d,
     }));
@@ -136,7 +143,13 @@ export function useThreadEvents(threadId: string) {
       void settle((JSON.parse((e as MessageEvent<string>).data) as Data<object>).run_id, refresh());
       void opened();
     });
-    for (const type of ['platform_changed', 'memory_saved', 'worktree_created', 'helper_started'])
+    for (const type of [
+      'platform_changed',
+      'memory_saved',
+      'worktree_created',
+      'helper_started',
+      'told',
+    ])
       source.addEventListener(type, refresh);
     source.addEventListener('mr_updated', (e) => {
       setMr(JSON.parse((e as MessageEvent<string>).data));

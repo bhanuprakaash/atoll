@@ -34,8 +34,8 @@ func TestRunCost_RecordsUsagePerRun(t *testing.T) {
 			// result.usage is the process's; total_cost_usd and modelUsage are the session's, so the
 			// second run's cost is 0.24 - 0.19 and its tokens are not the session's 111k.
 			provider: "claude",
-			first:    wantUsage{"claude-sonnet-5-5", 7, 21, 1037, 71620, 13150, cost(0.19)},
-			second:   wantUsage{"claude-sonnet-5-5", 3, 8, 365, 40000, 700, cost(0.05)},
+			first:    wantUsage{"claude-sonnet-5-5", 6, 21, 1037, 71620, 13150, cost(0.19)},
+			second:   wantUsage{"claude-sonnet-5-5", 2, 8, 365, 40000, 700, cost(0.05)},
 		},
 		{
 			// A resume first replays an update of the earlier turn and tokenUsage.total is the

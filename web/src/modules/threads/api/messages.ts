@@ -19,10 +19,6 @@ export type Message = {
   attachments: { id: string; mime: string }[];
   not_read: boolean;
   run_status: Run['status'];
-  done: string;
-  blocked: string;
-  ready?: boolean;
-  ask?: boolean;
   answered_approvals?: { id: string; tool: string; input: unknown }[];
 };
 
@@ -37,7 +33,6 @@ export type Run = {
   started_at: string;
   finished_at: string;
   tools: Record<string, number>;
-  report?: { done: string; blocked: string } | null;
   reply: string;
   error: string;
   error_detail: string;

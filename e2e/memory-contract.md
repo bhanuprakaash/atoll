@@ -75,7 +75,7 @@ cannot invent those IDs. `recall` searches the current repo, user and current
 Bot's shelves. The recall script reads the matched item with `read_memory` and
 answers using its actual body and why; it also requires that item's ID and body
 in the new thread's first input. The retire script recalls and reads before
-retiring. Every scenario still calls real MCP `finish_run`.
+retiring. Every scenario calls the real MCP tools it names and ends with its final message.
 
 ## REST additions
 

@@ -23,7 +23,7 @@ import (
 const _realBearer = "reef-e2e-bearer-0"
 
 // _standInTools are the tools of the MCP server that stands in for Reef's.
-var _standInTools = []string{"start_work", "track_mr", "finish_run", "approve"}
+var _standInTools = []string{"start_work", "track_mr", "remember", "approve"}
 
 // probeMCP is an MCP server on 127.0.0.1 with the given tools, which records the Authorization
 // header of every request.

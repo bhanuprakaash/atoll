@@ -196,6 +196,24 @@ func (m *Manager) recoverInbox() {
 	}
 }
 
+// _helperNotice is the kind the prompt gives a helper's wake, which the store keeps with none.
+const _helperNotice = "helper"
+
+// asNotices marks the held messages that come from Reef with a kind: a helper's wake in a thread
+// that is not a helper's has none stored. It reports whether every message is a notice, which makes
+// the run a background run: a helper thread has none.
+func asNotices(thread store.Thread, items []store.InboxItem) ([]store.InboxItem, bool) {
+	out := slices.Clone(items)
+	all := thread.ParentThreadID == ""
+	for i := range out {
+		if thread.ParentThreadID == "" && out[i].Kind == "" && out[i].FromBotID != "" {
+			out[i].Kind = _helperNotice
+		}
+		all = all && out[i].Kind != ""
+	}
+	return out, all
+}
+
 // WakeText is the message that tells a boss its helper's run ended; helpers is the helpers line.
 func WakeText(w store.Wake, helpers string) string {
 	helper, threadID, run := w.Helper, w.ThreadID, w.Run
@@ -203,27 +221,17 @@ func WakeText(w store.Wake, helpers string) string {
 	if w.BossBranch != "" && strings.HasPrefix(w.Branch, w.BossBranch+"--") {
 		merge = w.Branch
 	}
-	switch run.Status {
-	case store.StatusDone:
+	switch w.Notice() {
+	case store.NoticeHelperDone:
 		var b strings.Builder
-		fmt.Fprintf(&b, "%s reported back from thread %s.\n%s\n", helper, threadID, run.Reply)
-		if r := run.Report; r != nil {
-			for _, f := range []struct{ name, text string }{
-				{"Done", r.Done}, {"Tried", r.Tried}, {"Blocked", r.Blocked}, {"Next", r.Next},
-			} {
-				if f.text != "" {
-					fmt.Fprintf(&b, "\n%s: %s", f.name, f.text)
-				}
-			}
-		}
+		fmt.Fprintf(&b, "%s finished thread %s:\n%s\n", helper, threadID, run.Reply)
 		if merge != "" {
 			fmt.Fprintf(&b, "\nMerge %s into your branch.", merge)
 		}
 		return strings.TrimSpace(b.String()) + "\n\n" + helpers
-	case store.StatusStopped:
+	case store.NoticeHelperStopped:
 		return fmt.Sprintf("The user stopped %s\n(thread %s)\n\n%s", helper, threadID, helpers)
-	}
-	if run.ErrorKind == store.ErrorRateLimited {
+	case store.NoticeHelperLimited:
 		until := "its Claude limit resets"
 		if run.Provider == "codex" {
 			until = "its Codex limit resets"

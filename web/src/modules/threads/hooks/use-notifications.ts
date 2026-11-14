@@ -37,7 +37,7 @@ type Change = {
   change: { id: string; entity: string; action: string; after: { name?: string } | null };
 };
 type Remembered = About & {
-  type: 'run_finished' | 'mr_updated' | 'platform_changed';
+  type: 'run_finished' | 'told' | 'mr_updated' | 'platform_changed';
   at: string;
   data: { status: string } & MrUpdate & Change;
 };
@@ -46,6 +46,8 @@ const widenedMs = 4000;
 
 const finishedText = (notice: About, status: string) =>
   `${notice.bot_name} ${status === 'failed' ? 'failed' : 'finished'} ${notice.title}`;
+
+const toldText = (notice: About) => `${notice.bot_name} messaged ${notice.title}`;
 
 const mrText = (notice: About, url: string) =>
   `${notice.bot_name} opened ${mrRef(url) ?? 'a merge request'}`;
@@ -56,8 +58,10 @@ function changeText(notice: About, { entity, action, after }: Change['change']) 
   return `${notice.bot_name} ${verb} ${what} ${after?.name ?? ''}`.trim();
 }
 
+const isRunType = (type: string) => type === 'run_finished' || type === 'told';
+
 const isRun = (n: { type: string; thread_id: string }, threadId: string) =>
-  n.type === 'run_finished' && n.thread_id === threadId;
+  isRunType(n.type) && n.thread_id === threadId;
 
 const isOn = (notice: About, threadId?: string) =>
   notice.thread_id === threadId || notice.parent_thread_id === threadId;
@@ -81,7 +85,7 @@ export function useNotifications(): Notifications {
       const item = { ...notice, id: seq.current++, at: Date.now(), text, detail, type, target };
       setEarlier((prev) => [
         item,
-        ...prev.filter((n) => type !== 'run_finished' || !isRun(n, notice.thread_id)),
+        ...prev.filter((n) => !isRunType(type) || !isRun(n, notice.thread_id)),
       ]);
       return item;
     };
@@ -96,6 +100,7 @@ export function useNotifications(): Notifications {
             const id = seq.current++;
             if (n.type === 'run_finished')
               return [{ ...n, id, target: n.thread_id, text: finishedText(n, n.data.status) }];
+            if (n.type === 'told') return [{ ...n, id, target: n.thread_id, text: toldText(n) }];
             if (n.type === 'mr_updated')
               return [
                 {
@@ -122,6 +127,7 @@ export function useNotifications(): Notifications {
     on<{ id: string }>('approval_closed', ({ data }) =>
       setApprovals((prev) => prev.filter((a) => a.id !== data.id)),
     );
+    on<unknown>('told', (notice) => add(notice, 'told', notice.thread_id, toldText(notice)));
     on<{ status: string }>('run_finished', (notice) => {
       const item = add(
         notice,

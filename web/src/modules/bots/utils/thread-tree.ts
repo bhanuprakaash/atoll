@@ -15,20 +15,18 @@ export type Tree = {
 const rank = (t: SidebarThread) =>
   t.state === 'needs_you'
     ? 0
-    : t.state === 'waiting'
+    : t.pinned
       ? 1
-      : t.pinned
+      : t.state === 'new' || t.state === 'failed' || t.state === 'limited'
         ? 2
-        : t.state === 'new'
+        : t.state === 'running'
           ? 3
-          : t.state === 'running'
-            ? 4
-            : 5;
+          : 4;
 
 export const isLiveHelper = (t: SidebarThread) =>
   t.parent_thread_id !== '' && (t.state === 'running' || t.state === 'needs_you');
 
-// Needs-you, waiting, pinned and the open thread always show, even past maxRows. A helper thread
+// Needs-you, pinned and the open thread always show, even past maxRows. A helper thread
 // is a row only while it is open: while it runs it is the line under its boss thread. A finished
 // helper thread and a merged thread nothing needs are not rows; both count toward `N more`.
 export function threadTree(
@@ -41,7 +39,7 @@ export function threadTree(
   const ranked = threads
     .map((t) => (t.id === openId && t.state === 'new' ? { ...t, state: '' as const } : t))
     .sort((a, b) => rank(a) - rank(b));
-  const kept = ranked.filter((t) => rank(t) <= 2 || t.id === openId);
+  const kept = ranked.filter((t) => rank(t) <= 1 || t.id === openId);
   const room = Math.max(0, maxRows - kept.length);
   const shown = new Set([
     ...kept,

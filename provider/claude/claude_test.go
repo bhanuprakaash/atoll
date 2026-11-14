@@ -3,6 +3,7 @@ package claude
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -242,19 +243,90 @@ func TestStartWritesMCPConfigLargerThanPipe(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
+	const delta = `{"type":"stream_event","event":{"type":"content_block_delta",` +
+		`"delta":{"type":"text_delta","text":"hi"}}}`
+	const result = `{"type":"result","is_error":false,"result":"ok"}`
+	cost := 0.5
 	tests := []struct {
-		name string
-		line string
-		want []provider.Event
+		name  string
+		state state
+		line  string
+		want  []provider.Event
 	}{
+		{
+			name:  "text between queued and started is other",
+			state: state{req: request{uuid: "u", queued: true}},
+			line:  delta,
+			want:  []provider.Event{{Kind: provider.KindText, Text: "hi", Other: true}},
+		},
+		{
+			name:  "text after started is Reef's",
+			state: state{req: request{uuid: "u", queued: true, started: true}},
+			line:  delta,
+			want:  []provider.Event{{Kind: provider.KindText, Text: "hi"}},
+		},
+		{
+			name:  "text after the request ended is other",
+			state: state{req: request{uuid: "u", queued: true, started: true, ended: true}},
+			line:  delta,
+			want:  []provider.Event{{Kind: provider.KindText, Text: "hi", Other: true}},
+		},
+		{
+			name:  "result with an origin gives the cost only",
+			state: state{req: request{uuid: "u", queued: true, started: true}},
+			line: `{"type":"result","is_error":false,"result":"","total_cost_usd":0.5,` +
+				`"origin":{"kind":"task-notification"}}`,
+			want: []provider.Event{{Kind: provider.KindUsage, Other: true,
+				Usage: &provider.Usage{SessionCostUSD: &cost}}},
+		},
+		{
+			name:  "result waits for the terminal state",
+			state: state{req: request{uuid: "u", queued: true, started: true}},
+			line:  result,
+			want:  []provider.Event{{Kind: provider.KindText, Text: "ok"}},
+		},
+		{
+			name:  "result after the terminal state ends the request",
+			state: state{req: request{uuid: "u", queued: true, started: true, terminal: "completed"}},
+			line:  result,
+			want: []provider.Event{
+				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd, Text: "ok"},
+			},
+		},
+		{
+			name:  "terminal state after the result ends the request",
+			state: state{req: request{uuid: "u", queued: true, started: true, final: &provider.Event{Kind: provider.KindTurnEnd}}},
+			line:  `{"type":"command_lifecycle","command_uuid":"u","state":"completed"}`,
+			want:  []provider.Event{{Kind: provider.KindTurnEnd}},
+		},
+		{
+			name:  "terminal state of another command is not Reef's",
+			state: state{req: request{uuid: "u", queued: true, started: true}},
+			line:  `{"type":"command_lifecycle","command_uuid":"x","state":"completed"}`,
+		},
+		{
+			name:  "result with no lifecycle events ends the request",
+			state: state{req: request{uuid: "u"}},
+			line:  result,
+			want: []provider.Event{
+				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd, Text: "ok"},
+			},
+		},
+		{
+			name:  "result while the request is only queued is other",
+			state: state{req: request{uuid: "u", queued: true}},
+			line:  `{"type":"result","is_error":false,"result":"","total_cost_usd":0.5}`,
+			want: []provider.Event{{Kind: provider.KindUsage, Other: true,
+				Usage: &provider.Usage{SessionCostUSD: &cost}}},
+		},
 		{
 			name: "assistant tool calls, text skipped",
 			line: `{"type":"assistant","message":{"content":[{"type":"text","text":"hi"},` +
 				`{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}},` +
-				`{"type":"tool_use","id":"toolu_2","name":"mcp__atoll__finish_run","input":{"done":"x"}}]}}`,
+				`{"type":"tool_use","id":"toolu_2","name":"mcp__atoll__remember","input":{"body":"x"}}]}}`,
 			want: []provider.Event{
 				{Kind: provider.KindToolCall, ID: "toolu_1", Name: "Bash", Input: json.RawMessage(`{"command":"ls"}`)},
-				{Kind: provider.KindToolCall, ID: "toolu_2", Name: "mcp__atoll__finish_run", Input: json.RawMessage(`{"done":"x"}`)},
+				{Kind: provider.KindToolCall, ID: "toolu_2", Name: "mcp__atoll__remember", Input: json.RawMessage(`{"body":"x"}`)},
 			},
 		},
 		{
@@ -265,8 +337,115 @@ func TestParse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := parse([]byte(tt.line), &state{}); !reflect.DeepEqual(got, tt.want) {
+			if got := parse([]byte(tt.line), &tt.state); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("parse = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRead(t *testing.T) {
+	const (
+		wait    = 100 * time.Millisecond
+		pause   = "pause"
+		queued  = `{"type":"command_lifecycle","command_uuid":"u","state":"queued"}`
+		started = `{"type":"command_lifecycle","command_uuid":"u","state":"started"}`
+		done    = `{"type":"command_lifecycle","command_uuid":"u","state":"completed"}`
+		delta   = `{"type":"stream_event","event":{"type":"content_block_delta",` +
+			`"delta":{"type":"text_delta","text":"hi"}}}`
+		result  = `{"type":"result","is_error":false,"result":"ok"}`
+		failure = `{"type":"result","is_error":true,"result":"boom"}`
+		costly  = `{"type":"result","is_error":false,"result":"","total_cost_usd":0.5}`
+	)
+	cost := 0.5
+	tests := []struct {
+		name  string
+		lines []string // a line, or pause to sit idle for longer than the wait
+		exit  string   // claude's exit status once its output ends
+		want  []provider.Event
+	}{
+		{
+			name:  "terminal state without a result fails after the wait",
+			lines: []string{queued, started, done, pause},
+			exit:  "0",
+			want: []provider.Event{{Kind: provider.KindError,
+				Text: "claude ended the request (completed) without a result"}},
+		},
+		{
+			name:  "result without a terminal state ends done after the wait",
+			lines: []string{queued, started, result, pause},
+			exit:  "0",
+			want: []provider.Event{
+				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd, Text: "ok"},
+			},
+		},
+		{
+			name:  "held answer then process exit ends done with the answer",
+			lines: []string{queued, started, result},
+			exit:  "1",
+			want: []provider.Event{
+				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd, Text: "ok"},
+			},
+		},
+		{
+			name:  "held error then process exit still fails",
+			lines: []string{queued, started, failure},
+			exit:  "1",
+			want:  []provider.Event{{Kind: provider.KindError, Text: "boom"}},
+		},
+		{
+			name:  "a request longer than the wait that ends normally is not failed",
+			lines: []string{queued, started, delta, pause, result, done},
+			exit:  "0",
+			want: []provider.Event{
+				{Kind: provider.KindText, Text: "hi"}, {Kind: provider.KindTurnEnd, Text: "ok"},
+			},
+		},
+		{
+			name:  "result while the request is only queued is other and does not end it",
+			lines: []string{queued, costly, pause},
+			exit:  "0",
+			want: []provider.Event{{Kind: provider.KindUsage, Other: true,
+				Usage: &provider.Usage{SessionCostUSD: &cost}}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New()
+			s.resultWait = wait
+			s.sent = "u"
+			s.cmd = exec.Command("sh", "-c", "exit "+tt.exit)
+			if err := s.cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			pr, pw := io.Pipe()
+			go s.read(pr)
+			go func() {
+				for _, l := range tt.lines {
+					if l == pause {
+						time.Sleep(3 * wait)
+						continue
+					}
+					_, _ = io.WriteString(pw, l+"\n")
+				}
+				_ = pw.Close()
+			}()
+
+			var got []provider.Event
+			timeout := time.After(10 * time.Second)
+			for open := true; open; {
+				select {
+				case ev, ok := <-s.Events():
+					if ok {
+						got = append(got, ev)
+					}
+					open = ok
+				case <-timeout:
+					t.Fatalf("events not closed; got %+v", got)
+				}
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("events = %+v, want %+v", got, tt.want)
 			}
 		})
 	}

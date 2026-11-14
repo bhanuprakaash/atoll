@@ -89,8 +89,7 @@ this slice; ordinary Bots do not acquire platform permission by asking in chat.
 
 Same per-run streamable HTTP server `atoll`, transport and authorization context
 as the earlier slices. These six names appear in `tools/list` only when the
-run's Bot has `can_manage_platform:true`. Other tools, including `finish_run`,
-remain available as before. A non-platform run must also be denied if it guesses
+run's Bot has `can_manage_platform:true`. Other tools remain available as before. A non-platform run must also be denied if it guesses
 a platform `tools/call`; hiding the name alone is not authorization.
 Atoll tools never cause a user approval event. Sign-ins stay with the user.
 
@@ -196,8 +195,7 @@ call in one run, replies `Made <n> platform calls.` and reports `blocked`
 New recordings reuse the existing recorded transport envelopes and session IDs;
 platform/skill actions are scripted directives, not claimed real-model outputs.
 Both fakes initialize MCP and retain the actual `tools/list` response. Chief's
-scenario calls `create_skill`, consumes its returned ID in `create_bot`, calls
-`finish_run`, and answers. Editing uses `edit_bot`; configuration uses `edit_skill`, `register_repo` and
+scenario calls `create_skill`, consumes its returned ID in `create_bot`, and answers. Editing uses `edit_bot`; configuration uses `edit_skill`, `register_repo` and
 `attach_connection`, consuming real replies. A non-platform scenario
 checks the received tools list, requires a guessed `create_bot` call to be
 rejected, then finishes.

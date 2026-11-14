@@ -45,7 +45,7 @@ Inside a component:
 | A fence that never closes is a code block at run end                                 | "a reef- fence still open when the run ends is a code block, not a placeholder"              |
 | The boss thread's relay of a helper report renders the same components               | "a helper's report in the boss thread renders the same table"                                |
 | diff, checklist, metrics, kv render, each with a screenshot                          | `rich-components.spec.ts`, one spec each; the screenshot is attached to the test             |
-| Catalog line: first sentence, components for the Reef chat only, no PR/issue/comment | `TestPrompt_RichOutputCatalog/{claude,codex}`                                                |
+| Catalog line: the design's line, reef-metrics and reef-kv render only in Reef chat    | `TestPrompt_RichOutputCatalog/{claude,codex}`                                                |
 | The prompt-size test still passes                                                    | `TestMemory_PromptGoldenAndBudget/{claude,codex}` (golden updated with the catalog line)     |
 
 ## Not specced

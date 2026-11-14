@@ -15,8 +15,9 @@ Accessible roles and names first. Where the eye sees a dot or a pin, the row car
 - A Bot row stays a `link` named with the Bot's name. Its thread tree is a `list` named
   `{Bot} threads`, beside the Bot's link, not inside it. Each thread row is a `listitem` holding a
   `link` to `/bots/{bot}/threads/{thread}`; the title is an element of its own.
-- Row copy: `Needs you` (`data-marker="needs-you"`), `New` with a bold title (`new`, weight 600 or
-  more), wave dots (`running`), a pin (`pinned`).
+- Row copy: `Needs you` (`data-marker="needs-you"`), `Replied` with a bold title (`new`, weight 600
+  or more), wave dots (`running`), a pin (`pinned`). `Failed` and `Out until <time>` are in the row's
+  text (thread-labels-contract in no-report-contract.md).
 - The overflow line is the tree's last item, a `button` named exactly `N more` or
   `N more running`, where N counts the hidden threads it stands for (running ones for
   `N more running`). Unfolded, it becomes `Show less`. `N more` opens the threads popup.

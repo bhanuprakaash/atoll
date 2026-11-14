@@ -115,9 +115,6 @@ func TestRepoFixtures_ProviderScenarios(t *testing.T) {
 				}
 				mu.Lock()
 				defer mu.Unlock()
-				if calls["finish_run"] != 1 {
-					t.Fatalf("finish_run calls: %v", calls)
-				}
 				if scenario.mode == "fix" {
 					if calls["start_work"] != 1 || calls["track_mr"] != 1 {
 						t.Fatalf("MCP calls: %v", calls)

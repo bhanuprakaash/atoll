@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
@@ -16,8 +17,6 @@ import (
 const (
 	MCPServer       = "atoll"
 	GitHubMCPServer = "github"
-	// ToolFinishRun takes the run's report: {done, tried, blocked, next}.
-	ToolFinishRun = "finish_run"
 	// ToolApprove is Claude's permission prompt tool: it answers once the user does.
 	ToolApprove = "approve"
 	// ToolStartWork takes {type, slug} and returns the worktree {path, branch, base, note} of the thread.
@@ -31,6 +30,8 @@ const (
 	ToolRetireMemory = "retire_memory"
 	ToolDelegate     = "delegate"
 	ToolContinue     = "continue"
+	// ToolTellUser takes {text}: a message to the person, listed only in background runs.
+	ToolTellUser = "tell_user"
 	// Platform tools modify platform configuration.
 	ToolCreateBot        = "create_bot"
 	ToolEditBot          = "edit_bot"
@@ -88,8 +89,9 @@ type Session interface {
 	Start(ctx context.Context, cfg Config) error
 	// Resume launches the provider on the session with id, from a KindSession event.
 	Resume(ctx context.Context, cfg Config, id string) error
-	// Send starts one turn with the prompt and the images that came with it. The turn ends with a
-	// KindTurnEnd or KindError event.
+	// Send starts one request with the prompt and the images that came with it. The request ends
+	// with exactly one KindTurnEnd or KindError event, for this request only. Send it one request at
+	// a time: the next after that event.
 	Send(ctx context.Context, prompt string, images []Image) error
 	// Events streams events until the process exits, then closes.
 	Events() <-chan Event
@@ -133,6 +135,8 @@ type Config struct {
 	NoShell bool
 	// HiddenPaths are absolute paths Claude's file tools and shell must not reach.
 	HiddenPaths []string
+	// Log receives the adapter's warnings. Nil logs nothing.
+	Log *slog.Logger
 }
 
 // UserMCPServer is local with Command, Args and Env, or remote with URL and Headers.
@@ -162,7 +166,9 @@ const (
 
 // Event is one step of a session.
 type Event struct {
-	Kind      Kind
+	Kind Kind
+	// Text is a piece of the request's text for KindText: progress. For KindTurnEnd it is the
+	// request's final message, which is the reply.
 	Text      string
 	SessionID string
 	ID        string
@@ -173,6 +179,10 @@ type Event struct {
 	Limited   bool
 	ResetsAt  time.Time // when Limited, the provider's reset time; zero if it gave none
 	Usage     *Usage
+	// Other marks activity the provider started on its own, not Reef's request: a finished
+	// background shell, another turn of the thread. Only KindText, KindToolCall and KindUsage carry
+	// it; a KindUsage then holds the session cost alone.
+	Other bool
 }
 
 // Usage is what one provider process used, over all its turns. Tokens are the process's only,

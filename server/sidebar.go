@@ -20,7 +20,7 @@ import (
 type sidebarThread struct {
 	ID             string    `json:"id"`
 	Title          string    `json:"title"`
-	State          string    `json:"state"` // "needs_you", "waiting", "running", "new" or ""
+	State          string    `json:"state"` // "needs_you", "running", "failed", "limited", "new" or ""
 	Pinned         bool      `json:"pinned"`
 	Helper         bool      `json:"helper,omitempty"`
 	ParentThreadID string    `json:"parent_thread_id"`
@@ -29,8 +29,8 @@ type sidebarThread struct {
 	Branch         string    `json:"branch"`
 	MRURL          string    `json:"mr_url"`
 	LastActivity   time.Time `json:"last_activity"`
-	// Waiting is what waits on the person in the thread.
-	Waiting []store.Waiting `json:"waiting,omitempty"`
+	// ResetsAt is when the provider's usage limit ends, for a limited thread.
+	ResetsAt string `json:"resets_at,omitempty"`
 }
 
 // notice is one /api/events payload: an event of a thread with the thread's Bot and title.
@@ -43,9 +43,10 @@ type notice struct {
 	Data           any    `json:"data"`
 }
 
-// sidebarThreads keeps the open threads in the order given and marks each: needs_you when its run
-// waits on an approval, waiting when something else waits on the person, running when
-// its run or a helper's goes, new when its newest run finished after the user last opened it.
+// sidebarThreads keeps the open threads in the order given and marks each, the first that holds:
+// needs_you when its run waits on an approval, running when its run or a helper's goes, failed when
+// a run failed after the user last opened it, limited while the provider's usage limit lasts, new
+// when it replied after the user last opened it.
 func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread {
 	byBoss := map[string][]store.ThreadRun{}
 	for _, h := range helpers {
@@ -56,23 +57,26 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 		if t.Closed {
 			continue
 		}
-		state := a.marker(t, byBoss[t.ThreadID], len(t.Waiting) > 0)
+		state := a.marker(t, byBoss[t.ThreadID])
+		resetsAt := ""
+		if state == "limited" {
+			resetsAt = t.LimitedUntil.Format(time.RFC3339)
+		}
 		step := ""
 		if t.ParentThreadID != "" && (state == "running" || state == "needs_you") {
 			step = a.liveStep(t.ThreadID)
 		}
 		out = append(out, sidebarThread{
 			ID: t.ThreadID, ParentThreadID: t.ParentThreadID, Step: step, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
-			Branch: t.Branch, MRURL: t.MRURL, LastActivity: t.LastActivity,
-			Waiting: t.Waiting,
-			Hidden:  t.Merged && !t.Pinned && (state == "" || state == "new"),
+			Branch: t.Branch, MRURL: t.MRURL, LastActivity: t.LastActivity, ResetsAt: resetsAt,
+			Hidden: t.Merged && !t.Pinned && (state == "" || state == "new"),
 		})
 	}
 	return out
 }
 
 // marker is the state of thread t. A helper's approval is not t's: it shows on the line under t.
-func (a *api) marker(t store.ThreadRun, helpers []store.ThreadRun, waits bool) string {
+func (a *api) marker(t store.ThreadRun, helpers []store.ThreadRun) string {
 	state := ""
 	needs := func(tr store.ThreadRun) bool {
 		if tr.Status != store.StatusRunning && tr.Status != store.StatusWaiting {
@@ -90,13 +94,17 @@ func (a *api) marker(t store.ThreadRun, helpers []store.ThreadRun, waits bool) s
 	if needs(t) {
 		return "needs_you"
 	}
-	if waits {
-		return "waiting"
-	}
-	if state == "" && t.Unseen {
+	switch {
+	case state != "":
+		return state
+	case t.Failed:
+		return "failed"
+	case t.LimitedUntil.After(time.Now()):
+		return "limited"
+	case t.Unseen && t.ParentThreadID == "":
 		return "new"
 	}
-	return state
+	return ""
 }
 
 func (a *api) markOpened(w http.ResponseWriter, r *http.Request) {
@@ -275,6 +283,8 @@ func eventKey(data any) string {
 	switch d := data.(type) {
 	case run.Finished:
 		return "run " + d.RunID
+	case run.Told:
+		return "told " + d.RunID
 	case run.MRUpdated:
 		return "mr " + d.URL + " " + d.State
 	case run.PlatformChanged:
@@ -283,8 +293,8 @@ func eventKey(data any) string {
 	return ""
 }
 
-// earlier lists, newest first, what happened after the island was last read: runs that ended, MRs
-// opened and platform changes.
+// earlier lists, newest first, what happened after the island was last read: runs that ended,
+// tell_user messages of runs that go on, MRs opened and platform changes.
 func (a *api) earlier(ctx context.Context) ([]earlierNotice, error) {
 	out := []earlierNotice{}
 	since, err := a.st.IslandSeenAt(ctx)
@@ -302,6 +312,13 @@ func (a *api) earlier(ctx context.Context) ([]earlierNotice, error) {
 	}
 	for _, e := range runs {
 		add(run.EventRunFinished, e.At, e.ThreadID, run.Finished{RunID: e.RunID, Status: e.Status, Error: e.Error})
+	}
+	told, err := a.st.ToldSince(ctx, since)
+	if err != nil {
+		return out, err
+	}
+	for _, e := range told {
+		add(run.EventTold, e.At, e.ThreadID, run.Told{RunID: e.RunID})
 	}
 	mrs, err := a.st.OpenedMRsSince(ctx, since)
 	if err != nil {
@@ -343,7 +360,7 @@ func (a *api) dismissIsland(w http.ResponseWriter, r *http.Request) {
 	}
 	var err error
 	switch body.Type {
-	case run.EventRunFinished:
+	case run.EventRunFinished, run.EventTold:
 		if err = a.st.MarkOpened(r.Context(), body.ID); err == nil {
 			a.runs.ThreadRead(body.ID)
 		}

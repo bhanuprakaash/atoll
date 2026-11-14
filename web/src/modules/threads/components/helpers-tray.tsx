@@ -17,12 +17,6 @@ import { mrRef } from '@/modules/threads/utils/mr-ref';
 
 type Bots = Record<string, { name: string; look: CreatureLook }>;
 
-const ended = ['done', 'failed', 'stopped'];
-const reportedWord: Record<string, string> = {
-  done: 'Reported',
-  failed: 'Failed',
-  stopped: 'Stopped',
-};
 const ciStyle: Record<string, string> = {
   running: 'text-muted',
   passed: 'text-ok',
@@ -79,7 +73,6 @@ function Row({
   const navigate = useNavigate();
   const stop = useStopRun();
   const href = `/bots/${helper.bot_id}/threads/${helper.id}`;
-  const live = isLiveHelper(helper);
   return (
     <li
       tabIndex={-1}
@@ -91,32 +84,24 @@ function Row({
       <span className="min-w-0 flex-1 truncate text-muted" title={helper.title}>
         {helper.title}
       </span>{' '}
-      {live ? (
-        <>
-          <span className="max-w-48 flex-none truncate text-muted">
-            {state === 'needs_you' ? 'Needs you' : helper.step || 'Working'}
-          </span>{' '}
-          <span className="w-10 flex-none text-right text-muted tabular-nums">
-            {elapsed(helper.created_at, now)}
-          </span>
-        </>
-      ) : (
-        <span className="flex-none text-muted">{reportedWord[helper.run_status]}</span>
-      )}{' '}
+      <span className="max-w-48 flex-none truncate text-muted">
+        {state === 'needs_you' ? 'Needs you' : helper.step || 'Working'}
+      </span>{' '}
+      <span className="w-10 flex-none text-right text-muted tabular-nums">
+        {elapsed(helper.created_at, now)}
+      </span>{' '}
       <Pull helper={helper} />{' '}
       <Link to={href} className={quiet}>
         Open
       </Link>{' '}
-      {live && (
-        <button
-          type="button"
-          disabled={stop.isPending}
-          onClick={() => stop.mutate(helper.run_id)}
-          className={`${quiet} opacity-0 group-focus-within:opacity-100 group-hover:opacity-100`}
-        >
-          Stop
-        </button>
-      )}
+      <button
+        type="button"
+        disabled={stop.isPending}
+        onClick={() => stop.mutate(helper.run_id)}
+        className={`${quiet} opacity-0 group-focus-within:opacity-100 group-hover:opacity-100`}
+      >
+        Stop
+      </button>
     </li>
   );
 }
@@ -128,14 +113,10 @@ export function HelpersTray({
   boss,
   helpers,
   bots,
-  reports,
-  seen,
 }: {
   boss: string;
   helpers: Thread[];
   bots: Bots;
-  reports: Map<string, string>;
-  seen: (helperId: string, reportId: string) => boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [lit, setLit] = useState(false);
@@ -143,12 +124,7 @@ export function HelpersTray({
   const location = useLocation();
   const show = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
-  const rows = helpers.filter((h) => {
-    if (h.closed) return false;
-    if (isLiveHelper(h)) return true;
-    const report = reports.get(h.id);
-    return ended.includes(h.run_status) && !(report && seen(h.id, report));
-  });
+  const rows = helpers.filter(isLiveHelper);
   const shown = rows.length > 0;
   const fromSidebar = shown && (location.state as { helpers?: boolean } | null)?.helpers === true;
   useEffect(() => {
@@ -190,8 +166,6 @@ export function HelpersTray({
   }, [isOpen]);
 
   if (!shown) return null;
-  const working = rows.filter(isLiveHelper).length;
-  const reported = rows.length - working;
   const waiting = rows.filter((h) => h.approval);
   const asking = waiting[0];
   const askingBot = asking && bots[asking.bot_id];
@@ -224,11 +198,7 @@ export function HelpersTray({
             ))}
           </span>
           <span className="text-ink">Working with {boss}</span>
-          <span className="text-muted">
-            {[working && `${working} working`, reported && `${reported} reported`]
-              .filter(Boolean)
-              .join(' · ')}
-          </span>
+          <span className="text-muted">{rows.length} working</span>
           <button
             ref={show}
             type="button"

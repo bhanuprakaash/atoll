@@ -32,10 +32,13 @@ for (const late of ['image', 'run', 'burst'] as const) {
                 response,
                 json: {
                   ...run,
-                  report: {
-                    ...run.report,
-                    blocked:
-                      'Waiting for a detailed review of the changes and the results before this work can continue.',
+                  usage: {
+                    model: 'claude-sonnet-5-5',
+                    calls: 7,
+                    input_tokens: 10,
+                    output_tokens: 10,
+                    cache_read_tokens: 0,
+                    cache_write_tokens: 0,
                   },
                 },
               });
@@ -61,7 +64,7 @@ for (const late of ['image', 'run', 'burst'] as const) {
               )
               .toBe(600);
           } else if (late === 'run') {
-            await expect(log.getByText(/^Blocked: Waiting for a detailed review/)).toBeVisible();
+            await expect(log.getByText(/Sonnet 5\.5, 7 calls/)).toBeVisible();
           } else {
             await log.evaluate(async (el) => {
               for (let n = 0; n < 30; n++) {

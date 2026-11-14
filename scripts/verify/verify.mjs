@@ -143,10 +143,10 @@ async function apiPass(base, provider) {
       `${provider}: reply of run 2 has kestrel`,
       JSON.stringify(run2.reply),
     );
-    const reported = (r) => r.status === "done" && r.report != null;
+    const replied = (r) => r.status === "done" && !!r.reply;
     check(
-      reported(run1) && reported(run2),
-      `${provider}: both runs done with a report`,
+      replied(run1) && replied(run2),
+      `${provider}: both runs done with a reply`,
       `${run1.status}, ${run2.status}`,
     );
     if (!fake) return;
@@ -217,8 +217,16 @@ async function send(page, text) {
   }
   throw new Error("Send stayed disabled");
 }
+async function newBot(page) {
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await page.getByRole("menuitem", { name: "New Bot" }).click();
+}
+// openThreads opens the popup from a Bot's "N more" line in the sidebar.
 async function openThreads(page) {
-  await page.getByRole("button", { name: /^Threads/ }).click();
+  await page
+    .getByRole("navigation", { name: "Bots" })
+    .getByRole("button", { name: /^\d+ more$/ })
+    .click();
   const panel = page.getByRole("dialog", { name: /^Threads with / });
   await panel.waitFor();
   return panel;
@@ -235,7 +243,7 @@ async function uiPass(base, provider) {
   try {
     const name = `Ada ${Date.now()}`;
     await page.goto(base);
-    await page.getByRole("button", { name: "New Bot" }).click();
+    await newBot(page);
     await page.getByRole("textbox", { name: "Name" }).fill(name);
     await page
       .getByRole("textbox", { name: "Persona" })
@@ -272,9 +280,10 @@ async function uiPass(base, provider) {
     await say(fake ? remember.fake : remember.real);
     const saved = page.getByRole("region", { name: "Saved memory" });
     await saved.waitFor();
+    await saved.getByRole("button", { name: /^Saved a memory: / }).click();
     await shot("6-memory-saved");
     await saved.getByRole("button", { name: "Retire", exact: true }).click();
-    await seen(/^Retired$/);
+    await saved.waitFor({ state: "detached" });
     await shot("7-memory-retired");
     check(true, `ui: ${provider} flow done`);
   } catch (err) {
@@ -324,7 +333,7 @@ async function screensPass(base, provider) {
     await page.goto(base);
     await page.getByRole("navigation", { name: "Bots" }).waitFor();
     await shot("sidebar");
-    await page.getByRole("button", { name: "New Bot" }).click();
+    await newBot(page);
     await page.getByRole("heading", { name: "New Bot" }).waitFor();
     await shot("new-bot");
     await page.getByRole("textbox", { name: "Name" }).fill(name);
@@ -337,6 +346,15 @@ async function screensPass(base, provider) {
       .getByRole("heading", { name: `What should ${name} work on?` })
       .waitFor();
     await shot("empty-thread");
+    // The sidebar folds threads past its row limit into "N more".
+    const bots = await (await fetch(base + "/api/bots")).json();
+    const id = bots.find((b) => b.name === name).id;
+    for (let i = 0; i < 4; i++)
+      await fetch(`${base}/api/bots/${id}/threads`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: keep }),
+      });
     const panel = await openThreads(page);
     await shot("threads");
     await panel.getByRole("button", { name: "New thread" }).click();
@@ -350,7 +368,7 @@ async function screensPass(base, provider) {
     await log.getByRole("status").waitFor();
     await shot("working");
     await log
-      .getByText(/^Worked \d+(m \d+)?s · /)
+      .getByText(/ · Worked \d+(m \d+)?s · /)
       .last()
       .waitFor();
     await shot("summary");
@@ -399,7 +417,7 @@ async function screensPass(base, provider) {
       }
       if (section === "Skills") {
         await page.getByRole("button", { name: "New skill" }).click();
-        await page.getByRole("dialog", { name: /^Edit / }).waitFor();
+        await page.getByRole("dialog", { name: "New skill" }).waitFor();
       }
       await shot(section.toLowerCase());
     }
@@ -433,10 +451,8 @@ async function chiefPass(base, provider, undo) {
   const shot = (name) =>
     page.screenshot({ path: join(out, `chief-${provider}-${name}.png`) });
   const say = (text) => send(page, text);
-  const newThread = async () => {
-    const panel = await openThreads(page);
-    await panel.getByRole("button", { name: "New thread" }).click();
-    await page.waitForURL((u) => u.href.endsWith("/new"));
+  const newThread = async (botId) => {
+    await page.goto(`${base}/bots/${botId}/new`);
     await page
       .getByRole("heading", { name: /^What should .* work on\?$/ })
       .waitFor();
@@ -466,13 +482,14 @@ async function chiefPass(base, provider, undo) {
       .getByRole("navigation")
       .getByText("Chief", { exact: true })
       .click();
-    await newThread();
+    await newThread("chief");
     await say((fake ? ask.fake : ask.real)(provider));
     const change = page
       .getByRole("region", { name: "Platform change" })
-      .filter({ has: page.getByText("Lagoon", { exact: true }) })
+      .filter({ has: page.getByRole("button", { name: /Created .*Lagoon/ }) })
       .last();
     await change.waitFor();
+    await change.getByRole("button", { name: /Created .*Lagoon/ }).click();
     await shot("1-chief-changes");
     const chiefURL = page.url();
     const lagoon = (await api("/bots")).find(
@@ -488,8 +505,7 @@ async function chiefPass(base, provider, undo) {
     );
     await page.goto(`${base}/settings/skills`);
     await shot("2-skill-library");
-    await page.goto(`${base}/bots/${lagoon.id}`);
-    await newThread();
+    await newThread(lagoon.id);
     await say(fake ? useSkill.fake : useSkill.real);
     await answered(page.getByText(/Hello from the lagoon/).first(), "3");
     await shot("3-bot-uses-skill");
@@ -519,9 +535,11 @@ async function chiefPass(base, provider, undo) {
       }),
     });
     await page.goto(`${base}/bots/${lagoon.id}/new`);
+    await page.getByRole("combobox", { name: "Repo" }).click();
     await page
-      .getByRole("combobox", { name: "Repo" })
-      .selectOption({ label: `atoll-fixture-${provider}` });
+      .getByRole("option", { name: `atoll-fixture-${provider}` })
+      .first()
+      .click();
     await say(fake ? useSkill.fake : useSkill.real);
     await answered(page.getByText(/repo-skill/).first(), "4");
     await page

@@ -10,16 +10,16 @@ A part is found by exact lines of the system prompt, not by its wording.
 
 | Part | Present when | Marker |
 | --- | --- | --- |
-| Shared core | every Bot | the lines `How you talk`, `Memory` and `Finish` |
-| Code part | `repo_access` is `"all"` or a non-empty list | the line `How you work` and the text `branch <type>/<short-slug>` |
+| Shared core | every Bot | the lines `How you talk`, `Ending a run`, `Reef notices` and `Memory` |
+| Code part | `repo_access` is `"all"` or a non-empty list | the line `Code` and the text `worktree start_work gives you` |
 | Platform block | `can_manage_platform` is true | the line `Managing Reef` |
 
-A Bot without the code part has neither the `How you work` line nor the branch rule. The platform
+A Bot without the code part has neither the `Code` line nor the worktree rule. The platform
 block's text is fixed below only by its marker lines and its size.
 
-A Bot with repo access and the switch off gets today's prompt byte for byte:
-`testdata/golden/system.txt` is unchanged, so the code part stays between `How you talk` and
-`Memory`.
+A Bot with repo access and the switch off gets the design's prompt byte for byte:
+`testdata/golden/system.txt` holds it for Ada (user Bhanu, persona `A careful Go engineer.`).
+The exact text of every part is in [no-report-contract.md](no-report-contract.md), Prompt.
 
 ## Chief and API
 
@@ -35,8 +35,7 @@ A Bot with repo access and the switch off gets today's prompt byte for byte:
 - Chief's Bot settings have no `radiogroup` "Repo access", and its empty thread no `combobox`
   "Repo". Another Bot's have both.
 - `POST /api/bots` accepts `can_manage_platform: true` and returns it.
-- The `prompt-hey` recordings answer the message `hey` with `finish_run` and the reply `Hello.`
-  on both fakes.
+- The `prompt-hey` recordings answer the message `hey` with the reply `Hello.` on both fakes.
 
 ## Repo access at every run
 
@@ -94,29 +93,3 @@ repo and no file read; one message asking for model, repo access, skills and con
 default each, creating nothing; rename without asking; sign-in is the user's; refusing code work;
 the voice's tone and plain questions, errors and undo. `TestPrompt_ChiefPlatformBlock` covers the
 deterministic part behind them: the guide and the ask-first rule are in the prompt.
-
-## The reply carries the answer
-
-Tests: `e2e/answer_in_reply_test.go`. One rule in the shared core's `Finish` section, for every
-Bot (plain, repo, platform, Chief), on both providers. The `Finish` section, lowercased, is matched
-by meaning: each rule needs one word from each keyword group anywhere in the section, not in one
-sentence.
-
-| Rule | Keyword groups |
-| --- | --- |
-| The reply carries the answer | `reply` or `response`; `answer`; `itself`, `in full`, `carries`, `holds`, `contains` or `includes` |
-| 2-3 lines is for status, not an asked-for answer | `2-3`; `status`, `progress`, `what you did` or `what was done`; `answer`; `not`, `never` or `n't` |
-| The answer is never only in finish_run or thinking | `finish_run`; `answer`; `not`, `never` or `n't`; and `thinking`; `not`, `never` or `n't` |
-| The reply comes before finish_run; nothing after it is shown | `finish_run`; `after`; `show`, `seen`, `kept` or `stored` |
-
-- `2-3` appears once in the whole system prompt, so Chief's ask-first block has no special
-  exemption (no `exempt` anywhere), and Chief's platform block stays at most 2000 bytes.
-- `testdata/golden/system.txt` holds `<finish rules>` in place of the `Finish` lines
-  (`TestMemory_PromptGoldenAndBudget` swaps them before comparing), so no exact wording is pinned.
-
-| Acceptance | Test |
-| --- | --- |
-| Every Bot's core says the reply holds the answer and comes before finish_run; 2-3 lines is for status; one rule, no Chief exemption | `TestPrompt_ReplyCarriesAnswerRule/{claude,codex}` |
-
-Real-provider only: "What are this repo's product principles?" gets the principles in the visible
-reply.

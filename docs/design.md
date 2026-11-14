@@ -183,15 +183,16 @@ counts a Bot that is already gone as removed.
   exits after replying. No agent process lives between messages.
 - A thread records when the user last opened it (`POST /api/threads/{id}/opened`, sent when the
   thread view opens and when a run ends while it is on screen; never by a read, which the UI
-  polls). The Replied and Failed labels (App and UI, Thread labels) compare the newest run's end
-  with it and survive a restart. Threads that existed when this shipped start as read. A run that
-  ended `done` with no reply, and a background run that called no `tell_user`, do not count.
+  polls). The Replied and Failed labels (App and UI, Thread labels) compare it with the
+  thread's last reply or `tell_user` message and its last failed run, and survive a restart.
+  Threads that existed when this shipped start as read. A run that ended `done` with no reply, and
+  a background run that called no `tell_user`, do not count.
 - Pinning to the sidebar (`POST`/`DELETE /api/threads/{id}/pin`): at most 3 open threads per Bot.
   A 4th pin answers `409` unless it names a pin to replace (`{replace}`), done in one transaction.
   Closing a thread drops its pin; helper threads cannot be pinned.
 - `GET /api/events` is one SSE stream for the whole app: `approval`, `approval_closed`,
-  `run_finished`, `mr_updated` and `platform_changed` from every thread, each as `{thread_id,
-  bot_id, bot_name, title, data}` with `data` as on the thread's own stream. On connect it sends
+  `run_finished`, `told`, `mr_updated` and `platform_changed` from every thread, each as
+  `{thread_id, bot_id, bot_name, title, data}` with `data` as on the thread's own stream. On connect it sends
   the approvals open now, then one `earlier` event: the island's Earlier list, built from rows
   (see the island), each with `at` as RFC 3339. A live event for something `earlier` lists (a run
   that finished while it was built, the same MR, the same change) is not sent again. Every
@@ -518,18 +519,20 @@ Follow-ups:
   failed, so it cannot repeat or be lost.
 - Background runs. A run that starts only with Reef notices (a helper finished, a PR merged, CI
   finished, a ticket closed) is a background run, for every Bot not in a helper thread. Its final
-  message is never a chat message and does not make the thread Replied: it becomes the Bot's status
-  line (App and UI). The run lists `tell_user(text)`; each call adds one message from the Bot to
-  the chat and makes the thread Replied. Reef starts the prompt with one line: `Reef: background
-  run. {user} does not see your final message, so end with one line of status. If {user} must act
+  message is never a chat message, does not make the thread Replied and shows nowhere (App and
+  UI). The run lists `tell_user(text)`; each call adds one message from the Bot to
+  the chat at once, while the run goes, and makes the thread Replied. Reef starts the prompt with one line: `Reef: background
+  run. {user} does not see your final message. If {user} must act
   (a PR to merge, a decision, a failure you cannot fix), tell them with tell_user.` A run with any
   message from the person is an ordinary run: its final message is the reply and `tell_user` is not
   listed. A helper thread has no background runs: every final message a helper writes goes to its
   boss, its own CI wake included.
   - Guard: when a background run's notices include a failure Reef knows of (a helper failed,
-    stopped or hit its limit; CI failed) and the run ends without a `tell_user`, its final message
-    is posted to the chat as an ordinary reply and the thread is Replied. *A missed `tell_user`
-    would otherwise be silence; the guard reads only facts Reef holds, never the text's meaning.*
+    stopped, hit its limit or was deleted; a restart cut helpers short; CI failed) and the run ends
+    without a `tell_user`, its final message is posted to the chat as an ordinary reply and the
+    thread is Replied. The guard reads the inbox row's `notice`, which Reef sets where it writes the
+    wake, never the text. `tell_user` counts as called once its message is stored. *A missed `tell_user` would otherwise be silence; the guard reads only facts
+    Reef holds, never the text's meaning.*
   *Quiet by default, loud on purpose: posting reports into the chat made the person read each one
   twice, and one blocker five times (#396), and the old "write no reply" rule was a request the
   boss broke. Spike 2026-11-13: with the rule only in the system prompt, Sonnet wrote a blocker as
@@ -562,7 +565,7 @@ Follow-ups:
   `worktree_removed` reason `merged`; a helper on its own branch keeps its worktree and its own MR.
   While any of those helpers' runs is going nothing is removed, and the watcher tries again. A
   `delegate` that fails part way removes the helper worktree, branch and thread it made.
-- Helpers show in the boss's thread (App and UI), above the composer with the boss's status line.
+- Helpers show in the boss's thread (App and UI), above the composer.
 - The helpers line: the boss sees its free helper slots, so an idle slot is not left behind a
   queue. One line from the boss thread's helper runs going (limit 3, above):
   `Helpers: 1 of 3 running (Tester on Review #184). 2 free.`, each running helper as
@@ -692,6 +695,13 @@ Follow-ups:
   empty). Storing merged or closed deletes the thread's held `ci` row in the same transaction, as
   does a new head commit or a newer `ci` wake, so a lead is never woken for CI of a commit that is
   no longer the head or after the PR is done. A held row of another kind is never dropped.
+- An inbox row also has a `notice`, which the chat and the prompt never read: empty for a person's
+  message, else what the wake is. Helper wakes: `helper_done`, `helper_failed`, `helper_stopped`,
+  `helper_limited`, `helper_deleted`; `restart` for the restart message; PR wakes: `ci_passed`,
+  `ci_failed`, `merged`, `closed`, `base`. It is separate from `kind` because a helper's wake has
+  no `kind` and `ci` covers a failed and a passed run. The background guard (Delegation) reads
+  `notice` for `helper_failed`, `helper_stopped`, `helper_limited`, `helper_deleted`, `restart`
+  and `ci_failed`.
 - The wake is one plain sentence built by Reef from fixed words, the MR as the thread names it
   (`PR #7`, `MR !7`), numbers and check names; no PR title, body, commit message or other API text
   is joined into it: `PR #7 merged into main at aff4bd0`, `PR #7 closed`,
@@ -729,8 +739,7 @@ Follow-ups:
   it reads PR n merged while the thread's tracked PR is a draft whose body starts `Waits for #<n>`
   (that thread's poll also reads PR n until then), the Bot is woken once (a fourth event), kind
   `base`, with `PR #<n> merged; PR #<m> was waiting for it` (held and delivered like any wake;
-  once-only through the new thread column `mr_base_woke`; `mr_head` holds the last read's head, for
-  `changed`). The Bot runs `gh pr edit --base <default branch>` when its PR's base is still the
+  once-only through the new thread column `mr_base_woke`; `mr_head` holds the last read's head). The Bot runs `gh pr edit --base <default branch>` when its PR's base is still the
   merged branch, then `gh pr ready`. *#202 merged before its test #174, and test-guard flagged #174
   for carrying code.*
 - Known gap: webhooks; a wake comes within a poll interval plus a settle read, or later after
@@ -1028,10 +1037,12 @@ Follow-ups:
   `cancelled` on an error; any state other than `queued` or `started` is terminal. The outcome is
   the `result` with no `origin` that arrives after Reef's `started`; the request ends when it and
   the terminal state have both arrived, in either order. `is_error: true` is a failure, read as
-  before (signed out, usage limit, other). A terminal state with no such `result` within a few
-  seconds, or a process exit, fails the run with the exit reason. If no `queued` arrives for Reef's
-  uuid before the first `result`, the build has no lifecycle events: Reef ends on the first `result`
-  with no `origin` and logs a warning once per process. *Spike 2026-11-13, Claude 2.1.323 with
+  before (signed out, usage limit, other). A terminal state with no such `result` within 5 s fails
+  the run; a `result` with no terminal state within the same 5 s ends the request with that
+  result. A process exit with no `result` fails the run with the exit reason; with a `result`
+  held, the request ends with that result (an `is_error` result still fails). If no `queued`
+  arrives for Reef's uuid before the first `result`, the build has no lifecycle events: Reef ends
+  on the first `result` with no `origin` and logs a warning once per process. *Spike 2026-11-13, Claude 2.1.323 with
   Reef's flags: on resume, an empty `result` with `origin: task-notification` came before Reef's
   message started; Reef's uuid completed after the real answer, with approvals allowed after 2 s and
   denied after 20 s, and was `cancelled` on an API error. Closing Claude's input does not bound a
@@ -1382,10 +1393,11 @@ Follow-ups:
   `delegate`'s description) go to atoll's `AGENTS.md`. "Never merge" goes to each Bot's persona: on
   upgrade, every existing Bot with repo access gets `Never merge: {user} merges.` appended once,
   visible and editable; a new Bot's persona is the person's to write. *Nothing in code stops a
-  merge; a Bot that may merge (a release Bot) drops the line.*
+  merge; a Bot that may merge (a release Bot) drops the line.* `track_mr`'s description does not
+  say "Never merge" either, so the persona is the one place that carries it.
 - The platform block holds the Reef guide (so Chief answers without reading a file), the ask-first
   rule for creates and Chief's voice. The ask-first rule overrides the core's "ask only when two
-  real readings". The voice lives here, not in the persona; only a Bot with the switch has it.
+  readings are both real". The voice lives here, not in the persona; only a Bot with the switch has it.
 - Chief reads local files only through two server tools (Chief on Claude has no file tool; Bots >
   Chief, Known gap, covers Codex): `import_skill(path)` imports a skill folder; `import_agent(path)`
   reads an agent file. For a Bot from an agent file, Chief calls `import_agent`, imports each skill
@@ -1490,7 +1502,7 @@ Reef guide
 - Sign-ins are the user's. Never attach an unsigned connection; point to Settings > Connections.
 
 Ask first
-- To create a Bot or skill, ask in ONE message for each missing item, with a default. Put the full proposal for each Bot (model, skills, repo access, connections) in the reply; the user sees nothing else. Create nothing in that run. "ok" means the defaults. This overrides "Ask only on two real readings".
+- To create a Bot or skill, ask in ONE message for each missing item, with a default. Put the full proposal for each Bot (model, skills, repo access, connections) in the reply; the user sees nothing else. Create nothing in that run. "ok" means the defaults. This overrides "Ask only when two readings are both real".
 - Small edits (rename, persona, look) need no question.
 
 Import a local skill
@@ -1552,10 +1564,19 @@ Voice
   - A second line shows only while a run works (the live verb, "Running make build", with three
     wave dots) or an approval waits ("Needs you: ..." in the colour of a thread's "Needs you");
     otherwise one line. *Two lines for every Bot made the list twice as tall as Claude's.*
+  - A quiet background run (no `tell_user`) changes nothing the person sees here: the Bot row
+    keeps its previous activity line and the thread keeps its place. The activity line comes from
+    the thread's newest run that is not a quiet one (a done run that posted no message). A run
+    that called `tell_user` may still move the thread. *Its final message is a status line, shown
+    nowhere; it moved the older thread above a newer one and replaced the Bot's activity (#459).*
+  - Opening Reef at `/` goes to the Bot whose newest thread that is not a helper's moved last.
+    *Landing on a helper's thread showed work the person never asked to see.*
   - `+` at the top opens New Bot and New group; the bottom user row opens Settings. No group chats.
   - A thread's activity time moves when a run starts, an approval opens or closes, and a run ends
     (also one failed at start-up), not on every event. *The sidebar polls every 2 s; a write per
-    text delta would cost more than the time is worth.*
+    text delta would cost more than the time is worth.* A background run that started from Reef
+    notices alone moves it only when it posts (`tell_user`), fails or is stopped: not when it
+    starts, not when it ends done with a status line.
 - Sidebar width: 340px by default, dragged on its right edge between 260px and 480px; double-click
   on the edge resets it to 340px; Left and Right arrows on the focused edge move it 16px. Kept in
   the web view's `localStorage` (`atoll.sidebarWidth`), clamped when read. The Bot list's scrollbar
@@ -1623,11 +1644,17 @@ Voice
     poll with every thread open.*
   - `hidden` comes from the thread row: the state and `mr_changed_at` of its PR and a
     `max(created)` over the person's messages, read only for a merged thread.
-  - `new` comes from the thread row: last heard from after the user last opened it (`last_heard`,
-    after `created` too) and no run live. A run that ends with a reply, a failure or a stop sets
-    `last_heard` in the transaction that ends it, a run failed at start-up included; one that ends
-    `done` with no reply sets only `last_activity`, which still orders the rows. *A column, not a
-    scan of the runs since the last open, so the poll stays one row read.*
+  - `new`, `failed` and `limited` come from the thread row, not from `runs`. `new`: `last_heard`
+    is after the user last opened the thread (and after `created`) and no run is live.
+    `last_heard` is set only by a run that ends `done` with a posted reply and by a `tell_user`
+    message. `failed`: `last_failed` is after the last open; a run that ends `failed` sets it, a
+    run failed at start-up included. `limited`: `limited_until` holds the provider's reset time; a
+    run that ends with the usage limit sets it (0, which shows no label, when the provider
+    gave no time) and a run that ends `done` clears it. A run that ends `done` with no reply, or
+    stopped by the user, sets only `last_activity`, which still orders the rows. *Columns, not a scan of the runs since the last
+    open, so the poll stays one row read.*
+  - A run the user stopped gets no sidebar label: they stopped it, so nothing is waiting for them.
+    It is listed in the island's Earlier (see the island), as finished.
   - Known gap: the live scan reads the whole `runs` table each poll, so it grows with run history;
     an index on `runs.status` would fix it.
 - New thread: `+` on Bot row hover, the Bot's right-click menu (New thread, Pin to sidebar, Move to
@@ -1705,9 +1732,13 @@ Voice
   - On connect the server builds Earlier from rows newer than the timestamp, newest first, one row
     per event except runs, with the text a live event gets:
     - A run that ended in an open thread: a thread's newest ended run only, and only while it ended
-      after the thread's `last_opened_at` (the rule of the sidebar's Replied). `runs.finished_at`;
-      "Pilot finished Review !42", or "Pilot failed Review !42" for a failed one, which includes a
+      after the thread's `last_opened_at`. A newest ended run that is `done` with no message of the
+      Bot's is not listed. `runs.finished_at`; "Pilot finished Review !42", or "Pilot failed Review !42" for a failed one, which includes a
       run the restart cut short; a run the user stopped counts as finished.
+    - A thread whose background run still goes and has stored a `tell_user` message since then and
+      since the thread was last opened: "Pilot messaged Review !42". The `told` event, sent when
+      the message is stored, makes the same row live and the thread's own stream refreshes its
+      messages. One row per thread: the run's end replaces it with the finished row.
     - A thread whose MR is `opened` since then (`threads.mr_changed_at`, new, set when `mr_state`
       changes or `track_mr` gives a different URL): "Pilot opened !42", the MR title as detail.
     - A platform change (`changes.created_at`): "Chief created Bot Lagoon".
@@ -1715,8 +1746,8 @@ Voice
     not replayed, except that an approval still open drops the island.
   - Needs you is state, not an event: it shows while true and the timestamp never clears it. A
     restart ends a run that waited on an approval as failed, so it moves under Earlier.
-  - The pill gets no new mark: the island and the sidebar's Replied agree (every unread run is
-    both) without a second red thing.
+  - The pill gets no new mark: the island and the sidebar's Replied agree (every unread reply is
+    both; a run the user stopped is only in Earlier) without a second red thing.
   - Each row has a dismiss (×) button, shown on hover and keyboard focus,
     `POST /api/island/dismiss`: a run row marks its thread read (`last_opened_at`), an MR row sets
     `threads.island_dismissed_at` and stays hidden while `mr_changed_at` is not newer, and a
@@ -1846,10 +1877,14 @@ Voice
   scrolled away.
 - While a run works, the thread shows the creature, one status line and the time; never raw tool
   calls, step lines or streamed text (#399). The status line is the newest of: the Bot's latest
-  sentence (the last line of streamed text, cut to one line with `…`); a tool step (a command's own
+  sentence (the last line of streamed text up to its last finished sentence, cut to one line with
+  `…`; an unfinished one shows once the stream pauses for a second); a tool step (a command's own
   description when the model wrote one, else the verb and target, "Reading repo-step.tsx");
-  "Thinking" before anything arrives. When the run ends, the reply (the request's final message,
-  Threads and runs) appears once as a message; nothing is replaced or jumps. A reload mid-run shows
+  "Thinking" before anything arrives. The line changes at most once every 0.7 s, the newest text
+  winning, and fades in; the time sits at the row's right edge and never moves. *A fast stream
+  redrew a growing half sentence every frame and slid the time with it.* When the run ends, the
+  reply (the request's final message, Threads and runs) appears once as a message; nothing is
+  replaced or jumps. A reload mid-run shows
   the status line with the latest text or step. The sidebar row and the island keep the short verb.
   *Streamed text swapped for the reply looked like a glitch.* Approvals show a short form per tool:
   a command shows the command, an edit shows the file with its diff behind a toggle, anything else
@@ -1886,17 +1921,17 @@ Voice
   until answered); Working (a run is going); Failed (a run failed since the person last opened the
   thread, until opened); `Out until 3 PM` (the provider's usage limit, until its reset time);
   Replied (a reply or a `tell_user` message since the person last opened the thread, until opened;
-  the API's `new`). The sidebar row, the Bot row and the island use the same words. A helper thread
+  the API's `new`). `GET /api/bots` gives each thread's `state` (`needs_you`, `running`, `failed`,
+  `limited` with `resets_at`, `new` or empty). The sidebar row, the Bot row and the island use the same words. A helper thread
   is never Replied: its replies are for its boss. *Each label is a fact Reef holds; whether a reply
   is a question is the model's meaning, so a question is Replied like any reply.*
-- A background run's status line (Delegation) shows above the composer, in the helpers' region,
-  newest line only, muted; a thread with no helpers shows the same line there. It is not a message
-  and never makes the thread Replied. *Until #429's thread panel takes it over.*
+- A quiet background run (one that called no `tell_user`) shows its final message nowhere in the
+  thread: not as a message, not as a line above the composer, and it never makes the thread
+  Replied. *A muted line above the composer was noise the person did not need.*
 - Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` tray (a region of
   that name) on top of the composer, on its surface and border: one line of about 32 px that never
   grows. It holds each helper task's creature, stacked (two helpers of one Bot are two creatures),
-  `N working · N reported` (a zero part is left out) and `Show`; with no helper running or unread,
-  nothing shows. Only what needs the person opens itself: a helper's open approval is one line under
+  `N working` and `Show`; with no helper running, nothing shows. Only what needs the person opens itself: a helper's open approval is one line under
   the summary, the approval card led by the helper's creature and name (`Tester wants to run make
   check`, with Allow and Deny); with two waiting it shows the first and `1 more`. It leaves when
   answered, in either thread (`approval_closed`), and a message in the boss's composer answers it as
@@ -1920,11 +1955,8 @@ Voice
   `!7`) as a link, with the composer chip's state dot and, while open, its CI as a word: `running`
   (muted), `passed` (green) or `failed` (red, a real failure), from the last read of the watcher (so
   `mr_ci` joins `mr_state` in every thread summary, `helpers` included); no PR, no mark. The resting
-  line holds no PR text. A helper whose run ended stays as a row with `Reported` (`Failed` or
-  `Stopped` for those ends) in place of the step and time, and in the summary's reported count,
-  until its report (the helper Bot's message in the chat) has been in the visible part of the chat;
-  then it leaves and the count follows. Which reports were seen is kept in the browser per helper
-  thread, so a reload does not bring one back. A new helper reaches the boss's page at once
+  line holds no PR text. A helper whose run ended leaves the tray at once: its reply goes to its
+  boss, never into the boss's chat (Delegation), so there is no report to wait on. A new helper reaches the boss's page at once
   (`helper_started` on the boss's stream, which refreshes its thread); later changes arrive with the
   thread's 2 s refresh. *A report has no verdict to read; guessing one from prose is not something
   Reef does.* The chat keeps one line where work was handed off, after the message that led to it

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"atoll/provider"
 	"atoll/run"
@@ -48,11 +49,11 @@ func TestMCP(t *testing.T) {
 			name: "tools/list", method: "POST",
 			give:       `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
 			wantStatus: 200,
-			wantBody:   `"name":"finish_run"`,
+			wantBody:   `"name":"start_work"`,
 		},
 		{
-			name: "finish_run with an unknown token", method: "POST",
-			give:       `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"finish_run","arguments":{"done":"a","tried":"b","blocked":"c","next":"d"}}}`,
+			name: "start_work with an unknown token", method: "POST",
+			give:       `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"start_work","arguments":{"type":"feat","slug":"x"}}}`,
 			wantStatus: 200,
 			wantBody:   `"error":{"code":-32603`,
 		},
@@ -83,6 +84,74 @@ func TestMCP(t *testing.T) {
 			}
 			if !strings.Contains(strings.TrimSpace(string(body)), tt.wantBody) {
 				t.Fatalf("body %s, want it to contain %s", body, tt.wantBody)
+			}
+		})
+	}
+}
+
+func TestMCP_ToolsListTellUser(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "Ada", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinary, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	background, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	urls := make(chan string, 2)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	runs := run.New(run.Config{
+		Store: st, Log: log, DataDir: t.TempDir(), MCPURL: "http://atoll" + MCPPath, PollInterval: time.Hour,
+		Launch: func(context.Context, string) (provider.Session, provider.Config, error) {
+			return &urlSession{events: make(chan provider.Event), url: urls}, provider.Config{}, nil
+		},
+	})
+	t.Cleanup(func() { _ = runs.Close() })
+	srv := httptest.NewServer(New(st, nil, runs, log, nil, ""))
+	t.Cleanup(srv.Close)
+	if _, _, err := runs.Send(ctx, ordinary.ID, "hi", nil); err != nil {
+		t.Fatal(err)
+	}
+	ordinaryToken := path.Base(<-urls)
+	if _, err := st.Enqueue(ctx, store.InboxItem{ThreadID: background.ID, Text: "PR #1 merged", Kind: "merged", Queued: true}); err != nil {
+		t.Fatal(err)
+	}
+	runs.Start()
+	backgroundToken := path.Base(<-urls)
+
+	tests := []struct {
+		name  string
+		token string
+		want  bool
+	}{
+		{"ordinary run", ordinaryToken, false},
+		{"background run", backgroundToken, true},
+		{"unknown token", "nope", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := http.Post(srv.URL+MCPPath+tt.token, "application/json",
+				strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			body, _ := io.ReadAll(resp.Body)
+			if !strings.Contains(string(body), `"name":"start_work"`) {
+				t.Fatalf("tools/list %s, want the base tools", body)
+			}
+			if got := strings.Contains(string(body), `"name":"tell_user"`); got != tt.want {
+				t.Fatalf("tell_user listed = %v, want %v; body: %s", got, tt.want, body)
 			}
 		})
 	}
@@ -239,59 +308,6 @@ func TestPlatform_ChangeRecordFailsWithEntity(t *testing.T) {
 	bots, err := e.st.Bots(ctx)
 	if err != nil || len(bots) != 1 {
 		t.Fatalf("bots = %v, %v; want only Chief", bots, err)
-	}
-}
-
-func TestMCP_FinishRunHelpersLineFails(t *testing.T) {
-	ctx := t.Context()
-	st, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	helper, err := st.CreateBot(ctx, store.Bot{Name: "Tester", Provider: "claude"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	boss, err := st.CreateBot(ctx, store.Bot{Name: "Boss", Provider: "claude", Delegates: []string{helper.ID}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	thread, err := st.CreateThread(ctx, boss.ID, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess := &urlSession{events: make(chan provider.Event), url: make(chan string, 1)}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	runs := run.New(run.Config{
-		Store: st, Log: log, DataDir: t.TempDir(), MCPURL: "http://atoll" + MCPPath,
-		Launch: func(context.Context, string) (provider.Session, provider.Config, error) {
-			return sess, provider.Config{}, nil
-		},
-	})
-	t.Cleanup(func() { _ = runs.Close() })
-	srv := httptest.NewServer(New(st, nil, runs, log, nil, ""))
-	t.Cleanup(srv.Close)
-	if _, _, err := runs.Send(ctx, thread.ID, "hi", nil); err != nil {
-		t.Fatal(err)
-	}
-	e := platformEnv{st: st, srv: srv, token: path.Base(<-sess.url), thread: thread}
-	_, err = st.DB().ExecContext(ctx,
-		"INSERT INTO threads (id, bot_id, parent_thread_id, created) VALUES ('bad', ?, ?, 'x')",
-		helper.ID, thread.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := e.call(t, "finish_run", `{"done":"All of it."}`)
-	if !strings.Contains(got, "Report saved.") || strings.Contains(got, "error") {
-		t.Fatalf("response %s, want the saved report without an error", got)
-	}
-	id, err := st.LatestRun(ctx, thread.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ru, err := st.Run(ctx, id); err != nil || ru.Report == nil || ru.Report.Done != "All of it." {
-		t.Errorf("run = %+v, %v; want the report stored", ru, err)
 	}
 }
 

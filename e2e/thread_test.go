@@ -30,7 +30,7 @@ func start(t *testing.T, provider string) (*machine, *server) {
 	return m, m.serve(t)
 }
 
-func TestThread_ResumesAndReports(t *testing.T) {
+func TestThread_Resumes(t *testing.T) {
 	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
@@ -41,21 +41,15 @@ func TestThread_ResumesAndReports(t *testing.T) {
 			first := s.finished(t, ev, s.send(t, th, _keepPrompt).ID)
 			second := s.finished(t, ev, s.send(t, th, _askPrompt).ID)
 
-			subject := map[string]string{"claude": "session", "codex": "thread"}[p]
 			for _, c := range []struct {
 				got   runInfo
 				reply string
-				done  string
 			}{
-				{first, "ok", `Stored codeword "kestrel" for this ` + subject + "; no files changed."},
-				{second, "kestrel", "Answered the codeword from this " + subject + ": kestrel."},
+				{first, "ok"},
+				{second, "kestrel"},
 			} {
 				if c.got.Status != "done" || c.got.Reply != c.reply {
 					t.Errorf("run %s: status %q, reply %q; want done, %q (error %q)", c.got.ID, c.got.Status, c.got.Reply, c.reply, c.got.Error)
-				}
-				want := report{Done: c.done, Tried: "none", Blocked: "", Next: "none"}
-				if c.got.Report == nil || *c.got.Report != want {
-					t.Errorf("run %s: report %+v, want the finish_run call %+v", c.got.ID, c.got.Report, want)
 				}
 			}
 
@@ -127,8 +121,8 @@ func TestApproval(t *testing.T) {
 				s.do(t, "POST", "/api/approvals/"+id, map[string]bool{"approve": approve}, nil, http.StatusNoContent)
 				got := s.finished(t, ev, r.ID)
 
-				if got.Status != "done" || got.Report == nil {
-					t.Fatalf("run after %s: status %q, report %+v, want done with a report (error %q)", name, got.Status, got.Report, got.Error)
+				if got.Status != "done" {
+					t.Fatalf("run after %s: status %q, want done (error %q)", name, got.Status, got.Error)
 				}
 				switch {
 				case approve && !strings.HasPrefix(got.Reply, "Created"):

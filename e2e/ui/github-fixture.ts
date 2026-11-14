@@ -1,6 +1,6 @@
 // A scripted GitHub the PR watcher reads (ATOLL_GITHUB_URL): it accepts the pull requests the
 // Bots' fake gh opens, numbers them from 1 and keeps each open until a test merges it. The same
-// server shape as helpers-pr.spec.ts and waiting-card.spec.ts, for specs that need several.
+// server shape as helpers-pr.spec.ts, for specs that need several.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer, type Server } from 'node:http';

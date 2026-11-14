@@ -39,7 +39,7 @@ without a `tool_use` line.
 
 - `platform-read` (prompt `List every Bot, skill, connection, repo and model.`): requires all
   eleven platform tools in `tools/list`, else the run fails with `platform tool missing: <name>`.
-  Calls the five read tools in the order above, then `finish_run`. The reply is one JSON object:
+  Calls the five read tools in the order above, then replies. The reply is one JSON object:
   each read tool's result by tool name.
 - `platform-bots` (prompt `Which Bots do I have?`): calls `list_bots` only and replies
   `Bots: <names sorted, comma separated>.`, e.g. `Bots: Chief, Lagoon.`

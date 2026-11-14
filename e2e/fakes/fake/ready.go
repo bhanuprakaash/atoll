@@ -11,20 +11,6 @@ import (
 	"strings"
 )
 
-// ReadyArg is the JSON that follows `READY=` in a prompt, the `ready` of the scripted finish_run;
-// `[]` when the prompt has none.
-func ReadyArg(prompt string) string {
-	_, rest, ok := strings.Cut(prompt, "READY=")
-	if !ok {
-		return "[]"
-	}
-	var v json.RawMessage
-	if err := json.NewDecoder(strings.NewReader(rest)).Decode(&v); err != nil {
-		return "[]"
-	}
-	return string(v)
-}
-
 var (
 	_stackBase  = regexp.MustCompile(`Stack a fix on (\S+)`)
 	_stackWaits = regexp.MustCompile(`waiting for PR (\d+)`)

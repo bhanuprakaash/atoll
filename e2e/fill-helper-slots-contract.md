@@ -24,21 +24,20 @@ shows it (the brief's first words until the thread is named). Helpers are listed
 | A boss wake (done, stopped, failed, Bot deleted) | the message's last line, after a blank line; the helper whose run just ended is not counted |
 | `delegate` result | the `helpers` field of the JSON; the new helper counts; a refusal keeps its text |
 | `continue` result | `Sent.`, then the line on a new line |
-| `finish_run` result | `Report saved.`, then the line on a new line; only in a run that lists `delegate`, else `Report saved.` alone |
 
 ## System prompt
 
-A Bot with a non-empty delegate list, in a thread that is not a helper thread, has the sentence
-`Before finish_run, if a slot is free and a ticket is ready, delegate it first.` in its system
-prompt. A Bot with no delegates, and a helper's run (even of a Bot that has delegates), do not.
+A Bot with a non-empty delegate list, in a thread that is not a helper thread, has the line
+`- Don't leave a helper slot free while work waits.` in its system prompt (the boss part). A Bot with
+no delegates, and a helper's run (even of a Bot that has delegates), do not.
 
 ## Acceptance mapping
 
 | Acceptance (#205) | Tests |
 | --- | --- |
 | A boss wake ends with the line, built from the helper runs going | `TestSlots_WakeEndsWithHelpersLine/{claude,codex}` |
-| `delegate`, `continue` and `finish_run` results carry the same line | `TestSlots_ToolResultsCarryHelpersLine/{claude,codex}`, `TestSlots_FinishRunLineOnlyForBosses/{claude,codex}` |
-| The boss persona says: before `finish_run`, delegate a ready ticket into a free slot | `TestPrompt_BossGetsHelpersRule/{claude,codex}` |
+| `delegate` and `continue` results carry the same line | `TestSlots_ToolResultsCarryHelpersLine/{claude,codex}` |
+| The boss part says not to leave a helper slot free while work waits | `TestPrompt_BossGetsHelpersRule/{claude,codex}` |
 | Over a 60-minute live window, idle share with queued tickets drops | not specced: measured by the owner on a live round (see the PR) |
 
 Not covered: the optional Reef-side 60 s wake (skipped, see the PR), a wake held while the boss's
