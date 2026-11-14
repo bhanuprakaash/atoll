@@ -1028,10 +1028,12 @@ Follow-ups:
   `cancelled` on an error; any state other than `queued` or `started` is terminal. The outcome is
   the `result` with no `origin` that arrives after Reef's `started`; the request ends when it and
   the terminal state have both arrived, in either order. `is_error: true` is a failure, read as
-  before (signed out, usage limit, other). A terminal state with no such `result` within a few
-  seconds, or a process exit, fails the run with the exit reason. If no `queued` arrives for Reef's
-  uuid before the first `result`, the build has no lifecycle events: Reef ends on the first `result`
-  with no `origin` and logs a warning once per process. *Spike 2026-11-13, Claude 2.1.323 with
+  before (signed out, usage limit, other). A terminal state with no such `result` within 5 s fails
+  the run; a `result` with no terminal state within the same 5 s ends the request with that
+  result. A process exit with no `result` fails the run with the exit reason; with a `result`
+  held, the request ends with that result (an `is_error` result still fails). If no `queued`
+  arrives for Reef's uuid before the first `result`, the build has no lifecycle events: Reef ends
+  on the first `result` with no `origin` and logs a warning once per process. *Spike 2026-11-13, Claude 2.1.323 with
   Reef's flags: on resume, an empty `result` with `origin: task-notification` came before Reef's
   message started; Reef's uuid completed after the real answer, with approvals allowed after 2 s and
   denied after 20 s, and was `cancelled` on an API error. Closing Claude's input does not bound a

@@ -3,6 +3,7 @@ package claude
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -312,6 +313,13 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			name:  "result while the request is only queued is other",
+			state: state{req: request{uuid: "u", queued: true}},
+			line:  `{"type":"result","is_error":false,"result":"","total_cost_usd":0.5}`,
+			want: []provider.Event{{Kind: provider.KindUsage, Other: true,
+				Usage: &provider.Usage{SessionCostUSD: &cost}}},
+		},
+		{
 			name: "assistant tool calls, text skipped",
 			line: `{"type":"assistant","message":{"content":[{"type":"text","text":"hi"},` +
 				`{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}},` +
@@ -331,6 +339,113 @@ func TestParse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := parse([]byte(tt.line), &tt.state); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("parse = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRead(t *testing.T) {
+	const (
+		wait    = 100 * time.Millisecond
+		pause   = "pause"
+		queued  = `{"type":"command_lifecycle","command_uuid":"u","state":"queued"}`
+		started = `{"type":"command_lifecycle","command_uuid":"u","state":"started"}`
+		done    = `{"type":"command_lifecycle","command_uuid":"u","state":"completed"}`
+		delta   = `{"type":"stream_event","event":{"type":"content_block_delta",` +
+			`"delta":{"type":"text_delta","text":"hi"}}}`
+		result  = `{"type":"result","is_error":false,"result":"ok"}`
+		failure = `{"type":"result","is_error":true,"result":"boom"}`
+		costly  = `{"type":"result","is_error":false,"result":"","total_cost_usd":0.5}`
+	)
+	cost := 0.5
+	tests := []struct {
+		name  string
+		lines []string // a line, or pause to sit idle for longer than the wait
+		exit  string   // claude's exit status once its output ends
+		want  []provider.Event
+	}{
+		{
+			name:  "terminal state without a result fails after the wait",
+			lines: []string{queued, started, done, pause},
+			exit:  "0",
+			want: []provider.Event{{Kind: provider.KindError,
+				Text: "claude ended the request (completed) without a result"}},
+		},
+		{
+			name:  "result without a terminal state ends done after the wait",
+			lines: []string{queued, started, result, pause},
+			exit:  "0",
+			want: []provider.Event{
+				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd, Text: "ok"},
+			},
+		},
+		{
+			name:  "held answer then process exit ends done with the answer",
+			lines: []string{queued, started, result},
+			exit:  "1",
+			want: []provider.Event{
+				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd, Text: "ok"},
+			},
+		},
+		{
+			name:  "held error then process exit still fails",
+			lines: []string{queued, started, failure},
+			exit:  "1",
+			want:  []provider.Event{{Kind: provider.KindError, Text: "boom"}},
+		},
+		{
+			name:  "a request longer than the wait that ends normally is not failed",
+			lines: []string{queued, started, delta, pause, result, done},
+			exit:  "0",
+			want: []provider.Event{
+				{Kind: provider.KindText, Text: "hi"}, {Kind: provider.KindTurnEnd, Text: "ok"},
+			},
+		},
+		{
+			name:  "result while the request is only queued is other and does not end it",
+			lines: []string{queued, costly, pause},
+			exit:  "0",
+			want: []provider.Event{{Kind: provider.KindUsage, Other: true,
+				Usage: &provider.Usage{SessionCostUSD: &cost}}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New()
+			s.resultWait = wait
+			s.sent = "u"
+			s.cmd = exec.Command("sh", "-c", "exit "+tt.exit)
+			if err := s.cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			pr, pw := io.Pipe()
+			go s.read(pr)
+			go func() {
+				for _, l := range tt.lines {
+					if l == pause {
+						time.Sleep(3 * wait)
+						continue
+					}
+					_, _ = io.WriteString(pw, l+"\n")
+				}
+				_ = pw.Close()
+			}()
+
+			var got []provider.Event
+			timeout := time.After(10 * time.Second)
+			for open := true; open; {
+				select {
+				case ev, ok := <-s.Events():
+					if ok {
+						got = append(got, ev)
+					}
+					open = ok
+				case <-timeout:
+					t.Fatalf("events not closed; got %+v", got)
+				}
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("events = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
