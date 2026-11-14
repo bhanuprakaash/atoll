@@ -39,7 +39,7 @@ const (
 	// _messageBreak goes before the text of a message that follows text in the same turn.
 	_messageBreak = "\n\n"
 	_stderrKeep   = 4 << 10
-	// _resultWait is how long a request waits for its result after its terminal state.
+	// _resultWait is how long a request waits for a missing result or terminal state.
 	_resultWait   = 5 * time.Second
 	_builtinTools = "Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write"
 )
@@ -59,7 +59,7 @@ type Session struct {
 	sentMu  sync.Mutex   // guards sent
 	sent    string       // uuid of the user line Send wrote last
 
-	resultWait time.Duration // how long a request waits for the one of its two signals that is missing
+	resultWait time.Duration
 }
 
 type (
@@ -627,7 +627,8 @@ func (s *Session) read(stdout io.Reader) {
 	}
 	err := s.cmd.Wait()
 	<-readDone
-	if f := st.req.final; f != nil && f.Kind == provider.KindError && !st.req.ended && !emit([]provider.Event{*f}) {
+	if f := st.req.final; f != nil && !st.req.ended {
+		emit([]provider.Event{*f})
 		return
 	}
 	if err == nil || last == provider.KindError {
@@ -777,9 +778,10 @@ func (r *request) other() bool {
 	return r.ended || r.queued && !r.started
 }
 
-// waiting reports whether claude has said the request ended and its result has not come.
+// waiting reports whether one of the request's two end signals, its terminal state and its result,
+// is in and the other has not come.
 func (r *request) waiting() bool {
-	return !r.ended && r.final == nil && r.terminal != ""
+	return !r.ended && (r.final == nil) != (r.terminal == "")
 }
 
 // finish ends the request once its result and its terminal state are both in.
@@ -791,9 +793,13 @@ func (r *request) finish() []provider.Event {
 	return []provider.Event{*r.final}
 }
 
-// expire fails a request claude said ended and gave no result for.
+// expire ends a request whose second end signal did not come: with its result when that is held,
+// else failed.
 func (r *request) expire() []provider.Event {
 	r.ended = true
+	if r.final != nil {
+		return []provider.Event{*r.final}
+	}
 	return []provider.Event{{Kind: provider.KindError, Text: "claude ended the request (" + r.terminal + ") without a result"}}
 }
 
