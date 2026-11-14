@@ -70,10 +70,11 @@ type botResponse struct {
 }
 
 // MarshalJSON is the Bot's encoding, which botResponse's embedded Bot promotes, plus group_id,
-// always, and threads when there are any to show, even none.
+// always, threads when there are any to show, even none, and pinned, always.
 func (r botResponse) MarshalJSON() ([]byte, error) {
 	b := r.Bot
 	b.GroupID = ""
+	b.Pinned = false
 	raw, err := b.MarshalJSON()
 	if err != nil {
 		return nil, err
@@ -81,7 +82,8 @@ func (r botResponse) MarshalJSON() ([]byte, error) {
 	extra, err := json.Marshal(struct {
 		GroupID string          `json:"group_id"`
 		Threads []sidebarThread `json:"threads,omitzero"`
-	}{r.GroupID, r.Threads})
+		Pinned  bool            `json:"pinned"`
+	}{r.GroupID, r.Threads, r.Pinned})
 	if err != nil {
 		return nil, err
 	}

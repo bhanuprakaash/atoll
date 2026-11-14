@@ -171,6 +171,28 @@ func (a *api) setBotGroup(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (a *api) placeBot(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Pinned  bool   `json:"pinned"`
+		GroupID string `json:"group_id"`
+		Before  string `json:"before"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		fail(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	id := r.PathValue("id")
+	if id == _chiefID {
+		fail(w, http.StatusConflict, "Chief is always first")
+		return
+	}
+	if err := a.st.PlaceBot(r.Context(), id, body.Pinned, body.GroupID, body.Before); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *api) listGroups(w http.ResponseWriter, r *http.Request) {
 	groups, err := a.st.Groups(r.Context())
 	if err != nil {
@@ -224,13 +246,13 @@ func (a *api) patchGroup(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) moveGroup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Up *bool `json:"up"`
+		Before string `json:"before"`
 	}
-	if json.NewDecoder(r.Body).Decode(&body) != nil || body.Up == nil {
-		fail(w, http.StatusBadRequest, "up is required")
+	if json.NewDecoder(r.Body).Decode(&body) != nil {
+		fail(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if err := a.st.MoveGroup(r.Context(), r.PathValue("id"), *body.Up); err != nil {
+	if err := a.st.MoveGroup(r.Context(), r.PathValue("id"), body.Before); err != nil {
 		a.fail(w, r, err)
 		return
 	}
