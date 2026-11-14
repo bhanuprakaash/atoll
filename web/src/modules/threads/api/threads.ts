@@ -43,7 +43,6 @@ export const getThread = (threadId: string) =>
         input: unknown;
         allow_in_thread?: boolean;
       }[];
-      status_line: string;
     }
   >(`/threads/${threadId}`);
 

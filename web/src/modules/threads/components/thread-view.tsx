@@ -837,11 +837,6 @@ export function ThreadView({
               </button>
             </div>
           )}
-          {thread?.status_line && (
-            <p className="mb-2 truncate px-1 text-sm text-muted" title={thread.status_line}>
-              {thread.status_line.trim().split('\n').pop()}
-            </p>
-          )}
           {boss ? (
             <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
               <p className="flex-1">{`${boss} is handling this thread. Talk to ${boss} to change it.`}</p>

@@ -480,11 +480,6 @@ func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	statusLine, err := a.st.StatusLine(r.Context(), t.ID)
-	if err != nil {
-		a.fail(w, r, err)
-		return
-	}
 	queued, err := a.st.Queued(r.Context(), t.ID)
 	if err != nil {
 		a.fail(w, r, err)
@@ -499,9 +494,7 @@ func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
 		ActiveRun *store.Run      `json:"active_run"`
 		Approvals []run.Approval  `json:"approvals"`
 		Queued    []store.Message `json:"queued"`
-		// StatusLine is the final message of a background run that posted nothing to the chat.
-		StatusLine string `json:"status_line"`
-	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals), Queued: queuedMsgs, StatusLine: statusLine})
+	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals), Queued: queuedMsgs})
 }
 
 func (a *api) patchThread(w http.ResponseWriter, r *http.Request) {

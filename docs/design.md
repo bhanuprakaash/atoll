@@ -518,8 +518,8 @@ Follow-ups:
   failed, so it cannot repeat or be lost.
 - Background runs. A run that starts only with Reef notices (a helper finished, a PR merged, CI
   finished, a ticket closed) is a background run, for every Bot not in a helper thread. Its final
-  message is never a chat message and does not make the thread Replied: it becomes the Bot's status
-  line (App and UI). The run lists `tell_user(text)`; each call adds one message from the Bot to
+  message is never a chat message, does not make the thread Replied and shows nowhere (App and
+  UI). The run lists `tell_user(text)`; each call adds one message from the Bot to
   the chat and makes the thread Replied. Reef starts the prompt with one line: `Reef: background
   run. {user} does not see your final message, so end with one line of status. If {user} must act
   (a PR to merge, a decision, a failure you cannot fix), tell them with tell_user.` A run with any
@@ -562,7 +562,7 @@ Follow-ups:
   `worktree_removed` reason `merged`; a helper on its own branch keeps its worktree and its own MR.
   While any of those helpers' runs is going nothing is removed, and the watcher tries again. A
   `delegate` that fails part way removes the helper worktree, branch and thread it made.
-- Helpers show in the boss's thread (App and UI), above the composer with the boss's status line.
+- Helpers show in the boss's thread (App and UI), above the composer.
 - The helpers line: the boss sees its free helper slots, so an idle slot is not left behind a
   queue. One line from the boss thread's helper runs going (limit 3, above):
   `Helpers: 1 of 3 running (Tester on Review #184). 2 free.`, each running helper as
@@ -1893,11 +1893,9 @@ Voice
   `limited` with `resets_at`, `new` or empty). The sidebar row, the Bot row and the island use the same words. A helper thread
   is never Replied: its replies are for its boss. *Each label is a fact Reef holds; whether a reply
   is a question is the model's meaning, so a question is Replied like any reply.*
-- A background run's status line (Delegation) shows above the composer, in the helpers' region,
-  newest line only, muted; a thread with no helpers shows the same line there. It is
-  `status_line` on `GET /api/threads/{id}`: the final message of the thread's newest run when that
-  run posted no reply. It is not a message
-  and never makes the thread Replied. *Until #429's thread panel takes it over.*
+- A quiet background run (one that called no `tell_user`) shows its final message nowhere in the
+  thread: not as a message, not as a line above the composer, and it never makes the thread
+  Replied. *A muted line above the composer was noise the person did not need.*
 - Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` tray (a region of
   that name) on top of the composer, on its surface and border: one line of about 32 px that never
   grows. It holds each helper task's creature, stacked (two helpers of one Bot are two creatures),
