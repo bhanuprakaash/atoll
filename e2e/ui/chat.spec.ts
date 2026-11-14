@@ -46,7 +46,7 @@ test('one working line by tool kind, a summary above the reply, the user message
     /Searching selectedRepo/,
     /Reading repo-step\.tsx/,
     /Editing wizard\.tsx/,
-    /Running Run the tests/,
+    /^Run the tests$/,
   ]) {
     await expect(working).toHaveCount(1);
     await expect(working).toHaveText(step);
@@ -106,7 +106,7 @@ test('Stop ends a running run and the chat says it was stopped', async ({ page }
   const stop = page.getByRole('button', { name: 'Stop' });
   await expect(stop).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
-  await expect(log.getByRole('status')).toHaveText(/Running Run the build/);
+  await expect(log.getByRole('status')).toHaveText(/^Run the build$/);
   await stop.click();
 
   await expect(log.getByText(/Stopped by you after \d+(m \d+)?s/)).toBeVisible();
