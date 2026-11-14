@@ -1274,8 +1274,9 @@ func (s *Store) AddBotMessage(ctx context.Context, threadID, runID, text string)
 	})
 }
 
-// StatusLine is the final message of the thread's newest run when that run ended done and posted no
-// message to the chat: a background run that told nobody anything. It is empty otherwise.
+// StatusLine is the final message of the thread's newest run when that run ended done and its final
+// message was not posted to the chat: a background run, whose tell_user messages do not count. It is
+// empty otherwise.
 func (s *Store) StatusLine(ctx context.Context, threadID string) (string, error) {
 	var line string
 	err := s.db.QueryRowContext(ctx,
@@ -1283,7 +1284,7 @@ func (s *Store) StatusLine(ctx context.Context, threadID string) (string, error)
 		                      WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1) r
 		 WHERE r.status = ? AND r.reply != ''
 		   AND NOT EXISTS (SELECT 1 FROM messages m
-		                   WHERE m.thread_id = r.thread_id AND m.run_id = r.id AND m.role = ?)`,
+		                   WHERE m.thread_id = r.thread_id AND m.run_id = r.id AND m.role = ? AND m.text = r.reply)`,
 		threadID, StatusDone, RoleBot).Scan(&line)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("read status line of thread %s: %w", threadID, err)

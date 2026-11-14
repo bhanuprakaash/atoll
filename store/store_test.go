@@ -1015,7 +1015,7 @@ func TestStore_ThreadLabels(t *testing.T) {
 			if err := st.AddBotMessage(ctx, th.ID, id, "Look at this."); err != nil {
 				t.Fatal(err)
 			}
-		}, labels{Unseen: true}},
+		}, labels{Unseen: true, StatusLine: "told"}},
 	}
 	for _, tt := range steps {
 		t.Run(tt.name, func(t *testing.T) {
