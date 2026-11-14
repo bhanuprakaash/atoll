@@ -161,9 +161,12 @@ func TestWake_ReportWakesBoss(t *testing.T) {
 			}
 
 			msg, c, wake := woken(t, m, s, p, boss.ID, tester.ID, 1)
-			first, rest, _ := strings.Cut(msg.Text, "\n")
-			if want := "Reef: Tester finished thread " + helper + ":"; first != want {
-				t.Errorf("message from Tester starts %q, want %q", first, want)
+			_, rest, _ := strings.Cut(msg.Text, "\n")
+			if got, want := noticeHead(msg.Text), "Tester finished thread "+helper+":"; got != want {
+				t.Errorf("message from Tester starts %q, want %q", got, want)
+			}
+			if got := promptsWith(t, m, p, finishedNotice("Tester", helper)); len(got) != 1 {
+				t.Errorf("%d boss prompts hold the line %q, want 1", len(got), finishedNotice("Tester", helper))
 			}
 			if !strings.HasPrefix(strings.TrimSpace(rest), _reportReply) {
 				t.Errorf("message from Tester continues %q, want the helper's reply %q first", rest, _reportReply)
@@ -312,9 +315,6 @@ func TestWake_HelperFailedStoppedDeleted(t *testing.T) {
 				t.Helper()
 				msg, c, wake := woken(t, m, s, p, boss.ID, tester.ID, n)
 				holdsAll(t, "message from Tester", msg.Text, helper, want)
-				if !strings.HasPrefix(msg.Text, "Reef: ") {
-					t.Errorf("message from Tester %q does not start with \"Reef: \"", msg.Text)
-				}
 				if got := resumed(c, p); got != bossSessionID(p) {
 					t.Errorf("boss run with %q resumed %q, want %q", want, got, bossSessionID(p))
 				}

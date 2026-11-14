@@ -23,9 +23,11 @@ const _backgroundLine = "Reef: background run. Bhanu does not see your final mes
 	"If Bhanu must act (a PR to merge, a decision, a failure you cannot fix), tell them with tell_user."
 
 // backgroundSetup serves atoll with the user named Bhanu and a boss, Poteto, that delegates to Tester.
+// The wake window is 3 s.
 func backgroundSetup(t *testing.T, p string) (*machine, *server, bot, thread, <-chan event) {
 	t.Helper()
-	m, s := start(t, p)
+	// A 3 s wake window: the thread is opened before the notice starts the run.
+	m, s := startWindow(t, p, "3s")
 	s.do(t, "PUT", "/api/settings", map[string]string{"user_name": "Bhanu", "worktree_root": t.TempDir()}, nil, http.StatusNoContent)
 	poteto, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
 	setDelegates(t, s, poteto, tester)
@@ -62,8 +64,8 @@ func TestBackgroundRun_HelperNoticeAddsNoMessage(t *testing.T) {
 			if wake.Status != "done" {
 				t.Fatalf("boss run for the notice: status %q, error %q; want done", wake.Status, wake.Error)
 			}
-			if !strings.HasPrefix(msg.Text, "Reef: Tester finished thread "+ids[0]+":") {
-				t.Errorf("notice %q, want it to start with the Reef line for thread %s", msg.Text, ids[0])
+			if got, want := noticeHead(msg.Text), "Tester finished thread "+ids[0]+":"; got != want {
+				t.Errorf("notice %q starts %q, want %q", msg.Text, got, want)
 			}
 			if got := botMessagesOf(t, s, boss.ID, wake.ID); len(got) != 0 {
 				t.Errorf("the notice's run added the Bot messages %q, want none: its final message is a status line", got)

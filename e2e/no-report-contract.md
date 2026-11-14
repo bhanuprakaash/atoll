@@ -44,7 +44,9 @@ whether a rate-limited run reads Failed or Out until before the person opens it.
 
 A run whose messages are all Reef's (a helper's notice, a PR wake) is a background run. It adds no
 Bot message and does not make the thread Replied (the person opened it first); the Bot's final
-message is the status line above the composer, muted (`#9B9B9B`), newest only. The prompt starts with
+message is the status line above the composer, muted (`#9B9B9B`, asserted as `rgb(155, 155, 155)`),
+newest only. The line sits between the chat and the composer (a pin: the design says "in the
+helpers' region" and the tests do not rely on a role for it). The prompt starts with
 the line `Reef: background run. {user} does not see your final message, so end with one line of
 status. If {user} must act (a PR to merge, a decision, a failure you cannot fix), tell them with
 tell_user.` and the run lists `tell_user`; each call adds one Bot message and makes the thread
@@ -53,10 +55,13 @@ message is the reply. Guard: a notice that holds a failure Reef knows of (a help
 stopped or hit its limit; CI failed) with no `tell_user` posts the final message as a reply and the
 thread is Replied. A deleted helper is not in the design's list, so no test pins its wake either way.
 
-The notice is `Reef: {Helper} finished thread {id}:` on the first line, then the helper's reply,
-then the helpers line; no `Done:`, `Tried:`, `Blocked:` or `Next:`. Every notice starts `Reef: `.
-The notice is a stored message of the boss thread (`from_bot_id`, listed by the messages API) but
-never a message of its chat: the UI shows neither it nor the helper's reply in the boss thread.
+The notice the boss reads is `Reef: {Helper} finished thread {id}:` on the first line, then the
+helper's reply, then the helpers line; no `Done:`, `Tried:`, `Blocked:` or `Next:`. Every notice
+starts `Reef: ` in the prompt. Whether the stored message text keeps the `Reef: ` (a PR wake's does
+not; the prompt adds it) is not pinned: tests read the stored first line with the prefix removed and
+the prompt with it. The notice is a stored message of the boss thread (`from_bot_id`, listed by the
+messages API: a pin) but never a message of its chat: the UI shows neither it nor the helper's reply
+in the boss thread.
 
 ## Prompt
 

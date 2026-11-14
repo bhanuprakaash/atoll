@@ -8,6 +8,7 @@ import { delegate, helperThreads, makeBoss, reportPrompt, startThread } from './
 
 let m: Machine;
 test.beforeEach(async () => {
+  elsewhere = undefined;
   m = await startAtoll();
 });
 test.afterEach(() => m?.stop());
@@ -21,9 +22,10 @@ async function waitStatus(threadID: string, status: string) {
 }
 
 // away shows a Bot of its own, so no thread of the Bots under test is on screen.
+let elsewhere: { id: string } | undefined;
 async function away(page: Page) {
-  const bot = await newBotAPI(m, 'Elsewhere');
-  await page.goto(`${m.url}/bots/${bot.id}`);
+  elsewhere ??= await newBotAPI(m, 'Elsewhere');
+  await page.goto(`${m.url}/bots/${elsewhere.id}`);
   await expect(page.getByRole('heading', { name: 'What should Elsewhere work on?' })).toBeVisible();
 }
 

@@ -127,9 +127,9 @@ func TestFinalAnswer_HelperReplyRelaysFinalMessage(t *testing.T) {
 			}
 
 			msg, _, _ := woken(t, m, s, p, boss.ID, tester.ID, 1)
-			first, rest, _ := strings.Cut(msg.Text, "\n")
-			if want := "Reef: Tester finished thread " + helper + ":"; first != want {
-				t.Errorf("message to the boss starts %q, want %q", first, want)
+			_, rest, _ := strings.Cut(msg.Text, "\n")
+			if got, want := noticeHead(msg.Text), "Tester finished thread "+helper+":"; got != want {
+				t.Errorf("message to the boss starts %q, want %q", got, want)
 			}
 			if !strings.HasPrefix(strings.TrimSpace(rest), _finalReply) {
 				t.Errorf("message to the boss continues %q, want the helper's final message %q first", rest, _finalReply)

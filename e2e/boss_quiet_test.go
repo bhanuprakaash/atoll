@@ -14,8 +14,16 @@ import (
 // _finishedThread is in the first line of a helper's notice: `Reef: Tester finished thread {id}:`.
 const _finishedThread = "finished thread "
 
+// finishedNotice is the line the boss reads: the prompt starts every notice with `Reef: `.
 func finishedNotice(helperName, threadID string) string {
 	return "Reef: " + helperName + " " + _finishedThread + threadID + ":"
+}
+
+// noticeHead is the first line of a notice as stored, without `Reef: ` when the store keeps it
+// off (the prompt adds it, as it does for a PR wake).
+func noticeHead(text string) string {
+	first, _, _ := strings.Cut(text, "\n")
+	return strings.TrimPrefix(first, "Reef: ")
 }
 
 type bossMessage struct {

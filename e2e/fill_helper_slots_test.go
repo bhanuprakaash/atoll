@@ -66,7 +66,7 @@ func TestSlots_WakeEndsWithHelpersLine(t *testing.T) {
 
 			allow(t, s, reporter)
 			msg, _, _ := woken(t, m, s, p, boss.ID, tester.ID, 1)
-			holdsAll(t, "done wake", msg.Text, "Reef: Tester finished thread "+reporter+":", _reportReply)
+			holdsAll(t, "done wake", msg.Text, "Tester finished thread "+reporter+":", _reportReply)
 			endsWithLine(t, "done wake", msg.Text, helpersLine(onThread(t, s, "Tester", review)))
 
 			s.do(t, "POST", "/api/runs/"+helperRunning(t, s, review)+"/stop", nil, nil, http.StatusNoContent)

@@ -148,7 +148,8 @@ test('a thread whose PR merged leaves the sidebar tree, stays open in the thread
   await expect(page).toHaveURL(new RegExp(`/threads/${id}$`));
   const log = page.getByRole('log', { name: 'Messages' });
   await expect(log.getByRole('article', { name: 'You' }).first()).toContainText(fix);
-  await expect(log).toContainText('Merge noted.');
+  await expect(log).toContainText('PR #1 merged');
+  await expect(log.getByText('Merge noted.')).toHaveCount(0);
 });
 
 test('a merged thread with an approval waiting stays in the tree while it waits', async ({

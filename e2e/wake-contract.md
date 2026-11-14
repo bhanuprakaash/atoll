@@ -8,12 +8,12 @@ server; no product package is imported.
 When a helper run ends, Reef delivers one message into the boss thread from the helper Bot. In
 `GET /api/threads/{boss}/messages` it has `from_bot_id` (the helper Bot's id; the user's own
 messages have none or an empty one) and `text`. Delivering it starts a boss run that resumes the
-boss's session with a prompt that holds the text. The text always holds the helper thread id and starts
-`Reef: `, and:
+boss's session with a prompt that holds the text. The text always holds the helper thread id, and the
+prompt starts it with `Reef: `:
 
 | Helper run                                        | Text also holds                                                                                                             |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| ends `done`                                       | first line exactly `Reef: Tester finished thread {helper thread id}:`, then its reply; no `Done:`, `Tried:`, `Blocked:` or `Next:` line |
+| ends `done`                                       | first line exactly `Tester finished thread {helper thread id}:` (the prompt has it as `Reef: Tester finished thread …`), then its reply; no `Done:`, `Tried:`, `Blocked:` or `Next:` line |
 | ends `failed`                                     | `Tester's run failed: <the run's error>`                                                                                    |
 | stopped by the user (`POST /api/runs/{id}/stop`)  | `The user stopped Tester`                                                                                                   |
 | its Bot deleted mid-run (`DELETE /api/bots/{id}`) | `Tester was deleted`                                                                                                        |

@@ -39,8 +39,8 @@ func TestReadyNamesCommit_MergeWakeNamesTheCommit(t *testing.T) {
 				if w.Kind != "merged" || w.Text != want || w.FromBotID != "" {
 					t.Errorf("wake message %+v, want kind merged, text %q, no from_bot_id", w, want)
 				}
-				if got := f.reefPrompts(t); len(got) != 1 || got[0] != "Reef: "+want {
-					t.Errorf("Reef prompts %q, want %q", got, "Reef: "+want)
+				if got := f.reefPrompts(t); len(got) != 1 || !strings.Contains(got[0], "\nReef: "+want) && !strings.HasPrefix(got[0], "Reef: "+want) {
+					t.Errorf("Reef prompts %q, want one with the line %q", got, "Reef: "+want)
 				}
 			})
 		}
