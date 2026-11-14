@@ -838,7 +838,9 @@ export function ThreadView({
             </div>
           )}
           {thread?.status_line && (
-            <p className="mb-2 px-1 text-sm text-muted">{thread.status_line}</p>
+            <p className="mb-2 truncate px-1 text-sm text-muted" title={thread.status_line}>
+              {thread.status_line.trim().split('\n').pop()}
+            </p>
           )}
           {boss ? (
             <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
