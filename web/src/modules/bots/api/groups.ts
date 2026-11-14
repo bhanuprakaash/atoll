@@ -37,3 +37,17 @@ export const useSetBotGroup = () =>
   useGroupMutation(({ botId, groupId }: { botId: string; groupId: string | null }) =>
     api<void>(`/bots/${botId}/group`, { method: 'PUT', body: { group_id: groupId } }),
   );
+
+export const usePlaceBot = () =>
+  useGroupMutation(
+    (place: { botId: string; pinned: boolean; groupId: string | null; before: string | null }) =>
+      api<void>(`/bots/${place.botId}/place`, {
+        method: 'PUT',
+        body: { pinned: place.pinned, group_id: place.groupId, before: place.before },
+      }),
+  );
+
+export const useMoveGroup = () =>
+  useGroupMutation(({ id, before }: { id: string; before: string | null }) =>
+    api<void>(`/groups/${id}/move`, { method: 'POST', body: { before } }),
+  );

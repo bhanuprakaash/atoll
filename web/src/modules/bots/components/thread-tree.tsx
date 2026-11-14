@@ -117,6 +117,7 @@ function HelpersLine({
       <Link
         data-line="helpers"
         to={`/bots/${botId}/threads/${threadId}`}
+        draggable={false}
         state={{ helpers: true }}
         className="flex h-8 items-center gap-2 rounded-lg px-2 text-[13px] text-muted hover:bg-field"
       >

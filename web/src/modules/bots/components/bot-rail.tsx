@@ -8,6 +8,8 @@ import {
   useCreateGroup,
   useDeleteGroup,
   useGroups,
+  useMoveGroup,
+  usePlaceBot,
   useSetBotGroup,
   useUpdateGroup,
   type Group,
@@ -17,6 +19,7 @@ import { GroupNameField } from '@/modules/bots/components/group-name-field';
 import { sidebarOrder } from '@/modules/bots/utils/sidebar-order';
 
 const botDragType = 'application/x-reef-bot';
+const groupDragType = 'application/x-reef-group';
 
 const stateLabel: Partial<Record<Bot['state'], string>> = {
   needs_you: 'Needs you',
@@ -85,15 +88,24 @@ function BotFace({
   current,
   onSelect,
   onNewGroup,
+  onDragging,
+  onDropBot,
 }: {
   bot: Bot;
   current: boolean;
   onSelect: (link: HTMLAnchorElement) => void;
   onNewGroup: () => void;
+  onDragging: (dragging: boolean) => void;
+  onDropBot: (botId: string, after: boolean) => void;
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [dropAt, setDropAt] = useState<'before' | 'after' | null>(null);
   const [anchor, tip] = useTooltip();
   const state = stateLabel[bot.state];
+  const after = (event: DragEvent) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    return bot.id === 'chief' || event.clientY >= box.top + box.height / 2;
+  };
   return (
     <>
       <Link
@@ -101,7 +113,26 @@ function BotFace({
         data-current={current ? 'true' : undefined}
         data-marker={bot.state === 'needs_you' ? 'needs-you' : undefined}
         draggable={bot.id !== 'chief'}
-        onDragStart={(event) => event.dataTransfer.setData(botDragType, bot.id)}
+        onDragStart={(event) => {
+          event.dataTransfer.setData(botDragType, bot.id);
+          onDragging(true);
+        }}
+        onDragEnd={() => onDragging(false)}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes(botDragType)) return;
+          event.preventDefault();
+          setDropAt(after(event) ? 'after' : 'before');
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropAt(null);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          const botId = event.dataTransfer.getData(botDragType);
+          if (botId) onDropBot(botId, after(event));
+          setDropAt(null);
+          onDragging(false);
+        }}
         onClick={(event) => onSelect(event.currentTarget)}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -111,6 +142,12 @@ function BotFace({
         {...tip}
       >
         {current && <Bar />}
+        {dropAt && (
+          <span
+            aria-hidden="true"
+            className={`absolute inset-x-2 h-0.5 rounded-full bg-ink ${dropAt === 'before' ? 'top-0' : 'bottom-0'}`}
+          />
+        )}
         <Creature look={bot.look} state={bot.state} size={32} />
         <span className="max-w-16 truncate">{bot.name}</span>
       </Link>
@@ -132,14 +169,20 @@ function BotGroup({
   name,
   count,
   line,
+  dragging,
+  onDragging,
   onDropBot,
+  onDropGroup,
   children,
 }: {
   group?: Group;
   name: string;
   count: number;
   line: boolean;
+  dragging: boolean;
+  onDragging: (dragging: boolean) => void;
   onDropBot: (botId: string) => void;
+  onDropGroup?: (groupId: string) => void;
   children: ReactNode;
 }) {
   const navigate = useNavigate();
@@ -149,11 +192,17 @@ function BotGroup({
   const [renaming, setRenaming] = useState(false);
   const [over, setOver] = useState(false);
   const [anchor, tip] = useTooltip();
+  const accepts = (event: DragEvent) =>
+    event.dataTransfer.types.includes(botDragType) ||
+    (!!group && event.dataTransfer.types.includes(groupDragType));
   const drop = (event: DragEvent) => {
     event.preventDefault();
     setOver(false);
+    onDragging(false);
     const botId = event.dataTransfer.getData(botDragType);
+    const groupId = event.dataTransfer.getData(groupDragType);
     if (botId) onDropBot(botId);
+    else if (groupId) onDropGroup?.(groupId);
   };
   return (
     <div role="group" aria-label={name} className="flex flex-col">
@@ -181,13 +230,20 @@ function BotGroup({
               event.preventDefault();
               setMenu({ x: event.clientX, y: event.clientY });
             }}
+            draggable={!!group}
+            onDragStart={(event) => {
+              event.dataTransfer.setData(groupDragType, group?.id ?? '');
+              onDragging(true);
+            }}
+            onDragEnd={() => onDragging(false)}
             onDragOver={(event) => {
+              if (!accepts(event)) return;
               event.preventDefault();
               setOver(true);
             }}
             onDragLeave={() => setOver(false)}
             onDrop={drop}
-            className="group/line flex h-4 w-full items-center justify-center outline-none"
+            className={`group/line flex h-4 w-full items-center justify-center outline-none ${dragging ? 'relative z-10 after:absolute after:inset-x-0 after:-inset-y-1' : ''}`}
             {...tip}
           >
             <span
@@ -238,11 +294,33 @@ export function BotRail({
   const { data: groups = [] } = useGroups();
   const createGroup = useCreateGroup();
   const setGroup = useSetBotGroup();
+  const place = usePlaceBot();
+  const moveGroup = useMoveGroup();
+  const [dragging, setDragging] = useState(false);
   const { top, inGroup, ungrouped } = sidebarOrder(bots, groups);
   const needsYou = bots.reduce(
     (n, bot) => n + (bot.threads ?? []).filter((t) => t.state === 'needs_you').length,
     0,
   );
+  const dropOnFace = (target: Bot) => (botId: string, after: boolean) => {
+    const dragged = bots.find((bot) => bot.id === botId);
+    if (!dragged || dragged === target) return;
+    const pinned = target.id === 'chief' || target.pinned;
+    const groupId = pinned
+      ? dragged.group_id || null
+      : groups.some((group) => group.id === target.group_id)
+        ? target.group_id
+        : null;
+    const section = pinned
+      ? top.filter((bot) => bot.id !== 'chief')
+      : groupId
+        ? inGroup(groupId)
+        : ungrouped;
+    const others = section.filter((bot) => bot !== dragged);
+    const before =
+      target.id === 'chief' ? others[0] : after ? others[others.indexOf(target) + 1] : target;
+    place.mutate({ botId, pinned, groupId, before: before?.id ?? null });
+  };
   const face = (bot: Bot) => (
     <BotFace
       key={bot.id}
@@ -250,9 +328,15 @@ export function BotRail({
       current={view === bot.id || openBotId === bot.id}
       onSelect={(link) => onView(bot.id, link)}
       onNewGroup={() => onCreatingGroup({ botId: bot.id })}
+      onDragging={setDragging}
+      onDropBot={dropOnFace(bot)}
     />
   );
-  const moveTo = (groupId: string | null) => (botId: string) => setGroup.mutate({ botId, groupId });
+  const moveTo = (groupId: string | null) => (botId: string) =>
+    place.mutate({ botId, pinned: false, groupId, before: null });
+  const dropOnGroup = (target: Group) => (id: string) => {
+    if (id !== target.id) moveGroup.mutate({ id, before: target.id });
+  };
   return (
     <div className="flex flex-col">
       <NowButton
@@ -270,7 +354,10 @@ export function BotRail({
             name={group.name}
             count={members.length}
             line
+            dragging={dragging}
+            onDragging={setDragging}
             onDropBot={moveTo(group.id)}
+            onDropGroup={dropOnGroup(group)}
           >
             {members.map(face)}
           </BotGroup>
@@ -294,6 +381,8 @@ export function BotRail({
         name="Ungrouped"
         count={ungrouped.length}
         line={groups.length > 0}
+        dragging={dragging}
+        onDragging={setDragging}
         onDropBot={moveTo(null)}
       >
         {ungrouped.map(face)}
