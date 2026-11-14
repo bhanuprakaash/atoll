@@ -1,7 +1,10 @@
 package run
 
 import (
+	"cmp"
+	"context"
 	"testing"
+	"time"
 
 	"atoll/store"
 )
@@ -81,5 +84,125 @@ func TestBackgroundLine(t *testing.T) {
 		if got := backgroundLine(user); got != want {
 			t.Errorf("backgroundLine(%q) = %q, want %q", user, got, want)
 		}
+	}
+}
+
+// The guard reads what Reef stored for a held notice, never its words: every wake below says the
+// same thing.
+func TestFailure_HeldNoticeOfEachWake(t *testing.T) {
+	const words = "Reef wrote some other words."
+	same := func(store.Wake) string { return words }
+	finish := func(res store.RunResult) func(context.Context, *store.Store, string) error {
+		return func(ctx context.Context, st *store.Store, runID string) error {
+			return st.FinishRun(ctx, runID, res, same)
+		}
+	}
+	tests := []struct {
+		name string
+		give func(ctx context.Context, st *store.Store, runID string) error
+		want bool
+	}{
+		{"helper finished", finish(store.RunResult{Status: store.StatusDone, Reply: "ok"}), false},
+		{"helper failed", finish(store.RunResult{Status: store.StatusFailed, Error: "boom"}), true},
+		{"helper stopped", finish(store.RunResult{Status: store.StatusStopped}), true},
+		{"helper out of limit", finish(store.RunResult{
+			Status: store.StatusFailed, Error: "limit", ErrorKind: store.ErrorRateLimited,
+		}), true},
+		{"restart cut one helper short", func(ctx context.Context, st *store.Store, _ string) error {
+			_, err := st.FailUnfinished(ctx, "restart", func([]store.Wake) string { return words })
+			return err
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newEnv(t, &fakeSession{})
+			boss := bossThread(t, e)
+			helper, err := e.st.CreateHelperThread(t.Context(), boss.ID, e.thread.BotID, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, ru, err := e.st.StartRunFrom(t.Context(), store.InboxItem{ThreadID: helper.ID, Text: "go"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := tt.give(t.Context(), e.st, ru.ID); err != nil {
+				t.Fatal(err)
+			}
+			heldNotice(t, e.st, boss.ID, tt.want)
+		})
+	}
+}
+
+func TestFailure_HeldNoticeOfDeletedHelper(t *testing.T) {
+	e := newEnv(t, &fakeSession{})
+	e.m.cfg.WakeWindow = time.Hour
+	boss := bossThread(t, e)
+	helper, err := e.st.CreateHelperThread(t.Context(), boss.ID, e.thread.BotID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.m.Send(t.Context(), helper.ID, "go", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.m.DeleteBot(t.Context(), e.thread.BotID); err != nil {
+		t.Fatal(err)
+	}
+	heldNotice(t, e.st, boss.ID, true)
+}
+
+// bossThread is a thread of another Bot, for the helper threads of a test to belong to.
+func bossThread(t *testing.T, e *env) store.Thread {
+	t.Helper()
+	bot, err := e.st.CreateBot(t.Context(), store.Bot{Name: "Boss", Persona: "Terse.", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boss, err := e.st.CreateThread(t.Context(), bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return boss
+}
+
+func heldNotice(t *testing.T, st *store.Store, bossID string, want bool) {
+	t.Helper()
+	held, err := st.Held(t.Context(), bossID)
+	if err != nil || len(held) != 1 {
+		t.Fatalf("held = %+v, %v; want one notice", held, err)
+	}
+	if got := failure(held[0]); got != want {
+		t.Errorf("failure(%+v) = %v, want %v", held[0], got, want)
+	}
+}
+
+func TestTellUser_ToldOnlyOnceStored(t *testing.T) {
+	tests := []struct {
+		name       string
+		thread     string
+		wantErr    bool
+		wantToldAt bool
+	}{
+		{"stored", "", false, true},
+		{"not stored", "gone", true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newEnv(t, &fakeSession{})
+			_, ru, err := e.st.StartRunFrom(t.Context(), store.InboxItem{ThreadID: e.thread.ID, Text: "hi"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := &active{threadID: cmp.Or(tt.thread, e.thread.ID), run: ru, background: true}
+			e.m.mu.Lock()
+			e.m.tokens["tok"] = a
+			e.m.mu.Unlock()
+			err = e.m.TellUser(t.Context(), "tok", "Merge #1.")
+			e.m.mu.Lock()
+			told := a.told
+			e.m.mu.Unlock()
+			if (err != nil) != tt.wantErr || told != tt.wantToldAt {
+				t.Errorf("TellUser = %v, told %v; want error %v, told %v", err, told, tt.wantErr, tt.wantToldAt)
+			}
+		})
 	}
 }
