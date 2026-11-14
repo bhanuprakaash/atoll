@@ -29,7 +29,7 @@ const (
 	_lifeExit           = "Lifecycle check: the process exits mid-request."
 	_lifeNoneFirst      = "Lifecycle check, no lifecycle events: first round."
 	_lifeNoneSecond     = "Lifecycle check, no lifecycle events: second round."
-	_lifeNudge          = "Lifecycle check: answer, and leave the report to the nudge."
+	_lifeAnswerOnly     = "Lifecycle check: answer, and nothing follows it."
 	_lifeCodexOther     = "Lifecycle check: another turn runs beside this one."
 	_lifeCodexApproval  = "Lifecycle check: another turn asks for approval."
 
@@ -72,14 +72,14 @@ func TestRequestLifecycle_UserLinesCarryUUID(t *testing.T) {
 	th := s.newThread(t, s.newBot(t, "Ada", "claude"))
 	ev := s.events(t, th)
 
-	if r := s.finished(t, ev, s.send(t, th, _lifeNudge).ID); r.Status != "done" {
+	if r := s.finished(t, ev, s.send(t, th, _lifeAnswerOnly).ID); r.Status != "done" {
 		t.Fatalf("run: status %q, error %q; want done", r.Status, r.Error)
 	}
-	assertUserUUIDs(t, m, 2)
+	assertUserUUIDs(t, m, 1)
 }
 
-// assertUserUUIDs checks every user line the fake claude read in a session of the machine, the
-// request and the nudge alike: at least n lines, each with its own uuid.
+// assertUserUUIDs checks every user line the fake claude read in a session of the machine: at
+// least n lines, each with its own uuid.
 func assertUserUUIDs(t *testing.T, m *machine, n int) {
 	t.Helper()
 	var uuids []string
@@ -128,7 +128,7 @@ func TestRequestLifecycle_RequestEndsOnBothSignals(t *testing.T) {
 			if got.Status != "done" || got.Reply != c.reply {
 				t.Errorf("run: status %q, reply %q, error %q; want done, %q", got.Status, got.Reply, got.Error, c.reply)
 			}
-			s.assertUsage(t, run.ID, wantUsage{_lifeClaudeModel, 2, 5, 30, 1000, 200, cost(0.10)})
+			s.assertUsage(t, run.ID, wantUsage{_lifeClaudeModel, 1, 5, 30, 1000, 200, cost(0.10)})
 
 			// The fake prints the second signal 700 ms after the first. A run that ended on the first
 			// stops the process before it prints the second.
@@ -194,17 +194,15 @@ func TestRequestLifecycle_NoLifecycleEventsWarnOncePerProcess(t *testing.T) {
 		t.Errorf("no lifecycle warning after the first process; server log:\n%s", s.log)
 	}
 
-	// The second run's process holds two requests: the prompt and the nudge.
 	second := s.finished(t, ev, s.send(t, th, _lifeNoneSecond).ID)
-	if second.Status != "done" || second.Reply != "The second answer without lifecycle events." || second.Report == nil {
-		t.Fatalf("second run: status %q, reply %q, report %v, error %q; want done, the answer, and the report the nudge asked for",
-			second.Status, second.Reply, second.Report, second.Error)
+	if second.Status != "done" || second.Reply != "The second answer without lifecycle events." {
+		t.Fatalf("second run: status %q, reply %q, error %q; want done, the answer", second.Status, second.Reply, second.Error)
 	}
 	if n := len(m.sessions(t, "claude")); n != 2 {
 		t.Fatalf("claude ran %d sessions, want 2", n)
 	}
 	if got := lifecycleWarnings(s) - before; got != 1 {
-		t.Errorf("second process logged %d lifecycle warnings, want 1 (once per process, not per request); server log:\n%s", got, s.log)
+		t.Errorf("second process logged %d lifecycle warnings, want 1 (once per process); server log:\n%s", got, s.log)
 	}
 }
 
@@ -223,29 +221,27 @@ func lifecycleWarnings(s *server) int {
 	return n
 }
 
-func TestRequestLifecycle_NudgeWaitsForRequestEnd(t *testing.T) {
+func TestRequestLifecycle_NothingIsSentAfterTheRequest(t *testing.T) {
 	t.Parallel()
 	m, s := start(t, "claude")
 	th := s.newThread(t, s.newBot(t, "Ada", "claude"))
 	ev := s.events(t, th)
 
-	r := s.finished(t, ev, s.send(t, th, _lifeNudge).ID)
-	if r.Status != "done" || r.Report == nil {
-		t.Fatalf("run: status %q, report %v, error %q; want done with the report the nudge asked for", r.Status, r.Report, r.Error)
+	r := s.finished(t, ev, s.send(t, th, _lifeAnswerOnly).ID)
+	if r.Status != "done" || r.Reply != "Here is the answer." {
+		t.Fatalf("run: status %q, reply %q, error %q; want done, %q", r.Status, r.Reply, r.Error, "Here is the answer.")
 	}
+	// A nudge would arrive once the request has ended; give it the time the fake takes for a call.
+	time.Sleep(4 * _pace)
 	trace := claudeTrace(t, m, m.sessions(t, "claude")[0].pid)
-	at := func(kind, detail string) int {
-		return slices.IndexFunc(trace, func(e fake.Trace) bool { return e.Kind == kind && e.Detail == detail })
+	reads := 0
+	for _, e := range trace {
+		if e.Kind == "read" && e.Detail == "user" {
+			reads++
+		}
 	}
-	nudge := slices.IndexFunc(trace, func(e fake.Trace) bool { return e.Kind == "read" && strings.Contains(e.Text, "finish_run") })
-	result, terminal := at("emit", "result"), at("emit", "command_lifecycle:completed")
-	if nudge < 0 || result < 0 || terminal < 0 {
-		t.Fatalf("trace has the nudge at %d, the request's result at %d and its terminal state at %d; want all three\ntrace:\n%s",
-			nudge, result, terminal, showTrace(trace))
-	}
-	if nudge < result || nudge < terminal {
-		t.Errorf("the nudge was read at %d, the request's result printed at %d and its terminal state at %d; want the nudge only after both\ntrace:\n%s",
-			nudge, result, terminal, showTrace(trace))
+	if reads != 1 {
+		t.Errorf("the fake claude read %d user lines, want only Reef's request\ntrace:\n%s", reads, showTrace(trace))
 	}
 }
 
@@ -261,8 +257,8 @@ func TestRequestLifecycle_OtherActivityIsLoggedAndPaidFor(t *testing.T) {
 
 	// Tokens and calls are Reef's request's alone; the cost is the session's total (0.30) less the
 	// first run's (0.10), so the other activity's spend (0.18 at its result) is in it.
-	s.assertUsage(t, first.ID, wantUsage{_lifeClaudeModel, 2, 5, 30, 1000, 200, cost(0.10)})
-	s.assertUsage(t, run.ID, wantUsage{_lifeClaudeModel, 2, 6, 45, 1200, 300, cost(0.20)})
+	s.assertUsage(t, first.ID, wantUsage{_lifeClaudeModel, 1, 5, 30, 1000, 200, cost(0.10)})
+	s.assertUsage(t, run.ID, wantUsage{_lifeClaudeModel, 1, 6, 45, 1200, 300, cost(0.20)})
 	assertOtherActivityOnlyInLog(t, m, run.ID, events, _lifeOther, _lifeOtherTool)
 }
 

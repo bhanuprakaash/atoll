@@ -193,6 +193,9 @@ func serve(log *fake.Log, args []string) error {
 			}
 			if t != nil {
 				t.userMessage = prompt
+				if err := log.Tools(t.servers); err != nil {
+					return err
+				}
 			}
 			if fake.Refused(fake.ConfigDir("CODEX_HOME", ".codex"), "auth.json") {
 				signedOut(m.ID, p.ThreadID)

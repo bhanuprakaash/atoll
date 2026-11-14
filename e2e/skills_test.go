@@ -90,7 +90,7 @@ func TestSkills_ChiefCreatesAndUndo(t *testing.T) {
 			r := s.send(t, th, "Create reef-greeting and a Lagoon Bot using "+p+".")
 			events := until(t, ch, r.ID, "run_finished")
 			done := s.run(t, r.ID)
-			if done.Status != "done" || done.Report == nil || done.Reply != "Created reef-greeting and Lagoon." {
+			if done.Status != "done" || done.Reply != "Created reef-greeting and Lagoon." {
 				t.Fatalf("create: %+v", done)
 			}
 			var bots []platformBot
@@ -112,7 +112,7 @@ func TestSkills_ChiefCreatesAndUndo(t *testing.T) {
 			useCh := s.events(t, use)
 			used := s.send(t, use, _useSkills)
 			got := s.finished(t, useCh, used.ID)
-			if got.Status != "done" || got.Report == nil || got.Reply != "Skills: reef-greeting. Used reef-greeting: Hello from the lagoon." {
+			if got.Status != "done" || got.Reply != "Skills: reef-greeting. Used reef-greeting: Hello from the lagoon." {
 				t.Fatalf("use: %+v", got)
 			}
 			var canonical librarySkill
@@ -207,7 +207,7 @@ func TestSkills_EditUndoAndNoPlatformTools(t *testing.T) {
 			ch := s.events(t, th)
 			r := s.send(t, th, "Create a Bot without platform access.")
 			done := s.finished(t, ch, r.ID)
-			if done.Status != "done" || done.Report == nil || done.Reply != "No platform tools available." {
+			if done.Status != "done" || done.Reply != "No platform tools available." {
 				t.Fatalf("platform tools/list leak: %+v", done)
 			}
 			b := chief(t, s)
@@ -215,7 +215,7 @@ func TestSkills_EditUndoAndNoPlatformTools(t *testing.T) {
 			events := s.events(t, chiefThread)
 			r = s.send(t, chiefThread, "Edit the Lagoon Bot persona. bot_id="+target.ID)
 			seen := until(t, events, r.ID, "run_finished")
-			if done := s.run(t, r.ID); done.Status != "done" || done.Report == nil {
+			if done := s.run(t, r.ID); done.Status != "done" {
 				t.Fatalf("edit: %+v", done)
 			}
 			id := platformChange(t, seen, b.ID, chiefThread.ID, r.ID, "bot", target.ID, "edit")
@@ -436,7 +436,7 @@ func TestSkills_ChiefConfiguresAndUndoes(t *testing.T) {
 			ch := s.events(t, th)
 			r := s.send(t, th, "Configure platform fixtures. "+string(payload))
 			seen := until(t, ch, r.ID, "run_finished")
-			if result := s.run(t, r.ID); result.Status != "done" || result.Report == nil {
+			if result := s.run(t, r.ID); result.Status != "done" {
 				t.Fatalf("configure: %+v", result)
 			}
 			var edited librarySkill

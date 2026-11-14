@@ -6,13 +6,11 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-
-	"atoll/e2e/fakes/fake"
 )
 
 // Contract: fill-helper-slots-contract.md.
 
-const _bossRule = "Before finish_run, if a slot is free and a ticket is ready, delegate it first."
+const _bossRule = "- Don't leave a helper slot free while work waits."
 
 // Hung helpers whose thread titles differ: a title is the brief's first words.
 var _reviews = []string{
@@ -36,11 +34,6 @@ func onThread(t *testing.T, s *server, botName, threadID string) string {
 		t.Fatalf("helper thread %s title %q, want the brief's first words (Review #…)", threadID, title)
 	}
 	return botName + " on " + title
-}
-
-func finishRunCall() fake.MCPCall {
-	return fake.MCPCall{Server: "atoll", Tool: "finish_run",
-		Args: json.RawMessage(`{"done":"Delegated.","tried":"Nothing.","blocked":"","next":"Wait."}`)}
 }
 
 func endsWithLine(t *testing.T, what, text, line string) {
@@ -73,7 +66,7 @@ func TestSlots_WakeEndsWithHelpersLine(t *testing.T) {
 
 			allow(t, s, reporter)
 			msg, _, _ := woken(t, m, s, p, boss.ID, tester.ID, 1)
-			holdsAll(t, "done wake", msg.Text, "Tester reported back from thread "+reporter+".", _reportReply)
+			holdsAll(t, "done wake", msg.Text, "Reef: Tester finished thread "+reporter+":", _reportReply)
 			endsWithLine(t, "done wake", msg.Text, helpersLine(onThread(t, s, "Tester", review)))
 
 			s.do(t, "POST", "/api/runs/"+helperRunning(t, s, review)+"/stop", nil, nil, http.StatusNoContent)
@@ -106,9 +99,9 @@ func TestSlots_WakeEndsWithHelpersLine(t *testing.T) {
 }
 
 // TestSlots_ToolResultsCarryHelpersLine: delegate returns the line as the "helpers" field of its
-// JSON result (the new helper counts, a refusal keeps its text); continue and finish_run return
-// their usual text and the line on a new line. All three name every helper going. A continue to a
-// helper still working is queued and has no line.
+// JSON result (the new helper counts, a refusal keeps its text); continue returns its usual text and
+// the line on a new line. Both name every helper going. A continue to a helper still working is
+// queued and has no line.
 func TestSlots_ToolResultsCarryHelpersLine(t *testing.T) {
 	t.Parallel()
 	for _, p := range _providers {
@@ -148,38 +141,11 @@ func TestSlots_ToolResultsCarryHelpersLine(t *testing.T) {
 			s.do(t, "POST", "/api/runs/"+helperRunning(t, s, ids[2])+"/stop", nil, nil, http.StatusNoContent)
 			woken(t, m, s, p, boss.ID, tester.ID, 1)
 
-			got := useAtoll(t, s, boss, ev, continueCall(ids[0], _askPrompt), continueCall(ids[2], _hangPrompt), finishRunCall())
+			got := useAtoll(t, s, boss, ev, continueCall(ids[0], _askPrompt), continueCall(ids[2], _hangPrompt))
 			want := []string{"atoll/continue: Queued: Tester is working; it gets this when its run ends.",
-				"atoll/continue: Sent.", helpersLine(running...), "atoll/finish_run: Report saved.", helpersLine(running...)}
+				"atoll/continue: Sent.", helpersLine(running...)}
 			if strings.Join(got, "\n") != strings.Join(want, "\n") {
-				t.Errorf("continue and finish_run in the boss thread: reply %q, want %q", got, want)
-			}
-		})
-	}
-}
-
-// TestSlots_FinishRunLineOnlyForBosses: finish_run answers only "Report saved." to a Bot with no
-// delegates and to a helper's run, even when the helper Bot has delegates of its own.
-func TestSlots_FinishRunLineOnlyForBosses(t *testing.T) {
-	t.Parallel()
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			_, s := start(t, p)
-			poteto, tester, reviewer, ada := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p), s.newBot(t, "Reviewer", p), s.newBot(t, "Ada", p)
-			setDelegates(t, s, poteto, tester)
-			setDelegates(t, s, tester, reviewer)
-			const want = "atoll/finish_run: Report saved."
-
-			plain := s.newThread(t, ada)
-			if got := useAtoll(t, s, plain, s.events(t, plain), finishRunCall()); len(got) != 1 || got[0] != want {
-				t.Errorf("Ada (no delegates): reply %q, want %q", got, want)
-			}
-
-			boss := s.newThread(t, poteto)
-			brief, _ := json.Marshal([]fake.MCPCall{finishRunCall()})
-			lines := useAtoll(t, s, boss, s.events(t, boss), delegateCall("Tester", _mcpPromptHead+string(brief), ""))
-			if h := settled(t, s, delegated(t, lines[0])); h.Status != "done" || h.Reply != want {
-				t.Errorf("Tester's helper run: status %q, reply %q, error %q; want done, %q", h.Status, h.Reply, h.Error, want)
+				t.Errorf("continue in the boss thread: reply %q, want %q", got, want)
 			}
 		})
 	}

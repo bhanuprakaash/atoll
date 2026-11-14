@@ -5,8 +5,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -164,6 +166,20 @@ func ConfigDir(env, dir string) string {
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, dir)
+}
+
+// Tools records, as a prompt of kind "tools", the tool names each connected MCP server listed to
+// this process, as JSON {server: [name, ...]} with the names sorted.
+func (l *Log) Tools(servers map[string]*MCP) error {
+	listed := map[string][]string{}
+	for name, c := range servers {
+		listed[name] = slices.Sorted(maps.Keys(c.Tools))
+	}
+	b, err := json.Marshal(listed)
+	if err != nil {
+		return err
+	}
+	return l.Prompt("tools", string(b))
 }
 
 // Prompt records decoded additions separately so the original argv/stdin log stays intact.

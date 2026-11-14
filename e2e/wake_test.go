@@ -10,7 +10,7 @@ import (
 
 // Contract: wake-contract.md.
 
-// The helper plays testdata/*/helper-report.jsonl: it asks to run make check, then reports. Every
+// The helper plays testdata/*/helper-report.jsonl: it asks to run make check, then replies. Every
 // wake text names the helper Bot, Tester: the prompt of testdata/*/wake.jsonl, which the boss's
 // resumed session plays.
 const (
@@ -19,9 +19,6 @@ const (
 	_wakeReply     = "Thanks, Tester."
 	_helperSession = "3c9e4b17-6a2d-4f85-9e03-b7d1c5a8f264"
 )
-
-var _report = report{Done: "Ran the checks: all pass.", Tried: "make check, then make e2e.",
-	Blocked: "No access to the release notes.", Next: "Update the changelog."}
 
 type threadMessage struct {
 	Role      string `json:"role"`
@@ -144,9 +141,9 @@ func holdsAll(t *testing.T, what, text string, want ...string) {
 }
 
 // TestWake_ReportWakesBoss: a helper run that ends done posts one message from the helper Bot into
-// the boss thread, holding the helper thread id, its reply and every report field, and that message
-// starts a boss run that resumes the boss's session with it. The boss's continue then gives the
-// helper a run that resumes the helper's session with the message.
+// the boss thread: `Reef: Tester finished thread {id}:` then the helper's reply, with no report
+// lines, and that message starts a boss run that resumes the boss's session with it. The boss's
+// continue then gives the helper a run that resumes the helper's session with the message.
 func TestWake_ReportWakesBoss(t *testing.T) {
 	t.Parallel()
 	for _, p := range _providers {
@@ -159,20 +156,28 @@ func TestWake_ReportWakesBoss(t *testing.T) {
 
 			helper := delegated(t, useAtoll(t, s, boss, ev, delegateCall("Tester", _reportPrompt, ""))[0])
 			allow(t, s, helper)
-			if h := settled(t, s, helper); h.Status != "done" || h.Reply != _reportReply || h.Report == nil || *h.Report != _report {
-				t.Fatalf("helper run: status %q, reply %q, report %+v, error %q; want done, %q, %+v", h.Status, h.Reply, h.Report, h.Error, _reportReply, _report)
+			if h := settled(t, s, helper); h.Status != "done" || h.Reply != _reportReply {
+				t.Fatalf("helper run: status %q, reply %q, error %q; want done, %q", h.Status, h.Reply, h.Error, _reportReply)
 			}
 
 			msg, c, wake := woken(t, m, s, p, boss.ID, tester.ID, 1)
-			if first, _, _ := strings.Cut(msg.Text, "\n"); first != "Tester reported back from thread "+helper+"." {
-				t.Errorf("message from Tester starts %q, want %q", first, "Tester reported back from thread "+helper+".")
+			first, rest, _ := strings.Cut(msg.Text, "\n")
+			if want := "Reef: Tester finished thread " + helper + ":"; first != want {
+				t.Errorf("message from Tester starts %q, want %q", first, want)
 			}
-			holdsAll(t, "message from Tester", msg.Text, _reportReply, _report.Done, _report.Tried, _report.Blocked, _report.Next)
+			if !strings.HasPrefix(strings.TrimSpace(rest), _reportReply) {
+				t.Errorf("message from Tester continues %q, want the helper's reply %q first", rest, _reportReply)
+			}
+			for _, field := range []string{"Done:", "Tried:", "Blocked:", "Next:"} {
+				if strings.Contains(msg.Text, field) {
+					t.Errorf("message from Tester %q holds the report line %q, want the reply only", msg.Text, field)
+				}
+			}
 			if got := resumed(c, p); got != bossSessionID(p) {
 				t.Errorf("boss run with Tester's message resumed %q, want the boss's session %q", got, bossSessionID(p))
 			}
-			if wake.Status != "done" || wake.Reply != _wakeReply {
-				t.Errorf("boss run Tester's message started: status %q, reply %q, error %q; want done, %q", wake.Status, wake.Reply, wake.Error, _wakeReply)
+			if wake.Status != "done" {
+				t.Errorf("boss run Tester's message started: status %q, error %q; want done", wake.Status, wake.Error)
 			}
 			if got := fromBot(t, s, boss.ID, tester.ID); len(got) != 1 {
 				t.Errorf("boss thread has %d messages from Tester %+v, want 1", len(got), got)
@@ -301,15 +306,25 @@ func TestWake_HelperFailedStoppedDeleted(t *testing.T) {
 			setDelegates(t, s, poteto, tester)
 			boss := s.newThread(t, poteto)
 			ev := s.events(t, boss)
-			woke := func(n int, helper, want string) {
+			// guard is true when the notice holds a failure Reef knows of (a helper failed or was stopped):
+			// the boss called no tell_user, so its final message is posted as a reply.
+			woke := func(n int, helper, want string, guard bool) {
 				t.Helper()
 				msg, c, wake := woken(t, m, s, p, boss.ID, tester.ID, n)
 				holdsAll(t, "message from Tester", msg.Text, helper, want)
+				if !strings.HasPrefix(msg.Text, "Reef: ") {
+					t.Errorf("message from Tester %q does not start with \"Reef: \"", msg.Text)
+				}
 				if got := resumed(c, p); got != bossSessionID(p) {
 					t.Errorf("boss run with %q resumed %q, want %q", want, got, bossSessionID(p))
 				}
 				if wake.Status != "done" {
 					t.Errorf("boss run %q started: status %q, error %q; want done", want, wake.Status, wake.Error)
+				}
+				if guard {
+					if text := botText(t, s, boss.ID, wake.ID); text != _wakeReply {
+						t.Errorf("Bot message of the run for %q is %q, want its final message %q posted (guard)", want, text, _wakeReply)
+					}
 				}
 			}
 
@@ -318,16 +333,16 @@ func TestWake_HelperFailedStoppedDeleted(t *testing.T) {
 			if f.Status != "failed" || f.Error == "" {
 				t.Fatalf("helper run with no recording: status %q, error %q; want failed with a reason", f.Status, f.Error)
 			}
-			woke(1, failed, "Tester's run failed: "+f.Error)
+			woke(1, failed, "Tester's run failed: "+f.Error, true)
 
 			stopped := delegated(t, useAtoll(t, s, boss, ev, delegateCall("Tester", _hangPrompt, ""))[0])
 			s.do(t, "POST", "/api/runs/"+helperRunning(t, s, stopped)+"/stop", nil, nil, http.StatusNoContent)
-			woke(2, stopped, "The user stopped Tester")
+			woke(2, stopped, "The user stopped Tester", true)
 
 			deleted := delegated(t, useAtoll(t, s, boss, ev, delegateCall("Tester", _hangPrompt, ""))[0])
 			helperRunning(t, s, deleted)
 			s.do(t, "DELETE", "/api/bots/"+tester.ID, nil, nil, http.StatusNoContent)
-			woke(3, deleted, "Tester was deleted")
+			woke(3, deleted, "Tester was deleted", false)
 		})
 	}
 }

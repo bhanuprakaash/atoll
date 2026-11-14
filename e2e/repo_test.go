@@ -136,7 +136,7 @@ func (f *repoFixture) work(t *testing.T, b bot, prompt, branch string) (thread, 
 	r := f.s.send(t, th, prompt)
 	es := until(t, ch, r.ID, "run_finished")
 	done := f.s.run(t, r.ID)
-	if done.Status != "done" || done.Report == nil {
+	if done.Status != "done" {
 		t.Fatalf("repository run: %+v", done)
 	}
 	if prompt == _fixRepoPrompt {

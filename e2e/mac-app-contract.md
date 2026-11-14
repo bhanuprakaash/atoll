@@ -98,7 +98,7 @@ line and summary come from these, so it never shows a provider's tool names.
 | `memory`, `platform`, `work`, `other` | Atoll's memory, platform, `start_work`/`track_mr` tools; anything else | | not tested here |
 
 `tools` on the run counts the run's calls by kind; the tests read `search`, `read`, `edit` and
-`command`. Atoll's own `finish_run` is not counted. `started_at` and `finished_at` bound the run.
+`command`. Atoll's own tools are not counted. `started_at` and `finished_at` bound the run.
 
 **Stop.** Stopping a `running` or `waiting` run ends it with status `stopped`: `run_finished`
 carries `status:"stopped"`, the run's provider process exits within 5 s (the fake ignores
@@ -132,12 +132,11 @@ not tested.
   works there is exactly one `status` in the log: `Searching <target>`, `Reading <target>`,
   `Editing <target>`, `Running <target>` by kind. No text the page ever shows matches a raw tool
   name (`Grep`, `Read`, `Edit`, `Write`, `Bash`, `ToolSearch`, `commandExecution`, `fileChange`,
-  `mcpToolCall`, `mcp__…`, `finish_run`). After the run, a line matching
+  `mcpToolCall`, `mcp__…`). After the run, a line matching
   `Worked <n>s · …` (or `<m>m <n>s`) containing "read 1 file" and "edited 1" sits above the
   reply and is still there after a reload.
 - **Lines**: an approval shows its target, `button`s "Allow" and "Deny", and "Show diff" for an
-  edit; once answered (Allow or Deny) the line leaves the log. `blocked` from `finish_run` shows
-  `Blocked: <blocked>`. A stopped run shows `Stopped by you after <n>s`. A failed run with no reply
+  edit; once answered (Allow or Deny) the line leaves the log. A stopped run shows `Stopped by you after <n>s`. A failed run with no reply
   shows `Didn't run: …` with a `button` "Retry" while it is the newest run. A dropped
   connection shows the app's one `role="status"` "Reconnecting", not a line in the log.
 - **Chips**: the MR is a `link` named with `!<iid>`, `href` the MR URL, showing its state
@@ -170,7 +169,7 @@ not tested.
 ## Fakes and harness
 
 - New scenarios (scripted, not real-model output): `working` for both providers
-  (search → read → edit → command, each held 1 s by a `pause` directive, then `finish_run`), and
+  (search → read → edit → command, each held 1 s by a `pause` directive), and
   Claude `fresh-fix` (a Bash step that asks approval, then the existing `repo-fix` directive).
 - `claude auth login` and `codex login` print their URL, wait for `<executable>.login.release`,
   then write the login into the config folder.

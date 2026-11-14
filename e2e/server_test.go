@@ -45,19 +45,11 @@ type (
 	}
 
 	runInfo struct {
-		ID       string  `json:"id"`
-		ThreadID string  `json:"thread_id"`
-		Status   string  `json:"status"`
-		Reply    string  `json:"reply"`
-		Error    string  `json:"error"`
-		Report   *report `json:"report"`
-	}
-
-	report struct {
-		Done    string `json:"done"`
-		Tried   string `json:"tried"`
-		Blocked string `json:"blocked"`
-		Next    string `json:"next"`
+		ID       string `json:"id"`
+		ThreadID string `json:"thread_id"`
+		Status   string `json:"status"`
+		Reply    string `json:"reply"`
+		Error    string `json:"error"`
 	}
 
 	// event is one SSE event of a thread, with when the test received it.

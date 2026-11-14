@@ -14,7 +14,7 @@ Claude (`testdata/claude/lifecycle-*.jsonl`, wire shapes from Claude 2.1.323 wit
   recording sets the order against the `result`.
 - A `result` with `"origin":{"kind":"task-notification","producer":"session-task","runId":"..."}`,
   with its own assistant text and tool call before it, placed before Reef's `started`.
-- `{"fake":"next-turn"}`: the lines after it answer the next user line of the process (the nudge).
+- `{"fake":"next-turn"}`: the lines after it answer the next user line of the process.
 - `{"fake":"exit","code":1,"stderr":"..."}`: print the text on stderr and exit.
 - The fake reads stdin while it plays, and writes the order of the user lines it read and the
   `result` and `command_lifecycle` lines it printed to `<provider dir>/claude.log.trace` (the
@@ -38,7 +38,7 @@ of another `turnId` of the same thread: its `turn/started`, a command item, text
 | No lifecycle events: ends on the first `result` with no origin, one warning per process | `TestRequestLifecycle_NoLifecycleEventsWarnOncePerProcess` |
 | Codex: ends on `turn/completed` of Reef's turn; text, tool calls and usage of another turn reach neither chat nor reply nor the run's token counts | `TestRequestLifecycle_CodexOtherTurnIsNotTheRun` |
 | Codex: a server request naming another turn still reaches the person | `TestRequestLifecycle_CodexApprovalOfOtherTurnReachesPerson` |
-| The nudge is sent only after the request ended | `TestRequestLifecycle_NudgeWaitsForRequestEnd` |
+| Nothing is sent after the request: the process reads one user line | `TestRequestLifecycle_NothingIsSentAfterTheRequest` |
 | Other activity is in the event log; the cost is the session total less the previous run's | `TestRequestLifecycle_OtherActivityIsLoggedAndPaidFor`, `TestRequestLifecycle_CodexOtherTurnIsNotTheRun` (the log) |
 | Real provider, once by hand | owner (PR, Only you can check) |
 

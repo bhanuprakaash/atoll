@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"net/http"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -12,13 +11,12 @@ import (
 
 // Contract: boss-quiet-contract.md.
 
-// The helper plays testdata/*/helper-progress.jsonl: it asks to run make check, then reports
-// progress. A boss woken with that report plays testdata/*/wake-quiet.jsonl: finish_run, no reply.
-const (
-	_progressPrompt = "Run the checks, then send a progress note."
-	_progressReply  = "Tester here: 2 of 5 checks done."
-	_reportedBack   = "reported back from thread "
-)
+// _finishedThread is in the first line of a helper's notice: `Reef: Tester finished thread {id}:`.
+const _finishedThread = "finished thread "
+
+func finishedNotice(helperName, threadID string) string {
+	return "Reef: " + helperName + " " + _finishedThread + threadID + ":"
+}
 
 type bossMessage struct {
 	Role      string `json:"role"`
@@ -137,98 +135,6 @@ func sidebarState(t *testing.T, s *server, botID, threadID string) string {
 	return ""
 }
 
-// TestBossQuiet_PromptTellsBossToStayQuiet: a Bot with a delegate list gets the part `Helper
-// reports` in its system prompt, whose lines tell it to end a progress-only wake with finish_run
-// and no reply; a Bot without one has no such part.
-func TestBossQuiet_PromptTellsBossToStayQuiet(t *testing.T) {
-	t.Parallel()
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			t.Parallel()
-			_, s := start(t, p)
-			poteto, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
-			if got := heySystem(t, s, p, poteto); slices.Contains(strings.Split(got, "\n"), "Helper reports") {
-				t.Errorf("system prompt of a Bot with no delegates has a Helper reports part:\n%s", got)
-			}
-			setDelegates(t, s, poteto, tester)
-			system := heySystem(t, s, p, poteto)
-			lines := strings.Split(system, "\n")
-			i := slices.Index(lines, "Helper reports")
-			if i < 0 {
-				t.Fatalf("system prompt of a Bot with delegates has no line Helper reports:\n%s", system)
-			}
-			part := ""
-			for _, l := range lines[i+1:] {
-				if l == "" {
-					break
-				}
-				part += l + "\n"
-			}
-			holdsAll(t, "Helper reports part", part, "finish_run", "reply")
-			assertParts(t, system, "core", "code")
-		})
-	}
-}
-
-// TestBossQuiet_ProgressWakeAddsNothing: a boss woken by a helper's progress report ends with
-// finish_run and no reply, which adds no bot message and does not make the thread New; a wake
-// whose run does reply does both.
-func TestBossQuiet_ProgressWakeAddsNothing(t *testing.T) {
-	t.Parallel()
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			t.Parallel()
-			m, s := start(t, p)
-			poteto, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
-			setDelegates(t, s, poteto, tester)
-			boss := s.newThread(t, poteto)
-			ev := s.events(t, boss)
-			ids, delegating := delegateTester(t, s, boss, ev, _progressPrompt)
-			s.do(t, "POST", "/api/threads/"+boss.ID+"/opened", nil, nil, http.StatusNoContent)
-			botMessages := func() (n int) {
-				for _, msg := range bossMessages(t, s, boss.ID) {
-					if msg.Role == "bot" {
-						n++
-					}
-				}
-				return n
-			}
-			before := botMessages()
-
-			helpersEnd(t, s, ids[0])
-			msg, _, wake := woken(t, m, s, p, boss.ID, tester.ID, 1)
-			holdsAll(t, "progress report", msg.Text, ids[0], _progressReply)
-			if wake.ID == delegating || wake.Status != "done" || wake.Report == nil {
-				t.Fatalf("boss run for the progress report: %+v, want a done run of its own with a finish_run report", wake)
-			}
-			if wake.Reply != "" {
-				t.Errorf("boss run for the progress report replied %q, want no reply", wake.Reply)
-			}
-			if got := botMessages(); got != before {
-				t.Errorf("boss thread has %d bot messages after a progress-only wake, want the %d it had", got, before)
-			}
-			if got := sidebarState(t, s, poteto.ID, boss.ID); got != "" {
-				t.Errorf("boss thread marker %q after a progress-only wake, want none (not new)", got)
-			}
-
-			asked, _ := delegateTester(t, s, boss, ev, _reportPrompt)
-			s.do(t, "POST", "/api/threads/"+boss.ID+"/opened", nil, nil, http.StatusNoContent)
-			before = botMessages()
-			helpersEnd(t, s, asked[0])
-			_, _, wake = woken(t, m, s, p, boss.ID, tester.ID, 2)
-			if wake.Reply != _wakeReply {
-				t.Fatalf("boss run for the question: reply %q, want %q", wake.Reply, _wakeReply)
-			}
-			if got := botMessages(); got != before+1 {
-				t.Errorf("boss thread has %d bot messages after a reply, want %d", got, before+1)
-			}
-			if got := sidebarState(t, s, poteto.ID, boss.ID); got != "new" {
-				t.Errorf("boss thread marker %q after a reply, want new", got)
-			}
-		})
-	}
-}
-
 // TestBossQuiet_ReportsInWindowStartOneRun: reports that arrive within the wake window start no run
 // until it is over, then one boss run whose prompt holds every report header in arrival order, and
 // each report is its own message of that run.
@@ -270,9 +176,9 @@ func TestBossQuiet_ReportsInWindowStartOneRun(t *testing.T) {
 			}
 			var headers []string
 			for _, h := range order {
-				headers = append(headers, "Tester "+_reportedBack+h+".")
+				headers = append(headers, finishedNotice("Tester", h))
 			}
-			prompts := promptsWith(t, m, p, _reportedBack)
+			prompts := promptsWith(t, m, p, _finishedThread)
 			if len(prompts) != 1 {
 				t.Fatalf("%d boss prompts hold a report, want 1: %q", len(prompts), prompts)
 			}
@@ -310,7 +216,8 @@ func TestBossQuiet_PersonTakesHeldReports(t *testing.T) {
 
 			const ask = "Tester, how far along is it?"
 			run := s.send(t, boss, ask)
-			if got := s.finished(t, ev, run.ID); got.Status != "done" {
+			got := s.finished(t, ev, run.ID)
+			if got.Status != "done" {
 				t.Fatalf("boss run for the person's message: status %q, error %q; want done", got.Status, got.Error)
 			}
 			var report bossMessage
@@ -323,8 +230,17 @@ func TestBossQuiet_PersonTakesHeldReports(t *testing.T) {
 				t.Errorf("Tester's report is a message of run %q, want the person's run %s", report.RunID, run.ID)
 			}
 			prompts := promptsWith(t, m, p, ask)
-			if len(prompts) != 1 || !inOrder(prompts[0], ask, "Tester "+_reportedBack+ids[0]+".") {
+			if len(prompts) != 1 || !inOrder(prompts[0], ask, finishedNotice("Tester", ids[0])) {
 				t.Errorf("boss prompts %q, want one with the person's text, then Tester's header", prompts)
+			}
+			// A message of the person makes the run ordinary: no background line, no tell_user, and the
+			// final message is the reply.
+			if len(prompts) == 1 && strings.Contains(prompts[0], "background run") {
+				t.Errorf("boss prompt %q has the background line, want an ordinary run", prompts[0])
+			}
+			assertTools(t, "ordinary", toolsOf(t, m, p, contains(ask)), []string{"delegate", "continue"}, []string{"tell_user", "finish_run"})
+			if text := botText(t, s, boss.ID, run.ID); got.Reply != _wakeReply || text != _wakeReply {
+				t.Errorf("run reply %q and Bot message %q, want the final message %q as the reply", got.Reply, text, _wakeReply)
 			}
 
 			bossStill(t, s, boss.ID, run.ID, held.Add(window+2*time.Second), "after the window: the report went with the person's message")
@@ -371,7 +287,7 @@ func TestBossQuiet_StoppedRunStartsNone(t *testing.T) {
 				t.Errorf("Tester's held report is a message of run %q, want the next run %s", report.RunID, run.ID)
 			}
 			prompts := promptsWith(t, m, p, ask)
-			if len(prompts) != 1 || !inOrder(prompts[0], ask, "Tester "+_reportedBack+ids[0]+".") {
+			if len(prompts) != 1 || !inOrder(prompts[0], ask, finishedNotice("Tester", ids[0])) {
 				t.Errorf("boss prompts %q, want one with the person's text, then Tester's header", prompts)
 			}
 		})

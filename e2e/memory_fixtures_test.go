@@ -84,8 +84,6 @@ func TestMemoryFixtures_ProviderScenarios(t *testing.T) {
 								retired.Status = "retired"
 								value = retired
 							}
-						case "finish_run":
-							value = "Report saved."
 						default:
 							t.Errorf("unexpected MCP call %s", req.Params.Name)
 						}
@@ -141,9 +139,6 @@ func TestMemoryFixtures_ProviderScenarios(t *testing.T) {
 				}
 				mu.Lock()
 				defer mu.Unlock()
-				if calls["finish_run"] != 1 {
-					t.Fatalf("finish_run calls %v", calls)
-				}
 				for _, tool := range map[string][]string{"save": {"remember"}, "save-user": {"remember"}, "recall": {"recall", "read_memory"}, "retire": {"recall", "read_memory", "retire_memory"}}[mode] {
 					if calls[tool] != 1 {
 						t.Errorf("%s calls: %v", tool, calls)

@@ -122,7 +122,7 @@ func TestMCPServers_RunGetsExactlyThePickedServers(t *testing.T) {
 			if done.Status != "done" || done.Reply != want {
 				t.Fatalf("run of the Bot with both servers: status %q, reply %q, want done and\n%s\n(error %q)", done.Status, done.Reply, want, done.Error)
 			}
-			// Reef's own tools (finish_run) needed none: exactly the three calls to user-added servers asked.
+			// Reef's own tools needed none: exactly the three calls to user-added servers asked.
 			if len(approvals) != 3 {
 				t.Fatalf("approvals %+v, want one per call to a user-added server and none for Reef's own tools", approvals)
 			}

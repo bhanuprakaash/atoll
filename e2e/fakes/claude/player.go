@@ -294,7 +294,6 @@ func (p *player) play(lines []string) error {
 		}
 		encoded, _ := json.Marshal(repoReply)
 		s = strings.ReplaceAll(s, "$REPO_REPLY", string(encoded[1:len(encoded)-1]))
-		s = strings.ReplaceAll(s, `"$READY"`, fake.ReadyArg(p.userMessage))
 		s = strings.ReplaceAll(s, "$COMMAND_UUID", p.commandUUID)
 		var m map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(s), &m); err != nil {

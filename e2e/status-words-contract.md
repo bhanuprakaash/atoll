@@ -8,8 +8,7 @@ A `cd /a/b && make check` command shows `Running make check`. Reading a backgrou
 file shows `Waiting on a background task`, with no `.output` in either activity. This includes
 `cat`, `tail -f`, a shell loop that assigns the task path to a variable, and a `tail` followed
 by `pgrep`. A regular `cat build/report.output` keeps `Running cat`. Chief's `list_*` tools
-show `Looking around`; writes keep `Setting up` and their target. If `finish_run` emits a tool
-call, its activity does not start with `Setting up`.
+show `Looking around`; writes keep `Setting up` and their target.
 
 Codex `commandExecution` skips leading `cd` and assignments: the command target is the first
 program only, so `cd /a/b && make check` shows `Running make`, `cd e2e/ui && node ...`
@@ -35,6 +34,6 @@ and `continue` read `Handing off` with no target, in the event, the sidebar and 
 | Claude command after `cd` names the program and argument | `TestRun_StatusWords` |
 | Codex commands after `cd` and assignments name the first program | `TestRun_StatusWords/codex` |
 | Background task output stays out of status and sidebar; ordinary output files remain commands | `TestRun_StatusWords` |
-| Read, write and finish activity words | `TestRun_StatusWords` |
+| Read and write activity words | `TestRun_StatusWords` |
 | Shell fragments name the first real program (Claude, Codex; event, sidebar, `verb`, `step`) | `TestRun_StatusWordsShell` |
 | `delegate` and `continue` read "Handing off" in the event, sidebar and Helpers line | `TestRun_StatusWordsHandoff`, `ui/helpers.spec.ts` "a helper that hands off reads ..." |
