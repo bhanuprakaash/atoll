@@ -931,15 +931,21 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			return "", err
 		}
 	}
+	bossName := ""
 	onBossBranch := false
-	if thread.ParentThreadID != "" && thread.Branch != "" {
+	if thread.ParentThreadID != "" {
 		boss, err := m.cfg.Store.Thread(a.ctx, thread.ParentThreadID)
 		if err != nil {
 			return "", fmt.Errorf("load boss thread: %w", err)
 		}
-		onBossBranch = boss.Branch != "" && strings.HasPrefix(thread.Branch, boss.Branch+"--")
+		bossBot, err := m.cfg.Store.Bot(a.ctx, boss.BotID)
+		if err != nil {
+			return "", fmt.Errorf("load boss bot: %w", err)
+		}
+		bossName = bossBot.Name
+		onBossBranch = thread.Branch != "" && boss.Branch != "" && strings.HasPrefix(thread.Branch, boss.Branch+"--")
 	}
-	cfg.SystemPrompt = systemPrompt(bot, user, onBossBranch,
+	cfg.SystemPrompt = systemPrompt(bot, user, bossName, onBossBranch,
 		len(bot.Delegates) > 0 && thread.ParentThreadID == "")
 	skills := make([]store.Skill, 0, len(bot.Skills))
 	for _, id := range bot.Skills {
