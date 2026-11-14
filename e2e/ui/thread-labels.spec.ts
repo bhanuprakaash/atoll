@@ -126,3 +126,52 @@ test('tell_user adds one Bot message per call and the final message replaces the
   await expect(log.getByText('Told the user about the blocker.')).toHaveCount(0);
   await expect(page.getByText('Thanks, Tester.')).toHaveCount(0);
 });
+
+// The final message has several lines and the last one is longer than the column. The status line
+// is the last non-empty line on one line, cut with an ellipsis; the whole message is in its title.
+test('the status line is the last line of a long final message, on one line, with the whole text as its title', async ({
+  page,
+}) => {
+  await makeBoss(m, ['Tester']);
+  await page.goto(m.url);
+  const boss = await startThread(
+    page,
+    'Poteto',
+    delegate([['Tester', 'Run the checks, then summarize the log.']]),
+  );
+  const [helper] = await helperThreads(m, boss, 1);
+  await expect
+    .poll(async () => (await api(m, 'GET', `/api/threads/${helper.id}`)).approval?.id ?? '', {
+      timeout: 15_000,
+    })
+    .not.toBe('');
+  const approval = (await api(m, 'GET', `/api/threads/${helper.id}`)).approval.id;
+  await api(m, 'POST', `/api/approvals/${approval}`, { approve: true });
+
+  const lines = [
+    'Read the log summary.',
+    'Two checks ran and both passed.',
+    'Nothing needs you now, and this last line is long enough that it cannot fit on one line above the composer, so the status line has to cut it with an ellipsis before the end of the sentence.',
+  ];
+  const status = page.getByText('Nothing needs you now');
+  await expect(status).toHaveCount(1, { timeout: 30_000 });
+
+  const text = ((await status.textContent()) ?? '').trim();
+  const cut = text.endsWith('…') ? text.slice(0, -1) : text;
+  expect(lines[2].startsWith(cut), `shows the last line, not "${text}"`).toBe(true);
+
+  const shown = await status.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      height: el.getBoundingClientRect().height,
+      lineHeight: parseFloat(s.lineHeight),
+      clipped:
+        s.textOverflow === 'ellipsis' && s.overflow !== 'visible' && el.scrollWidth > el.clientWidth,
+    };
+  });
+  expect(shown.height, 'one line high').toBeLessThanOrEqual(shown.lineHeight + 1);
+  expect(text.endsWith('…') || shown.clipped, 'cut with an ellipsis').toBe(true);
+
+  const title = (await status.getAttribute('title')) ?? '';
+  for (const line of lines) expect(title).toContain(line);
+});
