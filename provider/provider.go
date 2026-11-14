@@ -17,8 +17,6 @@ import (
 const (
 	MCPServer       = "atoll"
 	GitHubMCPServer = "github"
-	// ToolFinishRun takes the run's report: {done, tried, blocked, next}.
-	ToolFinishRun = "finish_run"
 	// ToolApprove is Claude's permission prompt tool: it answers once the user does.
 	ToolApprove = "approve"
 	// ToolStartWork takes {type, slug} and returns the worktree {path, branch, base, note} of the thread.
@@ -32,6 +30,8 @@ const (
 	ToolRetireMemory = "retire_memory"
 	ToolDelegate     = "delegate"
 	ToolContinue     = "continue"
+	// ToolTellUser takes {text}: a message to the person, listed only in background runs.
+	ToolTellUser = "tell_user"
 	// Platform tools modify platform configuration.
 	ToolCreateBot        = "create_bot"
 	ToolEditBot          = "edit_bot"
@@ -166,7 +166,9 @@ const (
 
 // Event is one step of a session.
 type Event struct {
-	Kind      Kind
+	Kind Kind
+	// Text is a piece of the request's text for KindText: progress. For KindTurnEnd it is the
+	// request's final message, which is the reply.
 	Text      string
 	SessionID string
 	ID        string

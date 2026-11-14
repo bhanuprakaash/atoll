@@ -22,11 +22,6 @@ const (
 )
 
 const _tools = `{"tools":[
-{"name":"finish_run",
-"description":"Report how this run went. Call it once in every run, when the work is done, after you write your answer. Call it last: nothing after it is shown.",
-"inputSchema":{"type":"object",
-"properties":{"done":{"type":"string"},"tried":{"type":"string"},"blocked":{"type":"string","description":"What stopped the work that only the user can fix: a missing sign-in or token, no access, a denied approval, a failing service. Empty string if nothing. A question you asked in your reply is not blocked."},"next":{"type":"string"},"ready":{"type":"array","description":"The pull requests you call ready to merge, each with its head commit as you saw it.","items":{"type":"object","properties":{"url":{"type":"string"},"sha":{"type":"string","description":"The 40-hex head commit of the PR."},"note":{"type":"string","description":"One line about the PR, at most 120 characters. For a test PR that fails on main on purpose until its fix lands: fails on main for the right reason."}},"required":["url","sha"]}},"ask":{"type":"object","description":"A decision only the person can make, once. Reef shows it as a card with the options as buttons. A reply that only ends in a question is not a decision.","properties":{"question":{"type":"string","description":"One line, at most 300 characters."},"options":{"type":"array","description":"2 to 4 different choices, each at most 60 characters.","items":{"type":"string"}}},"required":["question","options"]}},
-"required":["done","tried","blocked","next"]}},
 {"name":"start_work",
 "description":"Repo threads start in a clean read-only checkout. Call before your first edit in a repo thread. Makes this thread's worktree on a new branch type/slug and returns its path and branch as JSON. Change into that path for your edits. Calling it again returns the same worktree.",
 "inputSchema":{"type":"object",
@@ -164,21 +159,6 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		return a.platformCall(r.Context(), token, call.Name, call.Arguments)
 	}
 	switch call.Name {
-	case provider.ToolFinishRun:
-		var rep store.Report
-		if err := json.Unmarshal(call.Arguments, &rep); err != nil {
-			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
-		}
-		if strings.TrimSpace(rep.Done) == "" {
-			return failure("done is required."), nil
-		}
-		if !store.RealBlocked(rep.Blocked) {
-			rep.Blocked = ""
-		}
-		if err := a.runs.Report(r.Context(), token, rep); err != nil {
-			return a.refusal(err)
-		}
-		return a.withHelpers(r, token, "Report saved.")
 	case provider.ToolStartWork:
 		var in struct {
 			Type string `json:"type"`
@@ -350,7 +330,7 @@ func (a *api) delegateTools(ctx context.Context, bot store.Bot) ([]json.RawMessa
 			"its replies come back to you. The brief must hold everything the helper needs. " +
 			"The helper works in this thread's repo; with no repo here, repo names a registered repo. " +
 			"Without a GitHub connection the helper cannot edit a GitHub repo and delegate refuses it; " +
-			"pass read_only for a read-only task. End every brief with: " + run.FreezeSentence,
+			"pass read_only for a read-only task.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{

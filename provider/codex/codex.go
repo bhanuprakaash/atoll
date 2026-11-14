@@ -55,6 +55,8 @@ type (
 		used     bool
 		msgID    string // agent message item the last text delta belonged to; owned by run
 		wrote    bool   // the turn in progress has sent text; owned by run
+		final    string // text of the turn's final_answer agent message; owned by run
+		last     string // text of the turn's last agent message; owned by run
 		changes  map[string]json.RawMessage
 		tools    map[string]string // server to its last started MCP tool, which names an elicitation
 		notes    map[string]bool   // commentary agent message items of the turn; owned by run
@@ -510,7 +512,7 @@ func (s *Session) handle(m message) bool {
 		if other {
 			return true
 		}
-		s.msgID, s.wrote = "", false
+		s.msgID, s.wrote, s.final, s.last = "", false, "", ""
 		clear(s.notes)
 		clear(s.changes)
 		clear(s.tools)
@@ -543,6 +545,18 @@ func (s *Session) handle(m message) bool {
 			}
 			if it.Type == "mcpToolCall" {
 				s.tools[it.Server] = it.Tool
+			}
+		}
+	case "item/completed":
+		var it struct {
+			Type  string `json:"type"`
+			Phase string `json:"phase"`
+			Text  string `json:"text"`
+		}
+		if !other && json.Unmarshal(m.body().Item, &it) == nil && it.Type == "agentMessage" {
+			s.last = it.Text
+			if it.Phase == "final_answer" {
+				s.final = it.Text
 			}
 		}
 	case "item/agentMessage/delta":
@@ -594,6 +608,9 @@ func (s *Session) handle(m message) bool {
 	}
 	if ev.Limited {
 		ev.ResetsAt = s.resetsAt
+	}
+	if ev.Kind == provider.KindTurnEnd {
+		ev.Text = cmp.Or(s.final, s.last)
 	}
 	ev.Other = other
 	return s.emit(ev)

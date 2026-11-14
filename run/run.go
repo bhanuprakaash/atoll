@@ -1,6 +1,6 @@
 // Package run handles one message as one run: it starts or resumes the Bot's provider session,
 // streams the run's events to the thread, holds approvals open until the user answers, and stores
-// the reply and the finish_run report.
+// the reply.
 package run
 
 import (
@@ -21,7 +21,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"atoll/connection"
 	"atoll/memory"
@@ -78,8 +77,6 @@ const (
 	// _callWait bounds how long Ask waits for its tool call to come through the provider's
 	// stdout, which races the permission prompt arriving over HTTP.
 	_callWait = 2 * time.Second
-	_nudge    = "You did not call finish_run. Call the finish_run tool of the atoll MCP server " +
-		"now with done, tried, blocked and next. Do not reply with anything else."
 )
 
 const _promptItems = 8
@@ -88,12 +85,6 @@ const _promptItems = 8
 const (
 	_stopByUser = false
 	_stopByReef = true
-)
-
-// Whether stream shows the turn's text as the reply.
-const (
-	_hideText = false
-	_showText = true
 )
 
 type (
@@ -603,38 +594,6 @@ func (m *Manager) AnswerInThread(ctx context.Context, id string, allow bool) err
 	return nil
 }
 
-// Report stores the finish_run report of the run with token.
-func (m *Manager) Report(ctx context.Context, token string, r store.Report) error {
-	a, err := m.byToken(token)
-	if err != nil {
-		return err
-	}
-	for i, p := range r.Ready {
-		switch {
-		case p.URL == "":
-			return RefusedError(fmt.Sprintf("ready entry %d: url is empty; nothing saved", i+1))
-		case !_headSHA.MatchString(p.SHA):
-			return RefusedError(fmt.Sprintf("ready entry %d: sha must be the PR's 40-hex head commit; nothing saved", i+1))
-		case !oneLine(p.Note, _noteMax, true):
-			return RefusedError(fmt.Sprintf("ready entry %d: note must be one line of at most %d characters; nothing stored", i+1, _noteMax))
-		}
-	}
-	if msg := askProblem(r.Ask); msg != "" {
-		return RefusedError("ask: " + msg + "; nothing stored")
-	}
-	if r.Ask != nil {
-		ask := store.Ask{Question: strings.TrimSpace(r.Ask.Question)}
-		for _, o := range r.Ask.Options {
-			ask.Options = append(ask.Options, strings.TrimSpace(o))
-		}
-		r.Ask = &ask
-	}
-	if err := m.cfg.Store.SetReport(ctx, a.run.ID, r); err != nil {
-		return fmt.Errorf("report run %s: %w", a.run.ID, err)
-	}
-	return nil
-}
-
 // Ask is Claude's permission prompt for the run with token: it opens an approval and blocks
 // until the user answers or ctx ends. Atoll's own tools are allowed without asking. The approval
 // follows the tool call toolUseID on the thread's stream.
@@ -1017,16 +976,8 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if rp.ID != "" && thread.Session == "" && thread.Worktree == "" {
 		behind = repo.BehindNote(a.ctx, rp.Path)
 	}
-	prompt := messagePrompt(a.msgs, items, counts, thread, rp, cfg.Cwd, behind, stale)
-	waiting, err := m.cfg.Store.ThreadWaiting(a.ctx, thread.ID)
-	if err != nil {
-		return "", fmt.Errorf("load waiting items: %w", err)
-	}
-	for _, w := range waiting {
-		if w.Kind == store.WaitDecision {
-			prompt += "\n\nOpen question for the person (do not ask it again): " + w.Question
-		}
-	}
+	msgs, _ := asNotices(thread, a.msgs)
+	prompt := messagePrompt(msgs, items, counts, thread, rp, cfg.Cwd, behind, stale)
 	var githubToken string
 	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
 	if err != nil {
@@ -1062,7 +1013,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if err := sess.Send(a.ctx, prompt, images); err != nil {
 		return "", fmt.Errorf("send prompt: %w", err)
 	}
-	reply, err := m.stream(a, sess, _showText)
+	reply, err := m.stream(a, sess)
 	if err != nil {
 		return "", err
 	}
@@ -1083,40 +1034,12 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			}
 		}
 	}
-	run, err := m.cfg.Store.Run(a.ctx, a.run.ID)
-	if err != nil {
-		return "", fmt.Errorf("load run: %w", err)
-	}
-	if run.Report != nil {
-		return reply, nil
-	}
-	// The nudge only asks for the report: its failure keeps the first turn's reply.
-	nerr := sess.Send(a.ctx, _nudge, nil)
-	if nerr == nil {
-		_, nerr = m.stream(a, sess, _hideText)
-	}
-	if a.ctx.Err() != nil {
-		return "", a.ctx.Err()
-	}
-	if nerr != nil {
-		m.cfg.Log.Warn("finish_run nudge failed", "run_id", a.run.ID, "error", nerr)
-	}
-	if run, err = m.cfg.Store.Run(a.ctx, a.run.ID); err != nil {
-		return "", fmt.Errorf("load run: %w", err)
-	}
-	if run.Report == nil {
-		m.cfg.Log.Warn("run ended without a finish_run report", "run_id", a.run.ID)
-	}
 	return reply, nil
 }
 
-// stream reads the turn's events until it ends and returns the reply: the text after the last work
-// tool call, up to finish_run. Text after finish_run is the reply only when it was empty when
-// finish_run was called; otherwise that text is neither kept nor published. With showText false
-// the turn's text is dropped.
-func (m *Manager) stream(a *active, sess provider.Session, showText bool) (string, error) {
-	var reply strings.Builder
-	var frozen bool
+// stream reads the request's events until it ends and returns its final message, the reply. The
+// text before it is progress: published, never the reply.
+func (m *Manager) stream(a *active, sess provider.Session) (string, error) {
 	var wg sync.WaitGroup
 	asks := map[string]context.CancelCauseFunc{}
 	failed := make(chan error, 1)
@@ -1142,10 +1065,7 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 			}
 			switch ev.Kind {
 			case provider.KindText:
-				if showText && !frozen {
-					reply.WriteString(ev.Text)
-					m.publish(a, EventText, Text{RunID: a.run.ID, Text: ev.Text})
-				}
+				m.publish(a, EventText, Text{RunID: a.run.ID, Text: ev.Text})
 			case provider.KindUsage:
 				a.usage = ev.Usage
 			case provider.KindSession:
@@ -1156,12 +1076,6 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 				name := ev.Name
 				if ev.Server != "" {
 					name = "mcp__" + ev.Server + "__" + name
-				}
-				if name == _atollTools+provider.ToolFinishRun {
-					frozen = reply.Len() > 0
-				} else {
-					reply.Reset()
-					frozen = false
 				}
 				kind, target := ToolKind(name, ev.Input)
 				if name == _atollTools+provider.ToolReadMemory && m.cfg.Memory != nil {
@@ -1182,10 +1096,8 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 						}
 					}
 				}
-				if name != _atollTools+provider.ToolFinishRun {
-					if err := m.cfg.Store.CountTool(a.ctx, a.run.ID, kind); err != nil {
-						m.cfg.Log.Warn("count tool", "error", err)
-					}
+				if err := m.cfg.Store.CountTool(a.ctx, a.run.ID, kind); err != nil {
+					m.cfg.Log.Warn("count tool", "error", err)
 				}
 				m.publish(a, EventToolCall,
 					ToolCall{RunID: a.run.ID, ID: ev.ID, Name: ev.Name, Input: ev.Input, Kind: kind, Target: target, Verb: ToolVerb(name, kind)})
@@ -1216,7 +1128,7 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 					delete(asks, ev.ID)
 				}
 			case provider.KindTurnEnd:
-				return reply.String(), nil
+				return ev.Text, nil
 			case provider.KindError:
 				if ev.SignedOut {
 					return "", fmt.Errorf("%w: %s", provider.ErrSignedOut, ev.Text)
@@ -1499,8 +1411,8 @@ func ToolVerb(name, kind string) string {
 			return "Taking a note"
 		case provider.ToolRecall, provider.ToolReadMemory:
 			return "Remembering"
-		case provider.ToolFinishRun:
-			return "Wrapping up"
+		case provider.ToolTellUser:
+			return "Writing to you"
 		case provider.ToolDelegate, provider.ToolContinue:
 			return "Handing off"
 		}
@@ -1612,7 +1524,6 @@ var (
 	_backgroundOutput = regexp.MustCompile(`/tasks/[^\s;&|"']*\.output\b`)
 	_plainWord        = regexp.MustCompile(`^[A-Za-z][\w-]*$`)
 	_assignment       = regexp.MustCompile(`^\w+=`)
-	_headSHA          = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	_quoted           = regexp.MustCompile(`\$\([^)]*\)|"[^"]*"|'[^']*'`)
 	_heredoc          = regexp.MustCompile(`<<-?\s*['"]?(\w+)`)
 	_writeRedirect    = regexp.MustCompile(`^\d?>`)
@@ -1711,41 +1622,6 @@ func shortMemory(body string) string {
 		return string(runes[:80]) + "…"
 	}
 	return string(runes)
-}
-
-const (
-	_questionMax = 300
-	_optionMax   = 60
-	_noteMax     = 120
-)
-
-// oneLine says whether s is one line of at most limit characters, and not empty unless empty is set.
-func oneLine(s string, limit int, empty bool) bool {
-	s = strings.TrimSpace(s)
-	return (s != "" || empty) && utf8.RuneCountInString(s) <= limit && !strings.ContainsAny(s, "\r\n")
-}
-
-// askProblem is what is wrong with a decision, or "" when it is fine or absent.
-func askProblem(a *store.Ask) string {
-	switch {
-	case a == nil:
-		return ""
-	case !oneLine(a.Question, _questionMax, false):
-		return fmt.Sprintf("question must be one non-empty line of at most %d characters", _questionMax)
-	case len(a.Options) < 2 || len(a.Options) > 4:
-		return fmt.Sprintf("needs 2 to 4 options, got %d", len(a.Options))
-	}
-	seen := map[string]bool{}
-	for _, o := range a.Options {
-		if !oneLine(o, _optionMax, false) {
-			return fmt.Sprintf("each option must be a non-empty line of at most %d characters", _optionMax)
-		}
-		if seen[strings.TrimSpace(o)] {
-			return "options must differ"
-		}
-		seen[strings.TrimSpace(o)] = true
-	}
-	return ""
 }
 
 // safeSkillDir is a run's skill folder under the temp folder, for a data dir whose path a shell

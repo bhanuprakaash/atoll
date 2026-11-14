@@ -489,9 +489,6 @@ func TestStore_MessageRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetReport(ctx, run.ID, store.Report{Done: "Checked it.", Blocked: "Need a key."}); err != nil {
-		t.Fatal(err)
-	}
 	if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone, Reply: "reply"}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -516,8 +513,8 @@ func TestStore_MessageRun(t *testing.T) {
 		t.Fatalf("page after the first = %d messages, want 1", len(newer))
 	}
 	for name, m := range map[string]store.Message{"Messages": all[1], "latest page": latest[1], "after": newer[0]} {
-		if m.RunStatus != store.StatusDone || m.Done != "Checked it." || m.Blocked != "Need a key." {
-			t.Errorf("%s: run %q done %q blocked %q, want done, %q, %q", name, m.RunStatus, m.Done, m.Blocked, "Checked it.", "Need a key.")
+		if m.RunStatus != store.StatusDone {
+			t.Errorf("%s: run %q, want done", name, m.RunStatus)
 		}
 	}
 }
@@ -766,85 +763,6 @@ func TestStore_FailUnfinished_OneWakePerBoss(t *testing.T) {
 	held, err := st.Held(ctx, bt.ID)
 	if err != nil || len(held) != 1 || held[0].Text != "2" || held[0].FromBotID != "" || held[0].Kind != "restart" {
 		t.Fatalf("held = %+v, %v; want one restart message of 2 runs from Reef", held, err)
-	}
-}
-
-func TestStore_RestartWake_KeepsDecisionOpen(t *testing.T) {
-	ctx := context.Background()
-	st, bt, bot := wakeFixture(t)
-	_, ask, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: bt.ID, Text: "go"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	report := store.Report{Ask: &store.Ask{Question: "Ship it?", Options: []string{"yes", "no"}}}
-	if err := st.SetReport(ctx, ask.ID, report); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.FinishRun(ctx, ask.ID, store.RunResult{Status: store.StatusDone}, nil); err != nil {
-		t.Fatal(err)
-	}
-	for range 2 {
-		th, err := st.CreateHelperThread(ctx, bt.ID, bot.ID, "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, _, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := st.FailUnfinished(ctx, "restart", restartText); err != nil {
-		t.Fatal(err)
-	}
-	held, err := st.Held(ctx, bt.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := st.StartRunFrom(ctx, held...); err != nil {
-		t.Fatal(err)
-	}
-	got, err := st.ThreadWaiting(ctx, bt.ID)
-	if err != nil || len(got) != 1 || got[0].Kind != store.WaitDecision || got[0].Question != "Ship it?" {
-		t.Fatalf("waiting = %+v, %v; want the open decision", got, err)
-	}
-}
-
-func TestRealBlocked(t *testing.T) {
-	for _, phrase := range []string{"nothing blocking", "nothing blocked", "none", "nothing", "n/a"} {
-		for _, suffix := range []string{"", ".", "!", " ."} {
-			for _, give := range []string{phrase + suffix, "  " + strings.ToUpper(phrase) + suffix + " "} {
-				if store.RealBlocked(give) {
-					t.Errorf("RealBlocked(%q) = true, want false", give)
-				}
-			}
-		}
-	}
-	for _, give := range []string{"", "...", " "} {
-		if store.RealBlocked(give) {
-			t.Errorf("RealBlocked(%q) = true, want false", give)
-		}
-	}
-	for _, give := range []string{"None of the tests ran: the CI token expired.", "GitLab sign-in expired."} {
-		if !store.RealBlocked(give) {
-			t.Errorf("RealBlocked(%q) = false, want true", give)
-		}
-	}
-}
-
-func TestStore_ThreadWaiting_StoredNoneLikeBlocked(t *testing.T) {
-	ctx := context.Background()
-	st, bt, _ := wakeFixture(t)
-	_, run, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: bt.ID, Text: "go"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := st.SetReport(ctx, run.ID, store.Report{Done: "d", Blocked: "Nothing blocked."}); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusDone}, nil); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := st.ThreadWaiting(ctx, bt.ID); err != nil || len(got) != 0 {
-		t.Fatalf("waiting = %+v, %v; want nothing", got, err)
 	}
 }
 
@@ -1342,56 +1260,5 @@ func TestStore_Queued_ReadsNoImageData(t *testing.T) {
 	want := "SELECT id, mime, NULL FROM inbox_images WHERE inbox_id = ? ORDER BY rowid"
 	if !slices.Equal(images, []string{want}) {
 		t.Errorf("Queued read images with %q, want only %q", images, want)
-	}
-}
-
-// TestStore_ThreadWaiting_ReadsOneThread proves, in the query's plan, that ThreadWaiting finds the
-// thread's runs by their thread instead of reading every run once.
-func TestStore_ThreadWaiting_ReadsOneThread(t *testing.T) {
-	ctx := t.Context()
-	st, log := recordQueries(t)
-	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	th, err := st.CreateThread(ctx, bot.ID, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	log.reset()
-	if _, err := st.ThreadWaiting(ctx, th.ID); err != nil {
-		t.Fatal(err)
-	}
-	queries := log.all()
-	if len(queries) != 1 {
-		t.Fatalf("ThreadWaiting ran %d queries, want 1", len(queries))
-	}
-	rows, err := st.DB().QueryContext(ctx, "EXPLAIN QUERY PLAN "+queries[0], th.ID, th.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = rows.Close() }()
-	var plan []string
-	for rows.Next() {
-		var id, parent, unused int
-		var detail string
-		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
-			t.Fatal(err)
-		}
-		plan = append(plan, detail)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("plan: %q", plan)
-	var searched bool
-	for _, step := range plan {
-		if step == "SCAN r" || step == "SCAN m" {
-			t.Errorf("plan step %q reads every run or message, want a search by thread", step)
-		}
-		searched = searched || strings.Contains(step, "SEARCH r USING INDEX runs_thread (thread_id=?)")
-	}
-	if !searched {
-		t.Errorf("plan %q has no search of runs by thread", plan)
 	}
 }

@@ -296,9 +296,7 @@ func TestNotices_ApprovalsFirstAndRunOnce(t *testing.T) {
 		t.Fatalf("earlier %s, want run %s once", f.data, endingRun)
 	}
 
-	for range 2 {
-		ending.events <- provider.Event{Kind: provider.KindTurnEnd}
-	}
+	ending.events <- provider.Event{Kind: provider.KindTurnEnd}
 	for ev := range thread {
 		if ev.Type == run.EventRunFinished {
 			break
