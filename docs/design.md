@@ -183,9 +183,10 @@ counts a Bot that is already gone as removed.
   exits after replying. No agent process lives between messages.
 - A thread records when the user last opened it (`POST /api/threads/{id}/opened`, sent when the
   thread view opens and when a run ends while it is on screen; never by a read, which the UI
-  polls). The Replied and Failed labels (App and UI, Thread labels) compare the newest run's end
-  with it and survive a restart. Threads that existed when this shipped start as read. A run that
-  ended `done` with no reply, and a background run that called no `tell_user`, do not count.
+  polls). The Replied and Failed labels (App and UI, Thread labels) compare it with the
+  thread's last reply or `tell_user` message and its last failed run, and survive a restart.
+  Threads that existed when this shipped start as read. A run that ended `done` with no reply, and
+  a background run that called no `tell_user`, do not count.
 - Pinning to the sidebar (`POST`/`DELETE /api/threads/{id}/pin`): at most 3 open threads per Bot.
   A 4th pin answers `409` unless it names a pin to replace (`{replace}`), done in one transaction.
   Closing a thread drops its pin; helper threads cannot be pinned.
@@ -1381,10 +1382,11 @@ Follow-ups:
   `delegate`'s description) go to atoll's `AGENTS.md`. "Never merge" goes to each Bot's persona: on
   upgrade, every existing Bot with repo access gets `Never merge: {user} merges.` appended once,
   visible and editable; a new Bot's persona is the person's to write. *Nothing in code stops a
-  merge; a Bot that may merge (a release Bot) drops the line.*
+  merge; a Bot that may merge (a release Bot) drops the line.* `track_mr`'s description does not
+  say "Never merge" either, so the persona is the one place that carries it.
 - The platform block holds the Reef guide (so Chief answers without reading a file), the ask-first
   rule for creates and Chief's voice. The ask-first rule overrides the core's "ask only when two
-  real readings". The voice lives here, not in the persona; only a Bot with the switch has it.
+  readings are both real". The voice lives here, not in the persona; only a Bot with the switch has it.
 - Chief reads local files only through two server tools (Chief on Claude has no file tool; Bots >
   Chief, Known gap, covers Codex): `import_skill(path)` imports a skill folder; `import_agent(path)`
   reads an agent file. For a Bot from an agent file, Chief calls `import_agent`, imports each skill
@@ -1622,11 +1624,17 @@ Voice
     poll with every thread open.*
   - `hidden` comes from the thread row: the state and `mr_changed_at` of its PR and a
     `max(created)` over the person's messages, read only for a merged thread.
-  - `new` comes from the thread row: last heard from after the user last opened it (`last_heard`,
-    after `created` too) and no run live. A run that ends with a reply, a failure or a stop sets
-    `last_heard` in the transaction that ends it, a run failed at start-up included; one that ends
-    `done` with no reply sets only `last_activity`, which still orders the rows. *A column, not a
-    scan of the runs since the last open, so the poll stays one row read.*
+  - `new`, `failed` and `limited` come from the thread row, not from `runs`. `new`: `last_heard`
+    is after the user last opened the thread (and after `created`) and no run is live.
+    `last_heard` is set only by a run that ends `done` with a posted reply and by a `tell_user`
+    message. `failed`: `last_failed` is after the last open; a run that ends `failed` sets it, a
+    run failed at start-up included. `limited`: `limited_until` holds the provider's reset time; a
+    run that ends with the usage limit sets it (0, which shows no label, when the provider
+    gave no time) and a run that ends `done` clears it. A run that ends `done` with no reply, or
+    stopped by the user, sets only `last_activity`, which still orders the rows. *Columns, not a scan of the runs since the last
+    open, so the poll stays one row read.*
+  - A run the user stopped gets no sidebar label: they stopped it, so nothing is waiting for them.
+    It is listed in the island's Earlier (see the island), as finished.
   - Known gap: the live scan reads the whole `runs` table each poll, so it grows with run history;
     an index on `runs.status` would fix it.
 - New thread: `+` on Bot row hover, the Bot's right-click menu (New thread, Pin to sidebar, Move to
@@ -1704,8 +1712,8 @@ Voice
   - On connect the server builds Earlier from rows newer than the timestamp, newest first, one row
     per event except runs, with the text a live event gets:
     - A run that ended in an open thread: a thread's newest ended run only, and only while it ended
-      after the thread's `last_opened_at` (the rule of the sidebar's Replied). `runs.finished_at`;
-      "Pilot finished Review !42", or "Pilot failed Review !42" for a failed one, which includes a
+      after the thread's `last_opened_at`. A newest ended run that is `done` with no message of the
+      Bot's is not listed. `runs.finished_at`; "Pilot finished Review !42", or "Pilot failed Review !42" for a failed one, which includes a
       run the restart cut short; a run the user stopped counts as finished.
     - A thread whose MR is `opened` since then (`threads.mr_changed_at`, new, set when `mr_state`
       changes or `track_mr` gives a different URL): "Pilot opened !42", the MR title as detail.
@@ -1714,8 +1722,8 @@ Voice
     not replayed, except that an approval still open drops the island.
   - Needs you is state, not an event: it shows while true and the timestamp never clears it. A
     restart ends a run that waited on an approval as failed, so it moves under Earlier.
-  - The pill gets no new mark: the island and the sidebar's Replied agree (every unread run is
-    both) without a second red thing.
+  - The pill gets no new mark: the island and the sidebar's Replied agree (every unread reply is
+    both; a run the user stopped is only in Earlier) without a second red thing.
   - Each row has a dismiss (×) button, shown on hover and keyboard focus,
     `POST /api/island/dismiss`: a run row marks its thread read (`last_opened_at`), an MR row sets
     `threads.island_dismissed_at` and stays hidden while `mr_changed_at` is not newer, and a
