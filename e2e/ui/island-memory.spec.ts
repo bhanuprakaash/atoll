@@ -9,9 +9,9 @@ import {
   newBotAPI,
   openThreadAPI,
   prompts,
+  showPane,
   startAtoll,
   threadTitle,
-  threadTree,
 } from "./atoll";
 
 let m: Machine;
@@ -63,14 +63,13 @@ test("runs that ended while the page was closed are under Earlier on the next op
   for (const t of done) await waitStatus(t.id, "done");
   await waitStatus(failed.id, "failed");
 
+  const side = await context.newPage();
+  const pane = await showPane(side, m, pilot.id, "Pilot");
+  await expect(pane.locator('[data-marker="new"]')).toHaveCount(2);
+  await expect(pane.locator('[data-marker="failed"]')).toHaveCount(1);
+  await side.close();
   const fresh = await context.newPage();
   const { island, list } = await open(fresh, home.id);
-  await expect(
-    threadTree(fresh, "Pilot").locator('[data-marker="new"]'),
-  ).toHaveCount(2);
-  await expect(
-    threadTree(fresh, "Pilot").locator('[data-marker="failed"]'),
-  ).toHaveCount(1);
   await island.click();
   const earlier = list
     .getByRole("list", { name: "Earlier" })

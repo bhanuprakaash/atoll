@@ -11,13 +11,32 @@ import {
   recordText,
   seenText,
   sendMessageAPI,
+  nowPane,
+  showPane,
   startAtoll,
   threadTitle,
-  threadTree,
 } from './atoll';
 import { delegate, helperThreads, makeBoss, runStatus, startThread } from './helpers-fixture';
 
 let m: Machine;
+
+// inPane checks a Bot's thread pane on a page of its own, so the page under test keeps its place
+// and no thread counts as seen.
+async function inPane(
+  page: Page,
+  botID: string,
+  name: string,
+  check: (pane: Locator) => Promise<void>,
+) {
+  const side = await page.context().newPage();
+  try {
+    await check(await showPane(side, m, botID, name));
+  } finally {
+    await side.close();
+  }
+}
+const replied = (n: number) => (pane: Locator) =>
+  expect(pane.locator('[data-marker="new"]')).toHaveCount(n);
 test.beforeEach(async () => {
   m = await startAtoll();
 });
@@ -173,28 +192,27 @@ test('dismissing a run row removes it at once, marks its thread read, and it sta
     await waitStatus((await openThreadAPI(m, pilot.id, prompt)).id, 'done');
   }
   const { island, rows } = await open(page, home.id);
-  const marks = threadTree(page, 'Pilot').locator('[data-marker="new"]');
-  await expect(marks).toHaveCount(2);
+  await inPane(page, pilot.id, 'Pilot', replied(2));
   await island.click();
   await expect(rows).toHaveCount(2);
 
   await dismiss(finished(rows, prompts.pong)).click();
   await expect(finished(rows, prompts.pong)).toHaveCount(0);
   await expect(finished(rows, prompts.keep)).toHaveCount(1);
-  await expect(marks).toHaveCount(1);
+  await inPane(page, pilot.id, 'Pilot', replied(1));
 
   await page.reload();
   await island.click();
   await expect(finished(rows, prompts.keep)).toHaveCount(1);
   await expect(finished(rows, prompts.pong)).toHaveCount(0);
-  await expect(marks).toHaveCount(1);
+  await inPane(page, pilot.id, 'Pilot', replied(1));
 
   await restart();
   await page.reload();
   await island.click();
   await expect(finished(rows, prompts.keep)).toHaveCount(1);
   await expect(finished(rows, prompts.pong)).toHaveCount(0);
-  await expect(marks).toHaveCount(1);
+  await inPane(page, pilot.id, 'Pilot', replied(1));
 });
 
 const mrURL = 'https://gitlab.example/fixtures/seeded/-/merge_requests/7';
@@ -270,7 +288,9 @@ test('dismissing a platform-change row removes it at once, and it stays gone aft
   await expect(change).toHaveCount(0);
 });
 
-test('opening a thread clears both its sidebar New and its Earlier row', async ({ page }) => {
+test('opening a thread from Now clears both its Replied row and its Earlier row', async ({
+  page,
+}) => {
   const pilot = await newBotAPI(m, 'Pilot');
   const home = await newBotAPI(m, 'Home');
   const [a, b] = [
@@ -280,7 +300,7 @@ test('opening a thread clears both its sidebar New and its Earlier row', async (
   await waitStatus(a.id, 'done');
   await waitStatus(b.id, 'done');
   const { island, rows } = await open(page, home.id);
-  const tree = threadTree(page, 'Pilot');
+  const tree = await nowPane(page);
   const marks = tree.locator('[data-marker="new"]');
   await expect(marks).toHaveCount(2);
 
@@ -375,9 +395,9 @@ for (const [news, preamble, label, verb] of [
 
     const { island, rows } = await open(page, home.id);
     await page.reload();
-    await expect(
-      threadTree(page, 'Poteto').getByRole('listitem').filter({ hasText: label }),
-    ).toHaveCount(1);
+    await inPane(page, poteto.id, 'Poteto', (pane) =>
+      expect(pane.getByRole('listitem').filter({ hasText: label })).toHaveCount(1),
+    );
     await island.click();
     await expect(potetoRows(rows, verb)).toHaveCount(1);
   });

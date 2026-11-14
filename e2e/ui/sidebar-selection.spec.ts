@@ -1,5 +1,6 @@
-// The sidebar marks where you are once, on the most specific item: the open thread's row, or the
-// Bot row on a Bot's new-thread page. Issue #176; rule in docs/design.md (sidebar, Selected row).
+// The sidebar marks where you are once: with a thread open only its row in the pane is selected;
+// on a Bot's New thread screen no row is, and the face's bar alone marks the Bot. Issues #176, #469,
+// #470; rule in docs/design.md (Selected row). Contract: e2e/sidebar-rail-contract.md.
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
   api,
@@ -9,7 +10,7 @@ import {
   prompts,
   sidebarRow,
   startAtoll,
-  threadTree,
+  threadPane,
 } from './atoll';
 
 let m: Machine;
@@ -40,10 +41,12 @@ async function expectFilled(link: Locator, want: boolean) {
 // away keeps the pointer off every row, so hover cannot stand in for the selected fill.
 const away = (page: Page) => page.mouse.move(1270, 5);
 
-const marked = (page: Page) =>
+// marked is every element of the rail and the pane that says it is current.
+const marked = (page: Page, bot: string) =>
   page
-    .locator('[role="navigation"][aria-label="Bots"], nav[aria-label="Bots"]')
-    .locator('[aria-current]');
+    .getByRole('navigation', { name: 'Bots' })
+    .locator('[aria-current]')
+    .or(threadPane(page, bot).locator('[aria-current]'));
 
 async function waitDone(threadID: string) {
   await expect
@@ -67,35 +70,36 @@ async function threadPage(page: Page, botID: string, threadID: string) {
   await away(page);
 }
 
-// botRow is a Bot's own link: a thread titled with the Bot's name must not match it.
+// botRow is a Bot's face: a thread titled with the Bot's name must not match it.
 const botRow = (page: Page, botID: string) =>
   page.getByRole('navigation', { name: 'Bots' }).locator(`a[href="/bots/${botID}"]`);
 
-// expectOnlyThread: the thread's row is the one selected row; its Bot row is not selected.
+// expectOnlyThread: the thread's row is the one selected row; the face has the bar, not the fill.
 async function expectOnlyThread(page: Page, bot: string, botID: string, threadID: string) {
-  const row = threadTree(page, bot).locator(`a[href="/bots/${botID}/threads/${threadID}"]`);
+  const row = threadPane(page, bot).locator(`a[href="/bots/${botID}/threads/${threadID}"]`);
   await expect(row).toBeVisible();
   await expectFilled(row, true);
   await expect(row).toHaveAttribute('aria-current', 'page');
+  await expect(botRow(page, botID)).toHaveAttribute('data-current', 'true');
   await expectFilled(botRow(page, botID), false);
   await expect(botRow(page, botID)).not.toHaveAttribute('aria-current', /./);
-  await expect(marked(page)).toHaveCount(1);
+  await expect(marked(page, bot)).toHaveCount(1);
 }
 
-// expectOnlyBot: the Bot row is the one selected row; no thread row of it is.
+// expectOnlyBot: on the New thread screen no row is selected; the face's bar alone marks the Bot.
 async function expectOnlyBot(page: Page, bot: string, botID: string) {
-  await expectFilled(botRow(page, botID), true);
-  await expect(botRow(page, botID)).toHaveAttribute('aria-current', 'page');
-  const rows = threadTree(page, bot).getByRole('link');
+  await expect(botRow(page, botID)).toHaveAttribute('data-current', 'true');
+  await expect(botRow(page, botID)).not.toHaveAttribute('aria-current', /./);
+  const rows = threadPane(page, bot).getByRole('link');
   await expect(rows.first()).toBeVisible();
   for (const row of await rows.all()) {
     await expectFilled(row, false);
     await expect(row).not.toHaveAttribute('aria-current', /./);
   }
-  await expect(marked(page)).toHaveCount(1);
+  await expect(marked(page, bot)).toHaveCount(0);
 }
 
-test('with a thread open only its row is selected; on the Bot new-thread page the Bot row is', async ({
+test('with a thread open only its row is selected; on the New thread screen no row is and the face has the bar', async ({
   page,
 }) => {
   const bot = await newBotAPI(m, 'Pilot');
@@ -107,7 +111,7 @@ test('with a thread open only its row is selected; on the Bot new-thread page th
   await threadPage(page, bot.id, first.id);
   await expectOnlyThread(page, 'Pilot', bot.id, first.id);
   await expectFilled(
-    threadTree(page, 'Pilot').locator(`a[href="/bots/${bot.id}/threads/${second.id}"]`),
+    threadPane(page, 'Pilot').locator(`a[href="/bots/${bot.id}/threads/${second.id}"]`),
     false,
   );
 
@@ -123,14 +127,16 @@ test('a pinned Bot and its pinned thread follow the same rule', async ({ page })
   await api(m, 'POST', `/api/threads/${thread.id}/pin`);
 
   await threadPage(page, bot.id, thread.id);
-  await expect(threadTree(page, 'Anchor').locator('[data-marker="pinned"]')).toHaveCount(1);
+  await expect(threadPane(page, 'Anchor').locator('[data-marker="pinned"]')).toHaveCount(1);
   await expectOnlyThread(page, 'Anchor', bot.id, thread.id);
 
   await newThreadPage(page, bot.id, 'Anchor');
   await expectOnlyBot(page, 'Anchor', bot.id);
 });
 
-test('a helper thread is the one selected row, not its Bot or the boss', async ({ page }) => {
+test('a helper thread is the one selected row, in its own Bot pane, not the boss', async ({
+  page,
+}) => {
   const poteto = await newBotAPI(m, 'Poteto', 'claude', { look: 'whale' });
   const tester = await newBotAPI(m, 'Tester', 'claude', { look: 'shark' });
   await api(m, 'PUT', `/api/bots/${poteto.id}`, { delegates: [tester.id] });
@@ -154,38 +160,4 @@ test('a helper thread is the one selected row, not its Bot or the boss', async (
   await away(page);
   await expectOnlyThread(page, 'Tester', tester.id, helper.id);
   await expectFilled(botRow(page, poteto.id), false);
-});
-
-test('in the threads popup the open thread is the one selected row, and its Bot row is not', async ({
-  page,
-}) => {
-  const bot = await newBotAPI(m, 'Beacon');
-  const names = ['Alpha', 'Delta', 'Echo', 'Foxtrot', 'Golf'];
-  const threads = [];
-  for (let i = 0; i < names.length; i++) threads.push(await openThreadAPI(m, bot.id, prompts.keep));
-  for (const [i, name] of names.entries()) {
-    await waitDone(threads[i].id);
-    await api(m, 'PATCH', `/api/threads/${threads[i].id}`, {
-      title: `${name} notes`,
-    });
-  }
-
-  await threadPage(page, bot.id, threads[0].id);
-  await expectOnlyThread(page, 'Beacon', bot.id, threads[0].id);
-  await threadTree(page, 'Beacon')
-    .getByRole('button', { name: /^\d+ more$/ })
-    .click();
-  const popup = page.getByRole('dialog', { name: 'Threads with Beacon' });
-  await expect(popup).toBeVisible();
-  await away(page);
-
-  const link = (id: string) => popup.locator(`a[href="/bots/${bot.id}/threads/${id}"]`);
-  await expectFilled(link(threads[0].id), true);
-  await expect(link(threads[0].id)).toHaveAttribute('aria-current', 'page');
-  for (const t of threads.slice(1)) {
-    await expectFilled(link(t.id), false);
-    await expect(link(t.id)).not.toHaveAttribute('aria-current', /./);
-  }
-  await expectFilled(botRow(page, bot.id), false);
-  await expect(marked(page)).toHaveCount(1);
 });

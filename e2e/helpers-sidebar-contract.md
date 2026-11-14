@@ -1,5 +1,7 @@
 # Delegated work in the sidebar and merged threads: test contract
 
+> Superseded in part by [`sidebar-rail-contract.md`](sidebar-rail-contract.md) (#469–#472): the thread tree, its 3-row cap, `N more`, `N more running`, the threads popup, group folding, the drawer and the sidebar search are retired; where this file and that one differ, that one holds.
+
 Tests: `ui/helpers-sidebar.spec.ts`, `ui/merged-threads.spec.ts` (fixture: `ui/github-fixture.ts`),
 and the sidebar part of `ui/helpers.spec.ts`. Fake Claude and the scripted GitHub the PR watcher
 reads. No new Go fake.

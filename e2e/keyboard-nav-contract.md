@@ -1,5 +1,7 @@
 # Keyboard: composer focus, the Cmd+K switcher, sidebar search: test contract
 
+> Superseded in part by [`sidebar-rail-contract.md`](sidebar-rail-contract.md) (#469–#472): the thread tree, its 3-row cap, `N more`, `N more running`, the threads popup, group folding, the drawer and the sidebar search are retired; where this file and that one differ, that one holds.
+
 Issue #182, design in `docs/design.md` (Keyboard). Tests: `ui/keyboard-nav.spec.ts`, fake Claude
 only. Threads are made through the API and titled with `PATCH /api/threads/{id}`; a branch comes
 from the fake provider's `fix/seeded-bug` recording, an MR or PR from `track_mr`.

@@ -1,7 +1,7 @@
 // Helpers in the boss's thread: the tray above the composer, the header island, and a read-only
 // helper thread. Contract: e2e/helpers-ui-contract.md.
 import { expect, test } from '@playwright/test';
-import { api, type Machine, prompts, sidebarRow, startAtoll, threadTree } from './atoll';
+import { api, type Machine, prompts, sidebarRow, startAtoll, threadPane } from './atoll';
 import {
   box,
   bossHandsOff,
@@ -129,7 +129,7 @@ test('a helper approval shows under its line and Allow works there; the helperâ€
   );
 });
 
-test('the helper thread is not in the sidebar and read-only; Allow there leaves the boss thread', async ({
+test('the helper thread is not a row of the boss pane and is read-only; Allow there leaves the boss thread', async ({
   page,
   context,
 }) => {
@@ -147,11 +147,9 @@ test('the helper thread is not in the sidebar and read-only; Allow there leaves 
       .getByRole('navigation', { name: 'Bots' })
       .getByRole('link', { name: /^Shark\b.*\bTester\b/ }),
   ).toBeVisible();
-  await expect(threadTree(helperPage, 'Tester').getByRole('listitem')).toHaveCount(0);
+  await expect(threadPane(helperPage, 'Poteto')).toBeVisible();
   await expect(
-    helperPage
-      .getByRole('navigation', { name: 'Bots' })
-      .locator(`a[href$="/threads/${thread('Tester')}"]`),
+    threadPane(helperPage, 'Poteto').locator(`a[href$="/threads/${thread('Tester')}"]`),
   ).toHaveCount(0);
   await helperPage.goto(`${m.url}/bots/${bots.Tester.id}/threads/${thread('Tester')}`);
   const helperLog = helperPage.getByRole('log', { name: 'Messages' });
