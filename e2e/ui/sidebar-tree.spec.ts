@@ -74,7 +74,7 @@ test('a thread waiting on an approval shows under its Bot as Needs you; answerin
   await expect(tree).not.toContainText('Needs you');
 });
 
-test('a run ending in an unseen thread shows it as New; opening it clears New, also after a restart', async ({
+test('a run ending in an unseen thread shows it as Replied; opening it clears Replied, also after a restart', async ({
   page,
 }) => {
   const bot = await newBotAPI(m, 'Newsy');
@@ -88,7 +88,7 @@ test('a run ending in an unseen thread shows it as New; opening it clears New, a
   for (const prompt of [prompts.pong, prompts.keep]) {
     const fresh = row(page, 'Newsy', threadTitle(prompt));
     await expect(fresh).toHaveAttribute('data-marker', 'new');
-    await expect(fresh).toContainText('New');
+    await expect(fresh).toContainText('Replied');
     const weight = await fresh
       .getByText(threadTitle(prompt), { exact: true })
       .evaluate((el) => Number(getComputedStyle(el).fontWeight));
@@ -122,7 +122,7 @@ test('a running thread shows wave dots; no spinner ring on any creature or threa
   const working = row(page, 'Drummer', threadTitle(prompts.hang));
   await expect(working).toHaveAttribute('data-marker', 'running');
   await expect(working).not.toContainText('Needs you');
-  await expect(working).not.toContainText('New');
+  await expect(working).not.toContainText('Replied');
   await sidebarRow(page, 'Drummer').click();
   await expect(page).toHaveURL(`${m.url}/bots/${bot.id}/threads/${busy.id}`);
   await expect(working).toHaveAttribute('data-marker', 'running');
