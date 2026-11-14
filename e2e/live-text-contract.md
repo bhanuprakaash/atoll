@@ -40,7 +40,7 @@ with no pause over 150 ms:
 | 0 s | text in 6-character deltas 18 ms apart: three lines, a long sentence, "The plan, in order:" ended by a newline, a long sentence |
 | after each text | 3 to 5 tool calls (Bash with a description, Read, Grep) 60 to 150 ms apart |
 | 5 more times | a text of three long sentences, then a burst of tool calls |
-| end | `finish_run`, then the one-line closing text "The server package is consistent: …", the run ends |
+| end | the one-line closing text "The server package is consistent: …", the run ends |
 
 The reply is the closing text.
 
