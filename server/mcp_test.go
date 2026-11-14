@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"atoll/provider"
 	"atoll/run"
@@ -83,6 +84,74 @@ func TestMCP(t *testing.T) {
 			}
 			if !strings.Contains(strings.TrimSpace(string(body)), tt.wantBody) {
 				t.Fatalf("body %s, want it to contain %s", body, tt.wantBody)
+			}
+		})
+	}
+}
+
+func TestMCP_ToolsListTellUser(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "Ada", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinary, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	background, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	urls := make(chan string, 2)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	runs := run.New(run.Config{
+		Store: st, Log: log, DataDir: t.TempDir(), MCPURL: "http://atoll" + MCPPath, PollInterval: time.Hour,
+		Launch: func(context.Context, string) (provider.Session, provider.Config, error) {
+			return &urlSession{events: make(chan provider.Event), url: urls}, provider.Config{}, nil
+		},
+	})
+	t.Cleanup(func() { _ = runs.Close() })
+	srv := httptest.NewServer(New(st, nil, runs, log, nil, ""))
+	t.Cleanup(srv.Close)
+	if _, _, err := runs.Send(ctx, ordinary.ID, "hi", nil); err != nil {
+		t.Fatal(err)
+	}
+	ordinaryToken := path.Base(<-urls)
+	if _, err := st.Enqueue(ctx, store.InboxItem{ThreadID: background.ID, Text: "PR #1 merged", Kind: "merged", Queued: true}); err != nil {
+		t.Fatal(err)
+	}
+	runs.Start()
+	backgroundToken := path.Base(<-urls)
+
+	tests := []struct {
+		name  string
+		token string
+		want  bool
+	}{
+		{"ordinary run", ordinaryToken, false},
+		{"background run", backgroundToken, true},
+		{"unknown token", "nope", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := http.Post(srv.URL+MCPPath+tt.token, "application/json",
+				strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			body, _ := io.ReadAll(resp.Body)
+			if !strings.Contains(string(body), `"name":"start_work"`) {
+				t.Fatalf("tools/list %s, want the base tools", body)
+			}
+			if got := strings.Contains(string(body), `"name":"tell_user"`); got != tt.want {
+				t.Fatalf("tell_user listed = %v, want %v; body: %s", got, tt.want, body)
 			}
 		})
 	}
