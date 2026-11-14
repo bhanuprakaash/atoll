@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { NavLink, Outlet, useLocation, useMatch, useNavigate, useSearchParams } from 'react-router';
+import { NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router';
 import { BotRail } from '@/modules/bots/components/bot-rail';
 import { Menu } from '@/components/menu';
 import { Switcher } from '@/app/switcher';
 import { ThreadPane, usePaneWidth } from '@/app/thread-pane';
-import { ThreadsPopup } from '@/app/threads-popup';
 import { useSettings } from '@/modules/settings/api/settings';
 import { useNotifications } from '@/modules/threads/hooks/use-notifications';
 import { useTypeToCompose } from '@/modules/threads/hooks/use-type-to-compose';
@@ -47,15 +46,6 @@ export function Shell() {
   const notifications = useNotifications();
   const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
   const [creatingGroup, setCreatingGroup] = useState<{ botId?: string } | null>(null);
-  const [params, setParams] = useSearchParams();
-  const threadsBot = params.get('threads');
-  const setThreadsBot = (id: string | null) =>
-    setParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (id) next.set('threads', id);
-      else next.delete('threads');
-      return next;
-    });
   const botMatch = useMatch('/bots/:botId/*')?.params.botId;
   const botId = botMatch === 'new' ? undefined : botMatch;
   const threadId = useMatch('/bots/:botId/threads/:threadId')?.params.threadId;
@@ -224,13 +214,6 @@ export function Shell() {
         />
       )}
       {switching && <Switcher onClose={() => setSwitching(false)} />}
-      {threadsBot && (
-        <ThreadsPopup
-          botId={threadsBot}
-          openThreadId={botId === threadsBot ? threadId : undefined}
-          onClose={() => setThreadsBot(null)}
-        />
-      )}
       <main className="flex min-w-0 flex-1 flex-col">
         <Outlet context={notifications} />
       </main>

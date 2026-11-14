@@ -1,73 +1,7 @@
 import type { Bot, SidebarThread } from '@/modules/bots/api/bots';
 
-const maxRows = 3;
-
-export type Tree = {
-  rows: SidebarThread[];
-  hidden: SidebarThread[];
-  more:
-    | { kind: 'running'; count: number }
-    | { kind: 'less' }
-    | { kind: 'more'; count: number; dot: 'new' | null }
-    | null;
-};
-
-const rank = (t: SidebarThread) =>
-  t.state === 'needs_you'
-    ? 0
-    : t.pinned
-      ? 1
-      : t.state === 'new' || t.state === 'failed' || t.state === 'limited'
-        ? 2
-        : t.state === 'running'
-          ? 3
-          : 4;
-
 export const isLiveHelper = (t: SidebarThread) =>
   t.parent_thread_id !== '' && (t.state === 'running' || t.state === 'needs_you');
-
-// Needs-you, pinned and the open thread always show, even past maxRows. A helper thread
-// is a row only while it is open: while it runs it is the line under its boss thread. A finished
-// helper thread and a merged thread nothing needs are not rows; both count toward `N more`.
-export function threadTree(
-  all: SidebarThread[],
-  openId: string | undefined,
-  unfolded: boolean,
-): Tree {
-  const threads = all.filter((t) => !t.parent_thread_id || t.id === openId);
-  const finished = all.filter((t) => t.parent_thread_id && t.id !== openId && !isLiveHelper(t));
-  const ranked = threads
-    .map((t) => (t.id === openId && t.state === 'new' ? { ...t, state: '' as const } : t))
-    .sort((a, b) => rank(a) - rank(b));
-  const kept = ranked.filter((t) => rank(t) <= 1 || t.id === openId);
-  const room = Math.max(0, maxRows - kept.length);
-  const shown = new Set([
-    ...kept,
-    ...ranked.filter((t) => !t.hidden && !kept.includes(t)).slice(0, room),
-  ]);
-  const hidden = ranked.filter((t) => !shown.has(t));
-  const folded = [...hidden, ...finished];
-  const running = hidden.filter((t) => t.state === 'running');
-  if (running.length > 0 && unfolded)
-    return {
-      rows: ranked.filter((t) => shown.has(t) || running.includes(t)),
-      hidden: [],
-      more: { kind: 'less' },
-    };
-  const rows = ranked.filter((t) => shown.has(t));
-  if (running.length > 0) return { rows, hidden, more: { kind: 'running', count: running.length } };
-  if (folded.length > 0)
-    return {
-      rows,
-      hidden,
-      more: {
-        kind: 'more',
-        count: folded.length,
-        dot: folded.some((t) => t.state === 'new') ? 'new' : null,
-      },
-    };
-  return { rows, hidden, more: null };
-}
 
 const sectionLabels = ['Needs you', 'Running', 'Pinned', 'Recent'] as const;
 

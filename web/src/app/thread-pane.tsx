@@ -1,13 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { ClosedThreads } from '@/app/closed-threads';
+import { ReplacePin } from '@/app/replace-pin';
 import { Creature } from '@/components/creature';
+import { ErrorNotice } from '@/components/error-notice';
 import { TextField } from '@/components/text-field';
-import { useBots, type Bot } from '@/modules/bots/api/bots';
+import { ApiError } from '@/lib/api-client';
+import { useBots, type Bot, type SidebarThread } from '@/modules/bots/api/bots';
 import { useGroups } from '@/modules/bots/api/groups';
 import { BotMenu } from '@/modules/bots/components/bot-menu';
 import { ThreadSection } from '@/modules/bots/components/thread-tree';
 import { isLiveHelper, threadSections, workersByBoss } from '@/modules/bots/utils/thread-tree';
-import { useCloseThread, useRenameThread } from '@/modules/threads/api/threads';
+import {
+  useCloseThread,
+  usePinThread,
+  useRenameThread,
+  useThreads,
+} from '@/modules/threads/api/threads';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 
 const WIDTH_DEFAULT = 284;
@@ -17,6 +26,8 @@ const WIDTH_STEP = 16;
 const WIDTH_KEY = 'atoll.sidebarWidth';
 const RAIL_WIDTH = 76;
 const DRAWER_GUTTER = 48;
+
+const isPinLimit = (error: Error) => error instanceof ApiError && error.status === 409;
 
 function clampWidth(width: number) {
   return Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, Math.round(width)));
@@ -56,6 +67,9 @@ function BotPane({
   const { data: groups = [] } = useGroups();
   const close = useCloseThread();
   const rename = useRenameThread();
+  const pin = usePinThread();
+  const { data: details = [] } = useThreads(bot.id);
+  const [replacing, setReplacing] = useState<SidebarThread | null>(null);
   const [query, setQuery] = useState('');
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const workers = workersByBoss(bots);
@@ -71,6 +85,17 @@ function BotPane({
     return words.every((w) => text.includes(w));
   });
   const sections = threadSections(matching, openThreadId);
+  const setPinned = (thread: SidebarThread, pinned: boolean, replace?: string) =>
+    pin.mutate(
+      { id: thread.id, pinned, replace },
+      {
+        onSuccess: () => setReplacing(null),
+        onError: (error) => {
+          if (isPinLimit(error)) setReplacing(thread);
+        },
+      },
+    );
+  const created = new Map(details.map((t) => [t.id, t.created_at]));
   const newThread = () => navigate(`/bots/${bot.id}/new`);
   const group =
     bot.id === 'chief'
@@ -134,6 +159,9 @@ function BotPane({
           className="h-8.5 rounded-[10px] bg-field px-3"
         />
       </div>
+      {pin.isError && !isPinLimit(pin.error) && (
+        <ErrorNotice error={pin.error} className="px-3 pb-2" />
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-segment">
         {sections.map(({ label, threads }) => (
           <ThreadSection
@@ -144,6 +172,7 @@ function BotPane({
             openThreadId={openThreadId}
             workers={workers}
             bosses={bosses}
+            onPinThread={(thread) => setPinned(thread, !thread.pinned)}
             onCloseThread={(id) => close.mutate(id)}
             onRenameThread={(id, title) => rename.mutate({ id, title })}
           />
@@ -151,7 +180,21 @@ function BotPane({
         {words.length > 0 && sections.length === 0 && (
           <p className="px-2 py-3 text-sm text-muted">No threads match</p>
         )}
+        <ClosedThreads
+          botId={bot.id}
+          threads={details.filter((t) => t.closed)}
+          openThreadId={openThreadId}
+        />
       </div>
+      {replacing && (
+        <ReplacePin
+          pins={(bot.threads ?? [])
+            .filter((t) => t.pinned)
+            .sort((a, b) => (created.get(a.id) ?? '').localeCompare(created.get(b.id) ?? ''))}
+          onPick={(id) => setPinned(replacing, true, id)}
+          onClose={() => setReplacing(null)}
+        />
+      )}
       {menu && (
         <BotMenu
           bot={bot}

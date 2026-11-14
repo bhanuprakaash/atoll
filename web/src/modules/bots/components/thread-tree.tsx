@@ -56,36 +56,6 @@ function Pin() {
 const outUntil = (thread: SidebarThread) =>
   thread.resets_at ? `Out until ${clockTime(thread.resets_at)}` : 'Out';
 
-export function ThreadLabel({ thread }: { thread: SidebarThread }) {
-  return (
-    <>
-      {thread.state === 'needs_you' ? (
-        <Dot className="bg-accent" />
-      ) : thread.state === 'failed' ? (
-        <Dot className="bg-danger" />
-      ) : thread.state === 'new' ? (
-        <Dot className="bg-kind" />
-      ) : thread.pinned && thread.state === '' ? (
-        <Pin />
-      ) : (
-        <Dot />
-      )}
-      <span className={`min-w-0 flex-1 truncate ${thread.state === 'new' ? 'font-semibold' : ''}`}>
-        {thread.title || 'Empty thread'}
-      </span>
-      {thread.state === 'needs_you' && (
-        <span className="flex-none text-xs text-ink">Needs you</span>
-      )}
-      {thread.state === 'failed' && <span className="flex-none text-xs text-ink">Failed</span>}
-      {thread.state === 'limited' && (
-        <span className="flex-none text-xs text-muted">{outUntil(thread)}</span>
-      )}
-      {thread.state === 'new' && <span className="flex-none text-xs text-kind">Replied</span>}
-      {thread.state === 'running' && <Wave label="Working" />}
-    </>
-  );
-}
-
 function ThreadMarker({ thread }: { thread: SidebarThread }) {
   if (thread.state === 'needs_you')
     return (
@@ -187,6 +157,7 @@ export function ThreadSection({
   openThreadId,
   workers,
   bosses,
+  onPinThread,
   onCloseThread,
   onRenameThread,
 }: {
@@ -196,6 +167,7 @@ export function ThreadSection({
   openThreadId?: string;
   workers: Map<string, Worker[]>;
   bosses: Map<string, string>;
+  onPinThread: (thread: SidebarThread) => void;
   onCloseThread: (threadId: string) => void;
   onRenameThread: (threadId: string, title: string) => void;
 }) {
@@ -250,30 +222,41 @@ export function ThreadSection({
                         for {bosses.get(thread.id)}
                       </span>
                     )}
-                    <span className="pointer-events-none flex flex-none items-center gap-2 pr-2">
+                    <span
+                      className={`pointer-events-none flex flex-none items-center gap-2 pr-2 ${thread.helper ? '' : 'group-focus-within:hidden group-hover:hidden'}`}
+                    >
                       <ThreadMarker thread={thread} />
                     </span>
                     {!thread.helper && (
-                      <button
-                        type="button"
-                        aria-label="Close thread"
-                        title="Close thread"
-                        onClick={() => onCloseThread(thread.id)}
-                        className="relative z-10 mr-2 hidden size-5 flex-none items-center justify-center rounded-md bg-tile text-ink group-focus-within:flex group-hover:flex"
-                      >
-                        <svg
-                          aria-hidden="true"
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.6"
-                          strokeLinecap="round"
+                      <span className="relative z-10 mr-2 hidden flex-none items-center gap-1 group-focus-within:flex group-hover:flex">
+                        <button
+                          type="button"
+                          onClick={() => onPinThread(thread)}
+                          className="flex h-5 items-center rounded-md bg-tile px-1.5 text-xs text-ink"
                         >
-                          <path d="M6 6l12 12M18 6L6 18" />
-                        </svg>
-                      </button>
+                          {thread.pinned ? 'Unpin' : 'Pin'}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Close thread"
+                          title="Close thread"
+                          onClick={() => onCloseThread(thread.id)}
+                          className="flex size-5 items-center justify-center rounded-md bg-tile text-ink"
+                        >
+                          <svg
+                            aria-hidden="true"
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.6"
+                            strokeLinecap="round"
+                          >
+                            <path d="M6 6l12 12M18 6L6 18" />
+                          </svg>
+                        </button>
+                      </span>
                     )}
                   </>
                 )}
