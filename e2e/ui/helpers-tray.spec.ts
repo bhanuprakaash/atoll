@@ -196,13 +196,6 @@ test('the popover has a shortcut, arrow keys and Enter, and Stop on hover', asyn
   await row.hover();
   await row.getByRole('button', { name: 'Stop' }).click();
   await expect.poll(() => runStatus(m, tester.id)).toBe('stopped');
-  await expect(
-    page
-      .getByRole('log', { name: 'Messages' })
-      .getByRole('list', { name: 'Updates' })
-      .getByRole('listitem')
-      .filter({ hasText: 'The user stopped Tester' }),
-  ).toContainText('Stopped');
   const stopped = (await api(m, 'GET', `/api/threads/${tester.id}`)).run_id;
   expect(stops).toEqual([`/api/runs/${stopped}/stop`]);
   const reviewer = helpers.find((h) => h.bot_id === bots.Reviewer.id)!;

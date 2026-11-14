@@ -8,7 +8,7 @@ import (
 
 // Contract: rich-output-contract.md, "Prompt".
 
-const _catalogStart = "- Answer first in a sentence; use a component only when it is clearer than prose."
+const _catalogStart = "- Tables, task lists, ```diff and code render in Reef and on GitHub."
 
 func TestPrompt_RichOutputCatalog(t *testing.T) {
 	t.Parallel()
@@ -29,7 +29,7 @@ func TestPrompt_RichOutputCatalog(t *testing.T) {
 					t.Fatalf("%s: How you talk has %d catalog lines starting %q, want 1:\n%s", name, len(catalog), _catalogStart, system)
 				}
 				line := strings.ToLower(catalog[0])
-				for _, w := range []string{"reef-metrics", "reef-kv", "github", "reef chat only", "never", "pr", "issue", "comment"} {
+				for _, w := range []string{"reef-metrics", "reef-kv", "github", "render only in reef chat"} {
 					if !strings.Contains(line, w) {
 						t.Errorf("%s: catalog line lacks %q: %s", name, w, catalog[0])
 					}
