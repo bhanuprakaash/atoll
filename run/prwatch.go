@@ -117,7 +117,7 @@ func (m *Manager) checkGitHub(w *watcher, t store.Thread, bot store.Bot, rp stor
 	}
 	api := fmt.Sprintf("%s/repos/%s/%s", connection.GitHubAPI(), owner, name)
 	ws := w.of(t)
-	body, hdr, err := m.githubGet(w, connID, token, fmt.Sprintf("%s/pulls/%d", api, n), ws.etag)
+	body, hdr, err := m.githubGet(w, t.BotID, connID, token, fmt.Sprintf("%s/pulls/%d", api, n), ws.etag)
 	if err != nil {
 		return err
 	}
@@ -182,7 +182,7 @@ func (m *Manager) readBase(w *watcher, connID, token, api string, t store.Thread
 	if !ws.pull.Draft || match == nil || t.MRBaseWoke || !t.MRWake {
 		return nil
 	}
-	body, hdr, err := m.githubGet(w, connID, token, api+"/pulls/"+match[1], ws.baseETag)
+	body, hdr, err := m.githubGet(w, t.BotID, connID, token, api+"/pulls/"+match[1], ws.baseETag)
 	if err != nil {
 		return err
 	}
@@ -232,7 +232,7 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, 
 	for _, route := range []string{"check-runs", "status"} {
 		next := fmt.Sprintf("%s/commits/%s/%s?per_page=100", api, head, route)
 		for next != "" {
-			body, hdr, err := m.githubGet(w, connID, token, next, "")
+			body, hdr, err := m.githubGet(w, t.BotID, connID, token, next, "")
 			if err != nil {
 				return err
 			}
@@ -370,7 +370,7 @@ func (m *Manager) watchToken(bot store.Bot) (id, token string, err error) {
 
 // githubGet reads one GitHub API URL. A 304 returns a nil body. A 401 marks the connection
 // needs sign-in; a 403 or 429 that says the rate limit is spent pauses the connection's reads.
-func (m *Manager) githubGet(w *watcher, connID, token, rawURL, etag string) ([]byte, http.Header, error) {
+func (m *Manager) githubGet(w *watcher, botID, connID, token, rawURL, etag string) ([]byte, http.Header, error) {
 	ctx, cancel := context.WithTimeout(m.ctx, _readTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -394,10 +394,7 @@ func (m *Manager) githubGet(w *watcher, connID, token, rawURL, etag string) ([]b
 	case http.StatusNotModified:
 		return nil, resp.Header, nil
 	case http.StatusUnauthorized:
-		if err := m.cfg.Store.SetConnectionStatus(m.ctx, connID, store.ConnectionNeedsSignIn); err != nil {
-			return nil, nil, fmt.Errorf("set GitHub connection needs sign-in: %w", err)
-		}
-		return nil, nil, connection.ErrGitHubNeedsSignIn
+		return nil, nil, m.githubSignInLost(m.ctx, connID, botID, connection.RejectedBy(rawURL, resp))
 	case http.StatusForbidden, http.StatusTooManyRequests:
 		h := resp.Header
 		if h.Get("X-RateLimit-Remaining") == "0" || h.Get("Retry-After") != "" {

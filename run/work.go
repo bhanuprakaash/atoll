@@ -733,11 +733,8 @@ func (m *Manager) githubEnv(ctx context.Context, b store.Bot) ([]string, string,
 			return nil, "", fmt.Errorf("read GitHub connection token: %w", err)
 		}
 		err = connection.CheckGitHubToken(ctx, &http.Client{Timeout: 30 * time.Second}, token)
-		if errors.Is(err, connection.ErrGitHubNeedsSignIn) {
-			if setErr := m.cfg.Store.SetConnectionStatus(ctx, id, store.ConnectionNeedsSignIn); setErr != nil {
-				return nil, "", fmt.Errorf("set GitHub connection needs sign-in: %w", setErr)
-			}
-			return nil, "", err
+		if rej := (*connection.GitHubRejection)(nil); errors.As(err, &rej) {
+			return nil, "", m.githubSignInLost(ctx, id, b.ID, rej)
 		}
 		if err != nil {
 			return nil, "", fmt.Errorf("check GitHub connection token: %w", err)
@@ -745,6 +742,16 @@ func (m *Manager) githubEnv(ctx context.Context, b store.Bot) ([]string, string,
 		return []string{"GH_TOKEN=" + token}, token, nil
 	}
 	return nil, "", nil
+}
+
+// githubSignInLost marks the connection needs sign-in and logs why, without the token.
+func (m *Manager) githubSignInLost(ctx context.Context, connID, botID string, rej *connection.GitHubRejection) error {
+	if err := m.cfg.Store.SetConnectionStatus(ctx, connID, store.ConnectionNeedsSignIn); err != nil {
+		return fmt.Errorf("set GitHub connection needs sign-in: %w", err)
+	}
+	m.cfg.Log.Warn("GitHub sign-in lost", "connection_id", connID, "bot_id", botID, "endpoint", rej.Endpoint,
+		"github_message", rej.Message, "github_request_id", rej.RequestID)
+	return rej
 }
 
 // glabConfig writes the glab config folder of connection id and returns it. It holds no token: it

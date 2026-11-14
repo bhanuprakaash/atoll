@@ -203,6 +203,7 @@ func (g *fakeGitHub) reject(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-GitHub-Request-Id", _fakeGitHubRequestID)
 	w.WriteHeader(http.StatusUnauthorized)
 	_, _ = fmt.Fprint(w, `{"message":"Bad credentials","status":"401"}`)
 	return true

@@ -261,7 +261,7 @@ func TestStore_UndoChange(t *testing.T) {
 		name, entity, action, setup, before, want string
 	}{
 		{"bot create", store.EntityBot, store.ActionCreate, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'p', 'claude')`, `null`, `missing`},
-		{"bot edit", store.EntityBot, store.ActionEdit, `INSERT INTO repos VALUES ('repo', 'r', '/repo'); INSERT INTO connections VALUES ('conn', 'gitlab', 'https://gitlab.com', 'connected'); INSERT INTO skills (id, name, content) VALUES ('skill', 's', 'text'); INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"mcp_servers":["context7"],"can_manage_platform":true}`, `{"id":"item","name":"old","persona":"person","provider":"claude","mode":"auto","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"mcp_servers":["context7"],"delegates":[],"can_manage_platform":true}`},
+		{"bot edit", store.EntityBot, store.ActionEdit, `INSERT INTO repos VALUES ('repo', 'r', '/repo'); INSERT INTO connections (id, kind, instance_url, status) VALUES ('conn', 'gitlab', 'https://gitlab.com', 'connected'); INSERT INTO skills (id, name, content) VALUES ('skill', 's', 'text'); INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"id":"item","name":"old","persona":"person","provider":"claude","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"mcp_servers":["context7"],"can_manage_platform":true}`, `{"id":"item","name":"old","persona":"person","provider":"claude","mode":"auto","repo_access":["repo"],"connections":["conn"],"skills":["skill"],"mcp_servers":["context7"],"delegates":[],"can_manage_platform":true}`},
 		{"bot edit drops deleted ids", store.EntityBot, store.ActionEdit, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex'); INSERT INTO bots (id, name, persona, provider, removed) VALUES ('gone', 'gone', '', 'claude', 1)`, `{"name":"old","provider":"claude","repo_access":["gone"],"connections":["gone"],"skills":["gone"],"mcp_servers":["gone"],"delegates":["gone"]}`, `{"id":"item","name":"old","persona":"","provider":"claude","mode":"auto","repo_access":[],"connections":[],"skills":[],"mcp_servers":[],"delegates":[],"can_manage_platform":false}`},
 		{"bot edit keeps all repo access", store.EntityBot, store.ActionEdit, `INSERT INTO bots (id, name, persona, provider) VALUES ('item', 'new', 'new', 'codex')`, `{"name":"old","provider":"claude","repo_access":"all"}`, `{"id":"item","name":"old","persona":"","provider":"claude","mode":"auto","repo_access":"all","connections":[],"skills":[],"mcp_servers":[],"delegates":[],"can_manage_platform":false}`},
 		{"skill create", store.EntitySkill, store.ActionCreate, `INSERT INTO skills (id, name, content) VALUES ('item', 'new', 'text'); INSERT INTO skill_files VALUES ('item', 'a.sh', 'x', 1)`, `null`, `missing`},
@@ -1456,5 +1456,48 @@ func TestStore_QuietRunLeavesThread(t *testing.T) {
 				t.Errorf("thread %+v, want %+v", have, tt.want)
 			}
 		})
+	}
+}
+
+func TestStore_SignedOutAt(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	c, err := st.CreateConnection(ctx, store.KindGitHub, "https://github.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signedOut := func() *time.Time {
+		t.Helper()
+		got, err := st.Connection(ctx, c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.SignedOutAt
+	}
+	set := func(status string) {
+		t.Helper()
+		if err := st.SetConnectionStatus(ctx, c.ID, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(store.ConnectionNeedsSignIn)
+	first := signedOut()
+	if first == nil {
+		t.Fatal("needs_sign_in: no signed_out_at")
+	}
+	set(store.ConnectionNeedsSignIn)
+	if again := signedOut(); again == nil || !again.Equal(*first) {
+		t.Errorf("needs_sign_in again: signed_out_at %v, want the first %v", again, first)
+	}
+	for _, status := range []string{store.ConnectionPending, store.ConnectionConnected} {
+		set(store.ConnectionNeedsSignIn)
+		set(status)
+		if got := signedOut(); got != nil {
+			t.Errorf("%s: signed_out_at %v, want none", status, got)
+		}
 	}
 }

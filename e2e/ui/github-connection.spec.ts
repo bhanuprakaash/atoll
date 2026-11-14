@@ -168,6 +168,7 @@ test('a rejected token shows Needs sign-in; Sign in again reconnects the same co
   await openConnections(page);
   await expect(page.getByText('Needs sign-in', { exact: true })).toBeVisible();
   await expect(page.getByText(/^connected$/i)).toHaveCount(0);
+  await expect(page.getByText(/Signed out /)).toBeVisible();
 
   rejectUser = false;
   approved = true;
@@ -175,6 +176,7 @@ test('a rejected token shows Needs sign-in; Sign in again reconnects the same co
   await expect(page.getByText('ABCD-1234')).toBeVisible();
   await expect(page.getByText(/^connected$/i).first()).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Needs sign-in', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/Signed out /)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Sign in again' })).toHaveCount(0);
 
   const after = await connections();
