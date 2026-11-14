@@ -1515,7 +1515,7 @@ Voice
     error text under a control whose action failed, a failed CI mark) and a control that destroys
     or refuses (Delete Bot, Delete file, Deny; hover or keyboard focus only). Never red at rest
     because it waits.
-  - Needs you (a thread's marker, the sidebar's second line, the island's count and rows, a
+  - Needs you (a thread's marker, the island's count and rows, a
     helper's line, the creature's pulse) is the light accent `#ECECEC`: light dot, main-ink text,
     neutral surfaces, never a red fill or border. The blue dot means Replied.
   - An MR chip's dot is never red (merged blue, open green, closed grey). A diff's counts are
@@ -1549,9 +1549,9 @@ Voice
     cost on the row (cost waits for the analytics page). Clicking a Bot opens its latest thread.
   - Hover shows a pin button and `+` (New thread). Bot settings has Pin to sidebar; Chief cannot be
     pinned.
-  - A second line shows only while a run works (the live verb, "Running make build", with three
-    wave dots) or an approval waits ("Needs you: ..." in the colour of a thread's "Needs you");
-    otherwise one line. *Two lines for every Bot made the list twice as tall as Claude's.*
+  - The Bot row is always one line. Working and needs-you state show on the thread rows (wave
+    dots, "Needs you"), the creature and the island. *A second line for working Bots made the list
+    twice as tall as Claude's.*
   - `+` at the top opens New Bot and New group; the bottom user row opens Settings. No group chats.
   - A thread's activity time moves when a run starts, an approval opens or closes, and a run ends
     (also one failed at start-up), not on every event. *The sidebar polls every 2 s; a write per

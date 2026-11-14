@@ -6,7 +6,7 @@ import { useBots, usePinBot, type Bot, type SidebarThread } from '@/modules/bots
 import { useCreateGroup, useGroups, useSetBotGroup, type Group } from '@/modules/bots/api/groups';
 import { BotGroup, botDragType } from '@/modules/bots/components/bot-group';
 import { GroupNameField } from '@/modules/bots/components/group-name-field';
-import { ThreadTree, Wave } from '@/modules/bots/components/thread-tree';
+import { ThreadTree } from '@/modules/bots/components/thread-tree';
 import { sidebarOrder } from '@/modules/bots/utils/sidebar-order';
 import { threadTree, workersByBoss, type Worker } from '@/modules/bots/utils/thread-tree';
 import { relativeTime } from '@/utils/time';
@@ -74,7 +74,6 @@ function BotRow({
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const selected = open.botId === bot.id && !open.threadId;
   const newThread = () => navigate(`/bots/${bot.id}/new`);
-  const waits = bot.threads?.some((t) => t.state === 'waiting');
   return (
     <li>
       <div
@@ -100,18 +99,6 @@ function BotRow({
                 {bot.id !== 'chief' && <PinButton bot={bot} />}
               </span>
             </span>
-            {bot.state === 'working' && !waits && (
-              <span className="flex items-center gap-1.5 text-[13px] text-muted">
-                <span className="truncate">{bot.activity}</span>
-                <Wave />
-              </span>
-            )}
-            {bot.state === 'needs_you' && (
-              <span className="truncate text-[13px] text-ink">{bot.activity}</span>
-            )}
-            {bot.state !== 'needs_you' && waits && (
-              <span className="truncate text-[13px] text-ink">Waiting on you</span>
-            )}
           </span>
         </NavLink>
         <button
