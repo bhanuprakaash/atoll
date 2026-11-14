@@ -1693,9 +1693,23 @@ Voice
   or Ungrouped. A hairline separates groups; hover or keyboard focus grows the line and shows the
   group name and Bot count beside the rail. Create one from `+` › New group (an inline name field:
   Enter saves, Esc cancels). Move a Bot with right-click › Move to group (the groups, No group, New
-  group…) or by dropping its face on a group's line. Right-click on a line opens the group menu
-  (Rename, New Bot in this group, Move up, Move down, Delete group); deleting moves its Bots to
-  Ungrouped. Name and order are stored (`/api/groups`). Groups do not fold on the rail.
+  group…) or by dragging. Right-click on a line opens the group menu (Rename, New Bot in this
+  group, Delete group); deleting moves its Bots to Ungrouped. Name and order are stored
+  (`/api/groups`). Groups do not fold on the rail.
+- Drag to reorder (native HTML5 drag and drop): a thin line shows where a drop lands.
+  - A Bot face drags to any place in Pinned, a group or Ungrouped. Dropping into Pinned pins it;
+    dragging a pinned Bot out unpins it. A face dropped on a group's line goes last in that group.
+  - A group's line drags the whole group, its Bots with it, to another place among the groups.
+    While a drag is going, each line has a larger hit area.
+  - Chief is not draggable and nothing lands above it; Pinned stays above every group. Ungrouped
+    stays last and does not drag. Threads never drag.
+  - Each Bot has a position, filled from the old order by a migration (pinned order, then oldest
+    first in a group); each section sorts by it. A new Bot, a newly pinned Bot and a Bot moved by
+    the menu go last in their section.
+  - `PUT /api/bots/{id}/place {pinned, group_id, before}` moves a Bot in one transaction (`before`
+    is a Bot id in the target section, null for last). `POST /api/groups/{id}/move {before}` (a
+    group id, null for last) moves a group.
+  *Move up and Move down took one step per click; dragging is how a list is reordered.*
 - Bot header: a solid band in the main background, 72 px tall, with a 24 px fade below it; the
   centred island sits on it. Messages scroll under the band and fade out; no text shows above its
   bottom edge. At rest the pill holds the creature, the Bot name, the thread title (cut with "…")
