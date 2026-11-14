@@ -173,3 +173,5 @@ Waking a Bot when its tracked GitHub PR merges, closes or finishes CI extends [g
 Allow in this thread (a third choice on a command that may repeat) extends these contracts in [allow-in-thread-contract.md](allow-in-thread-contract.md).
 
 The approval card (compact, quiet, answered by writing in the chat) and red only for real danger extend these contracts in [approval-card-contract.md](approval-card-contract.md).
+
+Runs that end on their own request (a notification or another turn is not the end; nothing is written into a running request) extend these contracts in [request-lifecycle-contract.md](request-lifecycle-contract.md).
