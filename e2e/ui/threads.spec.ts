@@ -64,7 +64,7 @@ test('Needs you lists the waiting thread and what it waits for; the island count
   await expect(
     page.locator('header').getByRole('button', { name: 'Notifications', exact: true }),
   ).toBeVisible();
-  await expect(sidebarRow(page, 'Tide')).not.toContainText('Needs you');
+  await expect(sidebarRow(page, 'Tide')).not.toHaveAttribute('data-marker', 'needs-you');
 });
 
 test('a running thread shows under its Bot with wave dots', async ({ page }) => {

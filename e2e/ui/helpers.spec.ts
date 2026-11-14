@@ -101,7 +101,7 @@ test('a helper approval shows under its line and Allow works there; the helperâ€
   await expect(page.getByRole('button', { name: /^Notifications/ })).toHaveAccessibleName(
     /^Notifications\b.*\b1\b/,
   );
-  await expect(sidebarRow(page, 'Poteto')).toContainText('Needs you');
+  await expect(sidebarRow(page, 'Poteto')).toHaveAttribute('data-marker', 'needs-you');
 
   const helperPage = await context.newPage();
   await helperPage.goto(`${m.url}/bots/${bots.Tester.id}/threads/${thread('Tester')}`);
