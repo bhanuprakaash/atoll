@@ -940,13 +940,21 @@ type ThreadRun struct {
 	Reply  string
 }
 
-// ThreadRuns lists every thread with its newest run, newest activity first. botID limits it to
+// latestRun is the SQL for the newest run of the thread threadID names that the person did not
+// miss: a done run that posted nothing to the chat is a quiet one and does not count.
+func latestRun(threadID string) string {
+	return `(SELECT max(q.rowid) FROM runs q WHERE q.thread_id = ` + threadID + `
+		   AND (q.status != 'done' OR EXISTS (SELECT 1 FROM messages m
+		        WHERE m.thread_id = q.thread_id AND m.run_id = q.id AND m.role = 'bot')))`
+}
+
+// ThreadRuns lists every thread with its newest run (see latestRun), newest activity first. botID limits it to
 // one Bot; empty means every Bot.
 func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, error) {
 	return s.threadRuns(ctx,
 		`polled AS MATERIALIZED (
 		   SELECT t.id AS thread_id, r.status, substr(r.reply, 1, 300) AS reply FROM threads t
-		   JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = t.id))`,
+		   JOIN runs r ON r.rowid = `+latestRun("t.id")+`)`,
 		"? = '' OR t.bot_id = ?", botID, botID)
 }
 
@@ -964,7 +972,7 @@ func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
 		         UNION SELECT (SELECT t2.id FROM threads t2
 		                       WHERE t2.bot_id = b.id AND EXISTS (SELECT 1 FROM runs WHERE thread_id = t2.id)
 		                       ORDER BY t2.last_activity DESC, t2.rowid DESC LIMIT 1) FROM bots b) n
-		   JOIN runs r ON r.rowid = (SELECT max(rowid) FROM runs WHERE thread_id = n.thread_id))`,
+		   JOIN runs r ON r.rowid = `+latestRun("n.thread_id")+`)`,
 		`t.closed = 0
 		 OR p.thread_id IS NOT NULL
 		 OR t.id IN (SELECT parent_thread_id FROM threads
@@ -1215,9 +1223,13 @@ func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) ([]Message
 		if len(stored) == 0 {
 			return ErrNoneHeld
 		}
+		// Notices from Reef alone start a background run, which keeps the thread's place unless it
+		// posts.
+		notices := !slices.ContainsFunc(stored, func(m Message) bool { return m.Kind == "" && m.FromBotID == "" })
 		_, err = tx.ExecContext(ctx,
-			"UPDATE threads SET last_activity = ?, title = CASE WHEN title = '' THEN ? ELSE title END WHERE id = ?",
-			time.Now().UTC().UnixMicro(), FirstWords(stored[0].Text), threadID)
+			`UPDATE threads SET last_activity = CASE WHEN ?1 AND parent_thread_id = '' THEN last_activity ELSE ?2 END,
+			   title = CASE WHEN title = '' THEN ?3 ELSE title END WHERE id = ?4`,
+			notices, time.Now().UTC().UnixMicro(), FirstWords(stored[0].Text), threadID)
 		return err
 	})
 	if err != nil {
@@ -1429,12 +1441,13 @@ func (s *Store) FinishRun(
 		}
 		posts := res.Reply != "" && !res.StatusLine
 		_, err = tx.ExecContext(ctx,
-			`UPDATE threads SET last_activity = ?1, session_cost_usd = coalesce(?2, session_cost_usd),
+			`UPDATE threads SET last_activity = CASE WHEN ?7 THEN last_activity ELSE ?1 END,
+			   session_cost_usd = coalesce(?2, session_cost_usd),
 			   last_heard = CASE WHEN ?3 THEN ?1 ELSE last_heard END,
 			   last_failed = CASE WHEN ?4 THEN ?1 ELSE last_failed END,
 			   limited_until = coalesce(?5, limited_until) WHERE id = ?6`,
 			time.Now().UTC().UnixMicro(), res.SessionCostUSD, res.Status == StatusDone && posts,
-			res.Status == StatusFailed, limited, threadID)
+			res.Status == StatusFailed, limited, threadID, res.Status == StatusDone && res.StatusLine)
 		if err != nil {
 			return fmt.Errorf("touch thread: %w", err)
 		}
