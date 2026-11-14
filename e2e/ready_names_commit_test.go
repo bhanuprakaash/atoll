@@ -209,7 +209,8 @@ func listedTools(t *testing.T, p string) map[string]string {
 }
 
 // The delegate tool's description no longer ends the brief with the freeze sentence, and neither
-// delegate's nor track_mr's description names finish_run or a frozen PR.
+// delegate's nor track_mr's description names finish_run or a frozen PR, or says never to merge:
+// that rule lives in each Bot's persona, where a release Bot can drop it.
 func TestReadyNamesCommit_ToolDescriptionsHaveNoFreezeSentence(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
@@ -219,7 +220,7 @@ func TestReadyNamesCommit_ToolDescriptionsHaveNoFreezeSentence(t *testing.T) {
 				if !ok {
 					t.Fatalf("tools/list has no %s: %v", name, tools)
 				}
-				for _, gone := range []string{_freezeText, "frozen", "finish_run"} {
+				for _, gone := range []string{_freezeText, "frozen", "finish_run", "Never merge"} {
 					if strings.Contains(desc, gone) {
 						t.Errorf("%s description %q holds %q", name, desc, gone)
 					}
