@@ -47,7 +47,7 @@ Target layout. Create a folder only when a ticket needs it.
 ```text
 cmd/atoll/    entry point: wires packages, starts the server
 server/       HTTP + SSE API for the UI, Reef's MCP tools
-run/          one run: prompt, provider call, finish_run
+run/          one run: prompt, provider call, reply
 provider/     Provider interface; provider/claude, provider/codex
 memory/       memory items and search
 repo/         registered repos and worktrees

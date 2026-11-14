@@ -559,7 +559,7 @@ func (s *Session) read(stdout io.Reader) {
 		for {
 			line, err := r.ReadBytes('\n')
 			select {
-			case lines <- readResult{line, err}:
+			case lines <- readResult{line: line, err: err}:
 			case <-s.quit:
 				return
 			}

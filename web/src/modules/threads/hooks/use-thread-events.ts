@@ -127,10 +127,7 @@ export function useThreadEvents(threadId: string) {
       return {
         ...run,
         tool,
-        parts: [
-          ...run.parts,
-          { step: d.name.endsWith('finish_run') ? '' : described ? d.target : toolLine(tool) },
-        ],
+        parts: [...run.parts, { step: described ? d.target : toolLine(tool) }],
       };
     });
     on<LiveRun['approvals'][number]>('approval', (d, run) => withApproval(run, d));
