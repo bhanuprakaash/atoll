@@ -54,6 +54,7 @@ const (
 	EventApprovalEnd = "approval_closed" // ApprovalClosed
 	EventRunFinished = "run_finished"    // Finished
 	EventThreadRead  = "thread_read"     // nothing: the user opened the thread
+	EventTold        = "told"            // Told: a tell_user message was stored
 
 	EventWorktreeCreated = "worktree_created" // WorktreeCreated
 	EventMRUpdated       = "mr_updated"       // MRUpdated
@@ -235,6 +236,11 @@ type (
 		RunID   string `json:"run_id"`
 		System  string `json:"system"`
 		Message string `json:"message"`
+	}
+
+	// Told is a stored tell_user message of a run that goes on.
+	Told struct {
+		RunID string `json:"run_id"`
 	}
 
 	// Finished ends a run.
@@ -1294,7 +1300,8 @@ func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data
 		}
 	}
 	switch typ {
-	case EventApproval, EventApprovalEnd, EventRunFinished, EventMRUpdated, EventPlatformChanged, EventThreadRead:
+	case EventApproval, EventApprovalEnd, EventRunFinished, EventMRUpdated, EventPlatformChanged, EventThreadRead,
+		EventTold:
 	default:
 		return
 	}

@@ -17,19 +17,14 @@ func backgroundLine(user string) string {
 		"tell them with tell_user."
 }
 
-// failure reports whether a notice holds a failure Reef knows of: a helper failed, was stopped or hit
-// its limit, a restart cut helpers short, or CI failed. It reads the notice's first line, which Reef
-// wrote; a helper's reply and the names of checks come after it.
+// failure reports whether a notice holds a failure Reef knows of: a helper failed, was stopped, hit
+// its limit or was deleted, a restart cut helpers short, or CI failed. It reads the notice kind Reef
+// stored where it wrote the wake, never the words.
 func failure(it store.InboxItem) bool {
-	first, _, _ := strings.Cut(it.Text, "\n")
-	switch it.Kind {
-	case "restart":
+	switch it.Notice {
+	case store.NoticeHelperFailed, store.NoticeHelperStopped, store.NoticeHelperLimited,
+		store.NoticeHelperDeleted, store.NoticeRestart, store.NoticeCIFailed:
 		return true
-	case "ci":
-		return strings.Contains(first, _ciFailed)
-	case _helperNotice:
-		return strings.Contains(first, "'s run failed: ") || strings.HasPrefix(first, "The user stopped ") ||
-			strings.Contains(first, " is out until ")
 	}
 	return false
 }
@@ -53,7 +48,13 @@ func (m *Manager) TellUser(ctx context.Context, token, text string) error {
 		m.mu.Unlock()
 		return RefusedError("tell_user is only for a run that starts with Reef notices")
 	}
+	m.mu.Unlock()
+	if err := m.cfg.Store.AddBotMessage(ctx, a.threadID, a.run.ID, strings.TrimSpace(text)); err != nil {
+		return err
+	}
+	m.mu.Lock()
 	a.told = true
 	m.mu.Unlock()
-	return m.cfg.Store.AddBotMessage(ctx, a.threadID, a.run.ID, strings.TrimSpace(text))
+	m.publish(a, EventTold, Told{RunID: a.run.ID})
+	return nil
 }

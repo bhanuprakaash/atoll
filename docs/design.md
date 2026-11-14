@@ -191,8 +191,8 @@ counts a Bot that is already gone as removed.
   A 4th pin answers `409` unless it names a pin to replace (`{replace}`), done in one transaction.
   Closing a thread drops its pin; helper threads cannot be pinned.
 - `GET /api/events` is one SSE stream for the whole app: `approval`, `approval_closed`,
-  `run_finished`, `mr_updated` and `platform_changed` from every thread, each as `{thread_id,
-  bot_id, bot_name, title, data}` with `data` as on the thread's own stream. On connect it sends
+  `run_finished`, `told`, `mr_updated` and `platform_changed` from every thread, each as
+  `{thread_id, bot_id, bot_name, title, data}` with `data` as on the thread's own stream. On connect it sends
   the approvals open now, then one `earlier` event: the island's Earlier list, built from rows
   (see the island), each with `at` as RFC 3339. A live event for something `earlier` lists (a run
   that finished while it was built, the same MR, the same change) is not sent again. Every
@@ -521,16 +521,18 @@ Follow-ups:
   finished, a ticket closed) is a background run, for every Bot not in a helper thread. Its final
   message is never a chat message, does not make the thread Replied and shows nowhere (App and
   UI). The run lists `tell_user(text)`; each call adds one message from the Bot to
-  the chat and makes the thread Replied. Reef starts the prompt with one line: `Reef: background
+  the chat at once, while the run goes, and makes the thread Replied. Reef starts the prompt with one line: `Reef: background
   run. {user} does not see your final message. If {user} must act
   (a PR to merge, a decision, a failure you cannot fix), tell them with tell_user.` A run with any
   message from the person is an ordinary run: its final message is the reply and `tell_user` is not
   listed. A helper thread has no background runs: every final message a helper writes goes to its
   boss, its own CI wake included.
   - Guard: when a background run's notices include a failure Reef knows of (a helper failed,
-    stopped or hit its limit; CI failed) and the run ends without a `tell_user`, its final message
-    is posted to the chat as an ordinary reply and the thread is Replied. *A missed `tell_user`
-    would otherwise be silence; the guard reads only facts Reef holds, never the text's meaning.*
+    stopped, hit its limit or was deleted; a restart cut helpers short; CI failed) and the run ends
+    without a `tell_user`, its final message is posted to the chat as an ordinary reply and the
+    thread is Replied. The guard reads the inbox row's `notice`, which Reef sets where it writes the
+    wake, never the text. `tell_user` counts as called once its message is stored. *A missed `tell_user` would otherwise be silence; the guard reads only facts
+    Reef holds, never the text's meaning.*
   *Quiet by default, loud on purpose: posting reports into the chat made the person read each one
   twice, and one blocker five times (#396), and the old "write no reply" rule was a request the
   boss broke. Spike 2026-11-13: with the rule only in the system prompt, Sonnet wrote a blocker as
@@ -693,6 +695,13 @@ Follow-ups:
   empty). Storing merged or closed deletes the thread's held `ci` row in the same transaction, as
   does a new head commit or a newer `ci` wake, so a lead is never woken for CI of a commit that is
   no longer the head or after the PR is done. A held row of another kind is never dropped.
+- An inbox row also has a `notice`, which the chat and the prompt never read: empty for a person's
+  message, else what the wake is. Helper wakes: `helper_done`, `helper_failed`, `helper_stopped`,
+  `helper_limited`, `helper_deleted`; `restart` for the restart message; PR wakes: `ci_passed`,
+  `ci_failed`, `merged`, `closed`, `base`. It is separate from `kind` because a helper's wake has
+  no `kind` and `ci` covers a failed and a passed run. The background guard (Delegation) reads
+  `notice` for `helper_failed`, `helper_stopped`, `helper_limited`, `helper_deleted`, `restart`
+  and `ci_failed`.
 - The wake is one plain sentence built by Reef from fixed words, the MR as the thread names it
   (`PR #7`, `MR !7`), numbers and check names; no PR title, body, commit message or other API text
   is joined into it: `PR #7 merged into main at aff4bd0`, `PR #7 closed`,
@@ -1724,6 +1733,10 @@ Voice
       after the thread's `last_opened_at`. A newest ended run that is `done` with no message of the
       Bot's is not listed. `runs.finished_at`; "Pilot finished Review !42", or "Pilot failed Review !42" for a failed one, which includes a
       run the restart cut short; a run the user stopped counts as finished.
+    - A thread whose background run still goes and has stored a `tell_user` message since then and
+      since the thread was last opened: "Pilot messaged Review !42". The `told` event, sent when
+      the message is stored, makes the same row live and the thread's own stream refreshes its
+      messages. One row per thread: the run's end replaces it with the finished row.
     - A thread whose MR is `opened` since then (`threads.mr_changed_at`, new, set when `mr_state`
       changes or `track_mr` gives a different URL): "Pilot opened !42", the MR title as detail.
     - A platform change (`changes.created_at`): "Chief created Bot Lagoon".

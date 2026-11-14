@@ -405,6 +405,25 @@ func TestStore_MessageTimestamps(t *testing.T) {
 	}
 }
 
+func TestStore_StoreMR_HoldsNotice(t *testing.T) {
+	ctx := t.Context()
+	st, bt, _ := wakeFixture(t)
+	if _, err := st.SetMR(ctx, bt.ID, "https://example.test/pr/1", "open", "t"); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := st.StoreMR(ctx, bt.ID, store.MRRead{
+		URL: "https://example.test/pr/1", Prev: "open", State: "open",
+		WakeKind: "ci", WakeText: "CI finished.", Notice: store.NoticeCIFailed,
+	})
+	if err != nil || !stored {
+		t.Fatalf("StoreMR = %v, %v, want stored", stored, err)
+	}
+	held, err := st.Held(ctx, bt.ID)
+	if err != nil || len(held) != 1 || held[0].Kind != "ci" || held[0].Notice != store.NoticeCIFailed {
+		t.Fatalf("held = %+v, %v; want one ci wake with notice %s", held, err, store.NoticeCIFailed)
+	}
+}
+
 func TestStore_QuietLine(t *testing.T) {
 	ctx := t.Context()
 	st, err := store.Open(t.TempDir())
@@ -761,7 +780,7 @@ func TestStore_FailUnfinished_OneWakePerBoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	held, err := st.Held(ctx, bt.ID)
-	if err != nil || len(held) != 1 || held[0].Text != "2" || held[0].FromBotID != "" || held[0].Kind != "restart" {
+	if err != nil || len(held) != 1 || held[0].Text != "2" || held[0].FromBotID != "" || held[0].Kind != "restart" || held[0].Notice != store.NoticeRestart {
 		t.Fatalf("held = %+v, %v; want one restart message of 2 runs from Reef", held, err)
 	}
 }

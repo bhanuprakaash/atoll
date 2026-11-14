@@ -89,6 +89,22 @@ func SecretReadError(err error) error {
 // ErrorRateLimited is the error kind of a run a provider's usage limit stopped.
 const ErrorRateLimited = "rate_limited"
 
+// Notices: what a held Reef notice is, kept in the inbox apart from its kind, which the chat and the
+// prompt read. The background guard reads the failures among them.
+const (
+	NoticeHelperDone    = "helper_done"
+	NoticeHelperFailed  = "helper_failed"
+	NoticeHelperStopped = "helper_stopped"
+	NoticeHelperLimited = "helper_limited"
+	NoticeHelperDeleted = "helper_deleted"
+	NoticeRestart       = "restart"
+	NoticeCIPassed      = "ci_passed"
+	NoticeCIFailed      = "ci_failed"
+	NoticeMerged        = "merged"
+	NoticeClosed        = "closed"
+	NoticeBase          = "base"
+)
+
 // KindGitLab is the kind of a GitLab connection.
 const KindGitLab = "gitlab"
 
@@ -261,6 +277,7 @@ type (
 		FromUser  bool
 		CreatedAt time.Time
 		Kind      string
+		Notice    string
 		Images    []Attachment
 	}
 
@@ -275,6 +292,7 @@ type (
 		DropCI   bool
 		WakeKind string
 		WakeText string
+		Notice   string
 	}
 
 	// Run is one message handled.
@@ -511,7 +529,7 @@ func (s *Store) DeleteBot(ctx context.Context, id string, wakes []InboxItem) ([]
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		const threads = "(SELECT id FROM threads WHERE bot_id = ?)"
 		for _, w := range wakes {
-			if err := insertInbox(ctx, tx, w.ThreadID, w.FromBotID, w.Text, ""); err != nil {
+			if err := insertInbox(ctx, tx, w.ThreadID, w.FromBotID, w.Text, "", w.Notice); err != nil {
 				return err
 			}
 		}
@@ -650,6 +668,22 @@ func (s *Store) FinishedRunsSince(ctx context.Context, since time.Time) ([]Threa
 			e.At = time.UnixMicro(at).UTC()
 			return e, err
 		}, since.UnixMicro(), StatusDone, StatusFailed, StatusStopped, StatusDone, RoleBot)
+}
+
+// ToldSince lists, for each open thread whose run goes on, that run when it stored a message of the
+// Bot after since and after the user last opened the thread, with the time of the newest.
+func (s *Store) ToldSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
+	return query(ctx, s.db,
+		`SELECT r.thread_id, r.id, max(m.created)
+		 FROM runs r JOIN threads t ON t.id = r.thread_id JOIN messages m ON m.run_id = r.id AND m.role = ?
+		 WHERE r.status IN (?, ?) AND t.closed = 0 AND m.created > ? AND m.created > t.last_opened_at
+		 GROUP BY r.id`,
+		func(r *sql.Rows) (e ThreadEvent, err error) {
+			var at int64
+			err = r.Scan(&e.ThreadID, &e.RunID, &at)
+			e.At = time.UnixMicro(at).UTC()
+			return e, err
+		}, RoleBot, StatusRunning, StatusWaiting, since.UnixMicro())
 }
 
 // OpenedMRsSince lists the threads whose MR is open, became so after since and has not been
@@ -869,7 +903,7 @@ func (s *Store) StoreMR(ctx context.Context, threadID string, r MRRead) (bool, e
 		case r.Quiet:
 			return insertQuietLine(ctx, tx, threadID, r.WakeText, r.WakeKind)
 		}
-		return insertInbox(ctx, tx, threadID, "", r.WakeText, r.WakeKind)
+		return insertInbox(ctx, tx, threadID, "", r.WakeText, r.WakeKind, r.Notice)
 	})
 	return stored, err
 }
@@ -1393,6 +1427,19 @@ type Wake struct {
 	Run        Run
 }
 
+// Notice is the notice kind of the wake: how the helper's run ended.
+func (w Wake) Notice() string {
+	switch {
+	case w.Run.Status == StatusDone:
+		return NoticeHelperDone
+	case w.Run.Status == StatusStopped:
+		return NoticeHelperStopped
+	case w.Run.ErrorKind == ErrorRateLimited:
+		return NoticeHelperLimited
+	}
+	return NoticeHelperFailed
+}
+
 // FinishRun ends a run with res. A non-empty reply also becomes the thread's bot message, in the
 // same transaction, unless it is the run's status line. When wake is not nil and the run is a helper's, the message wake returns is
 // held for the boss thread in the same transaction.
@@ -1516,11 +1563,11 @@ func (s *Store) FailUnfinished(
 			for i, w := range held {
 				wakes[i] = w.Wake
 			}
-			from, kind := "", "restart"
+			from, kind, notice := "", "restart", NoticeRestart
 			if len(held) == 1 {
-				from, kind = held[0].botID, ""
+				from, kind, notice = held[0].botID, "", held[0].Notice()
 			}
-			if err := insertInbox(ctx, tx, bossID, from, wake(wakes), kind); err != nil {
+			if err := insertInbox(ctx, tx, bossID, from, wake(wakes), kind, notice); err != nil {
 				return err
 			}
 		}
@@ -1545,7 +1592,7 @@ func enqueueWake(ctx context.Context, tx *sql.Tx, runID string, wake func(Wake) 
 	if err != nil || !ok {
 		return err
 	}
-	return insertInbox(ctx, tx, w.bossID, w.botID, wake(w.Wake), "")
+	return insertInbox(ctx, tx, w.bossID, w.botID, wake(w.Wake), "", w.Notice())
 }
 
 // readWake reads the wake of a helper run; ok is false for a run that is not a helper's.
@@ -1820,10 +1867,10 @@ func cleanStoredTitles(ctx context.Context, db *sql.DB) error {
 	return err
 }
 
-func insertInbox(ctx context.Context, db execer, threadID, fromBotID, text, kind string) error {
+func insertInbox(ctx context.Context, db execer, threadID, fromBotID, text, kind, notice string) error {
 	_, err := db.ExecContext(ctx,
-		"INSERT INTO inbox (id, thread_id, from_bot_id, text, kind, created) VALUES (?, ?, ?, ?, ?, ?)",
-		newID(), threadID, fromBotID, text, kind, time.Now().UTC().UnixMicro())
+		"INSERT INTO inbox (id, thread_id, from_bot_id, text, kind, notice, created) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		newID(), threadID, fromBotID, text, kind, notice, time.Now().UTC().UnixMicro())
 	if err != nil {
 		return fmt.Errorf("enqueue message: %w", err)
 	}

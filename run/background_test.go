@@ -1,31 +1,41 @@
 package run
 
 import (
+	"cmp"
+	"context"
 	"testing"
+	"time"
 
 	"atoll/store"
 )
 
+// Every notice kind a wake is written with has a row: a new kind that is a failure needs the guard.
 func TestFailure(t *testing.T) {
+	helper := func(status, errorKind string) string {
+		return store.Wake{Run: store.Run{Status: status, ErrorKind: errorKind}}.Notice()
+	}
 	tests := []struct {
 		name string
-		give store.InboxItem
+		give string
 		want bool
 	}{
-		{"helper finished", store.InboxItem{Kind: _helperNotice, Text: "Tester finished thread t1:\nrun failed: no"}, false},
-		{"helper failed", store.InboxItem{Kind: _helperNotice, Text: "Tester's run failed: boom\n(thread t1)"}, true},
-		{"helper stopped", store.InboxItem{Kind: _helperNotice, Text: "The user stopped Tester\n(thread t1)"}, true},
-		{"helper out of limit", store.InboxItem{Kind: _helperNotice, Text: "Tester is out until 2026-11-11T15:42:00Z.\nDo not send it work until then."}, true},
-		{"helper deleted", store.InboxItem{Kind: _helperNotice, Text: "Tester was deleted\n(thread t1)"}, false},
-		{"restart", store.InboxItem{Kind: "restart", Text: "A restart interrupted 2 helper runs."}, true},
-		{"CI passed", store.InboxItem{Kind: "ci", Text: "CI finished on PR #1: 4 passed"}, false},
-		{"CI failed", store.InboxItem{Kind: "ci", Text: `CI finished on PR #1: 2 passed, 1 failed ("unit")`}, true},
-		{"merged", store.InboxItem{Kind: "merged", Text: "PR #1 merged into main at abc1234"}, false},
+		{"helper finished", helper(store.StatusDone, ""), false},
+		{"helper failed", helper(store.StatusFailed, ""), true},
+		{"helper stopped", helper(store.StatusStopped, ""), true},
+		{"helper out of limit", helper(store.StatusFailed, store.ErrorRateLimited), true},
+		{"helper deleted", store.NoticeHelperDeleted, true},
+		{"restart", store.NoticeRestart, true},
+		{"CI passed", ciNotice(ciResult{Passed: 4}), false},
+		{"CI failed", ciNotice(ciResult{Passed: 2, Failed: 1}), true},
+		{"merged", store.NoticeMerged, false},
+		{"closed", store.NoticeClosed, false},
+		{"base merged", store.NoticeBase, false},
+		{"person's message", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := failure(tt.give); got != tt.want {
-				t.Errorf("failure(%+v) = %v, want %v", tt.give, got, tt.want)
+			if got := failure(store.InboxItem{Notice: tt.give}); got != tt.want {
+				t.Errorf("failure(notice %q) = %v, want %v", tt.give, got, tt.want)
 			}
 		})
 	}
@@ -81,5 +91,125 @@ func TestBackgroundLine(t *testing.T) {
 		if got := backgroundLine(user); got != want {
 			t.Errorf("backgroundLine(%q) = %q, want %q", user, got, want)
 		}
+	}
+}
+
+// The guard reads what Reef stored for a held notice, never its words: every wake below says the
+// same thing.
+func TestFailure_HeldNoticeOfEachWake(t *testing.T) {
+	const words = "Reef wrote some other words."
+	same := func(store.Wake) string { return words }
+	finish := func(res store.RunResult) func(context.Context, *store.Store, string) error {
+		return func(ctx context.Context, st *store.Store, runID string) error {
+			return st.FinishRun(ctx, runID, res, same)
+		}
+	}
+	tests := []struct {
+		name string
+		give func(ctx context.Context, st *store.Store, runID string) error
+		want bool
+	}{
+		{"helper finished", finish(store.RunResult{Status: store.StatusDone, Reply: "ok"}), false},
+		{"helper failed", finish(store.RunResult{Status: store.StatusFailed, Error: "boom"}), true},
+		{"helper stopped", finish(store.RunResult{Status: store.StatusStopped}), true},
+		{"helper out of limit", finish(store.RunResult{
+			Status: store.StatusFailed, Error: "limit", ErrorKind: store.ErrorRateLimited,
+		}), true},
+		{"restart cut one helper short", func(ctx context.Context, st *store.Store, _ string) error {
+			_, err := st.FailUnfinished(ctx, "restart", func([]store.Wake) string { return words })
+			return err
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newEnv(t, &fakeSession{})
+			boss := bossThread(t, e)
+			helper, err := e.st.CreateHelperThread(t.Context(), boss.ID, e.thread.BotID, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, ru, err := e.st.StartRunFrom(t.Context(), store.InboxItem{ThreadID: helper.ID, Text: "go"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := tt.give(t.Context(), e.st, ru.ID); err != nil {
+				t.Fatal(err)
+			}
+			heldNotice(t, e.st, boss.ID, tt.want)
+		})
+	}
+}
+
+func TestFailure_HeldNoticeOfDeletedHelper(t *testing.T) {
+	e := newEnv(t, &fakeSession{})
+	e.m.cfg.WakeWindow = time.Hour
+	boss := bossThread(t, e)
+	helper, err := e.st.CreateHelperThread(t.Context(), boss.ID, e.thread.BotID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.m.Send(t.Context(), helper.ID, "go", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.m.DeleteBot(t.Context(), e.thread.BotID); err != nil {
+		t.Fatal(err)
+	}
+	heldNotice(t, e.st, boss.ID, true)
+}
+
+// bossThread is a thread of another Bot, for the helper threads of a test to belong to.
+func bossThread(t *testing.T, e *env) store.Thread {
+	t.Helper()
+	bot, err := e.st.CreateBot(t.Context(), store.Bot{Name: "Boss", Persona: "Terse.", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boss, err := e.st.CreateThread(t.Context(), bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return boss
+}
+
+func heldNotice(t *testing.T, st *store.Store, bossID string, want bool) {
+	t.Helper()
+	held, err := st.Held(t.Context(), bossID)
+	if err != nil || len(held) != 1 {
+		t.Fatalf("held = %+v, %v; want one notice", held, err)
+	}
+	if got := failure(held[0]); got != want {
+		t.Errorf("failure(%+v) = %v, want %v", held[0], got, want)
+	}
+}
+
+func TestTellUser_ToldOnlyOnceStored(t *testing.T) {
+	tests := []struct {
+		name       string
+		thread     string
+		wantErr    bool
+		wantToldAt bool
+	}{
+		{"stored", "", false, true},
+		{"not stored", "gone", true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newEnv(t, &fakeSession{})
+			_, ru, err := e.st.StartRunFrom(t.Context(), store.InboxItem{ThreadID: e.thread.ID, Text: "hi"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := &active{threadID: cmp.Or(tt.thread, e.thread.ID), run: ru, background: true}
+			e.m.mu.Lock()
+			e.m.tokens["tok"] = a
+			e.m.mu.Unlock()
+			err = e.m.TellUser(t.Context(), "tok", "Merge #1.")
+			e.m.mu.Lock()
+			told := a.told
+			e.m.mu.Unlock()
+			if (err != nil) != tt.wantErr || told != tt.wantToldAt {
+				t.Errorf("TellUser = %v, told %v; want error %v, told %v", err, told, tt.wantErr, tt.wantToldAt)
+			}
+		})
 	}
 }

@@ -23,7 +23,11 @@ checked by hand.
   session, prompt `log summary is ready`) writes a final message of three lines with a blank line
   between them, the last one far longer than the column. `helper-blocked` (prompt `Run the checks,
   then say what blocks you.`) asks to run `make check`, then answers `Tester here: blocked on the
-  release notes.`, which the boss answers with `wake-tell`. `mcp-use-failed` (prompt `Then fail.
+  release notes.`, which the boss answers with `wake-tell`. `helper-key` (prompt `Run the checks,
+  then say what is missing.`) is the same with the answer `Tester here: the staging key is
+  missing.`, which the boss answers with `wake-tell-live`: `wake-tell` with a pause of 8 s after the
+  first `tell_user` call's result, so the run is still going when that message is stored.
+  `mcp-use-failed` (prompt `Then fail.
   Use MCP tools. `) makes its calls like `mcp-use`, then ends the run in an error.
 - `testdata/golden/system.txt` is the code Bot's prompt of the design for Ada, with the user Bhanu
   and the persona `A careful Go engineer.`
@@ -73,6 +77,14 @@ list (`last_activity` is not bumped by the run). Two threads of one Bot: the new
 and the Bot's activity; a quiet run in the older one moves neither. A `tell_user` run is not pinned
 here: it may still bump.
 
+A `tell_user` message reaches the person when it is stored, not when the run ends (#456):
+
+- With the boss thread open, the Bot message is in the chat within 1 s of the call, while the
+  thread's run is `running`.
+- With another thread on screen, the island lists it under Earlier while the run is `running`,
+  live and after a reload. The row's wording is not pinned: tests read the Earlier row that names
+  `Poteto`.
+
 The notice the boss reads is `Reef: {Helper} finished thread {id}:` on the first line, then the
 helper's reply, then the helpers line; no `Done:`, `Tried:`, `Blocked:` or `Next:`. Every notice
 starts `Reef: ` in the prompt. Whether the stored message text keeps the `Reef: ` (a PR wake's does
@@ -115,6 +127,7 @@ wording, so its description is only checked for the same two. Both pass on the b
 | Background run adds no message, not Replied, final message shown nowhere | `TestBackgroundRun_HelperNoticeAddsNoMessage`, `TestPRWake_MergedWakesTheBot`, `TestPRWake_ClosedUnmergedWakesTheBot`, `ui/thread-labels.spec.ts` |
 | Quiet background run stays off the island; an unread reply or failure keeps its Earlier row | `ui/island-earlier.spec.ts` (quiet run, unread reply, unread failure, `tell_user`) |
 | Quiet background run leaves the Bot's activity and the thread order | `TestBackgroundRun_QuietRunLeavesActivityAndOrder` |
+| `tell_user` message shows at once in the open chat and the island | `ui/tell-user-live.spec.ts` |
 | Background run lists `tell_user` and starts with the line; `tell_user` adds a message; person's run lists none | `TestBackgroundRun_TellUserReachesThePerson`, `TestBossQuiet_PersonTakesHeldReports`, `ui/thread-labels.spec.ts` |
 | Guard | `TestWake_HelperFailedStoppedDeleted`, `TestUsageLimit_WakeSaysHelperIsOut`, `TestPRWake_CIFinishedWakesOnce` |
 | Helper's report not in the boss chat; the notice text | `TestWake_ReportWakesBoss`, `TestFinalAnswer_HelperReplyRelaysFinalMessage`, `ui/helpers.spec.ts` |
