@@ -62,6 +62,10 @@ const (
 	EventMemorySaved     = "memory_saved"     // MemorySaved
 	EventPrompt          = "prompt"           // Prompt
 	EventHelperStarted   = "helper_started"   // HelperStarted
+
+	// EventOther is the provider's own activity, not Reef's request. It is in the run's event file
+	// only, never on a stream.
+	EventOther = "other" // Other
 )
 
 const (
@@ -221,6 +225,14 @@ type (
 	ApprovalClosed struct {
 		RunID string `json:"run_id"`
 		ID    string `json:"id"`
+	}
+
+	// Other is a piece of text or a tool call of the provider's own activity.
+	Other struct {
+		RunID string          `json:"run_id"`
+		Text  string          `json:"text,omitempty"`
+		Name  string          `json:"name,omitempty"`
+		Input json.RawMessage `json:"input,omitempty"`
 	}
 
 	// Prompt is what Atoll sent the provider: its system addition and the message.
@@ -941,6 +953,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	}
 	cfg.Model = bot.Model
 	cfg.Mode = bot.Mode
+	cfg.Log = m.cfg.Log
 	cfg.NoShell = bot.ID == "chief" && bot.Provider == "claude"
 	if bot.Provider == "claude" && !cfg.NoShell {
 		if cfg.HiddenPaths, err = m.hiddenPaths(a.ctx, bot); err != nil {
@@ -1123,6 +1136,10 @@ func (m *Manager) stream(a *active, sess provider.Session, showText bool) (strin
 			if !ok {
 				return "", errors.New("provider exited before the turn ended")
 			}
+			if ev.Other {
+				m.logOther(a, ev)
+				continue
+			}
 			switch ev.Kind {
 			case provider.KindText:
 				if showText && !frozen {
@@ -1296,6 +1313,21 @@ func (m *Manager) publish(a *active, typ string, data any) {
 	m.deliver(a.threadID, a.run.ID, a.log, typ, data)
 }
 
+// logOther writes the provider's own activity to the run's event file and nothing else. Its cost
+// is in the session total, which the run's cost is read from.
+func (m *Manager) logOther(a *active, ev provider.Event) {
+	if ev.Kind == provider.KindUsage {
+		if a.usage != nil {
+			a.usage.SessionCostUSD = ev.Usage.SessionCostUSD
+		}
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.writeEvent(a.run.ID, a.log, EventOther,
+		Other{RunID: a.run.ID, Text: ev.Text, Name: ev.Name, Input: ev.Input})
+}
+
 // announce is publish for an event outside a run: it goes to the file of the thread's latest run.
 func (m *Manager) announce(threadID, runID, typ string, data any) {
 	var f *os.File
@@ -1316,15 +1348,7 @@ func (m *Manager) announce(threadID, runID, typ string, data any) {
 // and, for a notice, to every SubscribeAll subscriber.
 // The caller holds mu.
 func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data any) {
-	if log != nil {
-		line, err := json.Marshal(eventLine{Type: typ, Data: data, At: time.Now().UTC()})
-		if err == nil {
-			_, err = log.Write(append(line, '\n'))
-		}
-		if err != nil {
-			m.cfg.Log.Warn("write event", "run_id", runID, "error", err)
-		}
-	}
+	m.writeEvent(runID, log, typ, data)
 	ev := Event{Type: typ, ThreadID: threadID, Data: data}
 	for ch := range m.subs[threadID] {
 		select {
@@ -1351,6 +1375,20 @@ func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data
 	}
 }
 
+// writeEvent appends the event to log, when there is one.
+func (m *Manager) writeEvent(runID string, log *os.File, typ string, data any) {
+	if log == nil {
+		return
+	}
+	line, err := json.Marshal(eventLine{Type: typ, Data: data, At: time.Now().UTC()})
+	if err == nil {
+		_, err = log.Write(append(line, '\n'))
+	}
+	if err != nil {
+		m.cfg.Log.Warn("write event", "run_id", runID, "error", err)
+	}
+}
+
 // The snapshot ends at registration; events after it are already buffered in ch.
 func (m *Manager) replay(threadID string, ch chan Event, snapshot io.Reader) {
 	b, err := io.ReadAll(snapshot)
@@ -1364,7 +1402,7 @@ func (m *Manager) replay(threadID string, ch chan Event, snapshot io.Reader) {
 			Type string          `json:"type"`
 			Data json.RawMessage `json:"data"`
 		}
-		if json.Unmarshal(line, &ev) != nil {
+		if json.Unmarshal(line, &ev) != nil || ev.Type == EventOther {
 			continue
 		}
 		if ev.Type == EventText {

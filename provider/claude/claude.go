@@ -6,11 +6,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
 	"os/exec"
@@ -37,6 +39,8 @@ const (
 	// _messageBreak goes before the text of a message that follows text in the same turn.
 	_messageBreak = "\n\n"
 	_stderrKeep   = 4 << 10
+	// _resultWait is how long a request waits for its result after its terminal state.
+	_resultWait   = 5 * time.Second
 	_builtinTools = "Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write"
 )
 
@@ -51,11 +55,15 @@ type Session struct {
 	mu      sync.Mutex // guards started, stopped and the fields start sets
 	started bool
 	stopped bool
+	log     *slog.Logger // set by start; nil logs nothing
+	sentMu  sync.Mutex   // guards sent
+	sent    string       // uuid of the user line Send wrote last
 }
 
 type (
 	inputMessage struct {
 		Type    string       `json:"type"`
+		UUID    string       `json:"uuid"`
 		Message inputContent `json:"message"`
 	}
 
@@ -109,7 +117,12 @@ type (
 			CacheReadTokens  int `json:"cache_read_input_tokens"`
 			CacheWriteTokens int `json:"cache_creation_input_tokens"`
 		} `json:"usage"`
-		APIError       string `json:"api_error"`
+		// CommandUUID and State are of a command_lifecycle line; Origin is set on a result claude
+		// wrote for activity Reef did not ask for.
+		CommandUUID    string          `json:"command_uuid"`
+		State          string          `json:"state"`
+		Origin         json.RawMessage `json:"origin"`
+		APIError       string          `json:"api_error"`
 		APIErrorParams struct {
 			RateLimitInfo rateLimitInfo `json:"rate_limit_info"`
 		} `json:"api_error_params"`
@@ -122,13 +135,29 @@ type (
 	}
 
 	// state is what parse keeps between lines. A message that starts after text in the same turn
-	// has its first text delta begin a new paragraph. model and calls (the distinct assistant
-	// message ids) last the whole process.
+	// has its first text delta begin a new paragraph. model, calls (the distinct assistant message
+	// ids of Reef's requests) and noLifecycle last the whole process.
 	state struct {
 		wrote, breakNext, signedOut, limited bool
 		resetsAt                             time.Time
 		model                                string
 		calls                                map[string]bool
+		noLifecycle                          bool // a request ended on a result with no command_lifecycle line
+		req                                  request
+	}
+
+	// request is Reef's current request, found in claude's output by the uuid Send wrote.
+	request struct {
+		uuid            string
+		queued, started bool
+		terminal        string          // the command_lifecycle state that ended it, once it came
+		final           *provider.Event // the end of the request, held until both signals are in
+		ended           bool
+	}
+
+	readResult struct {
+		line []byte
+		err  error
 	}
 
 	// tail keeps the last 4 KB written to it, for claude's stderr.
@@ -176,13 +205,18 @@ func (s *Session) Send(ctx context.Context, prompt string, images []provider.Ima
 		}
 		content = blocks
 	}
+	id := newUUID()
 	msg, err := json.Marshal(inputMessage{
 		Type:    "user",
+		UUID:    id,
 		Message: inputContent{Role: "user", Content: content},
 	})
 	if err != nil {
 		return err
 	}
+	s.sentMu.Lock()
+	s.sent = id
+	s.sentMu.Unlock()
 	if _, err := s.stdin.Write(append(msg, '\n')); err != nil {
 		err = fmt.Errorf("write prompt: %w", err)
 		if why := s.exitReason(ctx); why != "" {
@@ -370,7 +404,7 @@ func (s *Session) start(cfg provider.Config, extra ...string) error {
 		}()
 	}
 
-	s.cmd, s.stdin = cmd, stdin
+	s.cmd, s.stdin, s.log = cmd, stdin, cfg.Log
 	go s.read(stdout)
 	return nil
 }
@@ -517,23 +551,81 @@ func (s *Session) read(stdout io.Reader) {
 	defer close(s.done)
 	defer close(s.events)
 
-	r := bufio.NewReader(stdout)
-	var last provider.Kind
-	var st state
-	for {
-		line, err := r.ReadBytes('\n')
-		for _, ev := range parse(line, &st) {
-			if !s.emit(ev) {
-				_ = s.cmd.Wait()
+	lines := make(chan readResult)
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		r := bufio.NewReader(stdout)
+		for {
+			line, err := r.ReadBytes('\n')
+			select {
+			case lines <- readResult{line, err}:
+			case <-s.quit:
 				return
 			}
-			last = ev.Kind
+			if err != nil {
+				return
+			}
 		}
-		if err != nil {
-			break
+	}()
+
+	var last provider.Kind
+	var st state
+	var warned bool
+	var deadline time.Time
+	// emit reports whether to go on; last is the kind of the latest event that was Reef's.
+	emit := func(evs []provider.Event) bool {
+		for _, ev := range evs {
+			if !s.emit(ev) {
+				return false
+			}
+			if !ev.Other {
+				last = ev.Kind
+			}
+		}
+		return true
+	}
+	for eof := false; !eof; {
+		var timeout <-chan time.Time
+		if st.req.waiting() {
+			if deadline.IsZero() {
+				deadline = time.Now().Add(_resultWait)
+			}
+			timeout = time.After(time.Until(deadline))
+		} else {
+			deadline = time.Time{}
+		}
+		var evs []provider.Event
+		select {
+		case l := <-lines:
+			if id := s.sentUUID(); id != st.req.uuid {
+				st.req = request{uuid: id}
+			}
+			evs, eof = parse(l.line, &st), l.err != nil
+		case <-s.quit:
+			_ = s.cmd.Wait()
+			<-readDone
+			return
+		case <-timeout:
+			evs = st.req.expire()
+		}
+		if st.noLifecycle && !warned {
+			warned = true
+			if s.log != nil {
+				s.log.Warn("claude sent no lifecycle events; ending requests on the first result")
+			}
+		}
+		if !emit(evs) {
+			_ = s.cmd.Wait()
+			<-readDone
+			return
 		}
 	}
 	err := s.cmd.Wait()
+	<-readDone
+	if f := st.req.final; f != nil && f.Kind == provider.KindError && !st.req.ended && !emit([]provider.Event{*f}) {
+		return
+	}
 	if err == nil || last == provider.KindError {
 		return
 	}
@@ -562,35 +654,41 @@ func (s *Session) emit(ev provider.Event) bool {
 
 // parse maps one stdout line to Events. Text comes from the partial-message deltas, so the
 // complete assistant text blocks that follow are skipped; tool calls come from the complete
-// assistant line, as the partial input is cut off. Unknown lines give none.
+// assistant line, as the partial input is cut off. Unknown lines give none. What claude does
+// outside Reef's request (see request) is Other and leaves Reef's state alone.
 func parse(line []byte, st *state) []provider.Event {
 	var l outputLine
 	if err := json.Unmarshal(line, &l); err != nil {
 		return nil
 	}
+	other := st.req.other()
 	switch l.Type {
 	case "system":
 		if l.Subtype == "init" {
 			st.model = l.Model
 			return []provider.Event{{Kind: provider.KindSession, SessionID: l.SessionID}}
 		}
+	case "command_lifecycle":
+		return st.lifecycle(l)
 	case "assistant":
-		st.signedOut = st.signedOut || l.Error == "authentication_failed"
-		if l.Message.ID != "" {
-			if st.calls == nil {
-				st.calls = map[string]bool{}
+		if !other {
+			st.signedOut = st.signedOut || l.Error == "authentication_failed"
+			if l.Message.ID != "" {
+				if st.calls == nil {
+					st.calls = map[string]bool{}
+				}
+				st.calls[l.Message.ID] = true
 			}
-			st.calls[l.Message.ID] = true
-		}
-		if l.Error == "rate_limit" && l.APIError == "usage_limit_reached" {
-			st.limited = true
-			st.setReset(l.APIErrorParams.RateLimitInfo)
+			if l.Error == "rate_limit" && l.APIError == "usage_limit_reached" {
+				st.limited = true
+				st.setReset(l.APIErrorParams.RateLimitInfo)
+			}
 		}
 		var evs []provider.Event
 		for _, c := range l.Message.Content {
 			if c.Type == "tool_use" {
 				evs = append(evs, provider.Event{
-					Kind: provider.KindToolCall, ID: c.ID, Name: c.Name, Input: c.Input,
+					Kind: provider.KindToolCall, ID: c.ID, Name: c.Name, Input: c.Input, Other: other,
 				})
 			}
 		}
@@ -600,11 +698,14 @@ func parse(line []byte, st *state) []provider.Event {
 			st.setReset(l.RateLimitInfo)
 		}
 	case "stream_event":
-		if l.Event.Type == "message_start" {
+		if l.Event.Type == "message_start" && !other {
 			st.breakNext = st.wrote
 		}
 		if l.Event.Type == "content_block_delta" && l.Event.Delta.Type == "text_delta" {
 			text := l.Event.Delta.Text
+			if other {
+				return []provider.Event{{Kind: provider.KindText, Text: text, Other: true}}
+			}
 			if st.breakNext {
 				text, st.breakNext = _messageBreak+text, false
 			}
@@ -612,6 +713,13 @@ func parse(line []byte, st *state) []provider.Event {
 			return []provider.Event{{Kind: provider.KindText, Text: text}}
 		}
 	case "result":
+		if other || len(l.Origin) > 0 && string(l.Origin) != "null" {
+			if l.TotalCostUSD == nil {
+				return nil
+			}
+			return []provider.Event{{Kind: provider.KindUsage, Other: true,
+				Usage: &provider.Usage{SessionCostUSD: l.TotalCostUSD}}}
+		}
 		wrote, prev := st.wrote, *st
 		var evs []provider.Event
 		if u := (provider.Usage{
@@ -621,18 +729,81 @@ func parse(line []byte, st *state) []provider.Event {
 		}); u.Calls > 0 || u.SessionCostUSD != nil {
 			evs = append(evs, provider.Event{Kind: provider.KindUsage, Usage: &u})
 		}
-		*st = state{model: st.model, calls: st.calls}
+		*st = state{model: st.model, calls: st.calls, noLifecycle: st.noLifecycle, req: st.req}
+		final := provider.Event{Kind: provider.KindTurnEnd}
 		if l.IsError {
 			text := strings.Join(append([]string{l.Result}, l.Errors...), "\n")
-			return append(evs, provider.Event{Kind: provider.KindError, Text: strings.TrimSpace(text), SignedOut: prev.signedOut,
-				Limited: prev.limited, ResetsAt: prev.resetsAt})
-		}
-		if !wrote && l.Result != "" {
+			final = provider.Event{Kind: provider.KindError, Text: strings.TrimSpace(text), SignedOut: prev.signedOut,
+				Limited: prev.limited, ResetsAt: prev.resetsAt}
+		} else if !wrote && l.Result != "" {
 			evs = append(evs, provider.Event{Kind: provider.KindText, Text: l.Result})
 		}
-		return append(evs, provider.Event{Kind: provider.KindTurnEnd})
+		if !st.req.queued && !st.req.started {
+			st.noLifecycle, st.req.ended = true, true
+			return append(evs, final)
+		}
+		st.req.final = &final
+		return append(evs, st.req.finish()...)
 	}
 	return nil
+}
+
+// lifecycle takes a command_lifecycle line. Claude reports Reef's uuid as queued, started, then a
+// terminal state: any state but those two.
+func (st *state) lifecycle(l outputLine) []provider.Event {
+	r := &st.req
+	if r.uuid == "" || l.CommandUUID != r.uuid {
+		return nil
+	}
+	switch l.State {
+	case "queued":
+		r.queued = true
+	case "started":
+		r.started = true
+	default:
+		r.terminal = l.State
+	}
+	return r.finish()
+}
+
+// other reports whether the line being read is not Reef's: the request has ended, or claude has
+// queued it and not yet started it. Before claude says anything of the request, and for a build
+// that never does, lines are Reef's.
+func (r *request) other() bool {
+	return r.ended || r.queued && !r.started
+}
+
+// waiting reports whether claude has said the request ended and its result has not come.
+func (r *request) waiting() bool {
+	return !r.ended && r.final == nil && r.terminal != ""
+}
+
+// finish ends the request once its result and its terminal state are both in.
+func (r *request) finish() []provider.Event {
+	if r.ended || r.final == nil || r.terminal == "" {
+		return nil
+	}
+	r.ended = true
+	return []provider.Event{*r.final}
+}
+
+// expire fails a request claude said ended and gave no result for.
+func (r *request) expire() []provider.Event {
+	r.ended = true
+	return []provider.Event{{Kind: provider.KindError, Text: "claude ended the request (" + r.terminal + ") without a result"}}
+}
+
+func newUUID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	b[6], b[8] = b[6]&0x0f|0x40, b[8]&0x3f|0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+func (s *Session) sentUUID() string {
+	s.sentMu.Lock()
+	defer s.sentMu.Unlock()
+	return s.sent
 }
 
 func (st *state) setReset(info rateLimitInfo) {
