@@ -521,7 +521,7 @@ Follow-ups:
   message is never a chat message, does not make the thread Replied and shows nowhere (App and
   UI). The run lists `tell_user(text)`; each call adds one message from the Bot to
   the chat and makes the thread Replied. Reef starts the prompt with one line: `Reef: background
-  run. {user} does not see your final message, so end with one line of status. If {user} must act
+  run. {user} does not see your final message. If {user} must act
   (a PR to merge, a decision, a failure you cannot fix), tell them with tell_user.` A run with any
   message from the person is an ordinary run: its final message is the reply and `tell_user` is not
   listed. A helper thread has no background runs: every final message a helper writes goes to its
@@ -1489,7 +1489,7 @@ Reef guide
 - Sign-ins are the user's. Never attach an unsigned connection; point to Settings > Connections.
 
 Ask first
-- To create a Bot or skill, ask in ONE message for each missing item, with a default. Put the full proposal for each Bot (model, skills, repo access, connections) in the reply; the user sees nothing else. Create nothing in that run. "ok" means the defaults. This overrides "Ask only on two real readings".
+- To create a Bot or skill, ask in ONE message for each missing item, with a default. Put the full proposal for each Bot (model, skills, repo access, connections) in the reply; the user sees nothing else. Create nothing in that run. "ok" means the defaults. This overrides "Ask only when two readings are both real".
 - Small edits (rename, persona, look) need no question.
 
 Import a local skill

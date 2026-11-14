@@ -12,8 +12,8 @@ func backgroundLine(user string) string {
 	if user == "" {
 		user = "The user"
 	}
-	return "Reef: background run. " + user + " does not see your final message, so end with one line " +
-		"of status. If " + user + " must act (a PR to merge, a decision, a failure you cannot fix), " +
+	return "Reef: background run. " + user + " does not see your final message. " +
+		"If " + user + " must act (a PR to merge, a decision, a failure you cannot fix), " +
 		"tell them with tell_user."
 }
 

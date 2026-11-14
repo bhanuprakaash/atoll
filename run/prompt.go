@@ -73,7 +73,7 @@ Reef guide
 - Sign-ins are the user's. Never attach an unsigned connection; point to Settings > Connections.
 
 Ask first
-- To create a Bot or skill, ask in ONE message for each missing item, with a default. Put the full proposal for each Bot (model, skills, repo access, connections) in the reply; the user sees nothing else. Create nothing in that run. "ok" means the defaults. This overrides "Ask only on two real readings".
+- To create a Bot or skill, ask in ONE message for each missing item, with a default. Put the full proposal for each Bot (model, skills, repo access, connections) in the reply; the user sees nothing else. Create nothing in that run. "ok" means the defaults. This overrides "Ask only when two readings are both real".
 - Small edits (rename, persona, look) need no question.
 
 Import a local skill
