@@ -76,8 +76,8 @@ func TestSession(t *testing.T) {
 			allow:       true,
 			wantReply:   "Created hello.txt containing hi.",
 			wantSession: _threadID,
-			wantCalls:   "commandExecution,finish_run",
-			wantServers: "atoll",
+			wantCalls:   "commandExecution",
+			wantServers: "",
 			wantAsk:     "commandExecution 0",
 		},
 		{
@@ -86,8 +86,8 @@ func TestSession(t *testing.T) {
 			mcpURL:      "http://127.0.0.1:1/mcp",
 			wantReply:   "I didn't create hello.txt because you declined the command.",
 			wantSession: _threadID,
-			wantCalls:   "commandExecution,finish_run",
-			wantServers: "atoll",
+			wantCalls:   "commandExecution",
+			wantServers: "",
 			wantAsk:     "commandExecution 0",
 		},
 		{
@@ -244,6 +244,72 @@ func TestSession_handleText(t *testing.T) {
 			<-drained
 			if reply.String() != tt.want {
 				t.Errorf("reply %q, want %q", reply.String(), tt.want)
+			}
+		})
+	}
+}
+
+func TestSession_handleFinalMessage(t *testing.T) {
+	done := func(id, phase, text string) string {
+		return `{"method":"item/completed","params":{"item":{"type":"agentMessage","id":"` + id +
+			`","phase":` + phase + `,"text":"` + text + `"}}}`
+	}
+	turn := `{"method":"turn/started","params":{}}`
+	end := `{"method":"turn/completed","params":{"turn":{"status":"completed"}}}`
+	tests := []struct {
+		name string
+		give []string
+		want string
+	}{
+		{
+			name: "the final answer, not the commentary after it",
+			give: []string{turn, done("a", `"final_answer"`, "answer"), done("b", `"commentary"`, "note"), end},
+			want: "answer",
+		},
+		{
+			name: "no phase: the last agent message",
+			give: []string{turn, done("a", `null`, "one"), done("b", `null`, "two"), end},
+			want: "two",
+		},
+		{name: "no agent message", give: []string{turn, end}},
+		{
+			name: "another turn's message is not the final one",
+			give: []string{
+				`{"id":3,"result":{"turn":{"id":"t1"}}}`,
+				`{"method":"turn/started","params":{"turn":{"id":"t1"}}}`,
+				`{"method":"item/completed","params":{"turnId":"t1","item":{"type":"agentMessage","id":"a","text":"mine"}}}`,
+				`{"method":"item/completed","params":{"turnId":"t2","item":{"type":"agentMessage","id":"x","text":"other"}}}`,
+				`{"method":"turn/completed","params":{"turn":{"id":"t1","status":"completed"}}}`,
+			},
+			want: "mine",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New()
+			var final string
+			drained := make(chan struct{})
+			go func() {
+				defer close(drained)
+				for ev := range s.events {
+					if ev.Kind == provider.KindTurnEnd && !ev.Other {
+						final = ev.Text
+					}
+				}
+			}()
+			for _, line := range tt.give {
+				var m message
+				if err := json.Unmarshal([]byte(line), &m); err != nil {
+					t.Fatal(err)
+				}
+				if !s.handle(m) {
+					t.Fatal("handle stopped reading")
+				}
+			}
+			close(s.events)
+			<-drained
+			if final != tt.want {
+				t.Errorf("final message %q, want %q", final, tt.want)
 			}
 		})
 	}

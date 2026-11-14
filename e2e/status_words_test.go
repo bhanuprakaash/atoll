@@ -50,17 +50,7 @@ func TestRun_StatusWords(t *testing.T) {
 			}
 		}
 	}
-	for _, e := range until(t, ev, r.ID, "run_finished") {
-		if e.Type != "tool_call" || e.Data["name"] != "mcp__atoll__finish_run" {
-			continue
-		}
-		verb, _ := e.Data["verb"].(string)
-		target, _ := e.Data["target"].(string)
-		activity := strings.TrimSpace(verb + " " + target)
-		if strings.HasPrefix(activity, "Setting up") {
-			t.Errorf("finish_run activity = %q", activity)
-		}
-	}
+	until(t, ev, r.ID, "run_finished")
 	t.Run("codex", func(t *testing.T) {
 		_, s := start(t, "codex")
 		th := s.newThread(t, s.newBot(t, "Ada", "codex"))

@@ -289,7 +289,7 @@ func TestParse(t *testing.T) {
 			state: state{req: request{uuid: "u", queued: true, started: true, terminal: "completed"}},
 			line:  result,
 			want: []provider.Event{
-				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd},
+				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd, Text: "ok"},
 			},
 		},
 		{
@@ -308,17 +308,17 @@ func TestParse(t *testing.T) {
 			state: state{req: request{uuid: "u"}},
 			line:  result,
 			want: []provider.Event{
-				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd},
+				{Kind: provider.KindText, Text: "ok"}, {Kind: provider.KindTurnEnd, Text: "ok"},
 			},
 		},
 		{
 			name: "assistant tool calls, text skipped",
 			line: `{"type":"assistant","message":{"content":[{"type":"text","text":"hi"},` +
 				`{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}},` +
-				`{"type":"tool_use","id":"toolu_2","name":"mcp__atoll__finish_run","input":{"done":"x"}}]}}`,
+				`{"type":"tool_use","id":"toolu_2","name":"mcp__atoll__remember","input":{"body":"x"}}]}}`,
 			want: []provider.Event{
 				{Kind: provider.KindToolCall, ID: "toolu_1", Name: "Bash", Input: json.RawMessage(`{"command":"ls"}`)},
-				{Kind: provider.KindToolCall, ID: "toolu_2", Name: "mcp__atoll__finish_run", Input: json.RawMessage(`{"done":"x"}`)},
+				{Kind: provider.KindToolCall, ID: "toolu_2", Name: "mcp__atoll__remember", Input: json.RawMessage(`{"body":"x"}`)},
 			},
 		},
 		{

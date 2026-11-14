@@ -412,7 +412,7 @@ func serveStub(t *testing.T, w http.ResponseWriter, r *http.Request, args *map[s
 	case "initialize":
 		out = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{}, "serverInfo": map[string]string{"name": "fixture", "version": "0"}}
 	case "tools/list":
-		tools := []map[string]any{{"name": "finish_run", "inputSchema": map[string]any{"type": "object"}}}
+		tools := []map[string]any{}
 		for _, name := range fake.PlatformTools() {
 			tools = append(tools, map[string]any{"name": name, "inputSchema": map[string]any{"type": "object"}})
 		}

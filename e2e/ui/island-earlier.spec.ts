@@ -8,11 +8,14 @@ import {
   newBotAPI,
   openThreadAPI,
   prompts,
+  recordText,
+  seenText,
   sendMessageAPI,
   startAtoll,
   threadTitle,
   threadTree,
 } from './atoll';
+import { delegate, helperThreads, makeBoss, runStatus, startThread } from './helpers-fixture';
 
 let m: Machine;
 test.beforeEach(async () => {
@@ -287,4 +290,109 @@ test('opening a thread clears both its sidebar New and its Earlier row', async (
   await island.click();
   await expect(finished(rows, prompts.keep)).toHaveCount(1);
   await expect(finished(rows, prompts.pong)).toHaveCount(0);
+});
+
+const summaryJob = 'Run the checks, then summarize the log.';
+const blockedJob = 'Run the checks, then say what blocks you.';
+
+// handOff has Poteto hand Tester a job that waits on an approval and returns once Poteto's run
+// for that hand-off has ended. approve lets the job go on and returns once Poteto's run for
+// Tester's notice has ended and left its final message as the status line. start makes Poteto's
+// thread, which says where the person is while it is made.
+async function handOff(job: string, start: (text: string) => Promise<string>, preamble = '') {
+  const boss = await start(delegate([['Tester', job]], preamble));
+  const [helper] = await helperThreads(m, boss, 1);
+  await expect
+    .poll(async () => (await api(m, 'GET', `/api/threads/${helper.id}`)).approval?.id ?? '', {
+      timeout: 15_000,
+    })
+    .not.toBe('');
+  await expect.poll(() => runStatus(m, boss), { timeout: 15_000 }).not.toBe('running');
+  const approve = async () => {
+    const approval = (await api(m, 'GET', `/api/threads/${helper.id}`)).approval.id;
+    await api(m, 'POST', `/api/approvals/${approval}`, { approve: true });
+    await expect
+      .poll(async () => (await api(m, 'GET', `/api/threads/${boss}`)).status_line ?? '', {
+        timeout: 30_000,
+      })
+      .not.toBe('');
+  };
+  return { boss, approve };
+}
+
+const potetoRows = (rows: Locator, verb = 'finished') => rows.filter({ hasText: `Poteto ${verb}` });
+
+// Scout's run, which ends after Poteto's quiet one, shows that the island's stream is past the
+// point where a row for the quiet run would have come.
+test('a quiet background run adds nothing to the island, live or after a reload', async ({
+  page,
+}) => {
+  await makeBoss(m, ['Tester']);
+  const home = await newBotAPI(m, 'Home');
+  const scout = await newBotAPI(m, 'Scout');
+  await page.goto(m.url);
+  const { boss, approve } = await handOff(summaryJob, (text) => startThread(page, 'Poteto', text));
+  await api(m, 'POST', `/api/threads/${boss}/opened`);
+
+  const { island, rows } = await open(page, home.id);
+  await recordText(page);
+  await approve();
+  await openThreadAPI(m, scout.id, prompts.pong);
+  await expect.poll(() => seenText(page)).toContain('Scout finished');
+  expect(await seenText(page)).not.toContain('Poteto finished');
+  await island.click();
+  await expect(finished(rows, prompts.pong)).toHaveCount(1);
+  await expect(potetoRows(rows)).toHaveCount(0);
+
+  await page.reload();
+  await island.click();
+  await expect(finished(rows, prompts.pong)).toHaveCount(1);
+  await expect(potetoRows(rows)).toHaveCount(0);
+});
+
+// A reply or a failure the person has not read is the thread's newest news. A quiet run after it
+// changes neither the sidebar's label nor the island's row.
+for (const [news, preamble, label, verb] of [
+  ['reply', '', 'Replied', 'finished'],
+  ['failure', 'Then fail. ', 'Failed', 'failed'],
+] as const) {
+  test(`an unread ${news} followed by a quiet background run keeps its Earlier row and its sidebar label`, async ({
+    page,
+  }) => {
+    const { poteto } = await makeBoss(m, ['Tester']);
+    const home = await newBotAPI(m, 'Home');
+    const { approve } = await handOff(
+      summaryJob,
+      async (text) => (await openThreadAPI(m, poteto.id, text)).id,
+      preamble,
+    );
+    await approve();
+
+    const { island, rows } = await open(page, home.id);
+    await page.reload();
+    await expect(
+      threadTree(page, 'Poteto').getByRole('listitem').filter({ hasText: label }),
+    ).toHaveCount(1);
+    await island.click();
+    await expect(potetoRows(rows, verb)).toHaveCount(1);
+  });
+}
+
+test('a background run that called tell_user is under Earlier, live and after a reload', async ({
+  page,
+}) => {
+  await makeBoss(m, ['Tester']);
+  const home = await newBotAPI(m, 'Home');
+  await page.goto(m.url);
+  const { boss, approve } = await handOff(blockedJob, (text) => startThread(page, 'Poteto', text));
+  await api(m, 'POST', `/api/threads/${boss}/opened`);
+
+  const { island, rows } = await open(page, home.id);
+  await island.click();
+  await approve();
+  await expect(potetoRows(rows)).toHaveCount(1);
+
+  await page.reload();
+  await island.click();
+  await expect(potetoRows(rows)).toHaveCount(1);
 });

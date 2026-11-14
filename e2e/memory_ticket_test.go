@@ -173,7 +173,7 @@ func TestMemoryTicket_MergedWakeNamesItems(t *testing.T) {
 			w := f.waitWake(t, th, 1)
 
 			f.wantWake(t, th, w, "merged", merged1+". Memory about #7 to replace or retire: ")
-			f.wantReply(t, th, "Merge noted.", first)
+			f.wantQuietRun(t, th, first)
 			for _, want := range []string{"Memory about #9 to replace or retire: " + z.ID, x.ID, y.ID} {
 				if !strings.Contains(w.Text, want) {
 					t.Errorf("wake %q lacks %q", w.Text, want)
@@ -203,7 +203,7 @@ func TestMemoryTicket_MergedWakeWithoutItemsIsPlain(t *testing.T) {
 			w := f.waitWake(t, th, 1)
 
 			f.wantWake(t, th, w, "merged", merged1)
-			f.wantReply(t, th, "Merge noted.", first)
+			f.wantQuietRun(t, th, first)
 			if w.Text != merged1 {
 				t.Errorf("wake %q, want exactly %q", w.Text, merged1)
 			}
@@ -226,7 +226,7 @@ func TestMemoryTicket_MergeThatClosesTheIssueWakesBeforeRetiring(t *testing.T) {
 			w := f.waitWake(t, th, 1)
 
 			f.wantWake(t, th, w, "merged", merged1+". Memory about #7 to replace or retire: "+x.ID)
-			f.wantReply(t, th, "Merge noted.", first)
+			f.wantQuietRun(t, th, first)
 			eventually(t, 30*time.Second, "the item of the closed issue is retired", func() bool { return f.item(t, x.ID).Status == "retired" })
 			f.wantRetired(t, x, "issue closed")
 		})

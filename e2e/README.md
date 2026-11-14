@@ -64,7 +64,7 @@ second interval and tests wait before the second poll.
 
 After `glab mr create`, the Bot calls Atoll MCP `track_mr({url})`; this records the
 thread's MR and emits `mr_updated` with state `opened`. The reply may have any text.
-The Bot calls `finish_run` and replies with the MR URL. Atoll polls `glab mr view`
+The Bot replies with the MR URL. Atoll polls `glab mr view`
 for the tracked URL, requesting JSON with at least `state`. A transition to `merged`
 removes the worktree. Polling is independent of provider runs and resumes on server
 restart. `ATOLL_REPO_POLL_INTERVAL=100ms` shortens the default 60-second interval for tests.
@@ -118,7 +118,7 @@ with the test. The temporary encrypted keyring is removed when the session ends.
 
 `TestRepoFixtures_ProviderScenarios` independently drives all eight new provider
 scenarios against a fixture MCP endpoint to prove real Git operations, dynamic
-replies and `finish_run` work before the product APIs exist.
+and replies work before the product APIs exist.
 
 The contract does not specify truncation length, branch-folder encoding, UI,
 refresh/revocation flows, or cleanup recovery UI. Implementer decisions beyond
@@ -175,3 +175,5 @@ Allow in this thread (a third choice on a command that may repeat) extends these
 The approval card (compact, quiet, answered by writing in the chat) and red only for real danger extend these contracts in [approval-card-contract.md](approval-card-contract.md).
 
 Runs that end on their own request (a notification or another turn is not the end; nothing is written into a running request) extend these contracts in [request-lifecycle-contract.md](request-lifecycle-contract.md).
+
+Runs without a report (the final message is the reply, thread labels, quiet background runs, the rebuilt prompt) extend [request-lifecycle-contract.md](request-lifecycle-contract.md) in [no-report-contract.md](no-report-contract.md).

@@ -2,6 +2,7 @@
 // e2e/rich-output-contract.md.
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, openThreadAPI, startAtoll } from './atoll';
+import { helperThreads } from './helpers-fixture';
 
 let m: Machine;
 test.beforeAll(async () => {
@@ -165,7 +166,7 @@ test('a reef- fence still open when the run ends is a code block, not a placehol
 const escaped = (s: string) =>
   `"${Array.from(s, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`).join('')}"`;
 
-test("a helper's report in the boss thread renders the same table", async ({ page }) => {
+test("a helper's reply in its own thread renders the same table", async ({ page }) => {
   const poteto = await newBotAPI(m, 'Poteto relay', 'claude', {
     look: 'whale',
   });
@@ -179,11 +180,9 @@ test("a helper's report in the boss thread renders the same table", async ({ pag
     poteto.id,
     `Use MCP tools. [{"server":"atoll","tool":"delegate","args":{"bot":"Tester relay","brief":${escaped(brief)}}}]`,
   );
-  await page.goto(`${m.url}/bots/${poteto.id}/threads/${boss.id}`);
-  const ledger = page.getByRole('log', { name: 'Messages' }).getByRole('list', { name: 'Updates' });
-  await ledger.getByRole('button', { name: /Tester relay/ }).click();
-  const report = ledger.getByRole('listitem');
-  const table = report.locator('[data-component="table"]');
+  const [helper] = await helperThreads(m, boss.id, 1);
+  await page.goto(`${m.url}/bots/${tester.id}/threads/${helper.id}`);
+  const table = page.getByRole('log', { name: 'Messages' }).locator('[data-component="table"]');
   await expect(table).toHaveCount(1);
   await expect(table.getByRole('columnheader')).toHaveText(['Check', 'Result']);
   await expect(table.getByRole('cell', { name: 'lint' })).toBeVisible();

@@ -141,6 +141,11 @@ func TestUsageLimit_WakeSaysHelperIsOut(t *testing.T) {
 			if wake.Status != "done" {
 				t.Errorf("boss run Tester's message started: status %q, error %q; want done", wake.Status, wake.Error)
 			}
+			// A helper at its limit is a failure Reef knows of: the boss called no tell_user, so its
+			// final message is posted as a reply.
+			if text := botText(t, s, bossThread.ID, wake.ID); text != _wakeReply {
+				t.Errorf("Bot message of the background run %q, want its final message %q posted (guard)", text, _wakeReply)
+			}
 		})
 	}
 }

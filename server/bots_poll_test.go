@@ -225,8 +225,8 @@ func TestBotsPoll_New(t *testing.T) {
 		"finished, never opened":       {unread, "new"},
 		"finished, then opened":        {read, ""},
 		"replied after open, finished": {replied, "new"},
-		"run failed at restart":        {restarted, "new"},
-		"helper thread":                {helper, "new helper"},
+		"run failed at restart":        {restarted, "failed"},
+		"helper thread, never replied": {helper, " helper"},
 		"boss of a helper":             {boss, ""},
 		"closed":                       {closed, "<not listed>"},
 	} {

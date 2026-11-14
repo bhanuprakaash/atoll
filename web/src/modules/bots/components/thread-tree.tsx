@@ -5,6 +5,7 @@ import { Menu } from '@/components/menu';
 import { TextField } from '@/components/text-field';
 import type { Bot, SidebarThread } from '@/modules/bots/api/bots';
 import { threadTree, workerNames, type Worker } from '@/modules/bots/utils/thread-tree';
+import { clockTime } from '@/utils/time';
 
 const marker = (t: SidebarThread) =>
   t.state ? t.state.replace('_', '-') : t.pinned ? 'pinned' : undefined;
@@ -52,11 +53,16 @@ function Pin() {
   );
 }
 
+const outUntil = (thread: SidebarThread) =>
+  thread.resets_at ? `Out until ${clockTime(thread.resets_at)}` : 'Out';
+
 export function ThreadLabel({ thread }: { thread: SidebarThread }) {
   return (
     <>
-      {thread.state === 'needs_you' || thread.state === 'waiting' ? (
+      {thread.state === 'needs_you' ? (
         <Dot className="bg-accent" />
+      ) : thread.state === 'failed' ? (
+        <Dot className="bg-danger" />
       ) : thread.state === 'new' ? (
         <Dot className="bg-kind" />
       ) : thread.pinned && thread.state === '' ? (
@@ -70,11 +76,12 @@ export function ThreadLabel({ thread }: { thread: SidebarThread }) {
       {thread.state === 'needs_you' && (
         <span className="flex-none text-xs text-ink">Needs you</span>
       )}
-      {thread.state === 'waiting' && (
-        <span className="flex-none text-xs text-ink">Waiting on you</span>
+      {thread.state === 'failed' && <span className="flex-none text-xs text-ink">Failed</span>}
+      {thread.state === 'limited' && (
+        <span className="flex-none text-xs text-muted">{outUntil(thread)}</span>
       )}
-      {thread.state === 'new' && <span className="flex-none text-xs text-kind">New</span>}
-      {thread.state === 'running' && <Wave label="Running" />}
+      {thread.state === 'new' && <span className="flex-none text-xs text-kind">Replied</span>}
+      {thread.state === 'running' && <Wave label="Working" />}
     </>
   );
 }
@@ -87,21 +94,23 @@ function ThreadMarker({ thread }: { thread: SidebarThread }) {
         <Dot className="bg-accent" />
       </>
     );
-  if (thread.state === 'waiting')
+  if (thread.state === 'failed')
     return (
       <>
-        <span className="flex-none text-xs text-ink">Waiting on you</span>
-        <Dot className="bg-accent" />
+        <span className="flex-none text-xs text-ink">Failed</span>
+        <Dot className="bg-danger" />
       </>
     );
+  if (thread.state === 'limited')
+    return <span className="flex-none text-xs text-muted">{outUntil(thread)}</span>;
   if (thread.state === 'new')
     return (
       <>
         <Dot className="bg-kind" />
-        <span className="sr-only">New</span>
+        <span className="sr-only">Replied</span>
       </>
     );
-  if (thread.state === 'running') return <Wave label="Running" />;
+  if (thread.state === 'running') return <Wave label="Working" />;
   if (thread.pinned && thread.state === '') return <Pin />;
   return null;
 }

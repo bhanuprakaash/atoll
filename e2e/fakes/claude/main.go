@@ -202,6 +202,9 @@ func stream(log *fake.Log, args []string) error {
 		if err := log.Prompt("user", prompt); err != nil {
 			return err
 		}
+		if err := log.Tools(p.servers); err != nil {
+			return err
+		}
 		p.userMessage = prompt
 		if fake.Refused(fake.ConfigDir("CLAUDE_CONFIG_DIR", ".claude"), ".credentials.json") {
 			rec, _ := find(recs, prompt, resume)

@@ -1,20 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreatureLook, CreatureState } from '@/components/creature';
 import { api } from '@/lib/api-client';
-import type { Waiting } from '@/types/waiting';
 
 export type Provider = 'claude' | 'codex';
 
 export type SidebarThread = {
   id: string;
   title: string;
-  state: 'needs_you' | 'waiting' | 'running' | 'new' | '';
+  state: 'needs_you' | 'running' | 'failed' | 'limited' | 'new' | '';
   pinned: boolean;
   helper?: boolean;
   hidden?: boolean;
   parent_thread_id: string;
   step?: string;
-  waiting?: Waiting[];
+  resets_at?: string;
   branch: string;
   mr_url: string;
   last_activity: string;

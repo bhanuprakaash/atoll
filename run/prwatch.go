@@ -29,6 +29,8 @@ const (
 	_readTimeout  = 30 * time.Second
 	_pauseDefault = time.Minute
 	_wakeBase     = "base"
+	// _ciFailed follows the failed count in the wake of a CI run with a failed check.
+	_ciFailed = " failed ("
 )
 
 var _waitsFor = regexp.MustCompile(`^Waits for #(\d+)`)
@@ -151,9 +153,7 @@ func (m *Manager) checkGitHub(w *watcher, t store.Thread, bot store.Bot, rp stor
 			return err
 		}
 	case state == _mrMerged && t.MRState != _mrMerged:
-		if err := m.mergedText(t, rp, label, ws.pull, &r); err != nil {
-			return err
-		}
+		m.mergedText(rp, label, ws.pull, &r)
 	}
 	note := ""
 	if state == _mrMerged && t.MRState != _mrMerged {
@@ -164,22 +164,14 @@ func (m *Manager) checkGitHub(w *watcher, t store.Thread, bot store.Bot, rp stor
 	return m.update(t, label, r, note)
 }
 
-// mergedText sets the wake of a merge: where it went and at which commit, and the commit the Bot
-// called ready when that is another. A merge into a branch other than the default is a quiet line.
-func (m *Manager) mergedText(t store.Thread, rp store.Repo, label string, pull ghPull, r *store.MRRead) error {
+// mergedText sets the wake of a merge: where it went and at which commit. A merge into a branch
+// other than the default is a quiet line.
+func (m *Manager) mergedText(rp store.Repo, label string, pull ghPull, r *store.MRRead) {
 	base := cleanName(pull.Base.Ref)
 	r.WakeText = fmt.Sprintf("%s merged into %s at %s", label, base, short(pull.Head.SHA))
-	ready, err := m.cfg.Store.ReadySHA(m.ctx, t.ID, t.MRURL)
-	if err != nil {
-		return err
-	}
-	if ready != "" && ready != pull.Head.SHA {
-		r.WakeText += fmt.Sprintf(" (ready was %s)", short(ready))
-	}
 	if def := repo.DefaultBranch(m.ctx, rp.Path); def != "" && pull.Base.Ref != def {
 		r.Quiet = true
 	}
-	return nil
 }
 
 // readBase reads the PR that a draft waits for ("Waits for #n" starts its body) and, when that PR
@@ -470,7 +462,7 @@ func ciText(label string, c ciResult) string {
 	if more := c.Failed - len(c.Names); more > 0 {
 		names = append(names, fmt.Sprintf("and %d more", more))
 	}
-	return fmt.Sprintf("%s, %d failed (%s)", text, c.Failed, strings.Join(names, ", "))
+	return fmt.Sprintf("%s, %d"+_ciFailed+"%s)", text, c.Failed, strings.Join(names, ", "))
 }
 
 func quoteName(s string) string { return `"` + cleanName(s) + `"` }

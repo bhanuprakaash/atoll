@@ -730,7 +730,7 @@ func parse(line []byte, st *state) []provider.Event {
 			evs = append(evs, provider.Event{Kind: provider.KindUsage, Usage: &u})
 		}
 		*st = state{model: st.model, calls: st.calls, noLifecycle: st.noLifecycle, req: st.req}
-		final := provider.Event{Kind: provider.KindTurnEnd}
+		final := provider.Event{Kind: provider.KindTurnEnd, Text: l.Result}
 		if l.IsError {
 			text := strings.Join(append([]string{l.Result}, l.Errors...), "\n")
 			final = provider.Event{Kind: provider.KindError, Text: strings.TrimSpace(text), SignedOut: prev.signedOut,

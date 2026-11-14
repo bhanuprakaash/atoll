@@ -366,7 +366,6 @@ type threadSummary struct {
 	ParentBotID string          `json:"parent_bot_id"`
 	Helpers     []threadSummary `json:"helpers"`
 	MRCI        json.RawMessage `json:"mr_ci"`
-	Ready       bool            `json:"ready,omitempty"`
 }
 
 func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, error) {
@@ -409,7 +408,6 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 			return out, err
 		}
 		out.RunStatus, out.RunErrorKind = ru.Status, ru.ErrorKind
-		out.Ready = ru.Report != nil && len(ru.Report.Ready) > 0
 	}
 	_, approvals, _ := a.runs.Active(t.ID)
 	if len(approvals) > 0 {
@@ -482,7 +480,7 @@ func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	waiting, err := a.st.ThreadWaiting(r.Context(), t.ID)
+	statusLine, err := a.st.StatusLine(r.Context(), t.ID)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -500,9 +498,10 @@ func (a *api) getThread(w http.ResponseWriter, r *http.Request) {
 		threadSummary
 		ActiveRun *store.Run      `json:"active_run"`
 		Approvals []run.Approval  `json:"approvals"`
-		Waiting   []store.Waiting `json:"waiting"`
 		Queued    []store.Message `json:"queued"`
-	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals), Waiting: orEmpty(waiting), Queued: queuedMsgs})
+		// StatusLine is the final message of a background run that posted nothing to the chat.
+		StatusLine string `json:"status_line"`
+	}{threadSummary: summary, ActiveRun: active, Approvals: orEmpty(approvals), Queued: queuedMsgs, StatusLine: statusLine})
 }
 
 func (a *api) patchThread(w http.ResponseWriter, r *http.Request) {

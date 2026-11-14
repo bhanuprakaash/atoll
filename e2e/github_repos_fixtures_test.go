@@ -240,9 +240,6 @@ func TestGitHubReposFixtures_ProviderScenario(t *testing.T) {
 			if got, want := string(calls["track_mr"]), fmt.Sprintf(`{"title":%q,"url":%q}`, _githubPRTitle, url); got != want {
 				t.Errorf("track_mr arguments %s, want %s", got, want)
 			}
-			if _, ok := calls["finish_run"]; !ok {
-				t.Errorf("finish_run never called: %v", calls)
-			}
 		})
 	}
 }

@@ -14,7 +14,7 @@ turn with pauses.
 | 0 s | text "Looking at the build config" |
 | 3 s | text " and the test setup first." (same stretch) |
 | 6 s | tool call `make check` (command), 3 s |
-| 9 s | `finish_run`, then text "The build is green" |
+| 9 s | text "The build is green" |
 | 13 s | text " and all 4 checks pass.", the run ends |
 
 Claude's `make check` is a Bash call with the description "Run the checks"; Codex's command has no
@@ -30,7 +30,7 @@ tool call).
 | 6 s | Bash `gh pr checks 398` with the description "Check CI on #398", 3 s |
 | 9 s | text, one line of 297 characters ("The lint job on #398 failed because …"), its tail at 12 s |
 | 15 s | Bash `curl --silent https://ci.example.test/398/lint.log`, no description, 3 s |
-| 18 s | `finish_run`, then text "The lint job failed because the generated client is out of date." |
+| 18 s | text "The lint job failed because the generated client is out of date." |
 
 ## UI contract
 
@@ -43,7 +43,7 @@ tool call).
     program (Codex `Running make`, Claude `Running curl`);
   - `Thinking` before anything has arrived (not asserted here).
   Each one replaces the last: a text replaces a step, a call replaces a text. What the line reads
-  from `finish_run` to the end of the run, with the closing text streaming, is not asserted.
+  from the last tool call to the end of the run, with the closing text streaming, is not asserted.
 - A line too long for the status line is cut to one line with `…`: the element is one line high, and
   the text either ends in `…` or the box clips it with `text-overflow: ellipsis`.
 - When the run ends the status line leaves and the reply is the bot `data-testid="message"` with

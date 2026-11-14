@@ -67,7 +67,10 @@ test("runs that ended while the page was closed are under Earlier on the next op
   const { island, list } = await open(fresh, home.id);
   await expect(
     threadTree(fresh, "Pilot").locator('[data-marker="new"]'),
-  ).toHaveCount(3);
+  ).toHaveCount(2);
+  await expect(
+    threadTree(fresh, "Pilot").locator('[data-marker="failed"]'),
+  ).toHaveCount(1);
   await island.click();
   const earlier = list
     .getByRole("list", { name: "Earlier" })

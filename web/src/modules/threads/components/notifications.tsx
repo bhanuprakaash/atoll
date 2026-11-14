@@ -4,22 +4,12 @@ import { Creature, type CreatureLook } from '@/components/creature';
 import { ErrorNotice } from '@/components/error-notice';
 import { useAnswerApproval } from '@/modules/threads/api/approvals';
 import { approvalTarget, approvalVerb } from '@/modules/threads/components/approval-card';
-import { waitingText } from '@/modules/threads/components/waiting-card';
 import type {
   ApprovalNotice,
   EarlierNotice,
   Notifications,
 } from '@/modules/threads/hooks/use-notifications';
-import type { Waiting } from '@/types/waiting';
 import { relativeTime } from '@/utils/time';
-
-export type WaitingNotice = {
-  bot_id: string;
-  bot_name: string;
-  thread_id: string;
-  title: string;
-  item: Waiting;
-};
 
 type Looks = Record<string, CreatureLook | undefined>;
 
@@ -105,12 +95,10 @@ export function FinishedNotice({ notice, look }: { notice: EarlierNotice; look?:
 
 export function NotificationList({
   notifications: { needs, earlier, dismissEarlier, markAllRead, markAllReadError },
-  waiting,
   looks,
   onClose,
 }: {
   notifications: Notifications;
-  waiting: WaitingNotice[];
   looks: Looks;
   onClose: () => void;
 }) {
@@ -137,34 +125,6 @@ export function NotificationList({
                   </span>
                 </Link>
                 <AnswerButtons id={n.id} className="h-7 text-[12.5px]" />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      {waiting.length > 0 && (
-        <>
-          <h3 className={`${heading} text-muted`}>Waiting on you</h3>
-          <ul aria-label="Waiting on you" className="flex flex-col gap-0.5">
-            {waiting.map((n) => (
-              <li
-                key={`${n.thread_id}:${n.item.kind}:${n.item.url ?? ''}`}
-                className="flex items-center gap-2.5 rounded-2xl bg-box p-2"
-              >
-                <Creature look={looks[n.bot_id]} state="needs_you" size={28} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px]">
-                    {n.bot_name} · {n.title}
-                  </span>
-                  <span className="block truncate text-xs text-muted">{waitingText(n.item)}</span>
-                </span>
-                <Link
-                  to={threadPath(n)}
-                  onClick={onClose}
-                  className="text-[13px] text-muted hover:text-ink"
-                >
-                  Open thread
-                </Link>
               </li>
             ))}
           </ul>
@@ -216,7 +176,7 @@ export function NotificationList({
         </>
       )}
       {!!markAllReadError && <ErrorNotice error={markAllReadError} className="px-2" />}
-      {needs.length === 0 && waiting.length === 0 && earlier.length === 0 && (
+      {needs.length === 0 && earlier.length === 0 && (
         <p className="px-2 py-3 text-center text-[13px] text-muted">Nothing new</p>
       )}
     </div>

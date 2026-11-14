@@ -269,7 +269,7 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 			continue
 		}
 		encoded, _ := json.Marshal(repoReply)
-		out := json.RawMessage(strings.ReplaceAll(strings.ReplaceAll(string(e.Msg), "$REPO_REPLY", string(encoded[1:len(encoded)-1])), `"$READY"`, fake.ReadyArg(t.userMessage)))
+		out := json.RawMessage(strings.ReplaceAll(string(e.Msg), "$REPO_REPLY", string(encoded[1:len(encoded)-1])))
 		var m message
 		_ = json.Unmarshal(out, &m)
 		var p itemParams
