@@ -729,8 +729,7 @@ Follow-ups:
   it reads PR n merged while the thread's tracked PR is a draft whose body starts `Waits for #<n>`
   (that thread's poll also reads PR n until then), the Bot is woken once (a fourth event), kind
   `base`, with `PR #<n> merged; PR #<m> was waiting for it` (held and delivered like any wake;
-  once-only through the new thread column `mr_base_woke`; `mr_head` holds the last read's head, for
-  `changed`). The Bot runs `gh pr edit --base <default branch>` when its PR's base is still the
+  once-only through the new thread column `mr_base_woke`; `mr_head` holds the last read's head). The Bot runs `gh pr edit --base <default branch>` when its PR's base is still the
   merged branch, then `gh pr ready`. *#202 merged before its test #174, and test-guard flagged #174
   for carrying code.*
 - Known gap: webhooks; a wake comes within a poll interval plus a settle read, or later after
@@ -1886,17 +1885,19 @@ Voice
   until answered); Working (a run is going); Failed (a run failed since the person last opened the
   thread, until opened); `Out until 3 PM` (the provider's usage limit, until its reset time);
   Replied (a reply or a `tell_user` message since the person last opened the thread, until opened;
-  the API's `new`). The sidebar row, the Bot row and the island use the same words. A helper thread
+  the API's `new`). `GET /api/bots` gives each thread's `state` (`needs_you`, `running`, `failed`,
+  `limited` with `resets_at`, `new` or empty). The sidebar row, the Bot row and the island use the same words. A helper thread
   is never Replied: its replies are for its boss. *Each label is a fact Reef holds; whether a reply
   is a question is the model's meaning, so a question is Replied like any reply.*
 - A background run's status line (Delegation) shows above the composer, in the helpers' region,
-  newest line only, muted; a thread with no helpers shows the same line there. It is not a message
+  newest line only, muted; a thread with no helpers shows the same line there. It is
+  `status_line` on `GET /api/threads/{id}`: the final message of the thread's newest run when that
+  run posted no reply. It is not a message
   and never makes the thread Replied. *Until #429's thread panel takes it over.*
 - Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` tray (a region of
   that name) on top of the composer, on its surface and border: one line of about 32 px that never
   grows. It holds each helper task's creature, stacked (two helpers of one Bot are two creatures),
-  `N working · N reported` (a zero part is left out) and `Show`; with no helper running or unread,
-  nothing shows. Only what needs the person opens itself: a helper's open approval is one line under
+  `N working` and `Show`; with no helper running, nothing shows. Only what needs the person opens itself: a helper's open approval is one line under
   the summary, the approval card led by the helper's creature and name (`Tester wants to run make
   check`, with Allow and Deny); with two waiting it shows the first and `1 more`. It leaves when
   answered, in either thread (`approval_closed`), and a message in the boss's composer answers it as
@@ -1920,11 +1921,8 @@ Voice
   `!7`) as a link, with the composer chip's state dot and, while open, its CI as a word: `running`
   (muted), `passed` (green) or `failed` (red, a real failure), from the last read of the watcher (so
   `mr_ci` joins `mr_state` in every thread summary, `helpers` included); no PR, no mark. The resting
-  line holds no PR text. A helper whose run ended stays as a row with `Reported` (`Failed` or
-  `Stopped` for those ends) in place of the step and time, and in the summary's reported count,
-  until its report (the helper Bot's message in the chat) has been in the visible part of the chat;
-  then it leaves and the count follows. Which reports were seen is kept in the browser per helper
-  thread, so a reload does not bring one back. A new helper reaches the boss's page at once
+  line holds no PR text. A helper whose run ended leaves the tray at once: its reply goes to its
+  boss, never into the boss's chat (Delegation), so there is no report to wait on. A new helper reaches the boss's page at once
   (`helper_started` on the boss's stream, which refreshes its thread); later changes arrive with the
   thread's 2 s refresh. *A report has no verdict to read; guessing one from prose is not something
   Reef does.* The chat keeps one line where work was handed off, after the message that led to it
