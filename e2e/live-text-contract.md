@@ -32,6 +32,18 @@ tool call).
 | 15 s | Bash `curl --silent https://ci.example.test/398/lint.log`, no description, 3 s |
 | 18 s | `finish_run`, then text "The lint job failed because the generated client is out of date." |
 
+`claude/fast-stream.jsonl` (prompt "Stream fast: review the server package."), Claude only, pauses add up to 9 s
+with no pause over 150 ms:
+
+| At | Happens |
+| --- | --- |
+| 0 s | text in 6-character deltas 18 ms apart: three lines, a long sentence, "The plan, in order:" ended by a newline, a long sentence |
+| after each text | 3 to 5 tool calls (Bash with a description, Read, Grep) 60 to 150 ms apart |
+| 5 more times | a text of three long sentences, then a burst of tool calls |
+| end | `finish_run`, then the one-line closing text "The server package is consistent: …", the run ends |
+
+The reply is the closing text.
+
 ## UI contract
 
 - While the run works the log holds one `role="status"` line (creature, text, timer) and no
@@ -44,6 +56,16 @@ tool call).
   - `Thinking` before anything has arrived (not asserted here).
   Each one replaces the last: a text replaces a step, a call replaces a text. What the line reads
   from `finish_run` to the end of the run, with the closing text streaming, is not asserted.
+- The status line is calm on a fast stream (`fast-stream.jsonl`):
+  - It shows a sentence only once it is complete: the text ends in `.`, `!` or `?`, or a newline
+    ended its line. An unfinished sentence shows only after its text stopped growing for about 1 s.
+    Over the whole run the line reads only `Thinking`, a step, or a complete sentence (cut with `…`
+    when too long), never a fragment of the streamed text.
+  - It changes at most once per about 700 ms; the newest text or step wins, so some never show.
+    Two changes are never less than 600 ms apart (frame timing), and the run still ends with the
+    reply as one message and no status line.
+  - The elapsed timer does not move horizontally when the status text changes length: its left
+    edge stays within 1 px over the run.
 - A line too long for the status line is cut to one line with `…`: the element is one line high, and
   the text either ends in `…` or the box clips it with `text-overflow: ellipsis`.
 - When the run ends the status line leaves and the reply is the bot `data-testid="message"` with

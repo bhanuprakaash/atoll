@@ -2,11 +2,14 @@
 // text, or the tool step it is on. No step lines, no streamed text block. The reply appears once,
 // as a message, when the run ends; a reload shows the same status line; the sidebar row and the
 // island keep the short verb; a reader scrolled up is not moved.
+import { readFileSync } from "node:fs";
 import { connect, createServer, type Socket } from "node:net";
 import type { AddressInfo } from "node:net";
+import { basename, join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   api,
+  e2e,
   type Machine,
   newBotAPI,
   openThreadAPI,
@@ -394,4 +397,167 @@ test("a reef-metrics fence still streaming draws no streamed text, then the comp
   await expect(log.getByRole("status")).toHaveCount(0);
   await expect(log.getByTestId("live-text")).toHaveCount(0);
   expect(await notesDrawn(page), "no streamed text block was ever drawn").toBe(0);
+});
+
+// A fast stream: text in 6-character deltas 18 ms apart, tool calls 60 to 150 ms apart. The status
+// line must stay calm: a sentence only once it is complete, at most one change per 700 ms, and the
+// timer where it is.
+const fastPrompt = "Stream fast: review the server package.";
+
+type Line = {
+  type: string;
+  message?: {
+    content: {
+      type: string;
+      text?: string;
+      name?: string;
+      input?: { description?: string; file_path?: string; pattern?: string };
+    }[];
+  };
+};
+const recorded = readFileSync(
+  join(e2e, "testdata/claude/fast-stream.jsonl"),
+  "utf8",
+)
+  .split("\n")
+  .filter((l) => l.startsWith("{"))
+  .map((l) => JSON.parse(l) as Line)
+  .flatMap((l) => (l.type === "assistant" ? l.message!.content : []));
+const fastTexts = recorded.flatMap((b) => (b.type === "text" ? [b.text!] : []));
+const fastReply = fastTexts.at(-1)!;
+const fastSteps = recorded.flatMap((b) =>
+  b.name === "Bash"
+    ? [b.input!.description!]
+    : b.name === "Read"
+      ? [`Reading ${basename(b.input!.file_path!)}`]
+      : b.name === "Grep"
+        ? [`Searching ${b.input!.pattern}`]
+        : [],
+);
+
+// runs lists what a status line may read of one streamed text: one sentence, or several in a row
+// of the same line. A line ended by a newline counts as complete without an ending mark.
+const runs = (text: string) =>
+  text.split("\n").flatMap((line) => {
+    const sentences = line.trim().match(/\S.*?(?:[.!?]+(?=\s|$)|$)/g) ?? [];
+    return sentences.flatMap((_, i) =>
+      sentences
+        .slice(i)
+        .map((_, n) => sentences.slice(i, i + n + 1).join(" ")),
+    );
+  });
+const fastRuns = fastTexts.flatMap(runs);
+const clean = (text: string) =>
+  text.replace(/…$/, "").replace(/\s+/g, " ").trim();
+
+// isCalm: Thinking, a step line, or a complete sentence; a text cut with … is the head of one.
+function isCalm(text: string) {
+  const head = clean(text);
+  const cut = text.trim().endsWith("…");
+  return (
+    head === "Thinking" ||
+    fastSteps.some((s) => (cut ? s.startsWith(head) : s === head)) ||
+    fastRuns.some((r) => (cut ? r.startsWith(head) : r === head))
+  );
+}
+
+type Seen = { t: number; text: string; x: number | null };
+
+// watchStatus records the status text and the timer's left edge each time either changes.
+async function watchStatus(log: Locator) {
+  await log.evaluate((el) => {
+    const w = window as unknown as { __seen: Seen[] };
+    w.__seen = [];
+    const sample = () => {
+      const text = (
+        el.querySelector('[role="status"]')?.textContent ?? ""
+      ).trim();
+      if (!text) return;
+      const timer = [...el.querySelectorAll("span")]
+        .filter(
+          (s) => !s.children.length && /^\d+:\d{2}$/.test(s.textContent ?? ""),
+        )
+        .at(-1);
+      const x = timer ? timer.getBoundingClientRect().left : null;
+      const last = w.__seen.at(-1);
+      if (last?.text === text && last.x === x) return;
+      w.__seen.push({ t: performance.now(), text, x });
+    };
+    const frame = () => {
+      sample();
+      requestAnimationFrame(frame);
+    };
+    frame();
+    new MutationObserver(sample).observe(el, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+    });
+  });
+}
+
+// fastRun plays the fast recording to its end and returns what the status line read on the way.
+async function fastRun(page: Page, name: string) {
+  const bot = await newBotAPI(m, name);
+  const thread = await api(m, "POST", `/api/bots/${bot.id}/threads`, {});
+  await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
+  const log = page.getByRole("log", { name: "Messages" });
+  await watchStatus(log);
+  await sendMessageAPI(m, thread.id, fastPrompt, "running");
+  await expect(replies(log, fastReply)).toHaveCount(1, { timeout: 40_000 });
+  await expect(log.getByRole("status")).toHaveCount(0);
+  const seen = await page.evaluate(
+    () => (window as unknown as { __seen: Seen[] }).__seen,
+  );
+  return { log, seen };
+}
+
+// changes keeps one entry per change of the text.
+const changes = (seen: Seen[]) =>
+  seen.filter((s, i) => s.text !== seen[i - 1]?.text);
+
+test("claude: on a fast stream the status line changes at most once per 700 ms", async ({
+  page,
+}) => {
+  const { log, seen } = await fastRun(page, "Calm pace");
+  const shown = changes(seen).filter((s) => s.text !== "Thinking");
+  expect(shown.length, "the line did change").toBeGreaterThanOrEqual(3);
+  const gaps = shown.slice(1).map((s, i) => Math.round(s.t - shown[i].t));
+  const quick = gaps.filter((g) => g < 600);
+  expect(
+    quick.length,
+    `${quick.length} of ${gaps.length} changes came under 600 ms after the last, shortest ${Math.min(...gaps)} ms`,
+  ).toBe(0);
+  await expect(replies(log, fastReply)).toHaveCount(1);
+  await expect(log.getByRole("status")).toHaveCount(0);
+});
+
+test("claude: on a fast stream the status line never shows part of a sentence", async ({
+  page,
+}) => {
+  const { seen } = await fastRun(page, "Whole sentences");
+  const texts = changes(seen).map((s) => s.text);
+  expect(texts.length, "the line did change").toBeGreaterThanOrEqual(3);
+  const partial = texts.filter((t) => !isCalm(t));
+  expect(
+    partial.length,
+    `${partial.length} of ${texts.length} texts were parts of a sentence, e.g. ${partial.slice(0, 3).map((t) => `"${t.slice(-60)}"`)}`,
+  ).toBe(0);
+});
+
+test("claude: the timer stays where it is while the status text changes", async ({
+  page,
+}) => {
+  const { seen } = await fastRun(page, "Pinned timer");
+  expect(
+    new Set(seen.map((s) => s.text)).size,
+    "the text did change",
+  ).toBeGreaterThanOrEqual(3);
+  const xs = seen.flatMap((s) => (s.x === null ? [] : [s.x]));
+  expect(xs.length).toBeGreaterThan(0);
+  expect(
+    Math.max(...xs) - Math.min(...xs),
+    `the timer's left edge ranged from ${Math.min(...xs)} to ${Math.max(...xs)} px`,
+  ).toBeLessThanOrEqual(1);
 });
