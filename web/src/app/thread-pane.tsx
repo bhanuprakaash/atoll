@@ -94,10 +94,7 @@ function NowPane({ bots, openThreadId }: { bots: Bot[]; openThreadId?: string })
   for (const { bot, t } of threads)
     owners.set(t.id, {
       bot,
-      note:
-        (t.state === 'needs_you' || t.state === 'running') && bot.activity
-          ? bot.activity
-          : relativeTime(t.last_activity),
+      note: t.step || relativeTime(t.last_activity),
     });
   const sections = nowSections(
     threads.map(({ t }) => t),

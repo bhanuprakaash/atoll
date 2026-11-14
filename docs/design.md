@@ -1608,8 +1608,9 @@ Voice
     resizes. The list's scrollbar is thin, in its own lane in the pane's right padding, so it never
     draws over a row.
   - `⌘B` (`Ctrl+B` off macOS) hides or shows the pane; the rail always stays.
-  *The server sends each thread's `parent_thread_id` and, for a live helper, its `step`, and each
-  Bot's open threads with their marker on `GET /api/bots`; the client builds the sections.*
+  *The server sends each thread's `parent_thread_id` and, for a live thread, its `step` (the helper
+  line's and Now's note), and each Bot's open threads with their marker on `GET /api/bots`; the
+  client builds the sections.*
 - Now: the first rail item, a view across every Bot, never a forced landing. Its pane lists Needs
   you, Running and Replied threads; a row is the Bot's 22 px creature, the title and, under it,
   "Bot · note" (the live step or the waiting ask, else the time). The Now icon's badge is the

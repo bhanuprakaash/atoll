@@ -16,7 +16,7 @@ import (
 
 // sidebarThread is an open thread of a Bot with the one marker the sidebar shows. Helper is set
 // for a thread another Bot handed to this one: the user cannot close it. ParentThreadID is its
-// boss thread, and Step what its run does now.
+// boss thread, and Step what its live run does now.
 type sidebarThread struct {
 	ID             string    `json:"id"`
 	Title          string    `json:"title"`
@@ -63,7 +63,7 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 			resetsAt = t.LimitedUntil.Format(time.RFC3339)
 		}
 		step := ""
-		if t.ParentThreadID != "" && (state == "running" || state == "needs_you") {
+		if state == "running" || state == "needs_you" {
 			step = a.liveStep(t.ThreadID)
 		}
 		out = append(out, sidebarThread{
