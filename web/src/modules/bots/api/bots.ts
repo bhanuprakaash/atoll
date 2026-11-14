@@ -13,6 +13,7 @@ export type SidebarThread = {
   hidden?: boolean;
   parent_thread_id: string;
   step?: string;
+  activity?: string;
   resets_at?: string;
   branch: string;
   mr_url: string;
