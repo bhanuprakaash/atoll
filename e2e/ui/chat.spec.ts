@@ -129,10 +129,9 @@ test('a failed run shows a line with Retry', async ({ page }) => {
   await expect(log.getByRole('button', { name: 'Retry' })).toBeVisible();
   await expect(log.getByRole('button', { name: 'Sign in again' })).toHaveCount(0);
   await expect(sidebarRow(page, 'Moss').getByRole('img', { name: /, failed$/ })).toBeVisible();
-  await sidebarRow(page, 'Moss').hover();
   await expect(
     page
-      .getByRole('navigation', { name: 'Bots' })
-      .getByRole('button', { name: 'New thread with Moss' }),
+      .getByRole('region', { name: 'Moss', exact: true })
+      .getByRole('button', { name: 'New thread' }),
   ).toBeVisible();
 });

@@ -1,10 +1,18 @@
-// Resizable sidebar: 340px by default, 260–480px, double-click resets, the width survives a
-// reload, and the handle is a focusable separator that arrows move by 16px. Each test opens a
-// fresh browser context, so its storage starts empty, as on first launch.
+// Resizable thread pane (#469): 284px by default, 240–420px, double-click resets, the width
+// survives a reload, the handle is a focusable separator that arrows move by 16px, and the 76px
+// rail never resizes. Each test opens a fresh browser context, so its storage starts empty, as on
+// first launch. Contract: e2e/sidebar-rail-contract.md.
 import { expect, type Page, test } from '@playwright/test';
 
-const sidebar = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
-const handle = (page: Page) => page.getByRole('separator', { name: 'Resize sidebar' });
+// Chief's New thread screen: the pane shows Chief's threads.
+const home = '/bots/chief/new';
+const sidebar = (page: Page) => page.getByRole('region', { name: 'Chief', exact: true });
+const rail = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
+const handle = (page: Page) => page.getByRole('separator', { name: 'Resize thread pane' });
+
+async function expectRail(page: Page) {
+  expect(Math.abs((await rail(page).boundingBox())!.width - 76)).toBeLessThanOrEqual(1);
+}
 
 async function expectWidth(page: Page, px: number) {
   await expect
@@ -13,7 +21,7 @@ async function expectWidth(page: Page, px: number) {
         const w = (await sidebar(page).boundingBox())?.width ?? 0;
         return Math.abs(w - px) <= 1 ? px : w;
       },
-      { message: `sidebar width ${px}px ±1` },
+      { message: `pane width ${px}px ±1` },
     )
     .toBe(px);
 }
@@ -28,74 +36,76 @@ async function drag(page: Page, dx: number) {
   await page.mouse.up();
 }
 
-test('on first launch the sidebar is 340px and its handle is a vertical separator', async ({
+test('on first launch the pane is 284px and its handle is a vertical separator', async ({
   page,
 }) => {
-  await page.goto('/');
-  await expectWidth(page, 340);
+  await page.goto(home);
+  await expectWidth(page, 284);
   const h = handle(page);
   await expect(h).toHaveAttribute('aria-orientation', 'vertical');
-  await expect(h).toHaveAttribute('aria-valuenow', '340');
-  await expect(h).toHaveAttribute('aria-valuemin', '260');
-  await expect(h).toHaveAttribute('aria-valuemax', '480');
+  await expect(h).toHaveAttribute('aria-valuenow', '284');
+  await expect(h).toHaveAttribute('aria-valuemin', '240');
+  await expect(h).toHaveAttribute('aria-valuemax', '420');
 });
 
-test('dragging the handle right by 100px makes 440px; far left stops at 260, far right at 480', async ({
+test('dragging the handle right by 100px makes 384px; far left stops at 240, far right at 420; the rail stays 76px', async ({
   page,
 }) => {
-  await page.goto('/');
-  await expectWidth(page, 340);
+  await page.goto(home);
+  await expectWidth(page, 284);
 
   await drag(page, 100);
-  await expectWidth(page, 440);
-  await expect(handle(page)).toHaveAttribute('aria-valuenow', '440');
+  await expectWidth(page, 384);
+  await expect(handle(page)).toHaveAttribute('aria-valuenow', '384');
 
   await drag(page, -400);
-  await expectWidth(page, 260);
-  await expect(handle(page)).toHaveAttribute('aria-valuenow', '260');
+  await expectWidth(page, 240);
+  await expect(handle(page)).toHaveAttribute('aria-valuenow', '240');
 
   await drag(page, 600);
-  await expectWidth(page, 480);
-  await expect(handle(page)).toHaveAttribute('aria-valuenow', '480');
+  await expectWidth(page, 420);
+  await expect(handle(page)).toHaveAttribute('aria-valuenow', '420');
+  await expectRail(page);
 });
 
-test('after a reload the sidebar keeps the dragged width', async ({ page }) => {
-  await page.goto('/');
-  await expectWidth(page, 340);
+test('after a reload the pane keeps the dragged width', async ({ page }) => {
+  await page.goto(home);
+  await expectWidth(page, 284);
   await drag(page, 100);
-  await expectWidth(page, 440);
+  await expectWidth(page, 384);
 
   await page.reload();
-  await expectWidth(page, 440);
-  await expect(handle(page)).toHaveAttribute('aria-valuenow', '440');
+  await expectWidth(page, 384);
+  await expectRail(page);
+  await expect(handle(page)).toHaveAttribute('aria-valuenow', '384');
 });
 
-test('double-clicking the handle sets the sidebar back to 340px', async ({ page }) => {
-  await page.goto('/');
-  await expectWidth(page, 340);
+test('double-clicking the handle sets the pane back to 284px', async ({ page }) => {
+  await page.goto(home);
+  await expectWidth(page, 284);
   await drag(page, 100);
-  await expectWidth(page, 440);
+  await expectWidth(page, 384);
 
   await handle(page).dblclick();
-  await expectWidth(page, 340);
-  await expect(handle(page)).toHaveAttribute('aria-valuenow', '340');
+  await expectWidth(page, 284);
+  await expect(handle(page)).toHaveAttribute('aria-valuenow', '284');
 });
 
 test('with the handle focused, Right arrow widens by 16px and Left arrow narrows by 16px', async ({
   page,
 }) => {
-  await page.goto('/');
-  await expectWidth(page, 340);
+  await page.goto(home);
+  await expectWidth(page, 284);
   const h = handle(page);
   await h.focus();
   await expect(h).toBeFocused();
 
   await page.keyboard.press('ArrowRight');
-  await expectWidth(page, 356);
-  await expect(h).toHaveAttribute('aria-valuenow', '356');
+  await expectWidth(page, 300);
+  await expect(h).toHaveAttribute('aria-valuenow', '300');
 
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowLeft');
-  await expectWidth(page, 324);
-  await expect(h).toHaveAttribute('aria-valuenow', '324');
+  await expectWidth(page, 268);
+  await expect(h).toHaveAttribute('aria-valuenow', '268');
 });

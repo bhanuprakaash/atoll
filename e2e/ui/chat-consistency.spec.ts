@@ -10,7 +10,7 @@ import {
   sendMessageAPI,
   startAtoll,
   threadTitle,
-  threadTree,
+  threadPane,
 } from './atoll';
 
 let m: Machine;
@@ -94,7 +94,7 @@ test('Close thread lives on the thread row: hover × for this thread and others'
   await expect(page.getByRole('log', { name: 'Messages' })).toBeVisible();
   await expect(page.locator('header').getByRole('button', { name: 'Close thread' })).toHaveCount(0);
 
-  const tree = threadTree(page, 'Closer');
+  const tree = threadPane(page, 'Closer');
   const here = tree.getByRole('listitem').filter({ hasText: threadTitle(prompts.keep) });
   const row = tree.getByRole('listitem').filter({ hasText: threadTitle(prompts.pong) });
   await expect(row).toHaveCount(1);

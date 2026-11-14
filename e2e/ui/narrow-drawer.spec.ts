@@ -1,7 +1,7 @@
-// Narrow windows: below 900 px the sidebar is a drawer over the thread column, closed by default,
-// opened by the header's Sidebar button or Cmd/Ctrl+B and closed by navigation, Esc, a click on
-// the scrim or the button. At 900 px and up nothing changes. Design: docs/design.md, "Narrow
-// windows".
+// Narrow windows (#472): below 900 px the 76 px rail stays docked and the thread pane floats over
+// the thread column, closed by default; the whole-sidebar drawer and its Sidebar button are gone.
+// Design: docs/design.md, "Narrow windows". Contract: e2e/sidebar-rail-contract.md. The floating
+// pane's opening and closing is in sidebar-rail.spec.ts.
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
   api,
@@ -11,51 +11,37 @@ import {
   prompts,
   sidebarRow,
   startAtoll,
-  threadTitle,
-  threadTree,
+  threadPane,
 } from './atoll';
 
 let m: Machine;
 let pilot: { id: string };
-let other: { id: string };
 let first: { id: string };
-let second: { id: string };
 
 test.beforeAll(async () => {
   m = await startAtoll();
   pilot = await newBotAPI(m, 'Pilot');
-  other = await newBotAPI(m, 'Other');
   first = await openThreadAPI(m, pilot.id, prompts.keep);
-  second = await openThreadAPI(m, pilot.id, prompts.pong);
-  await openThreadAPI(m, other.id, prompts.pong);
-  for (const id of [first.id, second.id])
-    await expect
-      .poll(async () => (await api(m, 'GET', `/api/threads/${id}`)).run_status, {
-        timeout: 15_000,
-      })
-      .toBe('done');
+  await expect
+    .poll(async () => (await api(m, 'GET', `/api/threads/${first.id}`)).run_status, {
+      timeout: 15_000,
+    })
+    .toBe('done');
 });
 test.afterAll(() => m?.stop());
 
-const sidebar = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
+const rail = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
+const pane = (page: Page) => threadPane(page, 'Pilot');
 const toggle = (page: Page) => page.getByRole('button', { name: 'Sidebar', exact: true });
-const handle = (page: Page) => page.getByRole('separator', { name: 'Resize sidebar' });
-const search = (page: Page) => page.getByRole('textbox', { name: 'Search Bots' });
-const composer = (page: Page) => page.getByRole('textbox', { name: /^Message/ });
+const handle = (page: Page) => page.getByRole('separator', { name: 'Resize thread pane' });
 const box = async (l: Locator) => (await l.boundingBox())!;
-const pilotThread = (page: Page) => `${m.url}/bots/${pilot.id}/threads/${first.id}`;
+const pilotThread = () => `${m.url}/bots/${pilot.id}/threads/${first.id}`;
 
-async function openAt(page: Page, width: number, height: number, url = pilotThread(page)) {
+async function openAt(page: Page, width: number, height: number, url = pilotThread()) {
   await page.setViewportSize({ width, height });
   await page.goto(url);
-  await expect(composer(page)).toBeVisible();
+  await expect(page.getByRole('textbox', { name: /^Message/ })).toBeVisible();
 }
-
-// A click on the page at the right edge, clear of the drawer, whatever its width.
-const clickOutside = (page: Page) => {
-  const { width } = page.viewportSize()!;
-  return page.mouse.click(width - 10, 300);
-};
 
 async function sideScroll(page: Page) {
   return page.evaluate(() => {
@@ -68,7 +54,7 @@ async function sideScroll(page: Page) {
   });
 }
 
-test('at 700x500 and 600x800 the thread column is the full window width and the sidebar is closed', async ({
+test('at 700x500 and 600x800 the rail stays docked, the thread column fills the rest, the pane is closed and there is no Sidebar button', async ({
   page,
 }) => {
   for (const [width, height] of [
@@ -76,25 +62,24 @@ test('at 700x500 and 600x800 the thread column is the full window width and the 
     [600, 800],
   ]) {
     await openAt(page, width, height);
+    const r = await box(rail(page));
+    expect(r.x).toBe(0);
+    expect(Math.abs(r.width - 76)).toBeLessThanOrEqual(1);
     const main = await box(page.locator('main'));
-    expect(main.x).toBe(0);
-    expect(main.width).toBe(width);
-    await expect(sidebar(page)).toBeHidden();
-    await expect(toggle(page)).toBeVisible();
-    await expect(toggle(page)).toHaveAttribute('aria-expanded', 'false');
+    expect(Math.abs(main.x - 76)).toBeLessThanOrEqual(1);
+    expect(Math.abs(main.width - (width - 76))).toBeLessThanOrEqual(1);
+    await expect(pane(page)).toBeHidden();
+    await expect(toggle(page)).toHaveCount(0);
     await expect(handle(page)).toBeHidden();
-    const hdr = await box(page.locator('header'));
-    expect(hdr.x).toBe(0);
-    expect(hdr.width).toBe(width);
   }
 });
 
 test('at 420 no page scrolls sideways', async ({ page }) => {
-  for (const url of [pilotThread(page), `${m.url}/settings`, `${m.url}/bots/new`]) {
+  for (const url of [pilotThread(), `${m.url}/settings`, `${m.url}/bots/new`]) {
     await page.setViewportSize({ width: 420, height: 800 });
     await page.goto(url);
     await expect(page.locator('main')).toBeVisible();
-    await expect(page.getByRole('navigation', { name: 'Bots' })).toBeHidden();
+    await expect(rail(page)).toBeVisible();
     const over = await sideScroll(page);
     expect(over.page, url).toBeLessThanOrEqual(0);
     expect(over.main, url).toBeLessThanOrEqual(0);
@@ -116,172 +101,40 @@ test('while a run works the composer placeholder is Working… and fits at 420',
   await api(m, 'POST', `/api/runs/${thread.run.id}/stop`);
 });
 
-test('the Sidebar button and Cmd/Ctrl+B open the drawer over the thread column and close it again', async ({
-  page,
-}) => {
+test('a closed pane is not reachable with Tab', async ({ page }) => {
   await openAt(page, 700, 500);
-  const before = await box(page.locator('main'));
-
-  await toggle(page).click();
-  await expect(sidebar(page)).toBeVisible();
-  await expect(toggle(page)).toHaveAttribute('aria-expanded', 'true');
-  const drawer = await box(sidebar(page));
-  expect(drawer.x).toBe(0);
-  expect(drawer.width).toBe(340);
-  expect(drawer.height).toBe(500);
-  expect(await box(page.locator('main'))).toEqual(before);
-  await expect(handle(page)).toBeHidden();
-  await expect(search(page)).toBeFocused();
-
-  await toggle(page).click();
-  await expect(sidebar(page)).toBeHidden();
-  await expect(toggle(page)).toBeFocused();
-
-  await composer(page).focus();
-  await page.keyboard.press('ControlOrMeta+b');
-  await expect(sidebar(page)).toBeVisible();
-  await expect(toggle(page)).toHaveAttribute('aria-expanded', 'true');
-  await page.keyboard.press('ControlOrMeta+b');
-  await expect(sidebar(page)).toBeHidden();
-  await expect(toggle(page)).toHaveAttribute('aria-expanded', 'false');
-});
-
-test('the drawer is never wider than the window minus 48px and keeps the stored width otherwise', async ({
-  page,
-}) => {
-  await openAt(page, 360, 640);
-  await toggle(page).click();
-  await expect(sidebar(page)).toBeVisible();
-  const narrow = await box(sidebar(page));
-  expect(narrow.width).toBeLessThanOrEqual(360 - 48);
-  expect(narrow.width).toBeGreaterThan(260);
-
-  await page.setViewportSize({ width: 1200, height: 700 });
-  await expect(handle(page)).toBeVisible();
-  await handle(page).focus();
-  await page.keyboard.press('ArrowRight');
-  await page.keyboard.press('ArrowRight');
-  await expect(handle(page)).toHaveAttribute('aria-valuenow', '372');
-  await page.setViewportSize({ width: 800, height: 600 });
-  await expect(sidebar(page)).toBeHidden();
-  await toggle(page).click();
-  await expect(sidebar(page)).toBeVisible();
-  expect((await box(sidebar(page))).width).toBe(372);
-});
-
-test('selecting a thread closes the drawer and opens that thread', async ({ page }) => {
-  await openAt(page, 700, 500);
-  await toggle(page).click();
-  await expect(sidebar(page)).toBeVisible();
-  await threadTree(page, 'Pilot')
-    .getByRole('listitem')
-    .filter({ hasText: threadTitle(prompts.pong) })
-    .getByRole('link')
-    .click();
-  await expect(page).toHaveURL(`${m.url}/bots/${pilot.id}/threads/${second.id}`);
-  await expect(sidebar(page)).toBeHidden();
-  await expect(toggle(page)).toHaveAttribute('aria-expanded', 'false');
-});
-
-test('selecting a Bot or Settings closes the drawer', async ({ page }) => {
-  await openAt(page, 700, 500);
-  await toggle(page).click();
-  await sidebarRow(page, 'Other').click();
-  await expect(page).toHaveURL(new RegExp(`/bots/${other.id}/threads/[^/]+$`));
-  await expect(sidebar(page)).toBeHidden();
-
-  await toggle(page).click();
-  await expect(sidebar(page)).toBeVisible();
-  await sidebar(page).getByRole('link', { name: 'Settings' }).click();
-  await expect(page).toHaveURL(new RegExp('/settings(/|$)'));
-  await expect(sidebar(page)).toBeHidden();
-});
-
-test('Esc closes the drawer and puts focus back on the button', async ({ page }) => {
-  await openAt(page, 700, 500);
-  await toggle(page).click();
-  await expect(search(page)).toBeFocused();
-  await page.keyboard.press('Escape');
-  await expect(sidebar(page)).toBeHidden();
-  await expect(toggle(page)).toBeFocused();
-  await expect(page).toHaveURL(pilotThread(page));
-});
-
-test('a click outside closes the drawer, a click inside does not', async ({ page }) => {
-  await openAt(page, 700, 500);
-  await toggle(page).click();
-  await expect(sidebar(page)).toBeVisible();
-  await search(page).click();
-  await sidebar(page).click({ position: { x: 4, y: 4 } });
-  await expect(sidebar(page)).toBeVisible();
-
-  await clickOutside(page);
-  await expect(sidebar(page)).toBeHidden();
-  await expect(page).toHaveURL(pilotThread(page));
-});
-
-test('a closed drawer is not reachable with Tab', async ({ page }) => {
-  await openAt(page, 700, 500);
-  await expect(sidebar(page)).toBeHidden();
-  await toggle(page).focus();
+  await expect(pane(page)).toBeHidden();
+  await sidebarRow(page, 'Pilot').focus();
   for (let i = 0; i < 12; i++) {
     await page.keyboard.press('Tab');
     const inside = await page.evaluate(
-      () => document.activeElement?.closest('nav[aria-label="Bots"]') !== null,
+      () =>
+        document.activeElement?.closest(
+          '[role="region"][aria-label="Pilot"], section[aria-label="Pilot"]',
+        ) != null,
     );
     expect(inside).toBe(false);
   }
 });
 
-test('at 900px and up the sidebar is docked as before: no button, no drawer, Cmd/Ctrl+B does nothing', async ({
-  page,
-}) => {
-  await openAt(page, 900, 600);
-  await expect(sidebar(page)).toBeVisible();
-  expect((await box(sidebar(page))).width).toBe(340);
-  expect((await box(page.locator('main'))).width).toBe(900 - 340);
-  await expect(toggle(page)).toHaveCount(0);
-  await expect(handle(page)).toBeVisible();
-
-  await composer(page).focus();
-  await page.keyboard.press('ControlOrMeta+b');
-  await expect(sidebar(page)).toBeVisible();
-  expect((await box(page.locator('main'))).width).toBe(900 - 340);
-
-  await openAt(page, 899, 600);
-  await expect(sidebar(page)).toBeHidden();
-  await expect(toggle(page)).toBeVisible();
-  expect((await box(page.locator('main'))).width).toBe(899);
-});
-
-test('resizing across 900px: widening docks the sidebar, narrowing closes it, an open drawer does not come back', async ({
+test('resizing across 900px: widening docks the pane at its stored width, narrowing closes it', async ({
   page,
 }) => {
   await openAt(page, 800, 600);
-  await toggle(page).click();
-  await expect(sidebar(page)).toBeVisible();
+  await sidebarRow(page, 'Pilot').click();
+  await expect(pane(page)).toBeVisible();
 
   await page.setViewportSize({ width: 1000, height: 600 });
-  await expect(toggle(page)).toHaveCount(0);
-  await expect(sidebar(page)).toBeVisible();
-  await expect.poll(async () => (await box(page.locator('main'))).width).toBe(1000 - 340);
-  expect((await box(sidebar(page))).width).toBe(340);
+  await expect(pane(page)).toBeVisible();
   await expect(handle(page)).toBeVisible();
-  await expect(composer(page)).toBeVisible();
+  await expect.poll(async () => Math.round((await box(pane(page))).width)).toBe(284);
+  await expect
+    .poll(async () => Math.round((await box(page.locator('main'))).width))
+    .toBe(1000 - 76 - 284);
 
   await page.setViewportSize({ width: 800, height: 600 });
-  await expect(sidebar(page)).toBeHidden();
-  await expect(toggle(page)).toHaveAttribute('aria-expanded', 'false');
-  await expect.poll(async () => (await box(page.locator('main'))).width).toBe(800);
-
-  await toggle(page).click();
-  await expect(sidebar(page)).toBeVisible();
-  await page.setViewportSize({ width: 600, height: 600 });
-  await expect(sidebar(page)).toBeVisible();
-  await expect(toggle(page)).toHaveAttribute('aria-expanded', 'true');
-  await page.keyboard.press('Escape');
-  await expect(sidebar(page)).toBeHidden();
-  await expect(page).toHaveURL(pilotThread(page));
+  await expect(pane(page)).toBeHidden();
+  await expect.poll(async () => Math.round((await box(page.locator('main'))).width)).toBe(800 - 76);
 });
 
 test('the island drops the thread title before the helper creatures and the Bot name', async ({
@@ -326,9 +179,9 @@ test('the island drops the thread title before the helper creatures and the Bot 
     expect(c.x + c.width).toBeLessThanOrEqual(420);
   }
   const island = await box(page.locator('[data-island]'));
-  const button = await box(toggle(page));
+  const r = await box(rail(page));
   const settings = await box(header.getByRole('button', { name: 'Bot settings' }));
-  expect(island.x).toBeGreaterThanOrEqual(button.x + button.width);
+  expect(island.x).toBeGreaterThanOrEqual(r.x + r.width);
   expect(island.x + island.width).toBeLessThanOrEqual(settings.x);
   expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   expect((await sideScroll(page)).page).toBeLessThanOrEqual(0);

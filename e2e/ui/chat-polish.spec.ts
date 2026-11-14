@@ -6,10 +6,11 @@ import {
   openThreadAPI,
   prompts,
   sendMessageAPI,
+  nowPane,
   sidebarRow,
   startAtoll,
+  threadPane,
   threadTitle,
-  threadTree,
 } from './atoll';
 
 let m: Machine;
@@ -31,7 +32,7 @@ async function send(page: import('@playwright/test').Page, text: string) {
   await page.getByRole('button', { name: 'Send' }).click();
 }
 
-test('the six-word title is in the thread header and the sidebar tree', async ({ page }) => {
+test('the six-word title is in the thread header and the thread pane', async ({ page }) => {
   const bot = await newBotAPI(m, 'Titles');
   const thread = await openThreadAPI(m, bot.id, prompts.keep);
   await waitStatus(thread.id, 'done');
@@ -40,10 +41,10 @@ test('the six-word title is in the thread header and the sidebar tree', async ({
   await page.goto(m.url);
   await sidebarRow(page, 'Titles').click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
-  await expect(threadTree(page, 'Titles').getByRole('listitem')).toContainText(title);
+  await expect(threadPane(page, 'Titles').getByRole('listitem')).toContainText(title);
 });
 
-test('sidebar activity is the current verb or the approval prompt; an idle Bot shows none', async ({
+test('the face shows no activity; Now notes the current verb or the approval prompt, an idle Bot has no row', async ({
   page,
 }) => {
   const reply = await newBotAPI(m, 'Reply activity');
@@ -56,15 +57,24 @@ test('sidebar activity is the current verb or the approval prompt; an idle Bot s
   const waiting = await openThreadAPI(m, approval.id, prompts.write);
   await waitStatus(waiting.id, 'waiting');
 
-  await page.goto(m.url);
+  await page.goto(`${m.url}/bots/${reply.id}/threads/${done.id}`);
   await expect(
     sidebarRow(page, 'Reply activity').getByRole('img', { name: /, idle$/ }),
   ).toBeVisible();
   expect((await api(m, 'GET', `/api/bots/${reply.id}`)).activity).toBe('ok');
   await expect(sidebarRow(page, 'Reply activity')).not.toContainText('ok');
   await expect(sidebarRow(page, 'Reply activity')).not.toContainText('Done');
-  await expect(sidebarRow(page, 'Working activity')).toContainText('Running Run the build');
-  await expect(sidebarRow(page, 'Approval activity')).toContainText('Needs you: Write hello.txt');
+  await expect(sidebarRow(page, 'Working activity')).not.toContainText('Running');
+  await expect(sidebarRow(page, 'Approval activity')).not.toContainText('Write hello.txt');
+
+  const now = await nowPane(page);
+  const rowOf = (id: string) =>
+    now.getByRole('listitem').filter({ has: page.locator(`a[href$="/threads/${id}"]`) });
+  await expect(rowOf(running.id)).toContainText('Working activity · Running Run the build');
+  await expect(rowOf(waiting.id)).toContainText('Approval activity · ');
+  await expect(rowOf(waiting.id)).toContainText('Write hello.txt');
+  await expect(rowOf(done.id)).toHaveCount(0);
+  await api(m, 'POST', `/api/runs/${running.run.id}/stop`);
 });
 
 test('message times use the locale clock in muted 12px text', async ({ page }) => {
@@ -114,14 +124,23 @@ test('user-to-reply and reply-to-next-user gaps are at least 12px', async ({ pag
   expect(replyToNextUser).toBeGreaterThanOrEqual(12);
 });
 
-test('pin controls reorder a sidebar row and Bot settings exposes pinning', async ({ page }) => {
+test('the face menu pins a Bot under Chief and Bot settings exposes pinning', async ({ page }) => {
   const bot = await newBotAPI(m, 'Pin me');
   await page.goto(m.url);
   const row = sidebarRow(page, 'Pin me');
-  await row.hover();
-  await expect(row.getByRole('button', { name: 'Pin Pin me' })).toBeVisible();
-  await row.getByRole('button', { name: 'Pin Pin me' }).click();
-  await expect(row.getByRole('button', { name: 'Unpin Pin me' })).toBeVisible();
+  await row.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Pin to sidebar' }).click();
+  await expect
+    .poll(() =>
+      page
+        .getByRole('navigation', { name: 'Bots' })
+        .locator('a[href^="/bots/"]')
+        .evaluateAll((els) => els.slice(0, 2).map((el) => el.getAttribute('href'))),
+    )
+    .toEqual(['/bots/chief', `/bots/${bot.id}`]);
+  await row.click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Unpin' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await row.click();
   await page.getByRole('button', { name: 'Bot settings' }).click();
   await expect(
