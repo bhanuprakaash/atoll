@@ -73,9 +73,9 @@ func TestAsNotices(t *testing.T) {
 
 func TestBackgroundLine(t *testing.T) {
 	for user, want := range map[string]string{
-		"Bhanu": "Reef: background run. Bhanu does not see your final message, so end with one line of status. " +
+		"Bhanu": "Reef: background run. Bhanu does not see your final message. " +
 			"If Bhanu must act (a PR to merge, a decision, a failure you cannot fix), tell them with tell_user.",
-		"": "Reef: background run. The user does not see your final message, so end with one line of status. " +
+		"": "Reef: background run. The user does not see your final message. " +
 			"If The user must act (a PR to merge, a decision, a failure you cannot fix), tell them with tell_user.",
 	} {
 		if got := backgroundLine(user); got != want {

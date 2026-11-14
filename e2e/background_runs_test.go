@@ -19,7 +19,7 @@ const (
 )
 
 // _backgroundLine is the line Reef starts a background run's prompt with, for the user Bhanu.
-const _backgroundLine = "Reef: background run. Bhanu does not see your final message, so end with one line of status. " +
+const _backgroundLine = "Reef: background run. Bhanu does not see your final message. " +
 	"If Bhanu must act (a PR to merge, a decision, a failure you cannot fix), tell them with tell_user."
 
 // backgroundSetup serves atoll with the user named Bhanu and a boss, Poteto, that delegates to Tester.
