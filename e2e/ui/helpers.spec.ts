@@ -141,7 +141,7 @@ test('the helper thread is not in the sidebar and read-only; Allow there leaves 
   await expect(bossAllow).toHaveCount(1);
 
   const helperPage = await context.newPage();
-  await helperPage.goto(m.url);
+  await helperPage.goto(`${m.url}/bots/${poteto.id}/threads/${boss}`);
   await expect(
     helperPage
       .getByRole('navigation', { name: 'Bots' })

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Contract: fill-helper-slots-contract.md.
@@ -188,7 +189,11 @@ func TestPrompt_BossGetsHelpersRule(t *testing.T) {
 			boss := s.newThread(t, poteto)
 			helper := delegated(t, useAtoll(t, s, boss, s.events(t, boss), delegateCall("Tester", _hangPrompt, ""))[0])
 			helperRunning(t, s, helper)
-			got := systems("Tester")
+			var got []string
+			eventually(t, 10*time.Second, "Tester's helper run logs its system prompt", func() bool {
+				got = systems("Tester")
+				return len(got) > 0
+			})
 			if len(got) != 1 || strings.Contains(got[0], _bossRule) {
 				t.Errorf("Tester's helper run (Tester delegates Reviewer): system prompts %q, want one without %q", got, _bossRule)
 			}
