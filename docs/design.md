@@ -1553,10 +1553,17 @@ Voice
   - A second line shows only while a run works (the live verb, "Running make build", with three
     wave dots) or an approval waits ("Needs you: ..." in the colour of a thread's "Needs you");
     otherwise one line. *Two lines for every Bot made the list twice as tall as Claude's.*
+  - A quiet background run (no `tell_user`) changes nothing the person sees here: the Bot row
+    keeps its previous activity line and the thread keeps its place. The activity line comes from
+    the thread's newest run that is not a quiet one (a done run that posted no message). A run
+    that called `tell_user` may still move the thread. *Its final message is a status line, shown
+    nowhere; it moved the older thread above a newer one and replaced the Bot's activity (#459).*
   - `+` at the top opens New Bot and New group; the bottom user row opens Settings. No group chats.
   - A thread's activity time moves when a run starts, an approval opens or closes, and a run ends
     (also one failed at start-up), not on every event. *The sidebar polls every 2 s; a write per
-    text delta would cost more than the time is worth.*
+    text delta would cost more than the time is worth.* A background run that started from Reef
+    notices alone moves it only when it posts (`tell_user`), fails or is stopped: not when it
+    starts, not when it ends done with a status line.
 - Sidebar width: 340px by default, dragged on its right edge between 260px and 480px; double-click
   on the edge resets it to 340px; Left and Right arrows on the focused edge move it 16px. Kept in
   the web view's `localStorage` (`atoll.sidebarWidth`), clamped when read. The Bot list's scrollbar

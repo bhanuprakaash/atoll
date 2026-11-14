@@ -1387,3 +1387,55 @@ func TestStore_Queued_ReadsNoImageData(t *testing.T) {
 		t.Errorf("Queued read images with %q, want only %q", images, want)
 	}
 }
+
+func TestStore_QuietRunLeavesThread(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	th, _ := st.CreateThread(ctx, bot.ID, "")
+	person := store.InboxItem{ThreadID: th.ID, Text: "hi"}
+	notice := store.InboxItem{ThreadID: th.ID, Text: "Reef: merged", Kind: "merged"}
+	quiet := store.RunResult{Status: store.StatusDone, Reply: "all quiet", StatusLine: true}
+	type got struct {
+		Status, Reply string
+		Moved         bool
+	}
+	tests := []struct {
+		name string
+		give store.InboxItem
+		res  store.RunResult
+		want got
+	}{
+		{"a reply", person, store.RunResult{Status: store.StatusDone, Reply: "ok"}, got{"done", "ok", true}},
+		{"a quiet run", notice, quiet, got{"done", "ok", false}},
+		{"a failure", person, store.RunResult{Status: store.StatusFailed, Error: "boom"}, got{"failed", "", true}},
+		{"a quiet run after a failure", notice, quiet, got{"failed", "", false}},
+		{"a reply after a quiet run", person, store.RunResult{Status: store.StatusDone, Reply: "back"}, got{"done", "back", true}},
+	}
+	var prev time.Time
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, ru, err := st.StartRunFrom(ctx, tt.give)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.FinishRun(ctx, ru.ID, tt.res, nil); err != nil {
+				t.Fatal(err)
+			}
+			runs, err := st.ThreadRuns(ctx, bot.ID)
+			if err != nil || len(runs) != 1 {
+				t.Fatalf("ThreadRuns = %v, %v", runs, err)
+			}
+			r := runs[0]
+			have := got{r.Status, r.Reply, r.LastActivity.After(prev)}
+			prev = r.LastActivity
+			if have != tt.want {
+				t.Errorf("thread %+v, want %+v", have, tt.want)
+			}
+		})
+	}
+}
