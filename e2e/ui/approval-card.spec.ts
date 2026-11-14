@@ -293,7 +293,7 @@ test('while an approval waits nothing on screen is red: thread, sidebar, header,
   expect(await reds(page.locator('body'))).toEqual([]);
 });
 
-test('an approval in another thread: the sidebar, the dropped island, its count and the list are not red', async ({
+test('an approval in another thread: the face, the dropped island, its count and the list are not red', async ({
   page,
 }) => {
   const asker = await newBotAPI(m, 'Asker', 'claude', { look: 'whale' });
@@ -304,7 +304,7 @@ test('an approval in another thread: the sidebar, the dropped island, its count 
   const body = page.locator('body');
 
   await expect(header.getByRole('button', { name: 'Allow', exact: true })).toBeVisible();
-  await expect(page.getByText('Needs you', { exact: true }).first()).toBeVisible();
+  await expect(sidebarRow(page, 'Asker')).toHaveAttribute('data-marker', 'needs-you');
   await page.mouse.move(0, 0);
   expect(await reds(body)).toEqual([]);
 
@@ -320,30 +320,25 @@ test('an approval in another thread: the sidebar, the dropped island, its count 
   expect(await reds(body)).toEqual([]);
 });
 
-test('a folded group with a Bot that needs you shows no red', async ({ page }) => {
+test('a group with a Bot that needs you shows no red', async ({ page }) => {
   const nav = page.getByRole('navigation', { name: 'Bots' });
   const group = nav.getByRole('group', { name: 'Ops', exact: true });
   const pager = await newBotAPI(m, 'Pager', 'claude', { look: 'whale' });
   await page.goto(m.url);
   await nav.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('menuitem', { name: 'New group' }).click();
-  const field = nav.getByRole('textbox', { name: 'Group name' });
+  const field = page.getByRole('textbox', { name: 'Group name' });
   await field.fill('Ops');
   await field.press('Enter');
   await expect(group).toBeVisible();
   await sidebarRow(page, 'Pager').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Move to group' }).click();
   await page.getByRole('menuitem', { name: 'Ops', exact: true }).click();
-  await group.getByRole('heading').hover();
-  await group.getByRole('button', { name: 'Ops', exact: true }).click();
-  await expect(group.getByRole('button', { name: 'Ops', exact: true })).toHaveAttribute(
-    'aria-expanded',
-    'false',
-  );
+  await expect(group.getByRole('link', { name: /\bPager\b/ })).toBeVisible();
 
   const waiting = await openThreadAPI(m, pager.id, prompts.write);
   await waitStatus(waiting.id, 'waiting');
-  await expect(group).toHaveAttribute('data-marker', 'needs-you');
+  await expect(sidebarRow(page, 'Pager')).toHaveAttribute('data-marker', 'needs-you');
   await page.mouse.move(0, 0);
   expect(await reds(group)).toEqual([]);
 });
