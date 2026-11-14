@@ -143,10 +143,10 @@ async function apiPass(base, provider) {
       `${provider}: reply of run 2 has kestrel`,
       JSON.stringify(run2.reply),
     );
-    const reported = (r) => r.status === "done" && r.report != null;
+    const replied = (r) => r.status === "done" && !!r.reply;
     check(
-      reported(run1) && reported(run2),
-      `${provider}: both runs done with a report`,
+      replied(run1) && replied(run2),
+      `${provider}: both runs done with a reply`,
       `${run1.status}, ${run2.status}`,
     );
     if (!fake) return;

@@ -50,7 +50,7 @@ thought would happen; a difference is a finding even when nothing crashed.
      limit: challenge it where the product would be better. Use Reef for real (read long threads, follow parallel
      helpers, answer approvals, browse memory and skills) and judge how it feels: chat layout and reading width,
      message density and rhythm, typography and alignment, streaming and perceived speed (does text appear while a
-     Bot works?), cards (approval, change, memory, report, PR), empty, loading and error states, sidebar and island
+     Bot works?), cards (approval, change, memory, PR), empty, loading and error states, sidebar and island
      at scale, keyboard flow, motion, dark/light, narrow widths, microcopy. Compare with the best chat and agent UIs
      you know (Claude.ai, ChatGPT, Cursor, Linear, Slack) and say what they do better or worse. For each idea: the
      screenshot of today, the problem in one sentence, the proposal, and where it pays off; build a small HTML mockup
@@ -59,14 +59,14 @@ thought would happen; a difference is a finding even when nothing crashed.
 - product: friction and features worth adding with evidence: how the lead plans, how often the user steps in,
   waiting, approvals that add no safety, what a user needs to trust parallel work; cite docs/design.md (and Queue).
 - bots: judge every run against its brief, persona and AGENTS.md (test-first, e2e untouched by fixers, smallest diff,
-  conventional commits, real Proof, honest replies and finish_run, memory use, clear delegate briefs, no wasted
+  conventional commits, real Proof, honest replies, memory use, clear delegate briefs, no wasted
   turns); compare Claude and Codex; name what in Reef (prompt, tools, missing context) made a Bot fail.
 - llm (agent efficiency, honesty and cost, measured): numbers per Bot, provider and model, compared round over round.
   Cost and context: tokens in / cache-write / cache-read / out and cost (Claude `usage`, Codex `token_count`), context
   growth across resumes, prompt-prefix stability and cache survival, repeated reads, pasted logs. Memory: recalls and
   saves per run, whether recalled items were used, duplicates and stale items, lessons the owner gave that were never
   saved, and whether a later run repeated a mistake memory should have prevented. Honesty: every claim in replies,
-  `finish_run` and PR Proof ("passed", "ticked", "sent", "real run") checked against the tool output that should back
+  `tell_user` messages and PR Proof ("passed", "ticked", "sent", "real run") checked against the tool output that should back
   it (exit codes, events, GitHub state); rate of unbacked claims per Bot. Delegation: brief quality and length,
   handoffs per ticket, helpers re-briefed, idle slots while work was queued, boss wake runs per useful outcome,
   refused delegate calls, review rounds per PR. Handling: decisions asked once vs repeated, time a decision waited,
