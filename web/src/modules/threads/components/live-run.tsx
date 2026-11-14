@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRun } from '@/modules/threads/api/runs';
 import { Creature, type CreatureLook } from '@/components/creature';
 import { ApprovalCard } from '@/modules/threads/components/approval-card';
@@ -19,14 +19,52 @@ function openFence(text: string) {
   return open && fenceNames[open];
 }
 
-function statusText(parts: LivePart[]) {
+// latestLine is the newest finished text of a stream: the last line up to its last sentence end,
+// else the line before it. With partial it is the last line as it stands.
+function latestLine(text: string, partial: boolean) {
+  const lines = text.split('\n').map((l) => l.trim());
+  const last = lines.pop() ?? '';
+  if (partial && last) return last;
+  return /^.*[.!?]["')\]]*(?=\s|$)/.exec(last)?.[0] ?? lines.filter(Boolean).at(-1);
+}
+
+function statusText(parts: LivePart[], partial: boolean) {
   for (const part of [...parts].reverse()) {
     const fence = 'text' in part ? openFence(part.text) : undefined;
-    const text =
-      'step' in part ? part.step : fence ? `${fence}…` : part.text.trim().split('\n').pop()?.trim();
+    const text = 'step' in part ? part.step : fence ? `${fence}…` : latestLine(part.text, partial);
     if (text) return text;
   }
   return 'Thinking';
+}
+
+// A fast stream changed the line every frame: it shows finished sentences (an unfinished one once
+// the stream has paused), and changes at most once per gap, the newest text winning.
+const gap = 700;
+const pause = 1000;
+
+function useStatusLine(parts: LivePart[]) {
+  const settled = statusText(parts, false);
+  const latest = statusText(parts, true);
+  const [paused, setPaused] = useState<string>();
+  useEffect(() => {
+    const timer = setTimeout(() => setPaused(latest), pause);
+    return () => clearTimeout(timer);
+  }, [latest]);
+  const want = paused === latest ? latest : settled;
+  const [shown, setShown] = useState(want);
+  const changed = useRef(0);
+  useEffect(() => {
+    if (want === shown) return;
+    const timer = setTimeout(
+      () => {
+        changed.current = Date.now();
+        setShown(want);
+      },
+      Math.max(0, changed.current + gap - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [want, shown]);
+  return shown;
 }
 
 export function LiveRun({
@@ -51,6 +89,7 @@ export function LiveRun({
     ? Math.max(0, Math.floor((now - Date.parse(data.started_at)) / 1000))
     : 0;
   const kind = run.tool?.kind ?? 'none';
+  const status = useStatusLine(run.parts);
   return (
     <div className="flex flex-col gap-2">
       {!(answered || (run.finished && run.settled)) && (
@@ -58,8 +97,10 @@ export function LiveRun({
           <span className="relative size-8 flex-none">
             <Creature look={look} state="working" kind={kind} size={32} />
           </span>
-          <span role="status" className="tide min-w-0 truncate">
-            {statusText(run.parts)}
+          <span role="status" className="tide min-w-0 flex-1 truncate">
+            <span key={status} className="animate-fade">
+              {status}
+            </span>
           </span>
           {data?.started_at && (
             <span className="flex-none text-xs text-label tabular-nums">

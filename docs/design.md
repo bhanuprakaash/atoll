@@ -1845,10 +1845,14 @@ Voice
   scrolled away.
 - While a run works, the thread shows the creature, one status line and the time; never raw tool
   calls, step lines or streamed text (#399). The status line is the newest of: the Bot's latest
-  sentence (the last line of streamed text, cut to one line with `…`); a tool step (a command's own
+  sentence (the last line of streamed text up to its last finished sentence, cut to one line with
+  `…`; an unfinished one shows once the stream pauses for a second); a tool step (a command's own
   description when the model wrote one, else the verb and target, "Reading repo-step.tsx");
-  "Thinking" before anything arrives. When the run ends, the reply (the request's final message,
-  Threads and runs) appears once as a message; nothing is replaced or jumps. A reload mid-run shows
+  "Thinking" before anything arrives. The line changes at most once every 0.7 s, the newest text
+  winning, and fades in; the time sits at the row's right edge and never moves. *A fast stream
+  redrew a growing half sentence every frame and slid the time with it.* When the run ends, the
+  reply (the request's final message, Threads and runs) appears once as a message; nothing is
+  replaced or jumps. A reload mid-run shows
   the status line with the latest text or step. The sidebar row and the island keep the short verb.
   *Streamed text swapped for the reply looked like a glitch.* Approvals show a short form per tool:
   a command shows the command, an edit shows the file with its diff behind a toggle, anything else

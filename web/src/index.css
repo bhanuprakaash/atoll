@@ -80,6 +80,7 @@
   --animate-drift-b: drift-b 12s ease-in-out infinite;
   --animate-drift-c: drift-c 9s ease-in-out infinite;
   --animate-rise: rise 0.35s ease-out;
+  --animate-fade: fade 0.18s ease-out;
   --animate-wave: wave 1.2s ease-in-out infinite;
   --animate-drain: drain 4s linear forwards;
   @keyframes wave {
@@ -127,6 +128,11 @@
     }
     66% {
       transform: translate(-12px, 8px);
+    }
+  }
+  @keyframes fade {
+    from {
+      opacity: 0;
     }
   }
   @keyframes rise {
