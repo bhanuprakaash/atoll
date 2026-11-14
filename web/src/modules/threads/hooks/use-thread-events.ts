@@ -11,7 +11,7 @@ export type LiveRun = {
   parts: LivePart[];
   tool?: { kind: ToolKind; target: string; name: string; verb: string };
   approvals: { id: string; tool: string; input: unknown; allow_in_thread?: boolean }[];
-  finished?: { status: string; error: string; blocked?: string };
+  finished?: { status: string; error: string };
   settled?: boolean;
 };
 type Data<T> = T & { run_id: string };
@@ -138,7 +138,7 @@ export function useThreadEvents(threadId: string) {
       closedApprovals.current.add(d.id);
       return { ...run, approvals: run.approvals.filter((x) => x.id !== d.id) };
     });
-    on<{ status: string; error: string; blocked?: string }>('run_finished', (d, run) => ({
+    on<{ status: string; error: string }>('run_finished', (d, run) => ({
       ...run,
       finished: d,
     }));

@@ -22,19 +22,10 @@ import { ErrorNotice } from '@/components/error-notice';
 import { approvalTarget } from '@/modules/threads/components/approval-card';
 import { QueuedMessage } from '@/modules/threads/components/queued-message';
 import { FailedLine, FailedRun } from '@/modules/threads/components/failed-run-line';
-import { LeadLedger, type LedgerRow } from '@/modules/threads/components/lead-ledger';
 import { chatText, LiveRun } from '@/modules/threads/components/live-run';
-import { WaitingCard } from '@/modules/threads/components/waiting-card';
 import { HelpersTray } from '@/modules/threads/components/helpers-tray';
-import { useSeenReports } from '@/modules/threads/hooks/use-seen-reports';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 import { MrChip } from '@/modules/threads/components/mr-chip';
-import {
-  firstLine,
-  helperReport,
-  isQuestion,
-  realBlocked,
-} from '@/modules/threads/utils/helper-report';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 import { clockTime, messageTime } from '@/utils/time';
 import { usageLine } from '@/utils/usage';
@@ -75,7 +66,6 @@ function RunResult({
   if (run.status === 'running' || run.status === 'waiting') return null;
   if (run.status === 'failed' && askedAbove) return null;
   const tools = run.tools ?? {};
-  const blocked = realBlocked(run.report?.blocked);
   const parts = [
     tools.read ? `read ${tools.read} ${tools.read === 1 ? 'file' : 'files'}` : '',
     tools.edit ? `edited ${tools.edit}` : '',
@@ -92,15 +82,6 @@ function RunResult({
   ].filter(Boolean);
   return (
     <div className="flex flex-col gap-6 text-sm text-muted">
-      {blocked && (
-        <p className="relative text-ink/80">
-          <span
-            aria-hidden="true"
-            className="absolute top-[0.5lh] -left-4.5 size-2 -translate-y-1/2 rounded-full bg-blocked"
-          />
-          <span className="line-clamp-2">Blocked: {blocked}</span>
-        </p>
-      )}
       {run.status === 'failed' && (
         <FailedLine
           run={run}
@@ -180,14 +161,12 @@ function MessageLine({
   message,
   threadId,
   from,
-  brief,
   footer,
   resend,
 }: {
   message: Message;
   threadId: string;
   from?: Bots[string];
-  brief: boolean;
   footer?: ReactNode;
   resend: (message: Message) => Promise<void>;
 }) {
@@ -205,36 +184,19 @@ function MessageLine({
     );
   }
   if (message.from_bot_id) {
-    const report = brief ? { prose: message.text, threadId: '' } : helperReport(message.text);
-    const text = (
-      <div className={chatText}>
-        <Markdown threadId={threadId}>{report.prose}</Markdown>
-      </div>
-    );
     return (
       <article
         aria-label={from?.name ?? 'Helper'}
         data-testid="message"
-        data-report-for={brief ? undefined : report.threadId || undefined}
-        data-report-id={message.id}
         className="flex flex-col items-start gap-2"
       >
         <span className="flex items-center gap-2 text-sm">
           <Creature look={from?.look} size={24} />
           {from?.name ?? 'Helper'}
         </span>
-        {brief ? (
-          <Clamp className={`self-stretch ${chatText}`}>
-            <Markdown threadId={threadId}>{report.prose}</Markdown>
-          </Clamp>
-        ) : (
-          text
-        )}
-        {report.threadId && (
-          <Link to={`/bots/${message.from_bot_id}/threads/${report.threadId}`} className={quiet}>
-            Open thread
-          </Link>
-        )}
+        <Clamp className={`self-stretch ${chatText}`}>
+          <Markdown threadId={threadId}>{message.text}</Markdown>
+        </Clamp>
         {time}
       </article>
     );
@@ -535,23 +497,12 @@ export function ThreadView({
   }, [fetchNextPage, hasNextPage, isFetching, messages.length]);
   const answered = new Set(messages.filter((m) => m.role === 'bot').map((m) => m.run_id));
   const fromHelper = (m: Message) => !!m.from_bot_id && m.from_bot_id !== thread?.parent_bot_id;
-  const woken = new Set(
-    messages.filter((m) => m.role === 'user' && fromHelper(m)).map((m) => m.run_id),
-  );
   const fromPerson = (m: Message) => m.role === 'user' && !m.from_bot_id && !m.kind;
+  const background = (runId: string) =>
+    messages.some((m) => m.run_id === runId) &&
+    messages.every((m) => m.run_id !== runId || fromHelper(m) || !!m.kind);
   const fromUser = new Set(messages.filter(fromPerson).map((m) => m.run_id));
   const lastOfRun = new Map(messages.filter((m) => m.role === 'user').map((m) => [m.run_id, m.id]));
-  const statusReply = (m: Message) =>
-    !!thread &&
-    m.role === 'bot' &&
-    !m.from_bot_id &&
-    woken.has(m.run_id) &&
-    !fromUser.has(m.run_id) &&
-    m.run_status === 'done' &&
-    !realBlocked(m.blocked) &&
-    !m.ready &&
-    !m.ask &&
-    !isQuestion(m.text);
   const unanswered = (m: Message) => m.role === 'user' && !answered.has(m.run_id);
   const asked = new Set(messages.filter(unanswered).map((m) => m.run_id));
   const retryable = (runId: string) => runId === thread?.run_id && !activeId && fromUser.has(runId);
@@ -644,106 +595,17 @@ export function ThreadView({
   for (const h of helpers) {
     const anchor = [...messages]
       .reverse()
-      .find((m) => Date.parse(m.created_at) <= Date.parse(h.created_at));
+      .find((m) => !fromHelper(m) && Date.parse(m.created_at) <= Date.parse(h.created_at));
     if (anchor)
       handoffs.set(anchor.id, [
         ...(handoffs.get(anchor.id) ?? []),
         { name: bots[h.bot_id]?.name ?? 'Helper', href: `/bots/${h.bot_id}/threads/${h.id}` },
       ]);
   }
-  const reports = new Map<string, string>();
-  for (const m of messages)
-    if (m.from_bot_id && m.from_bot_id !== thread?.parent_bot_id) {
-      const helper = helperReport(m.text).threadId;
-      if (helper) reports.set(helper, m.id);
-    }
-  const seen = useSeenReports(log, [...reports.values()].join());
   const boss =
     thread?.parent_thread_id && thread.parent_bot_id && !thread.closed
       ? (bots[thread.parent_bot_id]?.name ?? 'Its boss')
       : '';
-  const holdScroll = () => {
-    wasAtLatest.current = false;
-    requestAnimationFrame(() => {
-      const element = log.current;
-      if (!element) return;
-      const atLatest = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
-      wasAtLatest.current = atLatest;
-      setAwayFromLatest(!atLatest);
-    });
-  };
-  const ledgerRow = (m: Message, joinsBlock: boolean): LedgerRow | null => {
-    if (m.kind) {
-      return joinsBlock
-        ? { id: m.id, note: <span className="truncate">Reef: {m.text}</span> }
-        : null;
-    }
-    if (fromHelper(m)) {
-      const report = helperReport(m.text);
-      if (!report.state || report.blocked) return null;
-      const helper = helpers.find((h) => h.id === report.threadId);
-      if (helper?.ready) return null;
-      const bot = bots[m.from_bot_id ?? ''];
-      return {
-        id: m.id,
-        time: m.created_at,
-        name: bot?.name ?? 'Helper',
-        look: bot?.look,
-        line: report.line,
-        state: report.state,
-        reportFor: report.threadId,
-        mr: helper?.mr_url
-          ? { url: helper.mr_url, state: helper.mr_state, title: helper.mr_title }
-          : undefined,
-        report: (
-          <>
-            <Markdown threadId={threadId}>{report.prose}</Markdown>
-            {report.threadId && (
-              <Link to={`/bots/${m.from_bot_id}/threads/${report.threadId}`} className={quiet}>
-                Open thread
-              </Link>
-            )}
-          </>
-        ),
-      };
-    }
-    if (!statusReply(m)) return null;
-    return {
-      id: m.id,
-      time: m.created_at,
-      name: botName,
-      look,
-      line: m.done || firstLine(m.text),
-      state: 'Done',
-      report: <Markdown threadId={threadId}>{m.text}</Markdown>,
-    };
-  };
-  type Item =
-    | { rows: LedgerRow[]; messages: Message[]; day?: Date }
-    | { message: Message; index: number; day?: Date };
-  const items: Item[] = [];
-  messages.forEach((m, index) => {
-    const day = new Date(m.created_at);
-    const previous = index > 0 ? new Date(messages[index - 1].created_at) : null;
-    const valid = Number.isFinite(day.getTime()) && day.getFullYear() > 1;
-    const showDay = valid && (!previous || day.toDateString() !== previous.toDateString());
-    const newDay = showDay ? day : undefined;
-    const last = items.at(-1);
-    const row = ledgerRow(m, !!last && 'rows' in last && !showDay);
-    if (!row) {
-      items.push({ message: m, index, day: newDay });
-      return;
-    }
-    const handoff = handoffs.get(m.id);
-    const rows = [
-      row,
-      ...(handoff ? [{ id: `handoff-${m.id}`, note: <>Handed off to {names(handoff)}</> }] : []),
-    ];
-    if (last && 'rows' in last && !showDay) {
-      last.rows.push(...rows);
-      last.messages.push(m);
-    } else items.push({ rows, messages: [m], day: newDay });
-  });
   const failure = (m: Message) =>
     unanswered(m) &&
     lastOfRun.get(m.run_id) === m.id && (
@@ -756,6 +618,19 @@ export function ThreadView({
         signedOut={signedOut}
       />
     );
+  const items: { message: Message; index: number; day?: Date }[] = [];
+  let lastDay: Date | undefined;
+  messages.forEach((message, index) => {
+    if (fromHelper(message)) {
+      items.push({ message, index });
+      return;
+    }
+    const day = new Date(message.created_at);
+    const valid = Number.isFinite(day.getTime()) && day.getFullYear() > 1;
+    const showDay = valid && (!lastDay || day.toDateString() !== lastDay.toDateString());
+    if (valid) lastDay = day;
+    items.push({ message, index, day: showDay ? day : undefined });
+  });
   const empty = messages.length === 0 && !activeId;
   const firstUserId = messages.find((m) => m.role === 'user')?.id;
   const loadOlder = () => {
@@ -815,13 +690,14 @@ export function ThreadView({
               )}
             </>
           )}
-          {items.map((item) => {
-            const separator = item.day && (
+          {items.map(({ message: m, index, day }) => {
+            if (fromHelper(m)) return <Fragment key={m.id}>{failure(m)}</Fragment>;
+            const separator = day && (
               <div className="flex items-center gap-3 text-xs text-label">
                 <span className="h-px flex-1 bg-line" />
-                {item.day.toDateString() === new Date().toDateString()
+                {day.toDateString() === new Date().toDateString()
                   ? 'Today'
-                  : item.day.toLocaleDateString([], {
+                  : day.toLocaleDateString([], {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
@@ -829,15 +705,6 @@ export function ThreadView({
                 <span className="h-px flex-1 bg-line" />
               </div>
             );
-            if ('rows' in item)
-              return (
-                <Fragment key={item.rows[0].id}>
-                  {separator}
-                  <LeadLedger rows={item.rows} onToggle={holdScroll} />
-                  {item.messages.map(failure)}
-                </Fragment>
-              );
-            const { message: m, index } = item;
             return (
               <Fragment key={m.id}>
                 {separator}
@@ -845,7 +712,6 @@ export function ThreadView({
                   message={m}
                   threadId={threadId}
                   from={bots[m.from_bot_id ?? '']}
-                  brief={!!m.from_bot_id && m.from_bot_id === thread?.parent_bot_id}
                   resend={(message) => resend([message])}
                   footer={
                     thread &&
@@ -880,7 +746,7 @@ export function ThreadView({
           {Object.entries(runs).map(([id, run]) => (
             <div key={id} className="flex flex-col gap-6">
               <LiveRun id={id} run={run} answered={answered.has(id)} look={look} />
-              {run.finished && !answered.has(id) && (
+              {run.finished && !answered.has(id) && !background(id) && (
                 <>
                   {afterRun?.(id)}
                   <RunResult
@@ -895,19 +761,23 @@ export function ThreadView({
               )}
             </div>
           ))}
-          {thread?.run_id && !activeId && !answered.has(thread.run_id) && !runs[thread.run_id] && (
-            <div className="flex flex-col gap-6">
-              {afterRun?.(thread.run_id)}
-              <RunResult
-                id={thread.run_id}
-                botName={botName}
-                retryable={retryable(thread.run_id)}
-                askedAbove={asked.has(thread.run_id)}
-                retry={retry}
-                signedOut={signedOut}
-              />
-            </div>
-          )}
+          {thread?.run_id &&
+            !activeId &&
+            !answered.has(thread.run_id) &&
+            !background(thread.run_id) &&
+            !runs[thread.run_id] && (
+              <div className="flex flex-col gap-6">
+                {afterRun?.(thread.run_id)}
+                <RunResult
+                  id={thread.run_id}
+                  botName={botName}
+                  retryable={retryable(thread.run_id)}
+                  askedAbove={asked.has(thread.run_id)}
+                  retry={retry}
+                  signedOut={signedOut}
+                />
+              </div>
+            )}
           {unsent.map((m) => (
             <QueuedMessage
               key={m.id}
@@ -967,11 +837,9 @@ export function ThreadView({
               </button>
             </div>
           )}
-          <WaitingCard
-            threadId={threadId}
-            items={thread?.waiting ?? []}
-            onSent={(run) => begin(run.id)}
-          />
+          {thread?.status_line && (
+            <p className="mb-2 px-1 text-sm text-muted">{thread.status_line}</p>
+          )}
           {boss ? (
             <div className="flex items-center gap-4 rounded-3xl border border-line bg-card p-4 text-sm">
               <p className="flex-1">{`${boss} is handling this thread. Talk to ${boss} to change it.`}</p>
@@ -1024,15 +892,7 @@ export function ThreadView({
               disabled={!connected || !!thread?.closed}
               onSent={(run) => begin(run.id)}
               context={context}
-              tray={
-                <HelpersTray
-                  boss={botName}
-                  helpers={helpers}
-                  bots={bots}
-                  reports={reports}
-                  seen={seen}
-                />
-              }
+              tray={<HelpersTray boss={botName} helpers={helpers} bots={bots} />}
             />
           )}
         </div>
