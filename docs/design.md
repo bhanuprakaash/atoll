@@ -1569,6 +1569,8 @@ Voice
     the thread's newest run that is not a quiet one (a done run that posted no message). A run
     that called `tell_user` may still move the thread. *Its final message is a status line, shown
     nowhere; it moved the older thread above a newer one and replaced the Bot's activity (#459).*
+  - Opening Reef at `/` goes to the Bot whose newest thread that is not a helper's moved last.
+    *Landing on a helper's thread showed work the person never asked to see.*
   - `+` at the top opens New Bot and New group; the bottom user row opens Settings. No group chats.
   - A thread's activity time moves when a run starts, an approval opens or closes, and a run ends
     (also one failed at start-up), not on every event. *The sidebar polls every 2 s; a write per
