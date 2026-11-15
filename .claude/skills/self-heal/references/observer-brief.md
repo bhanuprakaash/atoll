@@ -24,7 +24,7 @@ last round's findings and fixes (fixed? good? regressed?). Name the principle yo
 
 ## Where things are ($REEF_HOME defaults to ~/reef-dogfood)
 - Running Reef: built from $REEF_HOME/build (branch dogfood/integration = main + reviewed PRs). The spec is
-  docs/design.md in that tree; e2e/*-contract.md are per-feature contracts.
+  docs/design.md in that tree.
 - Data dir $REEF_HOME/data: atoll.db (SQLite), runs/<run_id>.jsonl (event stream per run), threads/<thread_id>/,
   providers/claude (CLAUDE_CONFIG_DIR; transcripts under projects/), providers/codex (CODEX_HOME; rollouts under
   sessions/).

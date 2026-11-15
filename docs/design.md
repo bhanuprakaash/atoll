@@ -1148,7 +1148,9 @@ Follow-ups:
   `.claude/skills`), Codex through `skills/extraRoots/set` before the thread starts. Every copy
   drops `disable-model-invocation` (a Bot cannot type slash commands); Codex copies also drop
   `allowed-tools` and `context`. *Shared `<config dir>/skills` would leak one Bot's skills into an
-  overlapping run and change files a live run reads.* A provider without skills gets a list in the
+  overlapping run and change files a live run reads.* A Claude deny rule
+  (`--disallowedTools Skill(name)`) still lists the denied skill's description, so only placing the
+  selected copies gives an exact list. A provider without skills gets a list in the
   prompt and reads the file on demand. Never written into the repo. Skills the repo commits
   (`.claude/skills`, `.agents/skills`) still load, like its CLAUDE.md.
 - Home paths in imported skills. Files may point at the owner's home (poteto-mode's scripts call
@@ -1450,7 +1452,7 @@ Follow-ups:
 - In prompts a body is cut to 400 bytes and a why to 200, at a rune boundary, then `…`.
 - Seen items are tracked per provider session id, marked once the turn ends without error.
 - Claude uses `--append-system-prompt` and Codex uses `developerInstructions` on start and resume,
-  every run.
+  every run. `baseInstructions` would replace the provider's own prompt, so it stays unset.
 - `{user}` is the `user_name` setting, or The user when empty.
 - The first message's repo block ends with one line naming start_work and track_mr. *Claude Code
   may not load a tool's description until it searches for it; without the line, Bots branched in
