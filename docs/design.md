@@ -1570,7 +1570,8 @@ Voice
   threads per Bot and helper lines; with 7 Bots and 2 running it read as a tree, not a list.*
   - Rail: 76 px, fixed. Top to bottom: Now, Chief, pinned Bots in pinned order (no heading), the
     user's groups in order, Ungrouped; at the bottom `+` (New Bot, New group) and the user's avatar
-    (Settings). No logo, no search field, no group chats. A face is the Bot's 40 px creature with
+    (Settings). Settings shows the rail alone, with no thread pane; clicking Now or a face brings the
+    pane back. *Settings has its own section list, and the pane beside it made three columns.* No logo, no search field, no group chats. A face is the Bot's 40 px creature with
     its name under it, 11 px, one line, cut with `…` at 64 px. No cost, time or activity line on
     the rail.
   - Hover or keyboard focus on a face shows a label beside the rail: the full name and the Bot's
@@ -1624,7 +1625,8 @@ Voice
   threads with their marker on `GET /api/bots`; the client builds the sections.*
 - Now: the first rail item, a view across every Bot, never a forced landing. Its pane lists Needs
   you, Running and Replied threads; a row is the Bot's 22 px creature, the title and, under it,
-  "Bot · note" (the live step or the waiting ask, else the time). The Now icon's badge is the
+  "Bot · note" (the live step or the waiting ask, else the time), with 8 px above and below and
+  10 px from the edge to the creature. The Now icon's badge is the
   Needs you count and clears when nothing waits. Opening a thread from Now keeps the pane on Now
   and selects that row. With nothing waiting, running or replied it reads "Nothing needs you".
 - Selected row: the sidebar marks where you are once. With a thread open, only that thread's row
