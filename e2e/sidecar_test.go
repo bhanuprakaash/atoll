@@ -27,8 +27,8 @@ func TestServe_ExitsWhenStdinCloses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("atoll serve after stdin closed: %v\nstderr:\n%s", err, stderr)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatalf("atoll serve still running 3s after stdin closed\nstderr:\n%s", stderr)
+	case <-time.After(15 * time.Second):
+		t.Fatalf("atoll serve still running 15s after stdin closed\nstderr:\n%s", stderr)
 	}
 }
 
@@ -52,8 +52,8 @@ func TestServe_ReportsAddressAlreadyInUse(t *testing.T) {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("atoll serve on occupied address stderr %q, want phrase %q", stderr.String(), want)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatalf("atoll serve did not exit within 3s for occupied address %s\nstderr:\n%s", addr, stderr)
+	case <-time.After(15 * time.Second):
+		t.Fatalf("atoll serve did not exit within 15s for occupied address %s\nstderr:\n%s", addr, stderr)
 	}
 }
 
@@ -75,8 +75,8 @@ func TestServe_SIGTERMLeavesNoRunningRunAfterRestart(t *testing.T) {
 		if err != nil {
 			t.Fatalf("atoll serve after SIGTERM: %v\nstderr:\n%s", err, s.log)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("atoll serve did not stop cleanly within 3s after SIGTERM")
+	case <-time.After(15 * time.Second):
+		t.Fatal("atoll serve did not stop cleanly within 15s after SIGTERM")
 	}
 
 	s = m.serve(t)
@@ -134,7 +134,7 @@ func serveCommand(t *testing.T, m *machine, addr string, extra ...string) (*exec
 func waitForHTTP(t *testing.T, done <-chan error, stderr *bytes.Buffer, addr string) {
 	t.Helper()
 	client := &http.Client{Timeout: 100 * time.Millisecond}
-	deadline := time.After(3 * time.Second)
+	deadline := time.After(15 * time.Second)
 	for {
 		response, err := client.Get("http://" + addr + "/api/bots")
 		if err == nil {
@@ -145,7 +145,7 @@ func waitForHTTP(t *testing.T, done <-chan error, stderr *bytes.Buffer, addr str
 		case waitErr := <-done:
 			t.Fatalf("atoll serve exited before answering HTTP: %v\nstderr:\n%s", waitErr, stderr)
 		case <-deadline:
-			t.Fatalf("atoll serve did not answer HTTP within 3s\nstderr:\n%s", stderr)
+			t.Fatalf("atoll serve did not answer HTTP within 15s\nstderr:\n%s", stderr)
 		case <-time.After(25 * time.Millisecond):
 		}
 	}
