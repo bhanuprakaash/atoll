@@ -1,3 +1,9 @@
+## Flaky tests
+
+- UI e2e retries a failed spec once in CI; a spec that passes on retry is reported as flaky in the log.
+- Every flaky report becomes a fix ticket.
+- Go e2e has no retry. A Go flake means rerunning the failed job and filing a fix ticket.
+
 # Slice 3 test contract
 
 This extends issue #3's Test contract. Existing repo-less threads, API shapes, provider
