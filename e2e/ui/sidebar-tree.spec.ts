@@ -15,6 +15,7 @@ import {
   startAtoll,
   threadPane,
   threadTitle,
+  waitStatus,
 } from './atoll';
 
 let m: Machine;
@@ -22,14 +23,6 @@ test.beforeEach(async () => {
   m = await startAtoll();
 });
 test.afterEach(() => m?.stop());
-
-async function waitStatus(threadID: string, status: string) {
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
-      timeout: 15_000,
-    })
-    .toBe(status);
-}
 
 // visit opens a thread in the page, so it counts as seen.
 async function visit(page: Page, botID: string, threadID: string) {
@@ -48,7 +41,7 @@ test('a thread waiting on an approval shows in its Bot pane as Needs you; answer
   const bot = await newBotAPI(m, 'Asker');
   const tree = await showPane(page, m, bot.id, 'Asker');
   const waiting = await openThreadAPI(m, bot.id, prompts.write);
-  await waitStatus(waiting.id, 'waiting');
+  await waitStatus(m, waiting.id, 'waiting');
 
   const asking = row(page, 'Asker', threadTitle(prompts.write));
   await expect(asking).toHaveAttribute('data-marker', 'needs-you');
@@ -60,7 +53,7 @@ test('a thread waiting on an approval shows in its Bot pane as Needs you; answer
     .getByRole('log', { name: 'Messages' })
     .getByRole('button', { name: 'Allow', exact: true })
     .click();
-  await waitStatus(waiting.id, 'done');
+  await waitStatus(m, waiting.id, 'done');
   await expect(tree.locator('[data-marker="needs-you"]')).toHaveCount(0);
   await expect(tree).not.toContainText('Needs you');
 });
@@ -71,8 +64,8 @@ test('a run ending in an unseen thread shows it as Replied; opening it clears Re
   const bot = await newBotAPI(m, 'Newsy');
   const seen = await openThreadAPI(m, bot.id, prompts.pong);
   const unseen = await openThreadAPI(m, bot.id, prompts.keep);
-  await waitStatus(seen.id, 'done');
-  await waitStatus(unseen.id, 'done');
+  await waitStatus(m, seen.id, 'done');
+  await waitStatus(m, unseen.id, 'done');
 
   const tree = await showPane(page, m, bot.id, 'Newsy');
   for (const prompt of [prompts.pong, prompts.keep]) {
@@ -106,7 +99,7 @@ test('a running thread shows wave dots; no spinner ring on any creature or threa
   const bot = await newBotAPI(m, 'Drummer', 'claude', { look: 'shark' });
   await showPane(page, m, bot.id, 'Drummer');
   const busy = await openThreadAPI(m, bot.id, prompts.hang);
-  await waitStatus(busy.id, 'running');
+  await waitStatus(m, busy.id, 'running');
 
   const working = row(page, 'Drummer', threadTitle(prompts.hang));
   await expect(working).toHaveAttribute('data-marker', 'running');
@@ -141,8 +134,8 @@ test('two threads needing approval both show first, beside three running', async
   for (let i = 0; i < 3; i++) busy.push(await openThreadAPI(m, bot.id, prompts.hang));
   const asking = [];
   for (let i = 0; i < 2; i++) asking.push(await openThreadAPI(m, bot.id, prompts.write));
-  for (const t of busy) await waitStatus(t.id, 'running');
-  for (const t of asking) await waitStatus(t.id, 'waiting');
+  for (const t of busy) await waitStatus(m, t.id, 'running');
+  for (const t of asking) await waitStatus(m, t.id, 'waiting');
   const tree = await showPane(page, m, bot.id, 'Pair');
   const needs = tree.locator('[data-marker="needs-you"]');
   await expect(needs).toHaveCount(2);
@@ -157,9 +150,9 @@ test('two threads needing approval both show first, beside three running', async
 test('clicking a Bot opens its latest thread', async ({ page }) => {
   const bot = await newBotAPI(m, 'Latest');
   const older = await openThreadAPI(m, bot.id, prompts.pong);
-  await waitStatus(older.id, 'done');
+  await waitStatus(m, older.id, 'done');
   const newer = await openThreadAPI(m, bot.id, prompts.keep);
-  await waitStatus(newer.id, 'done');
+  await waitStatus(m, newer.id, 'done');
   await page.goto(`${m.url}/settings`);
   await sidebarRow(page, 'Latest').click();
   await expect(page).toHaveURL(`${m.url}/bots/${bot.id}/threads/${newer.id}`);
@@ -167,7 +160,7 @@ test('clicking a Bot opens its latest thread', async ({ page }) => {
 
 test('Bot right-click › New thread starts a new thread with that Bot', async ({ page }) => {
   const bot = await newBotAPI(m, 'Clicker');
-  await waitStatus((await openThreadAPI(m, bot.id, prompts.pong)).id, 'done');
+  await waitStatus(m, (await openThreadAPI(m, bot.id, prompts.pong)).id, 'done');
   await page.goto(`${m.url}/settings`);
   await sidebarRow(page, 'Clicker').click({ button: 'right' });
   const menu = page.getByRole('menu');
@@ -185,7 +178,7 @@ test('Bot right-click › New thread starts a new thread with that Bot', async (
 test('⌘N starts a new thread with the open Bot', async ({ page }) => {
   const bot = await newBotAPI(m, 'Keyer');
   const thread = await openThreadAPI(m, bot.id, prompts.pong);
-  await waitStatus(thread.id, 'done');
+  await waitStatus(m, thread.id, 'done');
   await visit(page, bot.id, thread.id);
   await page.keyboard.press('Meta+n');
   await expect(page.getByRole('heading', { name: 'What should Keyer work on?' })).toBeVisible();
@@ -219,7 +212,7 @@ test('thread hover × closes the thread and saves its unfinished work', async ({
     text: unfinished,
     repo_id: repo.id,
   });
-  await waitStatus(thread.id, 'done');
+  await waitStatus(m, thread.id, 'done');
   await showPane(page, m, bot.id, 'Closer');
 
   const closing = row(page, 'Closer', threadTitle(unfinished));
@@ -237,7 +230,7 @@ test('thread hover × closes the thread and saves its unfinished work', async ({
 test('thread right-click › Rename renames it', async ({ page }) => {
   const bot = await newBotAPI(m, 'Namer');
   const thread = await openThreadAPI(m, bot.id, prompts.pong);
-  await waitStatus(thread.id, 'done');
+  await waitStatus(m, thread.id, 'done');
   await showPane(page, m, bot.id, 'Namer');
 
   await row(page, 'Namer', threadTitle(prompts.pong)).click({ button: 'right' });

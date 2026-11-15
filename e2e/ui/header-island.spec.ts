@@ -9,6 +9,7 @@ import {
   prompts,
   sidebarRow,
   startAtoll,
+  waitStatus,
 } from './atoll';
 
 let m: Machine;
@@ -17,24 +18,16 @@ test.beforeAll(async () => {
 });
 test.afterAll(() => m?.stop());
 
-async function waitStatus(threadID: string, status: string) {
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
-      timeout: 15_000,
-    })
-    .toBe(status);
-}
-
 test('the header shows the open thread run state', async ({ page }) => {
   const bot = await newBotAPI(m, 'Pilot');
   const busy = await openThreadAPI(m, bot.id, prompts.hang);
   const waiting = await openThreadAPI(m, bot.id, prompts.write);
   const failed = await openThreadAPI(m, bot.id, prompts.none);
   const done = await openThreadAPI(m, bot.id, prompts.keep);
-  await waitStatus(busy.id, 'running');
-  await waitStatus(waiting.id, 'waiting');
-  await waitStatus(failed.id, 'failed');
-  await waitStatus(done.id, 'done');
+  await waitStatus(m, busy.id, 'running');
+  await waitStatus(m, waiting.id, 'waiting');
+  await waitStatus(m, failed.id, 'failed');
+  await waitStatus(m, done.id, 'done');
 
   const header = page.locator('header');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${busy.id}`);
@@ -46,7 +39,7 @@ test('the header shows the open thread run state', async ({ page }) => {
     .getByRole('log', { name: 'Messages' })
     .getByRole('button', { name: 'Allow', exact: true })
     .click();
-  await waitStatus(waiting.id, 'done');
+  await waitStatus(m, waiting.id, 'done');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${failed.id}`);
   await expect(header).toContainText('Run failed');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${done.id}`);

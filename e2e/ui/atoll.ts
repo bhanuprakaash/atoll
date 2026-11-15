@@ -296,12 +296,23 @@ export async function sendMessageAPI(
   status: 'done' | 'running' = 'done',
 ) {
   const result = await api(m, 'POST', `/api/threads/${threadID}/messages`, { text });
+  await waitStatus(m, threadID, status);
+  return result;
+}
+
+// waitStatus waits for a thread's run to reach status.
+export async function waitStatus(
+  m: { url: string },
+  threadID: string,
+  status: string,
+  timeout = 15_000,
+) {
   await expect
     .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
-      timeout: 15_000,
+      timeout,
+      intervals: [100],
     })
     .toBe(status);
-  return result;
 }
 
 // choose picks an option of a combobox: a native select, or a searchable listbox.

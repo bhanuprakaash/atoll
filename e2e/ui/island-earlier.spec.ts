@@ -6,15 +6,16 @@ import {
   api,
   type Machine,
   newBotAPI,
+  nowPane,
   openThreadAPI,
   prompts,
   recordText,
   seenText,
   sendMessageAPI,
-  nowPane,
   showPane,
   startAtoll,
   threadTitle,
+  waitStatus,
 } from './atoll';
 import { delegate, helperThreads, makeBoss, runStatus, startThread } from './helpers-fixture';
 
@@ -42,15 +43,6 @@ test.beforeEach(async () => {
 });
 test.afterEach(() => m?.stop());
 
-async function waitStatus(threadID: string, status: string) {
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
-      timeout: 15_000,
-      intervals: [100],
-    })
-    .toBe(status);
-}
-
 async function open(page: Page, botID: string) {
   await page.goto(`${m.url}/bots/${botID}`);
   const island = page.locator('header').getByRole('button', {
@@ -68,7 +60,7 @@ async function open(page: Page, botID: string) {
 // readThread makes a thread whose first run is done and marks it read after that run.
 async function readThread(botID: string, prompt: string) {
   const t = await openThreadAPI(m, botID, prompt);
-  await waitStatus(t.id, 'done');
+  await waitStatus(m, t.id, 'done');
   await api(m, 'POST', `/api/threads/${t.id}/opened`);
   return t;
 }
@@ -91,7 +83,7 @@ test('a thread opened after its run finished is not under Earlier on connect, on
   const home = await newBotAPI(m, 'Home');
   await readThread(pilot.id, prompts.pong);
   const unread = await openThreadAPI(m, pilot.id, prompts.keep);
-  await waitStatus(unread.id, 'done');
+  await waitStatus(m, unread.id, 'done');
 
   const { island, list, rows } = await open(page, home.id);
   await page.reload();
@@ -147,7 +139,7 @@ test('a thread with several runs has one row, not one per run', async ({ page })
   await sendMessageAPI(m, t.id, prompts.keep);
   await sendMessageAPI(m, t.id, prompts.keep);
   const other = await openThreadAPI(m, pilot.id, prompts.pong);
-  await waitStatus(other.id, 'done');
+  await waitStatus(m, other.id, 'done');
 
   const { island, rows } = await open(page, home.id);
   await island.click();
@@ -162,7 +154,7 @@ test('every Earlier row has a dismiss button that shows on hover and on keyboard
   const pilot = await newBotAPI(m, 'Pilot');
   const home = await newBotAPI(m, 'Home');
   for (const prompt of [prompts.pong, prompts.keep]) {
-    await waitStatus((await openThreadAPI(m, pilot.id, prompt)).id, 'done');
+    await waitStatus(m, (await openThreadAPI(m, pilot.id, prompt)).id, 'done');
   }
   const { island, rows } = await open(page, home.id);
   await island.click();
@@ -189,7 +181,7 @@ test('dismissing a run row removes it at once, marks its thread read, and it sta
   const pilot = await newBotAPI(m, 'Pilot');
   const home = await newBotAPI(m, 'Home');
   for (const prompt of [prompts.pong, prompts.keep]) {
-    await waitStatus((await openThreadAPI(m, pilot.id, prompt)).id, 'done');
+    await waitStatus(m, (await openThreadAPI(m, pilot.id, prompt)).id, 'done');
   }
   const { island, rows } = await open(page, home.id);
   await inPane(page, pilot.id, 'Pilot', replied(2));
@@ -226,13 +218,13 @@ async function platformRows(page: Page) {
     pilot.id,
     `Use MCP tools. [{"server":"atoll","tool":"track_mr","args":{"url":"${mrURL}","title":"Tidy the logs"}}]`,
   );
-  await waitStatus(mr.id, 'done');
+  await waitStatus(m, mr.id, 'done');
   const chief = await openThreadAPI(
     m,
     'chief',
     'Create reef-greeting and a Lagoon Bot using claude.',
   );
-  await waitStatus(chief.id, 'done');
+  await waitStatus(m, chief.id, 'done');
   return open(page, home.id);
 }
 
@@ -297,8 +289,8 @@ test('opening a thread from Now clears both its Replied row and its Earlier row'
     await openThreadAPI(m, pilot.id, prompts.pong),
     await openThreadAPI(m, pilot.id, prompts.keep),
   ];
-  await waitStatus(a.id, 'done');
-  await waitStatus(b.id, 'done');
+  await waitStatus(m, a.id, 'done');
+  await waitStatus(m, b.id, 'done');
   const { island, rows } = await open(page, home.id);
   const tree = await nowPane(page);
   const marks = tree.locator('[data-marker="new"]');

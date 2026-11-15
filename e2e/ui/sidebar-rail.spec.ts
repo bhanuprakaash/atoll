@@ -16,6 +16,7 @@ import {
   startAtoll,
   threadPane,
   threadTitle,
+  waitStatus,
 } from './atoll';
 import { bossHandsOff, tray } from './helpers-fixture';
 
@@ -36,14 +37,6 @@ const rowOf = (pane: Locator, id: string) =>
   pane.getByRole('listitem').filter({ has: pane.page().locator(`a[href$="/threads/${id}"]`) });
 const linkOf = (pane: Locator, id: string) => pane.locator(`a[href$="/threads/${id}"]`);
 const box = async (l: Locator) => (await l.boundingBox())!;
-
-async function waitStatus(threadID: string, status: string) {
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
-      timeout: 15_000,
-    })
-    .toBe(status);
-}
 
 const stop = (t: { run: { id: string } }) => api(m, 'POST', `/api/runs/${t.run.id}/stop`);
 
@@ -141,9 +134,9 @@ test.describe('#469 rail and the Bot pane', () => {
   }) => {
     const bot = await newBotAPI(m, 'Pilot');
     const older = await openThreadAPI(m, bot.id, prompts.pong);
-    await waitStatus(older.id, 'done');
+    await waitStatus(m, older.id, 'done');
     const newer = await openThreadAPI(m, bot.id, prompts.keep);
-    await waitStatus(newer.id, 'done');
+    await waitStatus(m, newer.id, 'done');
 
     await page.goto(`${m.url}/settings`);
     await sidebarRow(page, 'Pilot').click();
@@ -176,8 +169,8 @@ test.describe('#469 rail and the Bot pane', () => {
     const waiting = await openThreadAPI(m, asker.id, prompts.write);
     const busy = await openThreadAPI(m, worker.id, prompts.hang);
     try {
-      await waitStatus(waiting.id, 'waiting');
-      await waitStatus(busy.id, 'running');
+      await waitStatus(m, waiting.id, 'waiting');
+      await waitStatus(m, busy.id, 'running');
       await showPane(page, m, 'chief', 'Chief');
 
       const asking = sidebarRow(page, 'Asker');
@@ -210,9 +203,9 @@ test.describe('#469 rail and the Bot pane', () => {
     const recent = [];
     for (let i = 0; i < 5; i++) recent.push(await openThreadAPI(m, bot.id, prompts.keep));
     try {
-      for (const t of asking) await waitStatus(t.id, 'waiting');
-      for (const t of busy) await waitStatus(t.id, 'running');
-      for (const t of [pinned, ...recent]) await waitStatus(t.id, 'done');
+      for (const t of asking) await waitStatus(m, t.id, 'waiting');
+      for (const t of busy) await waitStatus(m, t.id, 'running');
+      for (const t of [pinned, ...recent]) await waitStatus(m, t.id, 'done');
       await api(m, 'POST', `/api/threads/${pinned.id}/pin`);
       await visit(page, bot.id, pinned.id);
 
@@ -352,10 +345,10 @@ test.describe('#469 rail and the Bot pane', () => {
     };
     const elsewhere = await openThreadAPI(m, other.id, prompts.keep);
     for (const [title, t] of Object.entries(threads)) {
-      await waitStatus(t.id, 'done');
+      await waitStatus(m, t.id, 'done');
       await api(m, 'PATCH', `/api/threads/${t.id}`, { title });
     }
-    await waitStatus(elsewhere.id, 'done');
+    await waitStatus(m, elsewhere.id, 'done');
     await api(m, 'PATCH', `/api/threads/${elsewhere.id}`, { title: 'Gamma elsewhere' });
     expect((await api(m, 'GET', `/api/threads/${threads['Bravo notes'].id}`)).branch).toBe(
       'fix/seeded-bug',
@@ -408,7 +401,7 @@ test.describe('#469 rail and the Bot pane', () => {
   test('⌘B hides and shows the pane; the rail stays', async ({ page }) => {
     const bot = await newBotAPI(m, 'Pilot');
     const t = await openThreadAPI(m, bot.id, prompts.pong);
-    await waitStatus(t.id, 'done');
+    await waitStatus(m, t.id, 'done');
     await page.setViewportSize({ width: 1280, height: 720 });
     await visit(page, bot.id, t.id);
     const pane = threadPane(page, 'Pilot');
@@ -438,9 +431,9 @@ test.describe('#470 row actions, Closed and New thread', () => {
     const names = ['Delta', 'Echo', 'Foxtrot', 'Golf'];
     const threads: Record<string, { id: string }> = {};
     for (const name of names) threads[name] = await openThreadAPI(m, bot.id, prompts.keep);
-    await waitStatus(asking.id, 'waiting');
+    await waitStatus(m, asking.id, 'waiting');
     for (const name of names) {
-      await waitStatus(threads[name].id, 'done');
+      await waitStatus(m, threads[name].id, 'done');
       await api(m, 'PATCH', `/api/threads/${threads[name].id}`, { title: `${name} notes` });
     }
 
@@ -512,11 +505,11 @@ test.describe('#470 row actions, Closed and New thread', () => {
   }) => {
     const bot = await newBotAPI(m, 'Archivist');
     const open = await openThreadAPI(m, bot.id, prompts.pong);
-    await waitStatus(open.id, 'done');
+    await waitStatus(m, open.id, 'done');
     const closed: Record<string, { id: string }> = {};
     for (const name of ['Alpha', 'Bravo', 'Charlie']) {
       const t = await openThreadAPI(m, bot.id, prompts.keep);
-      await waitStatus(t.id, 'done');
+      await waitStatus(m, t.id, 'done');
       await api(m, 'PATCH', `/api/threads/${t.id}`, { title: `${name} closed` });
       await api(m, 'POST', `/api/threads/${t.id}/close`);
       closed[name] = t;
@@ -549,7 +542,7 @@ test.describe('#470 row actions, Closed and New thread', () => {
   }) => {
     const bot = await newBotAPI(m, 'Keyer');
     const t = await openThreadAPI(m, bot.id, prompts.pong);
-    await waitStatus(t.id, 'done');
+    await waitStatus(m, t.id, 'done');
     const heading = page.getByRole('heading', { name: 'What should Keyer work on?' });
     const expectNewThread = async () => {
       await expect(heading).toBeVisible();
@@ -585,10 +578,10 @@ test.describe('#471 Now', () => {
     const replied = await openThreadAPI(m, newsy.id, prompts.keep);
     const seen = await openThreadAPI(m, calm.id, prompts.pong);
     try {
-      await waitStatus(waiting.id, 'waiting');
-      await waitStatus(busy.id, 'running');
-      await waitStatus(replied.id, 'done');
-      await waitStatus(seen.id, 'done');
+      await waitStatus(m, waiting.id, 'waiting');
+      await waitStatus(m, busy.id, 'running');
+      await waitStatus(m, replied.id, 'done');
+      await waitStatus(m, seen.id, 'done');
       await visit(page, calm.id, seen.id);
       await showPane(page, m, 'chief', 'Chief');
 
@@ -618,8 +611,8 @@ test.describe('#471 Now', () => {
     const second = await newBotAPI(m, 'Second');
     const a = await openThreadAPI(m, first.id, prompts.write);
     const b = await openThreadAPI(m, second.id, prompts.write);
-    await waitStatus(a.id, 'waiting');
-    await waitStatus(b.id, 'waiting');
+    await waitStatus(m, a.id, 'waiting');
+    await waitStatus(m, b.id, 'waiting');
     await page.goto(`${m.url}/settings`);
     await expect(nowButton(page)).toBeVisible();
     await expect(badge(page)).toHaveText('2');
@@ -630,7 +623,7 @@ test.describe('#471 Now', () => {
     ] as const) {
       const { approval } = await api(m, 'GET', `/api/threads/${t.id}`);
       await api(m, 'POST', `/api/approvals/${approval.id}`, { approve: true });
-      await waitStatus(t.id, 'done');
+      await waitStatus(m, t.id, 'done');
       if (left) await expect(badge(page)).toHaveText(left);
       else await expect(badge(page)).toHaveCount(0);
     }
@@ -643,8 +636,8 @@ test.describe('#471 Now', () => {
     const busy = await openThreadAPI(m, worker.id, prompts.hang);
     const waiting = await openThreadAPI(m, asker.id, prompts.write);
     try {
-      await waitStatus(busy.id, 'running');
-      await waitStatus(waiting.id, 'waiting');
+      await waitStatus(m, busy.id, 'running');
+      await waitStatus(m, waiting.id, 'waiting');
       await showPane(page, m, 'chief', 'Chief');
       const now = await nowPane(page);
 
@@ -670,7 +663,7 @@ test.describe('#471 Now', () => {
   }) => {
     const bot = await newBotAPI(m, 'Calm');
     const t = await openThreadAPI(m, bot.id, prompts.pong);
-    await waitStatus(t.id, 'done');
+    await waitStatus(m, t.id, 'done');
     await visit(page, bot.id, t.id);
     const now = await nowPane(page);
     await expect(now).toContainText('Nothing needs you');
@@ -685,9 +678,9 @@ test.describe('#472 narrow window', () => {
   }) => {
     const pilot = await newBotAPI(m, 'Pilot');
     const first = await openThreadAPI(m, pilot.id, prompts.keep);
-    await waitStatus(first.id, 'done');
+    await waitStatus(m, first.id, 'done');
     const second = await openThreadAPI(m, pilot.id, prompts.pong);
-    await waitStatus(second.id, 'done');
+    await waitStatus(m, second.id, 'done');
 
     await page.setViewportSize({ width: 700, height: 500 });
     await visit(page, pilot.id, first.id);
@@ -739,7 +732,7 @@ test.describe('#472 narrow window', () => {
   test('no page scrolls sideways at 420 px and up', async ({ page }) => {
     const bot = await newBotAPI(m, 'Pilot');
     const t = await openThreadAPI(m, bot.id, prompts.pong);
-    await waitStatus(t.id, 'done');
+    await waitStatus(m, t.id, 'done');
     for (const width of [420, 700, 900]) {
       for (const url of [
         `${m.url}/bots/${bot.id}/threads/${t.id}`,

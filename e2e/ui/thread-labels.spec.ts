@@ -12,6 +12,7 @@ import {
   startAtoll,
   threadPane,
   threadTitle,
+  waitStatus,
 } from './atoll';
 import {
   delegate,
@@ -27,14 +28,6 @@ test.beforeEach(async () => {
   m = await startAtoll();
 });
 test.afterEach(() => m?.stop());
-
-async function waitStatus(threadID: string, status: string) {
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
-      timeout: 15_000,
-    })
-    .toBe(status);
-}
 
 // quietRunEnded waits for the thread's newest run to be a different one from before and to have
 // ended.
@@ -61,7 +54,7 @@ test('a failed run shows Failed on its row until the thread is opened', async ({
   const bot = await newBotAPI(m, 'Failer');
   await showPane(page, m, bot.id, 'Failer');
   const failed = await openThreadAPI(m, bot.id, prompts.none);
-  await waitStatus(failed.id, 'failed');
+  await waitStatus(m, failed.id, 'failed');
 
   const failing = row(page, 'Failer', threadTitle(prompts.none));
   await expect(failing).toContainText('Failed');
@@ -77,7 +70,7 @@ test('a thread of a provider at its usage limit reads Out until the reset time',
   const bot = await newBotAPI(m, 'Limited');
   m.limit('claude', new Date(Date.now() + 2 * 60 * 60 * 1000));
   const limited = await openThreadAPI(m, bot.id, prompts.keep);
-  await waitStatus(limited.id, 'failed');
+  await waitStatus(m, limited.id, 'failed');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${limited.id}`);
   await expect(
     page.getByRole('log', { name: 'Messages' }).getByRole('article').first(),

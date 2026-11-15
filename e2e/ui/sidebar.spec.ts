@@ -10,6 +10,7 @@ import {
   running,
   sidebarRow,
   startAtoll,
+  waitStatus,
 } from './atoll';
 
 let m: Machine;
@@ -66,14 +67,6 @@ test('reduced motion stops the animations', async ({ page }) => {
   await expect.poll(() => running(page)).toBe(0);
 });
 
-async function waitStatus(threadID: string, status: string) {
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
-      timeout: 15_000,
-    })
-    .toBe(status);
-}
-
 // waves counts the wave-dot animations playing inside el.
 const waves = (el: Locator) =>
   el.evaluate(
@@ -88,7 +81,7 @@ test('a face is a 40px creature with its name under it and no activity line; the
 }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   const bot = await newBotAPI(m, 'Calm', 'claude', { look: 'whale' });
-  await waitStatus((await openThreadAPI(m, bot.id, prompts.keep)).id, 'done');
+  await waitStatus(m, (await openThreadAPI(m, bot.id, prompts.keep)).id, 'done');
   const replied = (await api(m, 'GET', `/api/bots/${bot.id}`)).activity;
   expect(replied).toBe('ok');
 
@@ -104,21 +97,21 @@ test('a face is a 40px creature with its name under it and no activity line; the
   expect(await waves(row)).toBe(0);
 
   const busy = await openThreadAPI(m, bot.id, prompts.hang);
-  await waitStatus(busy.id, 'running');
+  await waitStatus(m, busy.id, 'running');
   await expect(row.getByRole('img', { name: 'Whale, working', exact: true })).toBeVisible();
   await expect(row).not.toContainText('Running');
   await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
-  await waitStatus(busy.id, 'stopped');
+  await waitStatus(m, busy.id, 'stopped');
   await expect(idle).toBeVisible();
   await expect(row).not.toContainText('Stopped');
 
   const asking = await openThreadAPI(m, bot.id, prompts.write);
-  await waitStatus(asking.id, 'waiting');
+  await waitStatus(m, asking.id, 'waiting');
   await expect(row.getByRole('img', { name: 'Whale, needs you', exact: true })).toBeVisible();
   await expect(row).not.toContainText('Needs you');
   const { approval } = await api(m, 'GET', `/api/threads/${asking.id}`);
   await api(m, 'POST', `/api/approvals/${approval.id}`, { approve: true });
-  await waitStatus(asking.id, 'done');
+  await waitStatus(m, asking.id, 'done');
   await expect(idle).toBeVisible();
   await expect(row).not.toContainText((await api(m, 'GET', `/api/bots/${bot.id}`)).activity);
 });
@@ -130,9 +123,9 @@ test('a running older thread keeps the Bot working when a newer thread has finis
   const bot = await newBotAPI(m, 'Older worker');
   const busy = await openThreadAPI(m, bot.id, prompts.hang);
   try {
-    await waitStatus(busy.id, 'running');
+    await waitStatus(m, busy.id, 'running');
     const newer = await openThreadAPI(m, bot.id, prompts.keep);
-    await waitStatus(newer.id, 'done');
+    await waitStatus(m, newer.id, 'done');
 
     await page.goto(m.url);
     const row = sidebarRow(page, 'Older worker');
@@ -142,16 +135,16 @@ test('a running older thread keeps the Bot working when a newer thread has finis
     await expect(row.getByRole('img', { name: /, working$/ })).toBeVisible();
   } finally {
     await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
-    await waitStatus(busy.id, 'stopped');
+    await waitStatus(m, busy.id, 'stopped');
   }
 });
 
 test('an older thread awaiting approval takes priority over a newer finished thread', async ({ page }) => {
   const bot = await newBotAPI(m, 'Older approval');
   const asking = await openThreadAPI(m, bot.id, prompts.write);
-  await waitStatus(asking.id, 'waiting');
+  await waitStatus(m, asking.id, 'waiting');
   const newer = await openThreadAPI(m, bot.id, prompts.keep);
-  await waitStatus(newer.id, 'done');
+  await waitStatus(m, newer.id, 'done');
 
   await page.goto(m.url);
   const row = sidebarRow(page, 'Older approval');
