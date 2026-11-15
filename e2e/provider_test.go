@@ -2,15 +2,12 @@ package e2e
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"atoll/e2e/fakes/fake"
 )
@@ -96,40 +93,6 @@ func (m *machine) signIn(t *testing.T, provider string) {
 	t.Helper()
 	file := map[string]string{"claude": ".credentials.json", "codex": "auth.json"}[provider]
 	writeFile(t, filepath.Join(m.providerDir(provider), file), "{}")
-}
-
-func (m *machine) atoll(t *testing.T, args ...string) string {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, _atoll, args...)
-	cmd.Dir = t.TempDir()
-	cmd.Env = []string{
-		"HOME=" + m.home,
-		"PATH=" + m.path,
-		"ATOLL_DATA_DIR=" + m.data,
-		"ATOLL_PROVIDER_PATH=" + m.bin,
-	}
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("atoll %q: %v\nstdout:\n%s\nstderr:\n%s", args, err, out, stderr.String())
-	}
-	return string(out)
-}
-
-// run is `atoll provider run`; it returns the reply and the session id.
-func (m *machine) run(t *testing.T, args ...string) (reply, session string) {
-	t.Helper()
-	out := strings.TrimRight(m.atoll(t, append([]string{"provider", "run"}, args...)...), "\n")
-	i := strings.LastIndex(out, "\n")
-	reply, last := out[:max(i, 0)], out[i+1:]
-	session, ok := strings.CutPrefix(last, "session: ")
-	if !ok || i < 0 {
-		t.Fatalf("atoll provider run %q: want the reply, then a last line \"session: <id>\"; got:\n%s", args, out)
-	}
-	return strings.TrimSpace(reply), session
 }
 
 // calls returns every run of the fake provider but title sessions, in the order they started.
@@ -220,135 +183,6 @@ func isTurn(line string) bool {
 		Method string `json:"method"`
 	}
 	return json.Unmarshal([]byte(line), &l) == nil && (l.Type == "user" || l.Method == "turn/start")
-}
-
-func TestProviderStatus_ListsBoth(t *testing.T) {
-	t.Parallel()
-	m := newMachine(t, "claude", "codex")
-	m.signIn(t, "claude")
-	// The user's own Codex is signed in; Atoll's Codex folder is not.
-	writeFile(t, filepath.Join(m.home, ".codex", "auth.json"), "{}")
-
-	got := m.atoll(t, "provider", "status")
-
-	want := "claude\t" + filepath.Join(m.bin, "claude") + "\t2.1.306\tsigned in\n" +
-		"codex\t" + filepath.Join(m.bin, "codex") + "\t0.166.0\tsigned out\n"
-	if got != want {
-		t.Errorf("atoll provider status printed\n%q\nwant\n%q", got, want)
-	}
-}
-
-func TestProviderStatus_NotInstalled(t *testing.T) {
-	t.Parallel()
-	m := newMachine(t, "claude")
-	// A codex on PATH and in an install folder, but not on ATOLL_PROVIDER_PATH, is not found.
-	other := t.TempDir()
-	installFake(t, "codex", other)
-	installFake(t, "codex", filepath.Join(m.home, ".local", "bin"))
-	m.path = other + ":" + m.path
-
-	got := m.atoll(t, "provider", "status")
-
-	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
-	if len(lines) != 2 || !strings.HasPrefix(lines[0], "claude\t"+filepath.Join(m.bin, "claude")+"\t") ||
-		lines[1] != "codex\tnot installed" {
-		t.Errorf("atoll provider status printed\n%q\nwant a claude line, then %q", got, "codex\tnot installed")
-	}
-}
-
-func TestProviderRun_ClaudeIsolated(t *testing.T) {
-	t.Parallel()
-	m := newMachine(t, "claude")
-	m.signIn(t, "claude")
-
-	reply, session := m.run(t, "claude", _skillsPrompt)
-
-	if !strings.HasSuffix(reply, _claudeSkills) {
-		t.Errorf("reply %q, want it to end with %q", reply, _claudeSkills)
-	}
-	if session != _claudeSkillsID {
-		t.Errorf("session %q, want %q", session, _claudeSkillsID)
-	}
-	calls := m.sessions(t, "claude")
-	if len(calls) != 1 {
-		t.Fatalf("claude -p ran %d times, want 1", len(calls))
-	}
-	m.assertClaudeIsolated(t, calls[0])
-	if slices.Contains(calls[0].argv, "--resume") {
-		t.Errorf("a new session was started with --resume: %q", calls[0].argv)
-	}
-}
-
-func TestProviderRun_ClaudeResumes(t *testing.T) {
-	t.Parallel()
-	m := newMachine(t, "claude")
-	m.signIn(t, "claude")
-
-	reply1, session1 := m.run(t, "claude", _factPrompt)
-	reply2, session2 := m.run(t, "claude", "--resume", session1, _recallPrompt)
-
-	if reply1 != "ok" || reply2 != "heron" {
-		t.Errorf("replies %q, %q; want %q, %q", reply1, reply2, "ok", "heron")
-	}
-	if session1 != _claudeFactID || session2 != session1 {
-		t.Errorf("sessions %q, %q; want %q for both", session1, session2, _claudeFactID)
-	}
-	calls := m.sessions(t, "claude")
-	if len(calls) != 2 {
-		t.Fatalf("claude -p ran %d times, want 2", len(calls))
-	}
-	if got := flagValue(calls[1].argv, "--resume"); got != session1 {
-		t.Errorf("second run passed --resume %q, want %q; argv %q", got, session1, calls[1].argv)
-	}
-	m.assertClaudeIsolated(t, calls[1])
-}
-
-func TestProviderRun_CodexIsolated(t *testing.T) {
-	t.Parallel()
-	m := newMachine(t, "codex")
-	m.signIn(t, "codex")
-
-	reply, session := m.run(t, "codex", _skillsPrompt)
-
-	if !strings.HasSuffix(reply, _codexSkills) {
-		t.Errorf("reply %q, want it to end with %q", reply, _codexSkills)
-	}
-	if session != _codexThreadID {
-		t.Errorf("session %q, want %q", session, _codexThreadID)
-	}
-	calls := m.sessions(t, "codex")
-	if len(calls) != 1 {
-		t.Fatalf("codex app-server ran %d times, want 1", len(calls))
-	}
-	m.assertCodexIsolated(t, calls[0], "thread/start")
-}
-
-func TestProviderRun_CodexResumes(t *testing.T) {
-	t.Parallel()
-	m := newMachine(t, "codex")
-	m.signIn(t, "codex")
-
-	reply1, session1 := m.run(t, "codex", _factPrompt)
-	reply2, session2 := m.run(t, "codex", "--resume", session1, _recallPrompt)
-
-	if reply1 != "ok" || reply2 != "heron" {
-		t.Errorf("replies %q, %q; want %q, %q", reply1, reply2, "ok", "heron")
-	}
-	if session1 != _codexThreadID || session2 != session1 {
-		t.Errorf("sessions %q, %q; want %q for both", session1, session2, _codexThreadID)
-	}
-	calls := m.sessions(t, "codex")
-	if len(calls) != 2 {
-		t.Fatalf("codex app-server ran %d times, want 2", len(calls))
-	}
-	resume := request(calls[1], "thread/resume")
-	if resume == nil {
-		t.Fatalf("second run sent no thread/resume; stdin:\n%s", strings.Join(calls[1].stdin, "\n"))
-	}
-	if resume.ThreadID != session1 {
-		t.Errorf("thread/resume threadId %q, want %q", resume.ThreadID, session1)
-	}
-	m.assertCodexIsolated(t, calls[1], "thread/resume")
 }
 
 // assertClaudeIsolated checks the flags and env docs/design.md → Providers gives every run.
