@@ -134,7 +134,7 @@ test('a pinned Bot and its pinned thread follow the same rule', async ({ page })
   await expectOnlyBot(page, 'Anchor', bot.id);
 });
 
-test('a helper thread is the one selected row, in its own Bot pane, not the boss', async ({
+test('a running helper thread has no row; its Bot has the bar and the boss is not selected', async ({
   page,
 }) => {
   const poteto = await newBotAPI(m, 'Poteto', 'claude', { look: 'whale' });
@@ -158,6 +158,8 @@ test('a helper thread is the one selected row, in its own Bot pane, not the boss
 
   await page.goto(`${m.url}/bots/${tester.id}/threads/${helper.id}`);
   await away(page);
-  await expectOnlyThread(page, 'Tester', tester.id, helper.id);
+  await expect(botRow(page, tester.id)).toHaveAttribute('data-current', 'true');
+  await expect(threadPane(page, 'Tester').locator(`a[href$="/threads/${helper.id}"]`)).toHaveCount(0);
+  await expect(marked(page, 'Tester')).toHaveCount(0);
   await expectFilled(botRow(page, poteto.id), false);
 });

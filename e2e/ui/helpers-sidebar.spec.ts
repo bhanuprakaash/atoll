@@ -1,5 +1,5 @@
 // Delegated work in the thread pane: one line under the boss thread, the helper thread a row of its
-// own Bot's pane (Running, `for {Boss}`, then under Recent), a breadcrumb from the helper thread
+// own Bot's pane only once it is finished (under Recent), a breadcrumb from the helper thread
 // back to the boss thread. Contracts: e2e/helpers-sidebar-contract.md, e2e/sidebar-rail-contract.md.
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, prompts, showPane, startAtoll, threadPane } from './atoll';
@@ -18,7 +18,7 @@ const rowOf = (page: Page, bot: string, threadID: string) =>
     .getByRole('listitem')
     .filter({ has: page.locator(`a[href$="/threads/${threadID}"]`) });
 
-test('one helper: one line under the boss thread with its name and step; in its own Bot pane a Running row for the boss', async ({
+test('one helper: one line under the boss thread with its name and step; in its own Bot pane no row while it runs', async ({
   page,
 }) => {
   const { poteto, bots, boss, thread } = await bossHandsOff(m, page, [['Tester', prompts.hang]]);
@@ -31,12 +31,8 @@ test('one helper: one line under the boss thread with its name and step; in its 
   await expect(rowOf(page, 'Poteto', thread('Tester'))).toHaveCount(0);
 
   await showPane(page, m, bots.Tester.id, 'Tester');
-  const helper = rowOf(page, 'Tester', thread('Tester'));
-  await expect(helper).toHaveAttribute('data-marker', 'running');
-  await expect(helper).toContainText('for Poteto');
-  await expect(
-    threadPane(page, 'Tester').getByRole('list', { name: 'Running', exact: true }),
-  ).toContainText('for Poteto');
+  await expect(threadPane(page, 'Tester')).toBeVisible();
+  await expect(rowOf(page, 'Tester', thread('Tester'))).toHaveCount(0);
 
   const summaries: { threads?: { id: string; parent_thread_id?: string }[] }[] = await api(
     m,
@@ -61,7 +57,7 @@ test('two helpers: still one line, naming both', async ({ page }) => {
   for (const name of ['Tester', 'Reviewer']) {
     await expect(rowOf(page, 'Poteto', thread(name))).toHaveCount(0);
     await showPane(page, m, bots[name].id, name);
-    await expect(rowOf(page, name, thread(name))).toContainText('for Poteto');
+    await expect(rowOf(page, name, thread(name))).toHaveCount(0);
     await showPane(page, m, poteto.id, 'Poteto');
   }
 });
