@@ -280,7 +280,9 @@ func TestGitHub_RejectedTokenNeedsSignIn(t *testing.T) {
 	}
 
 	f.gh.set(func() { f.gh.rejectUser = true })
+	rejectedFrom := time.Now()
 	done, _ := f.probe(t, b)
+	rejectedTo := time.Now()
 	if done.Status != "failed" || !strings.Contains(done.Error, "GitHub needs sign-in") {
 		t.Fatalf("run with a rejected token: %+v, want status failed and the error \"GitHub needs sign-in\"", done)
 	}
@@ -297,6 +299,8 @@ func TestGitHub_RejectedTokenNeedsSignIn(t *testing.T) {
 	if one.Status != "needs_sign_in" {
 		t.Fatalf("GET /api/connections/%s: %+v, want needs_sign_in", id, one)
 	}
+	wantSignedOutAt(t, f.s, id, rejectedFrom, rejectedTo)
+	wantSignInLost(t, f.m, f.gh, id, b.ID, f.gh.URL+"/user", true)
 
 	f.gh.set(func() { f.gh.rejectUser = false })
 	if got := f.gh.signIn(t, f.s, "/api/connections/github", map[string]string{"connection_id": id}); got != id {
@@ -309,6 +313,9 @@ func TestGitHub_RejectedTokenNeedsSignIn(t *testing.T) {
 	f.s.do(t, "GET", "/api/connections", nil, &conns, 200)
 	if len(conns) != 1 || conns[0].ID != id || conns[0].Status != "connected" {
 		t.Fatalf("GET /api/connections after sign in again: %+v, want only %s connected", conns, id)
+	}
+	if c := connectionJSON(t, f.s, id); c["signed_out_at"] != nil {
+		t.Errorf("connection after sign in again: %v, want no signed_out_at", c)
 	}
 	var got struct {
 		Connections []string `json:"connections"`

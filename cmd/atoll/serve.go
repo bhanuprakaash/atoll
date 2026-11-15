@@ -47,7 +47,6 @@ func serve(ctx context.Context, token string, args []string, w io.Writer) error 
 			cancel()
 		}()
 	}
-	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	if os.Getenv("ATOLL_SECRET_STORE_UNAVAILABLE") != "" {
 		keyring.MockInitWithError(errors.New("secret store unavailable"))
 	}
@@ -55,6 +54,13 @@ func serve(ctx context.Context, token string, args []string, w io.Writer) error 
 	if err != nil {
 		return err
 	}
+	logFile, err := openServerLog(data)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = logFile.Close() }()
+	log := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stderr, logFile), nil))
+	slog.SetDefault(log)
 	if err := writeClaudeShellPrefix(data); err != nil {
 		return err
 	}
@@ -216,4 +222,27 @@ func writeClaudeShellPrefix(data string) error {
 		return err
 	}
 	return nil
+}
+
+// _serverLogMax is the size past which a start moves server.log to server.log.1.
+const _serverLogMax = 10 << 20
+
+// openServerLog opens <data>/logs/server.log for append: the Mac app's sidecar has no other place
+// its stderr lands.
+func openServerLog(data string) (*os.File, error) {
+	dir := filepath.Join(data, "logs")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("create log folder: %w", err)
+	}
+	path := filepath.Join(dir, "server.log")
+	if fi, err := os.Stat(path); err == nil && fi.Size() > _serverLogMax {
+		if err := os.Rename(path, path+".1"); err != nil {
+			return nil, fmt.Errorf("rotate server log: %w", err)
+		}
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open server log: %w", err)
+	}
+	return f, nil
 }

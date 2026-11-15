@@ -6,6 +6,7 @@ export type Connection = {
   kind: 'gitlab' | 'github';
   instance_url: string;
   status: 'pending' | 'connected' | 'needs_sign_in';
+  signed_out_at?: string;
 };
 
 export type DeviceFlow = {

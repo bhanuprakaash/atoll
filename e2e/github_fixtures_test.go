@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	_githubClientID = "Ov23li5N8B8tlXHi1Rza"
-	_githubPrompt   = "Check what this run has for GitHub."
+	_fakeGitHubRequestID = "E2E0:1397:5EED:401" // X-GitHub-Request-Id of every 401
+	_githubClientID      = "Ov23li5N8B8tlXHi1Rza"
+	_githubPrompt        = "Check what this run has for GitHub."
 )
 
 type githubMCPRequest struct{ Auth, Method, Tool string }
@@ -170,6 +171,7 @@ func (g *fakeGitHub) authorised(header string) bool {
 func (g *fakeGitHub) user(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !g.authorised(r.Header.Get("Authorization")) {
+		w.Header().Set("X-GitHub-Request-Id", _fakeGitHubRequestID)
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = fmt.Fprint(w, `{"message":"Bad credentials","status":"401"}`)
 		return

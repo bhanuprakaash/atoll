@@ -3,6 +3,7 @@ package e2e
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // Contract: pr-wake-contract.md.
@@ -25,6 +26,31 @@ func TestPRWake_MergedWakesTheBot(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A 401 on the watcher's reads marks the connection needs_sign_in, logs one `GitHub sign-in lost`
+// line and sets signed_out_at; more reads while signed out log no more lines.
+func TestPRWake_RejectedTokenLogsSignInLost(t *testing.T) {
+	f := newPRWakeFixture(t, "claude")
+	f.openPR(t, 1)
+	var conns []connectionInfo
+	f.s.do(t, "GET", "/api/connections", nil, &conns, 200)
+	if len(conns) != 1 || conns[0].Status != "connected" {
+		t.Fatalf("GET /api/connections: %+v, want one connected", conns)
+	}
+	id := conns[0].ID
+
+	from := time.Now()
+	f.gh.set(func() { f.gh.rejectUser = true })
+	eventually(t, 30*time.Second, "the watcher marks the connection needs_sign_in", func() bool {
+		var one connectionInfo
+		f.s.do(t, "GET", "/api/connections/"+id, nil, &one, 200)
+		return one.Status == "needs_sign_in"
+	})
+	to := time.Now()
+	time.Sleep(time.Second) // ten more watcher intervals (100ms)
+	wantSignedOutAt(t, f.s, id, from, to)
+	wantSignInLost(t, f.m, f.gh, id, f.boss.ID, f.gh.URL+"/repos/octo/hello/", false)
 }
 
 func TestPRWake_ClosedUnmergedWakesTheBot(t *testing.T) {
