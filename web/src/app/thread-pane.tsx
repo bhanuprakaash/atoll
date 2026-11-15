@@ -10,12 +10,7 @@ import { useBots, type Bot, type SidebarThread } from '@/modules/bots/api/bots';
 import { useGroups } from '@/modules/bots/api/groups';
 import { BotMenu } from '@/modules/bots/components/bot-menu';
 import { ThreadSection } from '@/modules/bots/components/thread-tree';
-import {
-  isLiveHelper,
-  nowSections,
-  threadSections,
-  workersByBoss,
-} from '@/modules/bots/utils/thread-tree';
+import { nowSections, threadSections, workersByBoss } from '@/modules/bots/utils/thread-tree';
 import {
   useCloseThread,
   usePinThread,
@@ -113,7 +108,6 @@ function NowPane({ bots, openThreadId }: { bots: Bot[]; openThreadId?: string })
             threads={threads}
             openThreadId={openThreadId}
             workers={workers}
-            bosses={new Map()}
             owners={owners}
           />
         ))}
@@ -148,12 +142,6 @@ function BotPane({
   const [query, setQuery] = useState('');
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const workers = workersByBoss(bots);
-  const bosses = new Map(
-    (bot.threads ?? []).filter(isLiveHelper).flatMap((t) => {
-      const boss = bots.find((b) => b.threads?.some((x) => x.id === t.parent_thread_id));
-      return boss ? [[t.id, boss.name] as const] : [];
-    }),
-  );
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const matching = (bot.threads ?? []).filter((t) => matchesQuery(t, words));
   const sections = threadSections(matching, openThreadId);
@@ -231,7 +219,6 @@ function BotPane({
             botId={bot.id}
             openThreadId={openThreadId}
             workers={workers}
-            bosses={bosses}
             onPinThread={(thread) => setPinned(thread, !thread.pinned)}
             onCloseThread={(id) => close.mutate(id)}
             onRenameThread={(id, title) => rename.mutate({ id, title })}

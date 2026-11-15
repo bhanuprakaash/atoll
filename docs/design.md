@@ -1610,8 +1610,8 @@ Voice
     creatures, names and the step of the one that acted last, or the one that needs the person
     first with `Needs you`, which shows nowhere else. Clicking it opens the boss thread at its
     helpers panel (`Working with {Boss}`).
-  - In the helper Bot's own pane a running helper thread is a Running row reading `for {Boss}`.
-    A finished helper thread and a merged thread the watcher hides (`hidden`) are rows under Recent.
+  - In the helper Bot's own pane a running helper thread has no row; only the boss thread's helper
+    line shows it (with `Needs you`). A finished helper thread and a merged thread the watcher hides (`hidden`) are rows under Recent.
     *Every open thread has a row; the hiding existed to save the 3 slots.*
   - Width: the pane is 284 px by default, dragged on its right edge between 240 px and 420 px;
     double-click on the edge resets it; Left and Right arrows on the focused edge move it 16 px.

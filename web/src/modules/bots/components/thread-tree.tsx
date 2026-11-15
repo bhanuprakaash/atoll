@@ -157,7 +157,6 @@ export function ThreadSection({
   botId,
   openThreadId,
   workers,
-  bosses,
   owners,
   onPinThread,
   onCloseThread,
@@ -168,7 +167,6 @@ export function ThreadSection({
   botId?: string;
   openThreadId?: string;
   workers: Map<string, Worker[]>;
-  bosses: Map<string, string>;
   owners?: Map<string, { bot: Bot; note: string }>;
   onPinThread?: (thread: SidebarThread) => void;
   onCloseThread?: (threadId: string) => void;
@@ -235,11 +233,6 @@ export function ThreadSection({
                         </span>
                       )}
                     </span>
-                    {bosses.get(thread.id) && (
-                      <span className="flex-none text-xs text-muted">
-                        for {bosses.get(thread.id)}
-                      </span>
-                    )}
                     <span
                       className={`pointer-events-none flex flex-none items-center gap-2 pr-2 ${thread.helper ? '' : 'group-focus-within:hidden group-hover:hidden'}`}
                     >
