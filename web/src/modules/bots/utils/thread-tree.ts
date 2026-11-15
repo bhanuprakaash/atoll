@@ -15,16 +15,12 @@ const sectionOf = (t: SidebarThread) =>
         : 'Recent';
 
 // threadSections splits a Bot's threads into the pane's sections, keeping the server's order and
-// leaving out the empty ones. The open thread is never Replied; a live helper thread is Running,
-// its Needs you shows on its boss thread's helper line.
+// leaving out the empty ones. The open thread is never Replied; a live helper thread is no row (its
+// boss thread's helper line shows it, with its Needs you).
 export function threadSections(all: SidebarThread[], openId: string | undefined) {
-  const threads = all.map((t) =>
-    isLiveHelper(t)
-      ? { ...t, state: 'running' as const }
-      : t.id === openId && t.state === 'new'
-        ? { ...t, state: '' as const }
-        : t,
-  );
+  const threads = all
+    .filter((t) => !isLiveHelper(t))
+    .map((t) => (t.id === openId && t.state === 'new' ? { ...t, state: '' as const } : t));
   return sectionLabels
     .map((label) => ({ label, threads: threads.filter((t) => sectionOf(t) === label) }))
     .filter((section) => section.threads.length > 0);
