@@ -71,7 +71,7 @@ e2e-go: ui
 	e2e/with-secret-store go test -count=1 -timeout=15m ./e2e
 
 e2e-ui: ui e2e/ui/node_modules
-	cd e2e/ui && $(PNPM) exec playwright test
+	cd e2e/ui && $(PNPM) exec playwright test $(if $(SHARD),--shard=$(SHARD))
 
 e2e/ui/node_modules: e2e/ui/pnpm-lock.yaml
 	cd e2e/ui && $(PNPM) install --frozen-lockfile && $(PNPM) exec playwright install chromium
