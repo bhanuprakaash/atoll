@@ -54,7 +54,7 @@ observers read it. Apply it yourself when triaging and reviewing.
    Acceptance lines anyone can observe, Out of scope). Group small findings that touch the same files into one
    ticket. Check each against the code before filing.
 2. **Kick off.** In a new thread with the lead (repo atoll), say which tickets, the order, and the house rules:
-   the owner's principles that apply (from owner-taste.md), test PR by one coder and fix PR by another, reviewer checks both, at most 3 helpers busy, only targeted specs
+   the owner's principles that apply (from owner-taste.md), `test:` commits by one coder, the fix commits by another, in one PR, reviewer checks both, at most 3 helpers busy, only targeted specs
    locally (CI runs `make e2e`), merges can lag so keep moving, send a status when a PR is ready for review.
 3. **Observers, live.** Start five Sonnet subagents in the background (delegate_task, role review), one per lens
    (backend, ui, product, bots, llm), each told to read `references/observer-brief.md`, `references/owner-taste.md`
@@ -68,9 +68,9 @@ observers read it. Apply it yourself when triaging and reviewing.
    UI. Nudge the lead when slots sit idle.
 6. **Proposals, every 20 minutes.** Read `$REEF_HOME/findings/proposals.md`: check each, file the bugs as tickets
    (grouped by file), bring design changes to the owner with a screenshot in Reef's look, and tell the lead.
-6b. **Review.** For each PR the lead says is ready: read the diff, check CI (an e2e test PR fails only on its new test),
+6b. **Review.** For each PR the lead says is ready: read the diff, check CI (the e2e job fails only on the new tests until the fix commits land),
    comment on the PR like a colleague, send fixes back through the lead. Tell the owner which PRs are ready, with
-   checks. Test PRs merge before fix PRs (test-guard). Tell the lead when the owner merged, since nothing wakes it.
+   checks. test-guard is advisory; review the whole PR. Tell the lead when the owner merged, since nothing wakes it.
 7. **Integrate without waiting.** Merge reviewed PR branches into `dogfood/integration` (`scripts/rebuild.sh
    origin/<branch> …`); Bots keep branching from `origin/main`, so PRs stay clean.
 8. **Feed misses back.** When the owner (or you) finds something no observer reported, write why each lens missed it
@@ -107,6 +107,6 @@ observers read it. Apply it yourself when triaging and reviewing.
 - Evidence before logging: reproduce or capture the log/DB state; observers' findings get a spot check.
 
 ## Handoff comment (post on the tracking issue at round end, or when asked to hand off)
-`## Handoff <date>` then: round and state; tickets with their test PR, fix PR and status; PRs ready for the owner;
+`## Handoff <date>` then: round and state; tickets with their PR and status; PRs ready for the owner;
 decisions made and why; what the lead is doing; Bot names and ids (`sqlite3 $REEF_HOME/data/atoll.db "select
 id,name,provider,mode from bots"`); integration branch tip; next steps.

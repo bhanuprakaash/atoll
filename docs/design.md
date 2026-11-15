@@ -2141,14 +2141,20 @@ message and the boss's brief all render alike.
 
 Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloat the suite. So:
 
-- The contract is a small black-box suite in `e2e/` that builds and drives the real binary. Its
-  tests come from a ticket's acceptance lines, in their own commit, before the code, written by the
-  user or a separate session. The implementing agent never edits them; CI is the referee.
+- The contract is a small black-box suite in `e2e/` that builds and drives the real binary. There
+  are no contract files: the interface lives in the test, the rules in this document, the
+  acceptance lines in the issue, and how e2e works in `e2e/README.md`.
+- One PR per ticket. The tests come from the ticket's acceptance lines, in `test:` commits that
+  touch only `e2e/`, first in the PR, written by the user or a separate session. The implementing
+  agent never edits the locked files. CI is the referee.
+- Locked: `e2e/*_test.go`, `e2e/ui/*.ts` (specs and harness), `e2e/with-secret-store`,
+  `e2e/fakes/`. Free: `e2e/testdata/` and unit tests outside `e2e/`.
 - Unit tests are for fiddly logic, as table cases. They run shuffled with a 60s timeout.
-- `test-guard` fails a PR that mixes `e2e/` with other code, deletes or renames a test file, adds a
-  skip or `.only(`, or edits `.github/workflows/`, the guard or `scripts/docs-only` (which decides
-  when CI skips e2e). CI runs the base branch's copy of the guard. Only the owner can merge such a
-  PR, past the red check through branch protection.
+- `test-guard` checks each commit: one that touches a locked file must have a `test:` subject and
+  touch only `e2e/`. It also fails a PR that deletes or renames a test file, adds a skip or
+  `.only(`, or edits `.github/workflows/`, the guard or `scripts/docs-only` (which decides when CI
+  skips e2e). CI runs the base branch's copy of the guard. It is advisory: the owner reviews the
+  whole PR and merges past a red check through branch protection.
 - Slice verification runs mutation testing (gremlins) on changed packages; a surviving mutant is a
   finding.
 

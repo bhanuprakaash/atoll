@@ -1,7 +1,7 @@
 # Round N: live observation (read observer-brief.md first; all its rules apply)
 
 Bots are fixing this round's tickets in parallel. The lead Bot delegates to the coders, comment-sicko and reviewer;
-each ticket is a test PR then a fix PR. Reef runs from the local integration build.
+each ticket is one PR: `test:` commits first, then the fix. Reef runs from the local integration build.
 
 ## Watch live, not after
 - Loop until the file $REEF_HOME/round-<N>.done exists. Each pass (about every 2 minutes; use
