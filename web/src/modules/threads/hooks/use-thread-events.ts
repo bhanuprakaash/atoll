@@ -41,10 +41,7 @@ export function useThreadEvents(threadId: string) {
     void opened();
     const source = new EventSource(`/api/threads/${threadId}/events`);
     const refresh = () => {
-      // Invalidating reuses a first read still on its way, which may say the run is running.
-      void queryClient
-        .cancelQueries({ queryKey: ['run'] })
-        .then(() => queryClient.invalidateQueries({ queryKey: ['run'] }));
+      // Invalidating reuses a first read still on its way, which may predate what the event reports.
       const [messages] = [
         ['messages', threadId],
         ['thread', threadId],
@@ -52,7 +49,12 @@ export function useThreadEvents(threadId: string) {
         ['bots'],
         ['memory'],
         ['changes', threadId],
-      ].map((queryKey) => queryClient.invalidateQueries({ queryKey }));
+        ['run'],
+      ].map((queryKey) =>
+        queryClient
+          .cancelQueries({ queryKey })
+          .then(() => queryClient.invalidateQueries({ queryKey })),
+      );
       return messages;
     };
     const settle = (id: string, refreshed: Promise<void>) =>

@@ -446,7 +446,10 @@ export function ThreadView({
   const queued = thread?.queued ?? [];
   const unsent = queued.filter((q) => !messages.some((m) => m.id === q.id));
   useEffect(() => {
-    void queryClient.invalidateQueries({ queryKey: ['messages', threadId] });
+    const queryKey = ['messages', threadId];
+    void queryClient
+      .cancelQueries({ queryKey })
+      .then(() => queryClient.invalidateQueries({ queryKey }));
   }, [queryClient, threadId, thread?.run_id, queued.length]);
   const create = useCreateThreadWithMessage(botId);
   const send = useSendMessage(threadId);
