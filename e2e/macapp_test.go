@@ -545,6 +545,12 @@ func TestRun_StopWhileWaiting(t *testing.T) {
 			if st := es[len(es)-1].Data["status"]; st != "stopped" {
 				t.Errorf("run_finished status %v after stopping a waiting run, want stopped", st)
 			}
+			closed := slices.ContainsFunc(es, func(e event) bool { return e.Type == "approval_closed" && asString(e.Data["id"]) == id })
+			if !closed {
+				if got := nextOf(t, ev, r.ID, "approval_closed"); got != id {
+					t.Errorf("approval_closed id %q, want %q", got, id)
+				}
+			}
 			if a := s.thread(t, th.ID).Approval; a != nil {
 				t.Errorf("thread still shows approval %+v after stop", a)
 			}
@@ -572,6 +578,14 @@ func TestRestart_ThreadRecovers(t *testing.T) {
 			got := s.thread(t, th.ID)
 			if got.RunID != r.ID || got.RunStatus != "failed" || got.Approval != nil || got.Title != threadTitle(_keepPrompt) {
 				t.Errorf("thread after a restart: %+v; want run %s failed, no approval, title %q", got, r.ID, threadTitle(_keepPrompt))
+			}
+			if failed := s.run(t, r.ID); strings.TrimSpace(failed.Error) == "" {
+				t.Errorf("run %s after a restart: status %q, error %q; want failed with a reason", r.ID, failed.Status, failed.Error)
+			}
+			var msgs []message
+			s.do(t, "GET", "/api/threads/"+th.ID+"/messages", nil, &msgs, http.StatusOK)
+			if !slices.ContainsFunc(msgs, func(m message) bool { return m.Role == "user" && m.Text == _writePrompt }) {
+				t.Errorf("thread messages after a restart %+v, want the user message kept", msgs)
 			}
 			var list []threadInfo
 			s.do(t, "GET", "/api/bots/"+b.ID+"/threads", nil, &list, http.StatusOK)

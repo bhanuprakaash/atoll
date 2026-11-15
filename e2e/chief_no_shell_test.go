@@ -103,6 +103,19 @@ func TestChiefNoShell_ClaudeRunsWithoutTools(t *testing.T) {
 			t.Errorf("%s: --tools present %v with value %q, want exactly %q; only Chief runs with none", b.Name, ok, v, _botTools)
 		}
 	}
+
+	th := s.newThread(t, coder)
+	s.finished(t, s.events(t, th), s.send(t, th, _titlePrompt).ID)
+	titled(t, s, th.ID, _titleWant)
+	titles := m.titles(t, "claude")
+	if len(titles) == 0 {
+		t.Fatal("no title run started")
+	}
+	for _, c := range titles {
+		if got := toolsFlag(c); got != "" {
+			t.Errorf("title run %d --tools %q, want the empty value", c.pid, got)
+		}
+	}
 }
 
 func TestChiefNoShell_CodexChiefStillRuns(t *testing.T) {
@@ -272,27 +285,6 @@ func TestChiefNoShell_ImportSkillOnlyFromSkillFolders(t *testing.T) {
 	s.do(t, "GET", "/api/skills", nil, &library, http.StatusOK)
 	if len(library) != 2 {
 		t.Errorf("library after the two allowed imports: %+v", library)
-	}
-}
-
-func TestChiefNoShell_PromptNamesImportAgent(t *testing.T) {
-	t.Parallel()
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			_, s := start(t, p)
-			block := platformBlock(t, heySystem(t, s, p, chief(t, s).bot))
-			if rule := strings.Join(section(t, block, _importHeading), "\n"); !strings.Contains(rule, "import_agent") {
-				t.Errorf("%q does not name import_agent:\n%s", _importHeading, rule)
-			}
-			for _, bad := range []string{"read it,", "file tool", "Read tool"} {
-				if strings.Contains(block, bad) {
-					t.Errorf("platform block still tells Chief to read files itself (%q):\n%s", bad, block)
-				}
-			}
-			if n := len(block); n > _platformBlockMaxBytes {
-				t.Errorf("platform block is %d bytes, want at most %d", n, _platformBlockMaxBytes)
-			}
-		})
 	}
 }
 

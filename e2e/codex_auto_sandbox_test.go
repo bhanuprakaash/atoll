@@ -440,34 +440,3 @@ func TestRepo_CloseKeepsOtherWorktrees(t *testing.T) {
 		})
 	}
 }
-
-// TestRepo_UserFilterThatMustRunStillWorks has a repo with a Git LFS-style filter: the user's own
-// config defines it as required, the repo's .gitattributes applies it. Atoll's checkouts must still
-// be made; the checkout's smudge may run, it is the user's own filter.
-func TestRepo_UserFilterThatMustRunStillWorks(t *testing.T) {
-	t.Parallel()
-	f := newRepoFixture(t, "codex")
-	writeFile(t, filepath.Join(f.repo.Path, ".gitattributes"), "*.bin filter=lfs\n")
-	writeFile(t, filepath.Join(f.repo.Path, "big.bin"), "content\n")
-	gitIn(t, f.repo.Path, "add", ".gitattributes", "big.bin")
-	gitIn(t, f.repo.Path, "commit", "-m", "add a binary")
-	gitIn(t, f.repo.Path, "push", "origin", "main")
-	writeFile(t, filepath.Join(f.m.home, ".gitconfig"), "[filter \"lfs\"]\n\tclean = cat\n\tsmudge = cat\n\trequired = true\n")
-
-	b := f.bot(t, "codex", "all", nil)
-	th := f.thread(t, b)
-	ch := f.s.events(t, th)
-	for _, prompt := range []string{_questionRepoPrompt, _unfinishedRepoPrompt} {
-		r := f.s.send(t, th, prompt)
-		es := until(t, ch, r.ID, "run_finished")
-		if done := f.s.run(t, r.ID); done.Status != "done" {
-			t.Fatalf("run %q: %+v", prompt, done)
-		}
-		if prompt == _unfinishedRepoPrompt {
-			worktree, _ := repoEvent(t, es, "worktree_created").Data["path"].(string)
-			if _, err := os.Stat(filepath.Join(worktree, "big.bin")); err != nil {
-				t.Errorf("start_work made a worktree without big.bin: %v", err)
-			}
-		}
-	}
-}

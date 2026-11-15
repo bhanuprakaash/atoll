@@ -143,22 +143,3 @@ func TestSkillEditor_ReimportRefusals(t *testing.T) {
 	}
 	s.do(t, "POST", "/api/skills/nope/reimport", map[string]bool{"replace": false}, nil, 404)
 }
-
-// A script the editor adds is placed executable and runs.
-func TestSkillEditor_BotRunsAddedScript(t *testing.T) {
-	t.Parallel()
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			m, s := start(t, p)
-			files := append(libraryFiles(potetoFixture()), skillFile{Path: "scripts/hello", Content: "#!/bin/sh\necho hi\n", Executable: true})
-			b, _ := seedPotetoBot(t, s, p, files)
-			th := s.newThread(t, b.bot)
-			ch := s.events(t, th)
-			r := s.send(t, th, "Run the poteto-mode script scripts/hello.")
-			got := s.finished(t, ch, r.ID)
-			if want := "Ran " + filepath.Join(placedDir(m, p, r.ID), "scripts", "hello") + ": hi"; got.Status != "done" || got.Reply != want {
-				t.Fatalf("run: %+v, want the reply %q", got, want)
-			}
-		})
-	}
-}

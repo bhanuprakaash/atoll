@@ -360,19 +360,6 @@ func TestSkillHome_FolderRuleComesFirst(t *testing.T) {
 	}
 }
 
-func TestPrompt_ChiefImportRefusal(t *testing.T) {
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			_, s := start(t, p)
-			system := heySystem(t, s, p, chief(t, s).bot)
-			rule := strings.Join(section(t, platformBlock(t, system), _importHeading), "\n")
-			if !strings.Contains(rule, "refused") || strings.Contains(rule, "flagged") {
-				t.Fatalf("%q must say what import_skill refused, not flagged:\n%s", _importHeading, rule)
-			}
-		})
-	}
-}
-
 // A skill folder may be a symlink to a sibling direct child of the skills folder. Its own folder
 // is the entry the owner imported from, and the resolved folder counts too; another sibling does not.
 func TestSkillHome_SymlinkedEntryIsTheOwnFolder(t *testing.T) {

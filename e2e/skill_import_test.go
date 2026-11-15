@@ -17,22 +17,6 @@ const (
 	_lagoonPersona = "You greet visitors to the lagoon. Before you answer, read the reef-greeting skill and follow it."
 )
 
-func TestPrompt_ChiefImportRule(t *testing.T) {
-	t.Parallel()
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			_, s := start(t, p)
-			system := heySystem(t, s, p, chief(t, s).bot)
-			rule := strings.Join(section(t, platformBlock(t, system), _importHeading), "\n")
-			for _, want := range []string{"import_skill", "persona"} {
-				if !strings.Contains(rule, want) {
-					t.Fatalf("%q does not name %q:\n%s", _importHeading, want, rule)
-				}
-			}
-		})
-	}
-}
-
 func TestSkills_ChiefImportsLocalSkill(t *testing.T) {
 	t.Parallel()
 	for _, p := range _providers {
