@@ -8,6 +8,10 @@ type Drawing = {
   colour: string;
   motion: string;
   eyes: readonly [number, number, number];
+  // body, face and upright draw a look that is not the shared pebble: Chief as the Reef logo.
+  body?: string;
+  face?: string;
+  upright?: boolean;
   back?: Trait;
   front?: Trait;
 };
@@ -34,11 +38,14 @@ const drawings = {
   jellyfish: {
     colour: 'var(--color-jellyfish)',
     motion: 'bob',
-    eyes: [31, 42, 25],
+    eyes: [38, 46, 21],
+    body: 'M8 36 a24 24 0 0 1 48 0 q0 6 -6 6 H14 q-6 0 -6 -6 z',
+    face: 'M37 20 L38.5 28 M45 19 L46.5 27',
+    upright: true,
     back: {
-      d: 'M17 50 q-4 6 0 10 q4 4 0 8 M27 54 q3 5 0 9 M37 54 q-3 5 0 9 M47 50 q4 6 0 10 q-4 4 0 8',
+      d: 'M18 44 q-4 6 0 13 M32 44 q4 6 0 13 M46 44 q-4 6 0 13',
       stroke: 'body',
-      width: 4,
+      width: 5.5,
       motion: 'sway',
     },
   },
@@ -172,6 +179,7 @@ export function Creature({
   const drawing: Drawing = drawings[look] ?? drawings.jellyfish;
   const paints = { ...fixed, ...(state === 'asleep' ? asleep : { body: drawing.colour }) };
   const moving = state === 'working' || state === 'idle';
+  const still = state === 'failed' || state === 'asleep';
   const motion =
     state === 'working'
       ? ['read', 'search', 'memory'].includes(kind)
@@ -204,7 +212,7 @@ export function Creature({
       aria-label={`${lookName(look)}, ${state.replace('_', ' ')}`}
       className="shrink-0 overflow-visible"
     >
-      <g transform={state === 'failed' ? undefined : 'rotate(-8 32 34)'}>
+      <g transform={state === 'failed' || drawing.upright ? undefined : 'rotate(-8 32 34)'}>
         <g className={moving ? `creature-${drawing.motion}` : undefined}>
           <g
             className={
@@ -214,14 +222,18 @@ export function Creature({
             }
           >
             {drawing.back && trait(drawing.back)}
-            <path d={pebble} fill={paints.body} />
+            <path d={drawing.body ?? pebble} fill={paints.body} />
             {drawing.front && trait(drawing.front)}
             <g className={moving ? `creature-${motion}` : undefined}>
               <path
-                d={eyePath(state, drawing.eyes)}
+                d={
+                  still
+                    ? eyePath(state, drawing.eyes)
+                    : (drawing.face ?? eyePath(state, drawing.eyes))
+                }
                 fill="none"
                 stroke={paints.eye}
-                strokeWidth={state === 'failed' || state === 'asleep' ? 4 : 5}
+                strokeWidth={still || drawing.face ? 4 : 5}
                 strokeLinecap="round"
               />
             </g>
