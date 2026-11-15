@@ -183,6 +183,11 @@ func TestToolCalls_Stream(t *testing.T) {
 	}
 }
 
+// _chance is the window an absence check waits after the event that gave the thing its chance,
+// where no log line, counter or process exit says the server decided: four fake tool calls, well
+// past the 200 ms wake window.
+const _chance = 4 * _pace
+
 // quiet fails if run gets an event in d.
 func quiet(t *testing.T, ch <-chan event, runID string, d time.Duration) {
 	t.Helper()

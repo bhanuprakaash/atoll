@@ -229,7 +229,7 @@ func TestQueue_EditAndRemove(t *testing.T) {
 
 			s.do(t, "POST", "/api/runs/"+busy.ID+"/stop", nil, nil, http.StatusNoContent)
 			s.finished(t, ev, busy.ID)
-			time.Sleep(4 * _pace)
+			time.Sleep(_chance)
 			if got := queuedTexts(t, s, th.ID); len(got) != 1 || got[0] != edited {
 				t.Errorf("thread queued %q after the person's Stop, want [%q] still queued", got, edited)
 			}

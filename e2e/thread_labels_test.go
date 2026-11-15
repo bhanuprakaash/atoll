@@ -124,7 +124,7 @@ func TestThreadLabels_HelperThreadIsNeverReplied(t *testing.T) {
 			if h := settled(t, s, helper); h.Status != "done" || h.Reply != _reportReply {
 				t.Fatalf("helper run: status %q, reply %q, error %q; want done, %q", h.Status, h.Reply, h.Error, _reportReply)
 			}
-			time.Sleep(4 * _pace)
+			quietBoss(t, s, boss.ID, tester.ID, 1)
 			if got := sidebarState(t, s, tester.ID, helper); got == "new" {
 				t.Errorf("helper thread state %q after its reply, want it never Replied", got)
 			}

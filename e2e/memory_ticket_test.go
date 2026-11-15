@@ -114,12 +114,12 @@ func TestMemoryTicket_ClosedIssueRetiresItems(t *testing.T) {
 
 			reads7, _ := f.gh.issueReads(7)
 			reads8, _ := f.gh.issueReads(8)
-			time.Sleep(time.Second)
+			eventually(t, 30*time.Second, "the server reads open issue #8 again", func() bool {
+				now, _ := f.gh.issueReads(8)
+				return now >= reads8+3
+			})
 			if now, _ := f.gh.issueReads(7); now != reads7 {
 				t.Errorf("issue #7 read %d more times after its items were retired, want none", now-reads7)
-			}
-			if now, _ := f.gh.issueReads(8); now <= reads8 {
-				t.Errorf("issue #8, still open with an accepted item, was not read again")
 			}
 
 			f.s.do(t, "POST", "/api/memory/"+d.ID+"/retire", nil, nil, 204)

@@ -232,7 +232,7 @@ func TestWake_BusyThreadsDeliverLater(t *testing.T) {
 			if h := settled(t, s, stopped); h.ID != running || h.Status != "stopped" {
 				t.Fatalf("helper run %s after stop: %s %q; want stopped", running, h.ID, h.Status)
 			}
-			time.Sleep(4 * _pace)
+			time.Sleep(_chance)
 			if got := fromBot(t, s, boss.ID, tester.ID); len(got) != 0 {
 				t.Errorf("messages from Tester %+v while the boss's run %s waits, want none until it ends", got, busy.ID)
 			}
@@ -265,7 +265,11 @@ func TestWake_BusyThreadsDeliverLater(t *testing.T) {
 				t.Fatalf("two continues in a row: replies %q, want both accepted", lines)
 			}
 			going := asking(t, s, helper)
-			time.Sleep(4 * _pace)
+			eventually(t, 15*time.Second, "the server holds the second continue for the helper's going run", func() bool {
+				return slices.ContainsFunc(slices.Collect(strings.Lines(s.log.String())), func(l string) bool {
+					return strings.Contains(l, `"msg":"queued"`) && strings.Contains(l, helper)
+				})
+			})
 			if th := s.thread(t, helper); th.RunID != going.RunID || th.RunStatus != "waiting" {
 				t.Errorf("helper's latest run %s is %q after a second continue, want %s still waiting", th.RunID, th.RunStatus, going.RunID)
 			}
@@ -368,7 +372,7 @@ func TestWake_SurvivesRestart(t *testing.T) {
 			if h := settled(t, s, stopped); h.ID != running || h.Status != "stopped" {
 				t.Fatalf("helper run %s after stop: %s %q; want stopped", running, h.ID, h.Status)
 			}
-			time.Sleep(4 * _pace)
+			time.Sleep(_chance)
 			if got := fromBot(t, s, boss.ID, tester.ID); len(got) != 0 {
 				t.Fatalf("messages from Tester %+v while the boss's run %s waits, want none until it ends", got, busy.ID)
 			}
@@ -427,7 +431,7 @@ func TestWake_CloseBossStopsHelpers(t *testing.T) {
 			if got := s.finished(t, ev, busy.ID); got.Status != "stopped" {
 				t.Fatalf("boss's run after stop: status %q, want stopped", got.Status)
 			}
-			time.Sleep(4 * _pace)
+			time.Sleep(_chance)
 			if th := getThread(t, s, helper); th.RunID != run || th.RunStatus != "running" {
 				t.Errorf("helper's latest run %s is %q after the boss's run was stopped, want %s still running", th.RunID, th.RunStatus, run)
 			}

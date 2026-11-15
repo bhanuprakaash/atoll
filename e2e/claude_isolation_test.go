@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -348,6 +349,7 @@ func TestClaudeIsolation_ShellPrefixReplacedWholeOnRestart(t *testing.T) {
 
 	// A reader opens the path all through the start. A write in place is seen empty or cut short.
 	stop, done := make(chan struct{}), make(chan int)
+	var read atomic.Int64
 	go func() {
 		reads := 0
 		defer func() { done <- reads }()
@@ -363,10 +365,12 @@ func TestClaudeIsolation_ShellPrefixReplacedWholeOnRestart(t *testing.T) {
 				return
 			}
 			reads++
+			read.Store(int64(reads))
 		}
 	}()
 	m.serve(t)
-	time.Sleep(50 * time.Millisecond)
+	started := read.Load()
+	eventually(t, 15*time.Second, "the reader reads the script after the start", func() bool { return read.Load() > started })
 	close(stop)
 	if reads := <-done; reads == 0 {
 		t.Error("the reader never read the script")

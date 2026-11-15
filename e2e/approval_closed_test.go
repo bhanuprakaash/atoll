@@ -130,7 +130,7 @@ func openApprovals(t *testing.T, ch <-chan event, runID, want string) []string {
 	for {
 		var quiet <-chan time.Time
 		if seen {
-			quiet = time.After(4 * _pace)
+			quiet = time.After(_chance)
 		}
 		select {
 		case e, ok := <-ch:
