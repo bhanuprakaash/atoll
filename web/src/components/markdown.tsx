@@ -25,7 +25,7 @@ function Fence({ lang, source }: { lang: string; source: string }) {
 
 export function Markdown({ children, threadId }: { children: string; threadId?: string }) {
   return (
-    <div className="flex flex-col gap-3.5 break-words [&_li+li]:mt-3.5 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_pre]:overflow-auto">
+    <div className="flex flex-col gap-3 break-words [&_li+li]:mt-1 [&_li>:is(ul,ol)]:mt-1 [&>:is(h1,h2,h3,h4)]:-mb-1.5 [&>:is(h1,h2,h3,h4)]:mt-2 [&>:is(h1,h2,h3,h4):first-child]:mt-0 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_pre]:overflow-auto">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks]}
         urlTransform={(url, key) => (key === 'src' ? url : defaultUrlTransform(url))}
@@ -38,6 +38,9 @@ export function Markdown({ children, threadId }: { children: string; threadId?: 
             const source = code.children.map((c) => (c.type === 'text' ? c.value : '')).join('');
             return <Fence lang={lang} source={source.replace(/\n$/, '')} />;
           },
+          code: ({ children }) => (
+            <code className="rounded-control bg-tile px-1 text-[0.88em]">{children}</code>
+          ),
           table: ({ node, children }) => <SortTable node={node!}>{children}</SortTable>,
           ul: ({ node, children, className }) =>
             node && isTaskList(node) ? (
