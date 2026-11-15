@@ -340,7 +340,7 @@ export async function pickModel(
   ).click();
 }
 
-// sidebarRow is a Bot's row in the sidebar.
+// sidebarRow is a Bot's face on the rail.
 export function sidebarRow(page: Page, name: string) {
   return page
     .getByRole('navigation', { name: 'Bots' })
@@ -377,9 +377,28 @@ export async function seenText(page: Page) {
   return page.evaluate(() => (window as unknown as { __seen: string[] }).__seen.join('\n'));
 }
 
-// threadTree is the list of a Bot's threads under its row in the sidebar.
-export function threadTree(page: Page, bot: string) {
-  return page
+// threadPane is the thread pane beside the rail: a region named after the selected Bot, or "Now".
+export function threadPane(page: Page, name: string) {
+  return page.getByRole('region', { name, exact: true });
+}
+
+// showPane opens the Bot's New thread screen, which selects the Bot without opening a thread, so
+// its pane shows and none of its threads counts as seen.
+export async function showPane(page: Page, m: { url: string }, botID: string, name: string) {
+  await page.goto(`${m.url}/bots/${botID}/new`);
+  await expect(page.getByRole('heading', { name: `What should ${name} work on?` })).toBeVisible();
+  const pane = threadPane(page, name);
+  await expect(pane).toBeVisible();
+  return pane;
+}
+
+// nowPane opens Now from the rail and returns its pane.
+export async function nowPane(page: Page) {
+  await page
     .getByRole('navigation', { name: 'Bots' })
-    .getByRole('list', { name: `${bot} threads`, exact: true });
+    .getByRole('button', { name: /^Now\b/ })
+    .click();
+  const pane = threadPane(page, 'Now');
+  await expect(pane).toBeVisible();
+  return pane;
 }

@@ -166,7 +166,7 @@ type (
 		MCPServers        []string   `json:"mcp_servers"`
 		Delegates         []string   `json:"delegates"`
 		CanManagePlatform bool       `json:"can_manage_platform"`
-		// GroupID is the sidebar group, empty when Ungrouped. Only SetGroup writes it.
+		// GroupID is the sidebar group, empty when Ungrouped. Only SetGroup and PlaceBot write it.
 		GroupID string `json:"group_id,omitempty"`
 	}
 
@@ -228,6 +228,7 @@ type (
 		SnapshotRef     string     `json:"snapshot_ref"`
 		ClosedAt        *time.Time `json:"closed_at"`
 		Closed          bool       `json:"closed"`
+		Pinned          bool       `json:"pinned"`
 		Created         time.Time  `json:"created_at"`
 		LastActivity    time.Time  `json:"last_activity"`
 	}
@@ -341,7 +342,9 @@ const (
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake, mr_head, mr_base_woke, session_cost_usd"
+	_insertBot = "INSERT INTO bots (" + _botColumns + ", position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, " +
+		"(SELECT coalesce(max(position), 0) + 1 FROM bots))"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake, mr_head, mr_base_woke, session_cost_usd, pinned_at IS NOT NULL"
 	_messagePageSize = 50
 )
 
@@ -441,8 +444,7 @@ func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
 	if err != nil {
 		return Bot{}, err
 	}
-	_, err = s.db.ExecContext(ctx,
-		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", args...)
+	_, err = s.db.ExecContext(ctx, _insertBot, args...)
 	if err != nil {
 		return Bot{}, fmt.Errorf("insert bot: %w", err)
 	}
@@ -464,13 +466,12 @@ func (s *Store) Bot(ctx context.Context, id string) (Bot, error) {
 	return rows[0], nil
 }
 
-// Bots lists every Bot: Chief, then the pinned Bots in the order pinned, then the rest, oldest
-// first.
+// Bots lists every Bot: Chief, then the pinned Bots, then the rest, each in its position.
 func (s *Store) Bots(ctx context.Context) ([]Bot, error) {
 	return query(ctx, s.db,
 		"SELECT "+_botColumns+", pinned_at IS NOT NULL, coalesce(group_id, '') FROM bots "+
 			"WHERE removed = 0 "+
-			"ORDER BY id = 'chief' DESC, pinned_at IS NULL, pinned_at, rowid",
+			"ORDER BY id = 'chief' DESC, pinned_at IS NULL, position, rowid",
 		scanBot)
 }
 
@@ -499,11 +500,14 @@ type botCost struct {
 	usd float64
 }
 
-// SetPinned pins the Bot with id, or unpins it. Pinning a pinned Bot keeps its place.
+// SetPinned pins the Bot with id, or unpins it. Pinning puts it last in Pinned; pinning a pinned
+// Bot keeps its place.
 func (s *Store) SetPinned(ctx context.Context, id string, pinned bool) error {
 	stmt, args := "UPDATE bots SET pinned_at = NULL WHERE id = ? AND removed = 0", []any{id}
 	if pinned {
-		stmt = "UPDATE bots SET pinned_at = coalesce(pinned_at, ?) WHERE id = ? AND removed = 0"
+		stmt = "UPDATE bots SET pinned_at = coalesce(pinned_at, ?), position = CASE WHEN pinned_at IS NULL " +
+			"THEN (SELECT coalesce(max(position), 0) + 1 FROM bots) ELSE position END " +
+			"WHERE id = ? AND removed = 0"
 		args = []any{time.Now().UTC().UnixMicro(), id}
 	}
 	res, err := s.db.ExecContext(ctx, stmt, args...)
@@ -1146,34 +1150,71 @@ func (s *Store) SetGroupFolded(ctx context.Context, id string, folded bool) erro
 	return found(res, "group", id)
 }
 
-// MoveGroup swaps the group with the one above it (up) or below it; at the end it does nothing.
-func (s *Store) MoveGroup(ctx context.Context, id string, up bool) error {
+// MoveGroup puts the group before the group before, or last when before is empty.
+func (s *Store) MoveGroup(ctx context.Context, id, before string) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
-		ids, err := query(ctx, tx, "SELECT id FROM bot_groups ORDER BY position, rowid",
-			func(r *sql.Rows) (id string, err error) { return id, r.Scan(&id) })
+		return reposition(ctx, tx, "bot_groups", "1", id, before)
+	})
+}
+
+// PlaceBot puts the Bot in Pinned, or in the group groupID (Ungrouped when empty), before the
+// Bot before of that section, or last when before is empty. It wraps ErrNotFound for an unknown
+// Bot, group or before.
+func (s *Store) PlaceBot(ctx context.Context, id string, pinned bool, groupID, before string) error {
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx,
+			"UPDATE bots SET pinned_at = CASE WHEN ?1 THEN coalesce(pinned_at, ?2) END, "+
+				"group_id = nullif(?3, '') WHERE id = ?4 AND removed = 0 "+
+				"AND (?3 = '' OR EXISTS (SELECT 1 FROM bot_groups WHERE id = ?3))",
+			pinned, time.Now().UTC().UnixMicro(), groupID, id)
 		if err != nil {
-			return fmt.Errorf("list groups: %w", err)
+			return fmt.Errorf("place bot: %w", err)
 		}
-		i := slices.Index(ids, id)
-		if i < 0 {
-			return fmt.Errorf("group %s: %w", id, ErrNotFound)
+		if err := found(res, "bot or group", id); err != nil {
+			return err
 		}
-		j := i + 1
-		if up {
-			j = i - 1
-		}
-		if j < 0 || j >= len(ids) {
-			return nil
-		}
-		ids[i], ids[j] = ids[j], ids[i]
-		for pos, gid := range ids {
-			if _, err := tx.ExecContext(ctx, "UPDATE bot_groups SET position = ? WHERE id = ?",
-				pos+1, gid); err != nil {
-				return fmt.Errorf("move group: %w", err)
+		if before != "" {
+			var n int
+			if err := tx.QueryRowContext(ctx,
+				"SELECT count(*) FROM bots WHERE id = ?1 AND id != ?2 AND removed = 0 AND "+
+					"CASE WHEN ?3 THEN pinned_at IS NOT NULL "+
+					"ELSE pinned_at IS NULL AND coalesce(group_id, '') = ?4 END",
+				before, id, pinned, groupID).Scan(&n); err != nil {
+				return fmt.Errorf("read before: %w", err)
+			}
+			if n == 0 {
+				return fmt.Errorf("bot %s in that section: %w", before, ErrNotFound)
 			}
 		}
-		return nil
+		return reposition(ctx, tx, "bots", "removed = 0", id, before)
 	})
+}
+
+// reposition renumbers the live rows of table so that id sits before the row before, or last
+// when before is empty.
+func reposition(ctx context.Context, tx *sql.Tx, table, live, id, before string) error {
+	ids, err := query(ctx, tx, "SELECT id FROM "+table+" WHERE "+live+" ORDER BY position, rowid",
+		func(r *sql.Rows) (id string, err error) { return id, r.Scan(&id) })
+	if err != nil {
+		return fmt.Errorf("list %s: %w", table, err)
+	}
+	if !slices.Contains(ids, id) {
+		return fmt.Errorf("%s %s: %w", table, id, ErrNotFound)
+	}
+	ids = slices.DeleteFunc(ids, func(other string) bool { return other == id })
+	i := len(ids)
+	if before != "" {
+		if i = slices.Index(ids, before); i < 0 {
+			return fmt.Errorf("%s %s: %w", table, before, ErrNotFound)
+		}
+	}
+	for pos, other := range slices.Insert(ids, i, id) {
+		if _, err := tx.ExecContext(ctx, "UPDATE "+table+" SET position = ? WHERE id = ?",
+			pos+1, other); err != nil {
+			return fmt.Errorf("renumber %s: %w", table, err)
+		}
+	}
+	return nil
 }
 
 // DeleteGroup removes the group; its Bots become Ungrouped.
@@ -1185,11 +1226,14 @@ func (s *Store) DeleteGroup(ctx context.Context, id string) error {
 	return found(res, "group", id)
 }
 
-// SetGroup puts the Bot in the group groupID, or Ungrouped when groupID is empty. It wraps
+// SetGroup puts the Bot in the group groupID, or in Ungrouped when groupID is empty; an unpinned
+// Bot goes last there. It wraps
 // ErrNotFound for an unknown group.
 func (s *Store) SetGroup(ctx context.Context, botID, groupID string) error {
 	res, err := s.db.ExecContext(ctx,
-		"UPDATE bots SET group_id = nullif(?1, '') WHERE id = ?2 AND removed = 0 "+
+		"UPDATE bots SET group_id = nullif(?1, ''), position = CASE WHEN pinned_at IS NULL "+
+			"THEN (SELECT coalesce(max(position), 0) + 1 FROM bots) ELSE position END "+
+			"WHERE id = ?2 AND removed = 0 "+
 			"AND (?1 = '' OR EXISTS (SELECT 1 FROM bot_groups WHERE id = ?1))", groupID, botID)
 	if err != nil {
 		return fmt.Errorf("set group: %w", err)
@@ -1934,7 +1978,7 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
 		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
 		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir, &t.MRCI, &t.MRWoke, &wake, &t.MRHead, &baseWoke,
-		&t.SessionCostUSD)
+		&t.SessionCostUSD, &t.Pinned)
 	if err != nil {
 		return Thread{}, err
 	}

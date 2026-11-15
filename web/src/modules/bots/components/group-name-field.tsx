@@ -10,6 +10,7 @@ export function GroupNameField({
   return (
     <TextField
       size="bare"
+      width="w-17"
       autoFocus
       aria-label="Group name"
       placeholder="Group name"
@@ -19,7 +20,7 @@ export function GroupNameField({
         if (event.key === 'Escape') onDone();
         if (event.key === 'Enter') onDone(event.currentTarget.value.trim());
       }}
-      className="mt-3 h-7 w-full rounded-lg border border-outline bg-field px-2 text-[13px]"
+      className="mx-auto my-1 h-7 rounded-lg border border-outline bg-field px-1.5 text-xs"
     />
   );
 }

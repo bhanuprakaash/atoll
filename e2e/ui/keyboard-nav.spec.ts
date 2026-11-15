@@ -1,6 +1,7 @@
 // Keyboard: the composer has focus when a thread opens, a printable key with nothing focused
 // types into it, Ctrl+K (⌘K on macOS) opens a switcher over the Bots and the open threads of
-// every Bot, and the sidebar search matches thread titles. Contract: e2e/keyboard-nav-contract.md.
+// every Bot. The thread pane's search is in sidebar-rail.spec.ts. Contracts:
+// e2e/keyboard-nav-contract.md, e2e/sidebar-rail-contract.md.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +14,7 @@ import {
   prompts,
   sidebarRow,
   startAtoll,
-  threadTree,
+  threadPane,
 } from "./atoll";
 
 let m: Machine;
@@ -135,55 +136,6 @@ async function openSwitcher(page: Page) {
   return switcher(page).getByRole("combobox", { name: "Go to", exact: true });
 }
 
-// This test is first: opening a thread marks it seen, which changes what the tree shows.
-test("sidebar search also matches thread titles, and shows the matching threads of a Bot", async ({
-  page,
-}) => {
-  await page.goto(m.url);
-  const nav = page.getByRole("navigation", { name: "Bots" });
-  const search = nav.getByRole("textbox", { name: "Search" });
-  const tree = threadTree(page, "Atlas");
-  const more = tree.getByRole("button", { name: /^\d+ more$/ });
-  await expect(more).toBeVisible();
-  const usual = await tree.getByRole("listitem").count();
-  let hidden = "";
-  for (const title of ["Alpha", "Bravo", "Hotel", "India"]) {
-    if (
-      (await tree.getByRole("link", { name: `${title} notes` }).count()) === 0
-    )
-      hidden = title;
-  }
-  expect(hidden, "the tree shows at most 3 of the 4 threads of Atlas").not.toBe(
-    "",
-  );
-
-  await search.fill(hidden.toLowerCase());
-  await expect(sidebarRow(page, "Atlas")).toBeVisible();
-  for (const bot of ["Beacon", "Asker", "Chief"])
-    await expect(sidebarRow(page, bot)).toHaveCount(0);
-  await expect(tree.getByRole("listitem")).toHaveCount(1);
-  await expect(
-    tree.getByRole("link", { name: `${hidden} notes` }),
-  ).toBeVisible();
-  await expect(more).toHaveCount(0);
-
-  await search.fill("migration");
-  await expect(sidebarRow(page, "Atlas")).toHaveCount(0);
-  await expect(sidebarRow(page, "Beacon")).toBeVisible();
-  const beacon = threadTree(page, "Beacon");
-  await expect(beacon.getByRole("listitem")).toHaveCount(1);
-  await expect(beacon).toContainText("Atlassian migration");
-
-  await search.fill("atlas");
-  await expect(sidebarRow(page, "Atlas")).toBeVisible();
-  await expect(tree.getByRole("listitem")).toHaveCount(usual);
-  await expect(more).toBeVisible();
-  await expect(sidebarRow(page, "Beacon")).toBeVisible();
-  await expect(beacon.getByRole("listitem")).toHaveCount(1);
-  await expect(beacon).toContainText("Atlassian migration");
-  await expect(sidebarRow(page, "Asker")).toHaveCount(0);
-});
-
 test("opening a thread, or the New thread screen, focuses its composer", async ({
   page,
 }) => {
@@ -197,7 +149,12 @@ test("opening a thread, or the New thread screen, focuses its composer", async (
   await page.goto(threadURL("Beacon", "Delta notes"));
   await expect(composer(page, "Beacon")).toBeFocused();
 
-  await threadTree(page, "Atlas").getByRole("link").first().click();
+  await threadPane(page, "Beacon")
+    .getByRole("link", { name: "Atlassian migration" })
+    .click();
+  await expect(page).toHaveURL(threadURL("Beacon", "Atlassian migration"));
+  await expect(composer(page, "Beacon")).toBeFocused();
+  await sidebarRow(page, "Atlas").click();
   await expect(composer(page, "Atlas")).toBeFocused();
 
   await page.keyboard.press("Meta+n");
@@ -234,9 +191,8 @@ test("a printable key with nothing focused types into the composer; other fields
   await page.keyboard.press("Alt+x");
   await expect(box).toHaveValue("hi");
 
-  await page
-    .getByRole("navigation", { name: "Bots" })
-    .getByRole("textbox", { name: "Search" })
+  await threadPane(page, "Atlas")
+    .getByRole("textbox", { name: "Search threads" })
     .fill("zz");
   await expect(box).toHaveValue("hi");
 });

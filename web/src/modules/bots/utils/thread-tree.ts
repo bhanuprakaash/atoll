@@ -1,72 +1,51 @@
 import type { Bot, SidebarThread } from '@/modules/bots/api/bots';
 
-const maxRows = 3;
-
-export type Tree = {
-  rows: SidebarThread[];
-  hidden: SidebarThread[];
-  more:
-    | { kind: 'running'; count: number }
-    | { kind: 'less' }
-    | { kind: 'more'; count: number; dot: 'new' | null }
-    | null;
-};
-
-const rank = (t: SidebarThread) =>
-  t.state === 'needs_you'
-    ? 0
-    : t.pinned
-      ? 1
-      : t.state === 'new' || t.state === 'failed' || t.state === 'limited'
-        ? 2
-        : t.state === 'running'
-          ? 3
-          : 4;
-
 export const isLiveHelper = (t: SidebarThread) =>
   t.parent_thread_id !== '' && (t.state === 'running' || t.state === 'needs_you');
 
-// Needs-you, pinned and the open thread always show, even past maxRows. A helper thread
-// is a row only while it is open: while it runs it is the line under its boss thread. A finished
-// helper thread and a merged thread nothing needs are not rows; both count toward `N more`.
-export function threadTree(
-  all: SidebarThread[],
-  openId: string | undefined,
-  unfolded: boolean,
-): Tree {
-  const threads = all.filter((t) => !t.parent_thread_id || t.id === openId);
-  const finished = all.filter((t) => t.parent_thread_id && t.id !== openId && !isLiveHelper(t));
-  const ranked = threads
-    .map((t) => (t.id === openId && t.state === 'new' ? { ...t, state: '' as const } : t))
-    .sort((a, b) => rank(a) - rank(b));
-  const kept = ranked.filter((t) => rank(t) <= 1 || t.id === openId);
-  const room = Math.max(0, maxRows - kept.length);
-  const shown = new Set([
-    ...kept,
-    ...ranked.filter((t) => !t.hidden && !kept.includes(t)).slice(0, room),
-  ]);
-  const hidden = ranked.filter((t) => !shown.has(t));
-  const folded = [...hidden, ...finished];
-  const running = hidden.filter((t) => t.state === 'running');
-  if (running.length > 0 && unfolded)
-    return {
-      rows: ranked.filter((t) => shown.has(t) || running.includes(t)),
-      hidden: [],
-      more: { kind: 'less' },
-    };
-  const rows = ranked.filter((t) => shown.has(t));
-  if (running.length > 0) return { rows, hidden, more: { kind: 'running', count: running.length } };
-  if (folded.length > 0)
-    return {
-      rows,
-      hidden,
-      more: {
-        kind: 'more',
-        count: folded.length,
-        dot: folded.some((t) => t.state === 'new') ? 'new' : null,
-      },
-    };
-  return { rows, hidden, more: null };
+const sectionLabels = ['Needs you', 'Running', 'Pinned', 'Recent'] as const;
+
+const sectionOf = (t: SidebarThread) =>
+  t.state === 'needs_you'
+    ? 'Needs you'
+    : t.state === 'running'
+      ? 'Running'
+      : t.pinned
+        ? 'Pinned'
+        : 'Recent';
+
+// threadSections splits a Bot's threads into the pane's sections, keeping the server's order and
+// leaving out the empty ones. The open thread is never Replied; a live helper thread is Running,
+// its Needs you shows on its boss thread's helper line.
+export function threadSections(all: SidebarThread[], openId: string | undefined) {
+  const threads = all.map((t) =>
+    isLiveHelper(t)
+      ? { ...t, state: 'running' as const }
+      : t.id === openId && t.state === 'new'
+        ? { ...t, state: '' as const }
+        : t,
+  );
+  return sectionLabels
+    .map((label) => ({ label, threads: threads.filter((t) => sectionOf(t) === label) }))
+    .filter((section) => section.threads.length > 0);
+}
+
+const nowLabels = [
+  ['Needs you', 'needs_you'],
+  ['Running', 'running'],
+  ['Replied', 'new'],
+] as const;
+
+// nowSections splits every Bot's threads into Now's sections, newest activity first, leaving out
+// the empty ones. A live helper thread is no row of its own (its boss thread's helper line shows
+// it), a merged thread the watcher hides is none, and the open thread is never Replied.
+export function nowSections(all: SidebarThread[], openId: string | undefined) {
+  const threads = all
+    .filter((t) => !isLiveHelper(t) && !t.hidden && !(t.id === openId && t.state === 'new'))
+    .sort((a, b) => Date.parse(b.last_activity) - Date.parse(a.last_activity));
+  return nowLabels
+    .map(([label, state]) => ({ label, threads: threads.filter((t) => t.state === state) }))
+    .filter((section) => section.threads.length > 0);
 }
 
 export type Worker = { id: string; bot: Bot; needsYou: boolean; step: string };

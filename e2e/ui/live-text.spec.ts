@@ -14,8 +14,8 @@ import {
   newBotAPI,
   openThreadAPI,
   prompts,
+  nowPane,
   sendMessageAPI,
-  sidebarRow,
   startAtoll,
 } from "./atoll";
 
@@ -345,14 +345,17 @@ test("scrolled up, the status line changing and the run ending do not move the v
   await expect(jump).toBeVisible();
 });
 
-test("the sidebar row and the island keep the short verb and never show the text", async ({
+test("Now's note and the island keep the short verb and never show the text", async ({
   page,
 }) => {
-  const { log, status } = await openRun(page, "Quiet");
-  const row = sidebarRow(page, "Quiet");
+  const { log, status, thread } = await openRun(page, "Quiet");
+  const now = await nowPane(page);
+  const row = now
+    .getByRole("listitem")
+    .filter({ has: page.locator(`a[href$="/threads/${thread.id}"]`) });
   const header = page.locator("header");
   await Promise.all(
-    [page.getByRole("navigation", { name: "Bots" }), header].map((part) =>
+    [page.getByRole("navigation", { name: "Bots" }), now, header].map((part) =>
       part.evaluate((el) => {
         const w = window as unknown as { __shown?: string[] };
         const shown = (w.__shown ??= []);
@@ -367,7 +370,7 @@ test("the sidebar row and the island keep the short verb and never show the text
   );
 
   await expect(status).toHaveText(openingStart);
-  await expect(row).toContainText("Thinking");
+  await expect(row).toContainText("Quiet · Thinking");
   await expect(header).toContainText("Thinking");
 
   await expect(status).toHaveText(toolStatus.claude);

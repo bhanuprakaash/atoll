@@ -1,5 +1,7 @@
 # Sidebar thread tree, groups and island notifications: test contract
 
+> Superseded in part by [`sidebar-rail-contract.md`](sidebar-rail-contract.md) (#469–#472): the thread tree, its 3-row cap, `N more`, `N more running`, the threads popup, group folding, the drawer and the sidebar search are retired; where this file and that one differ, that one holds.
+
 Issue #99. Tests: `ui/sidebar-tree.spec.ts`, `ui/threads-popup.spec.ts`, `ui/bot-groups.spec.ts`,
 `ui/island-notifications.spec.ts`, fake Claude only. State is set up with the existing API and
 fake prompts; everything new is checked in the page. A restart is `kill()` then `restart()` on

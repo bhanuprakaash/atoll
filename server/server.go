@@ -102,6 +102,7 @@ func New(
 	mux.HandleFunc("PUT /api/bots/{id}", a.putBot)
 	mux.HandleFunc("DELETE /api/bots/{id}", a.deleteBot)
 	mux.HandleFunc("PUT /api/bots/{id}/group", a.setBotGroup)
+	mux.HandleFunc("PUT /api/bots/{id}/place", a.placeBot)
 	mux.HandleFunc("GET /api/groups", a.listGroups)
 	mux.HandleFunc("POST /api/groups", a.createGroup)
 	mux.HandleFunc("PATCH /api/groups/{id}", a.patchGroup)

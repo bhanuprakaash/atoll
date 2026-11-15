@@ -94,7 +94,7 @@ func TestSidebar_Routes(t *testing.T) {
 		{"list has group_id and threads", "GET", "/api/bots", "", 200,
 			`"can_manage_platform":false,"group_id":"","threads":[{`},
 		{"one Bot has group_id and no threads", "GET", "/api/bots/" + bot.ID, "", 200,
-			`"can_manage_platform":false,"group_id":""}`},
+			`"can_manage_platform":false,"group_id":"","pinned":false}`},
 		{"open it", "POST", "/api/threads/" + ids[0] + "/opened", "", 204, ""},
 		{"opened clears New", "GET", "/api/bots", "", 200,
 			`{"id":"` + ids[0] + `","title":"hello there","state":"","pinned":false,`},
@@ -110,7 +110,10 @@ func TestSidebar_Routes(t *testing.T) {
 		{"group needs a name", "POST", "/api/groups", `{"name":" "}`, 400, ""},
 		{"Chief has no group", "PUT", "/api/bots/chief/group", `{"group_id":null}`, 409, ""},
 		{"unknown group", "PUT", "/api/bots/" + bot.ID + "/group", `{"group_id":"x"}`, 404, ""},
-		{"move needs up", "POST", "/api/groups/x/move", `{}`, 400, ""},
+		{"move needs JSON", "POST", "/api/groups/x/move", `nope`, 400, ""},
+		{"move an unknown group", "POST", "/api/groups/x/move", `{}`, 404, ""},
+		{"Chief is not placed", "PUT", "/api/bots/chief/place", `{"pinned":true}`, 409, ""},
+		{"place before an unknown Bot", "PUT", "/api/bots/" + bot.ID + "/place", `{"before":"x"}`, 404, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

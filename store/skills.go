@@ -125,9 +125,7 @@ func (s *Store) EnsureBot(ctx context.Context, b Bot) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	res, err := s.db.ExecContext(ctx,
-		"INSERT INTO bots ("+_botColumns+") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "+
-			"ON CONFLICT(id) DO NOTHING", args...)
+	res, err := s.db.ExecContext(ctx, _insertBot+" ON CONFLICT(id) DO NOTHING", args...)
 	if err != nil {
 		return false, fmt.Errorf("ensure bot: %w", err)
 	}

@@ -6,9 +6,12 @@ type Paint = 'body' | 'belly' | 'lure' | 'tusk' | 'ridge' | 'eye';
 type Trait = { d: string; motion?: string; fill?: Paint; stroke?: Paint; width?: number };
 type Drawing = {
   colour: string;
-  tilt: number;
   motion: string;
   eyes: readonly [number, number, number];
+  // body, face and upright draw a look that is not the shared pebble: Chief as the Reef logo.
+  body?: string;
+  face?: string;
+  upright?: boolean;
   back?: Trait;
   front?: Trait;
 };
@@ -34,19 +37,20 @@ const asleep = {
 const drawings = {
   jellyfish: {
     colour: 'var(--color-jellyfish)',
-    tilt: 0,
     motion: 'bob',
-    eyes: [26, 37, 25],
+    eyes: [38, 46, 21],
+    body: 'M8 36 a24 24 0 0 1 48 0 q0 6 -6 6 H14 q-6 0 -6 -6 z',
+    face: 'M37 20 L38.5 28 M45 19 L46.5 27',
+    upright: true,
     back: {
-      d: 'M20 52 q-2 5 0 10 M32 54 q2 5 0 10 M44 52 q-2 5 0 10',
+      d: 'M18 44 q-4 6 0 13 M32 44 q4 6 0 13 M46 44 q-4 6 0 13',
       stroke: 'body',
-      width: 5,
+      width: 5.5,
       motion: 'sway',
     },
   },
   whale: {
     colour: 'var(--color-whale)',
-    tilt: -6,
     motion: 'bob',
     eyes: [31, 42, 24],
     back: {
@@ -58,31 +62,27 @@ const drawings = {
   },
   shark: {
     colour: 'var(--color-shark)',
-    tilt: 4,
     motion: 'swim',
-    eyes: [23, 41, 26],
+    eyes: [27, 45, 26],
     back: { d: 'M24 14 Q32 -3 42 0 Q36 7 40 13 Z', fill: 'body', motion: 'fin' },
   },
   penguin: {
     colour: 'var(--color-penguin)',
-    tilt: 8,
     motion: 'waddle',
-    eyes: [21, 32, 24],
+    eyes: [31, 42, 24],
     front: { d: 'M19 43 a13 11 0 1 0 26 0 a13 11 0 1 0 -26 0', fill: 'belly' },
   },
   anglerfish: {
     colour: 'var(--color-anglerfish)',
-    tilt: -4,
     motion: 'bob',
-    eyes: [27, 38, 21],
+    eyes: [31, 42, 21],
     back: { d: 'M24 13 Q21 -1 36 2', stroke: 'body', width: 3 },
     front: { d: 'M35 2.5 a4.5 4.5 0 1 0 9 0 a4.5 4.5 0 1 0 -9 0', fill: 'lure', motion: 'glow' },
   },
   pufferfish: {
     colour: 'var(--color-pufferfish)',
-    tilt: 0,
     motion: 'bob',
-    eyes: [26, 37, 29],
+    eyes: [31, 42, 29],
     back: {
       d: 'M32 10 v-7 M47 15 l5 -5 M56 33 h7 M48 51 l5 5 M17 15 l-5 -5 M8 34 h-7 M16 51 l-5 5',
       stroke: 'body',
@@ -92,9 +92,8 @@ const drawings = {
   },
   octopus: {
     colour: 'var(--color-octopus)',
-    tilt: 6,
     motion: 'bob',
-    eyes: [26, 37, 25],
+    eyes: [31, 42, 25],
     back: {
       d: 'M16 48 q-3 8 2 13 M27 53 q-1 6 1 10 M37 53 q1 6 -1 10 M48 48 q3 8 -2 13',
       stroke: 'body',
@@ -104,7 +103,6 @@ const drawings = {
   },
   crab: {
     colour: 'var(--color-crab)',
-    tilt: -8,
     motion: 'side',
     eyes: [31, 42, 24],
     back: { d: 'M5 15 a6.5 6.5 0 1 0 13 0 a6.5 6.5 0 1 0 -13 0', fill: 'body', motion: 'snipl' },
@@ -112,9 +110,8 @@ const drawings = {
   },
   seal: {
     colour: 'var(--color-seal)',
-    tilt: 2,
     motion: 'bob',
-    eyes: [23, 41, 26],
+    eyes: [27, 45, 26],
     front: {
       d: 'M21 41 h-9 M21 44 l-8 4 M43 41 h9 M43 44 l8 4',
       stroke: 'eye',
@@ -124,9 +121,8 @@ const drawings = {
   },
   manta: {
     colour: 'var(--color-manta)',
-    tilt: -2,
     motion: 'bob',
-    eyes: [21, 32, 24],
+    eyes: [31, 42, 24],
     back: {
       d: 'M12 28 L-2 42 L14 46 Z M52 28 L66 42 L50 46 Z',
       fill: 'body',
@@ -137,9 +133,8 @@ const drawings = {
   },
   scallop: {
     colour: 'var(--color-scallop)',
-    tilt: 5,
     motion: 'bob',
-    eyes: [27, 38, 21],
+    eyes: [31, 42, 21],
     front: {
       d: 'M32 55 V41 M32 55 L23 42 M32 55 L41 42 M32 55 L15 45 M32 55 L49 45',
       stroke: 'ridge',
@@ -148,9 +143,8 @@ const drawings = {
   },
   narwhal: {
     colour: 'var(--color-narwhal)',
-    tilt: -5,
     motion: 'bob',
-    eyes: [26, 37, 29],
+    eyes: [31, 42, 29],
     back: { d: 'M40 12 L53 -5', stroke: 'tusk', width: 3 },
   },
 } satisfies Record<string, Drawing>;
@@ -168,7 +162,7 @@ function eyePath(state: CreatureState, [a, b, y]: Drawing['eyes']) {
     return `M${a - 3} ${y + 5} L${a + 3} ${y + 1} M${b - 3} ${y + 1} L${b + 3} ${y + 5}`;
   }
   if (state === 'asleep') return `M${a - 3} ${y + 3} h6 M${b - 3} ${y + 3} h6`;
-  return `M${a} ${y} L${a + 1} ${y + 6} M${b} ${y - 0.5} L${b + 1} ${y + 5.5}`;
+  return `M${a} ${y - 0.5} L${a + 0.5} ${y + 6.5} M${b} ${y - 1} L${b + 0.5} ${y + 6}`;
 }
 
 export function Creature({
@@ -185,6 +179,7 @@ export function Creature({
   const drawing: Drawing = drawings[look] ?? drawings.jellyfish;
   const paints = { ...fixed, ...(state === 'asleep' ? asleep : { body: drawing.colour }) };
   const moving = state === 'working' || state === 'idle';
+  const still = state === 'failed' || state === 'asleep';
   const motion =
     state === 'working'
       ? ['read', 'search', 'memory'].includes(kind)
@@ -217,7 +212,7 @@ export function Creature({
       aria-label={`${lookName(look)}, ${state.replace('_', ' ')}`}
       className="shrink-0 overflow-visible"
     >
-      <g transform={state === 'failed' ? undefined : `rotate(${drawing.tilt} 32 34)`}>
+      <g transform={state === 'failed' || drawing.upright ? undefined : 'rotate(-8 32 34)'}>
         <g className={moving ? `creature-${drawing.motion}` : undefined}>
           <g
             className={
@@ -227,14 +222,18 @@ export function Creature({
             }
           >
             {drawing.back && trait(drawing.back)}
-            <path d={pebble} fill={paints.body} />
+            <path d={drawing.body ?? pebble} fill={paints.body} />
             {drawing.front && trait(drawing.front)}
             <g className={moving ? `creature-${motion}` : undefined}>
               <path
-                d={eyePath(state, drawing.eyes)}
+                d={
+                  still
+                    ? eyePath(state, drawing.eyes)
+                    : (drawing.face ?? eyePath(state, drawing.eyes))
+                }
                 fill="none"
                 stroke={paints.eye}
-                strokeWidth="4"
+                strokeWidth={still || drawing.face ? 4 : 5}
                 strokeLinecap="round"
               />
             </g>

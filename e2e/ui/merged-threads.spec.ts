@@ -1,14 +1,23 @@
-// A thread the person started whose PR merged leaves the sidebar tree but stays open: it is in
-// the threads popup under "Other open threads", opens with its history and comes back to the tree
-// when the person writes in it. An open approval and a pin keep it in the tree. GitHub is a scripted
-// server the PR watcher reads. Contract: e2e/helpers-sidebar-contract.md.
+// A thread the person started whose PR merged is hidden but stays open: it stays a row under Recent
+// in its Bot's pane, opens with its history, and is left out of Now until the person writes in it.
+// An open approval and a pin keep it shown. GitHub is a scripted server the PR watcher reads.
+// Contracts: e2e/helpers-sidebar-contract.md, e2e/sidebar-rail-contract.md.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
-import { api, type Machine, newBotAPI, prompts, startAtoll, threadTree } from './atoll';
+import {
+  api,
+  type Machine,
+  newBotAPI,
+  nowPane,
+  prompts,
+  sendMessageAPI,
+  showPane,
+  startAtoll,
+  threadPane,
+} from './atoll';
 import { githubEnv, type GitHubFake, seedRepo, startGitHub } from './github-fixture';
-import { send } from './helpers-fixture';
 
 const fix = 'Fix the seeded bug and open a PR.';
 
@@ -105,46 +114,43 @@ async function woken(threadID: string) {
 // away is a page on another Bot, so no thread of Coder is open: an open thread always shows.
 async function away(page: Page) {
   elsewhere ??= await newBotAPI(m, 'Elsewhere');
-  await page.goto(`${m.url}/bots/${elsewhere.id}`);
-  await expect(page.getByRole('heading', { name: 'What should Elsewhere work on?' })).toBeVisible();
+  await showPane(page, m, elsewhere.id, 'Elsewhere');
 }
 
-const inTree = (page: Page, threadID: string) =>
-  threadTree(page, 'Coder').locator(`a[href$="/threads/${threadID}"]`);
+// inNow is the thread's link in Now; Now lists a thread that needs you, runs or replied, unless the
+// watcher hides it. A thread whose run ended while it was not on screen is Replied.
+const inNow = (page: Page, threadID: string) =>
+  threadPane(page, 'Now').locator(`a[href$="/threads/${threadID}"]`);
 
 const rowOf = (page: Page, threadID: string) =>
-  threadTree(page, 'Coder')
+  threadPane(page, 'Now')
     .getByRole('listitem')
     .filter({ has: page.locator(`a[href$="/threads/${threadID}"]`) });
 
-async function openPopup(page: Page) {
-  await threadTree(page, 'Coder')
-    .getByRole('button', { name: /^\d+ more$/ })
-    .click();
-  const popup = page.getByRole('dialog', { name: 'Threads with Coder' });
-  await expect(popup).toBeVisible();
-  return popup;
+// recentOf is the thread's link under Recent in Coder's pane.
+async function recentOf(page: Page, threadID: string) {
+  await showPane(page, m, coder.id, 'Coder');
+  return threadPane(page, 'Coder')
+    .getByRole('list', { name: 'Recent', exact: true })
+    .locator(`a[href$="/threads/${threadID}"]`);
 }
 
-test('a thread whose PR merged leaves the sidebar tree, stays open in the threads popup and opens with its history', async ({
+test('a thread whose PR merged leaves Now, stays a row under Recent in its Bot pane and opens with its history', async ({
   page,
 }) => {
   const id = await prThread(1);
   await away(page);
-  await expect(inTree(page, id)).toHaveCount(1);
+  await nowPane(page);
+  await expect(inNow(page, id)).toHaveCount(1);
 
   await merged(id, 1);
   await woken(id);
-  await expect(inTree(page, id)).toHaveCount(0, { timeout: 10_000 });
+  await expect(inNow(page, id)).toHaveCount(0, { timeout: 10_000 });
   expect((await api(m, 'GET', `/api/threads/${id}`)).closed).toBe(false);
 
-  const popup = await openPopup(page);
-  const other = popup.getByRole('list', { name: 'Other open threads' });
-  await expect(other.locator(`a[href$="/threads/${id}"]`)).toHaveCount(1);
-  await expect(
-    popup.getByRole('list', { name: 'In the sidebar' }).locator(`a[href$="/threads/${id}"]`),
-  ).toHaveCount(0);
-  await other.locator(`a[href$="/threads/${id}"]`).click();
+  const recent = await recentOf(page, id);
+  await expect(recent).toHaveCount(1);
+  await recent.click();
   await expect(page).toHaveURL(new RegExp(`/threads/${id}$`));
   const log = page.getByRole('log', { name: 'Messages' });
   await expect(log.getByRole('article', { name: 'You' }).first()).toContainText(fix);
@@ -152,7 +158,7 @@ test('a thread whose PR merged leaves the sidebar tree, stays open in the thread
   await expect(log.getByText('Merge noted.')).toHaveCount(0);
 });
 
-test('a merged thread with an approval waiting stays in the tree while it waits', async ({
+test('a merged thread with an approval waiting stays in Now while it waits', async ({
   page,
   context,
 }) => {
@@ -160,11 +166,12 @@ test('a merged thread with an approval waiting stays in the tree while it waits'
   await api(m, 'POST', `/api/threads/${id}/messages`, { text: prompts.write });
   await waitStatus(id, 'waiting');
   await away(page);
-  await expect(inTree(page, id)).toHaveCount(1);
+  await nowPane(page);
+  await expect(inNow(page, id)).toHaveCount(1);
   await expect(rowOf(page, id)).toHaveAttribute('data-marker', 'needs-you');
 
   await merged(id, 1);
-  await expect(inTree(page, id)).toHaveCount(1);
+  await expect(inNow(page, id)).toHaveCount(1);
   await expect(rowOf(page, id)).toHaveAttribute('data-marker', 'needs-you');
 
   const answering = await context.newPage();
@@ -174,77 +181,37 @@ test('a merged thread with an approval waiting stays in the tree while it waits'
     .getByRole('button', { name: 'Allow', exact: true })
     .click();
   await waitStatus(id, 'done');
-  // Allow ends the wait: the merged thread leaves the tree again, still open.
-  await expect(inTree(page, id)).toHaveCount(0, { timeout: 15_000 });
+  // Allow ends the wait: the merged thread leaves Now again, still open.
+  await expect(inNow(page, id)).toHaveCount(0, { timeout: 15_000 });
   expect((await api(m, 'GET', `/api/threads/${id}`)).closed).toBe(false);
 });
 
-test('a pinned thread whose PR merged stays in the sidebar tree', async ({ page }) => {
+test('a pinned thread whose PR merged stays in Now', async ({ page }) => {
   const id = await prThread(1);
   await api(m, 'POST', `/api/threads/${id}/pin`);
   await away(page);
-  await expect(inTree(page, id)).toHaveCount(1);
+  await nowPane(page);
+  await expect(inNow(page, id)).toHaveCount(1);
 
   await merged(id, 1);
   await woken(id);
-  await expect(inTree(page, id)).toHaveCount(1);
+  await expect(inNow(page, id)).toHaveCount(1);
 });
 
-test('a message sent to a merged thread from the popup brings it back to the tree', async ({
+test('a message sent to a merged thread brings it back for good: it is in Now after that run ends', async ({
   page,
 }) => {
   const id = await prThread(1);
   await away(page);
+  await nowPane(page);
   await merged(id, 1);
   await woken(id);
-  await expect(inTree(page, id)).toHaveCount(0, { timeout: 10_000 });
+  await expect(inNow(page, id)).toHaveCount(0, { timeout: 10_000 });
 
-  const popup = await openPopup(page);
-  await popup
-    .getByRole('list', { name: 'Other open threads' })
-    .locator(`a[href$="/threads/${id}"]`)
-    .click();
-  await expect(page).toHaveURL(new RegExp(`/threads/${id}$`));
-  await send(page, prompts.hang);
-  await waitStatus(id, 'running');
-  await away(page);
-  await expect(inTree(page, id)).toHaveCount(1);
-});
-
-test('a message sent to a merged thread brings it back for good: it is still in the tree after that run ends', async ({
-  page,
-}) => {
-  const id = await prThread(1);
-  await away(page);
-  await merged(id, 1);
-  await woken(id);
-  await expect(inTree(page, id)).toHaveCount(0, { timeout: 10_000 });
-
-  await page.goto(`${m.url}/bots/${coder.id}/threads/${id}`);
-  await send(page, recall);
-  await expect(page.getByRole('log', { name: 'Messages' })).toContainText('atoll/recall', {
-    timeout: 30_000,
-  });
-  await waitStatus(id, 'done');
-  await away(page);
-  await expect(inTree(page, id)).toHaveCount(1);
-  await page.reload();
-  await expect(inTree(page, id)).toHaveCount(1);
+  await sendMessageAPI(m, id, recall);
+  await expect(inNow(page, id)).toHaveCount(1);
   await expect(rowOf(page, id)).not.toHaveAttribute('data-marker', 'running');
-});
-
-test('a Bot whose only open thread merged shows 1 more, which opens the popup with that thread', async ({
-  page,
-}) => {
-  const id = await prThread(1);
-  await away(page);
-  await merged(id, 1);
-  await woken(id);
-  await expect(inTree(page, id)).toHaveCount(0, { timeout: 10_000 });
-
-  await expect(threadTree(page, 'Coder').getByRole('button', { name: /^1 more$/ })).toBeVisible();
-  const popup = await openPopup(page);
-  await expect(
-    popup.getByRole('list', { name: 'Other open threads' }).locator(`a[href$="/threads/${id}"]`),
-  ).toHaveCount(1);
+  await page.reload();
+  await nowPane(page);
+  await expect(inNow(page, id)).toHaveCount(1);
 });

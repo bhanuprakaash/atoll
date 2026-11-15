@@ -1,4 +1,4 @@
-// Threads that need the user: a thread waiting on an approval shows under its Bot as Needs you and
+// Threads that need the user: a thread waiting on an approval shows in its Bot pane as Needs you and
 // in the island's notification list with what it waits for, and the island counts it.
 import { expect, test } from '@playwright/test';
 import {
@@ -7,10 +7,11 @@ import {
   newBotAPI,
   openThreadAPI,
   prompts,
+  showPane,
   sidebarRow,
   startAtoll,
+  threadPane,
   threadTitle,
-  threadTree,
 } from './atoll';
 
 let m: Machine;
@@ -40,9 +41,11 @@ test('Needs you lists the waiting thread and what it waits for; the island count
   await waitStatus(waiting.id, 'waiting');
 
   await page.goto(`${m.url}/bots/${tide.id}/threads/${recent.id}`);
-  const tree = threadTree(page, 'Tide');
+  const tree = threadPane(page, 'Tide');
   await expect(tree.locator('[data-marker="needs-you"]')).toContainText(threadTitle(prompts.write));
-  await expect(tree).not.toContainText(threadTitle(prompts.keep));
+  await expect(
+    tree.getByRole('listitem').filter({ hasText: threadTitle(prompts.keep) }),
+  ).toHaveCount(0);
   await page.keyboard.press('Escape');
   const island = page
     .locator('header')
@@ -61,15 +64,15 @@ test('Needs you lists the waiting thread and what it waits for; the island count
   await expect(
     page.locator('header').getByRole('button', { name: 'Notifications', exact: true }),
   ).toBeVisible();
-  await expect(sidebarRow(page, 'Tide')).not.toContainText('Needs you');
+  await expect(sidebarRow(page, 'Tide')).not.toHaveAttribute('data-marker', 'needs-you');
 });
 
 test('a running thread shows under its Bot with wave dots', async ({ page }) => {
   const reed = await newBotAPI(m, 'Reed');
   const busy = await openThreadAPI(m, reed.id, prompts.hang);
   await waitStatus(busy.id, 'running');
-  await page.goto(m.url);
-  await expect(threadTree(page, 'Reed').locator('[data-marker="running"]')).toContainText(
+  await showPane(page, m, reed.id, 'Reed');
+  await expect(threadPane(page, 'Reed').locator('[data-marker="running"]')).toContainText(
     threadTitle(prompts.hang),
   );
   await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);

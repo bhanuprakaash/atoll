@@ -3,12 +3,28 @@
 // final message nowhere in the thread, and nothing waits on the person as a card.
 // Contract: e2e/no-report-contract.md.
 import { expect, type Page, test } from '@playwright/test';
-import { api, type Machine, newBotAPI, openThreadAPI, prompts, startAtoll, threadTitle, threadTree } from './atoll';
-import { delegate, helperThreads, makeBoss, reportPrompt, runStatus, startThread } from './helpers-fixture';
+import {
+  api,
+  type Machine,
+  newBotAPI,
+  openThreadAPI,
+  prompts,
+  showPane,
+  startAtoll,
+  threadPane,
+  threadTitle,
+} from './atoll';
+import {
+  delegate,
+  helperThreads,
+  makeBoss,
+  reportPrompt,
+  runStatus,
+  startThread,
+} from './helpers-fixture';
 
 let m: Machine;
 test.beforeEach(async () => {
-  elsewhere = undefined;
   m = await startAtoll();
 });
 test.afterEach(() => m?.stop());
@@ -19,14 +35,6 @@ async function waitStatus(threadID: string, status: string) {
       timeout: 15_000,
     })
     .toBe(status);
-}
-
-// away shows a Bot of its own, so no thread of the Bots under test is on screen.
-let elsewhere: { id: string } | undefined;
-async function away(page: Page) {
-  elsewhere ??= await newBotAPI(m, 'Elsewhere');
-  await page.goto(`${m.url}/bots/${elsewhere.id}`);
-  await expect(page.getByRole('heading', { name: 'What should Elsewhere work on?' })).toBeVisible();
 }
 
 // quietRunEnded waits for the thread's newest run to be a different one from before and to have
@@ -48,11 +56,11 @@ async function hasStatusLine(threadID: string) {
 }
 
 const row = (page: Page, bot: string, title: string) =>
-  threadTree(page, bot).getByRole('listitem').filter({ hasText: title });
+  threadPane(page, bot).getByRole('listitem').filter({ hasText: title });
 
 test('a failed run shows Failed on its row until the thread is opened', async ({ page }) => {
   const bot = await newBotAPI(m, 'Failer');
-  await away(page);
+  await showPane(page, m, bot.id, 'Failer');
   const failed = await openThreadAPI(m, bot.id, prompts.none);
   await waitStatus(failed.id, 'failed');
 
@@ -62,7 +70,7 @@ test('a failed run shows Failed on its row until the thread is opened', async ({
 
   await failing.getByRole('link').click();
   await expect(page).toHaveURL(`${m.url}/bots/${bot.id}/threads/${failed.id}`);
-  await away(page);
+  await showPane(page, m, bot.id, 'Failer');
   await expect(row(page, 'Failer', threadTitle(prompts.none))).not.toContainText('Failed');
 });
 
@@ -72,8 +80,10 @@ test('a thread of a provider at its usage limit reads Out until the reset time',
   const limited = await openThreadAPI(m, bot.id, prompts.keep);
   await waitStatus(limited.id, 'failed');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${limited.id}`);
-  await expect(page.getByRole('log', { name: 'Messages' }).getByRole('article').first()).toBeVisible();
-  await away(page);
+  await expect(
+    page.getByRole('log', { name: 'Messages' }).getByRole('article').first(),
+  ).toBeVisible();
+  await showPane(page, m, bot.id, 'Limited');
 
   const limitedRow = row(page, 'Limited', threadTitle(prompts.keep));
   await expect(limitedRow).toContainText(/Out until \d/);

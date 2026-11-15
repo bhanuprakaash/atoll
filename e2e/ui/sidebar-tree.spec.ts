@@ -1,6 +1,6 @@
-// Threads under their Bot in the sidebar: at most 3 rows with one marker each, an overflow line,
-// new threads from the Bot row and closing or renaming from the thread row.
-// Contract: e2e/sidebar-tree-contract.md.
+// A Bot's threads in its thread pane: one marker each, new threads from the face's menu or ⌘N,
+// closing or renaming from the thread row. Contracts: e2e/sidebar-tree-contract.md,
+// e2e/sidebar-rail-contract.md.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,10 +11,11 @@ import {
   newBotAPI,
   openThreadAPI,
   prompts,
+  showPane,
   sidebarRow,
   startAtoll,
+  threadPane,
   threadTitle,
-  threadTree,
 } from './atoll';
 
 let m: Machine;
@@ -39,26 +40,17 @@ async function visit(page: Page, botID: string, threadID: string) {
   ).toBeVisible();
 }
 
-// away shows a Bot of its own, so no thread of the Bots under test is on screen.
-async function away(page: Page) {
-  const bot = await newBotAPI(m, 'Elsewhere');
-  await page.goto(`${m.url}/bots/${bot.id}`);
-  await expect(page.getByRole('heading', { name: 'What should Elsewhere work on?' })).toBeVisible();
-  return bot;
-}
-
 const row = (page: Page, bot: string, title: string) =>
-  threadTree(page, bot).getByRole('listitem').filter({ hasText: title });
+  threadPane(page, bot).getByRole('listitem').filter({ hasText: title });
 
-test('a thread waiting on an approval shows under its Bot as Needs you; answering removes it', async ({
+test('a thread waiting on an approval shows in its Bot pane as Needs you; answering removes it', async ({
   page,
 }) => {
   const bot = await newBotAPI(m, 'Asker');
-  await away(page);
+  const tree = await showPane(page, m, bot.id, 'Asker');
   const waiting = await openThreadAPI(m, bot.id, prompts.write);
   await waitStatus(waiting.id, 'waiting');
 
-  const tree = threadTree(page, 'Asker');
   const asking = row(page, 'Asker', threadTitle(prompts.write));
   await expect(asking).toHaveAttribute('data-marker', 'needs-you');
   await expect(asking).toContainText('Needs you');
@@ -78,13 +70,12 @@ test('a run ending in an unseen thread shows it as Replied; opening it clears Re
   page,
 }) => {
   const bot = await newBotAPI(m, 'Newsy');
-  const elsewhere = await away(page);
   const seen = await openThreadAPI(m, bot.id, prompts.pong);
   const unseen = await openThreadAPI(m, bot.id, prompts.keep);
   await waitStatus(seen.id, 'done');
   await waitStatus(unseen.id, 'done');
 
-  const tree = threadTree(page, 'Newsy');
+  const tree = await showPane(page, m, bot.id, 'Newsy');
   for (const prompt of [prompts.pong, prompts.keep]) {
     const fresh = row(page, 'Newsy', threadTitle(prompt));
     await expect(fresh).toHaveAttribute('data-marker', 'new');
@@ -104,8 +95,7 @@ test('a run ending in an unseen thread shows it as Replied; opening it clears Re
 
   m.kill();
   await m.restart();
-  await page.goto(`${m.url}/bots/${elsewhere.id}`);
-  await expect(page.getByRole('heading', { name: 'What should Elsewhere work on?' })).toBeVisible();
+  await showPane(page, m, bot.id, 'Newsy');
   const fresh = tree.locator('[data-marker="new"]');
   await expect(fresh).toHaveCount(1);
   await expect(fresh).toContainText(threadTitle(prompts.keep));
@@ -115,7 +105,7 @@ test('a running thread shows wave dots; no spinner ring on any creature or threa
   page,
 }) => {
   const bot = await newBotAPI(m, 'Drummer', 'claude', { look: 'shark' });
-  await away(page);
+  await showPane(page, m, bot.id, 'Drummer');
   const busy = await openThreadAPI(m, bot.id, prompts.hang);
   await waitStatus(busy.id, 'running');
 
@@ -146,98 +136,7 @@ test('a running thread shows wave dots; no spinner ring on any creature or threa
   await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
 });
 
-test('the tree rail runs under the 36px creature centre and rows start 14px right of it', async ({
-  page,
-}) => {
-  const bot = await newBotAPI(m, 'Railed');
-  await away(page);
-  await waitStatus((await openThreadAPI(m, bot.id, prompts.pong)).id, 'done');
-
-  const creature = sidebarRow(page, 'Railed').getByRole('img', { name: /, idle$/ });
-  const tree = threadTree(page, 'Railed');
-  await expect(tree.getByRole('listitem')).toHaveCount(1);
-  const c = (await creature.boundingBox())!;
-  expect(Math.abs(c.width - 36)).toBeLessThanOrEqual(1);
-  const rail = await tree.evaluate((ul) => {
-    const before = getComputedStyle(ul, '::before');
-    return (
-      ul.getBoundingClientRect().left +
-      parseFloat(before.left) +
-      parseFloat(before.borderLeftWidth) / 2
-    );
-  });
-  expect(Math.abs(rail - (c.x + c.width / 2))).toBeLessThanOrEqual(1);
-  const first = (await tree.getByRole('listitem').first().boundingBox())!;
-  expect(Math.abs(first.x - rail - 14)).toBeLessThanOrEqual(1);
-});
-
-test('nine idle threads show at most 3 rows and N more, which opens the threads popup', async ({
-  page,
-}) => {
-  const bot = await newBotAPI(m, 'Many');
-  const threads = [];
-  for (let i = 0; i < 9; i++) threads.push(await openThreadAPI(m, bot.id, prompts.keep));
-  for (const t of threads) await waitStatus(t.id, 'done');
-  for (const t of threads) await visit(page, bot.id, t.id);
-
-  await page.goto(m.url);
-  await sidebarRow(page, 'Many').click();
-  const tree = threadTree(page, 'Many');
-  const more = tree.getByRole('button', { name: /^\d+ more$/ });
-  await expect(more).toBeVisible();
-  const rows = await tree.getByRole('link').count();
-  expect(rows).toBeGreaterThanOrEqual(1);
-  expect(rows).toBeLessThanOrEqual(3);
-  const hidden = Number((await more.textContent())!.match(/(\d+) more/)![1]);
-  expect(rows + hidden).toBe(9);
-  await expect(tree.getByRole('button', { name: /more running/ })).toHaveCount(0);
-
-  await more.click();
-  const popup = page.getByRole('dialog', { name: 'Threads with Many' });
-  await expect(popup).toBeVisible();
-  await expect(popup).toContainText('9 open threads · 0 closed');
-  await page.keyboard.press('Escape');
-  await expect(popup).toHaveCount(0);
-});
-
-test('six running threads show N more running; it unfolds only running threads, rows leave as runs end, switching Bot folds it', async ({
-  page,
-}) => {
-  const bot = await newBotAPI(m, 'Runner');
-  const idle = [];
-  for (let i = 0; i < 2; i++) idle.push(await openThreadAPI(m, bot.id, prompts.pong));
-  for (const t of idle) await waitStatus(t.id, 'done');
-  for (const t of idle) await visit(page, bot.id, t.id);
-  const busy = [];
-  for (let i = 0; i < 6; i++) busy.push(await openThreadAPI(m, bot.id, prompts.hang));
-  for (const t of busy) await waitStatus(t.id, 'running');
-  await away(page);
-
-  const tree = threadTree(page, 'Runner');
-  const running = tree.locator('[data-marker="running"]');
-  const more = tree.getByRole('button', { name: '3 more running', exact: true });
-  await expect(more).toBeVisible();
-  await expect(tree.getByRole('link')).toHaveCount(3);
-  await expect(running).toHaveCount(3);
-
-  await more.click();
-  await expect(running).toHaveCount(6);
-  await expect(tree.getByRole('link')).toHaveCount(6);
-  await expect(tree).not.toContainText(threadTitle(prompts.pong));
-  await expect(tree.getByRole('button', { name: 'Show less', exact: true })).toBeVisible();
-
-  await api(m, 'POST', `/api/runs/${busy[0].run.id}/stop`);
-  await waitStatus(busy[0].id, 'stopped');
-  await expect(running).toHaveCount(5);
-
-  await sidebarRow(page, 'Runner').click();
-  await expect(tree.getByRole('button', { name: 'Show less', exact: true })).toHaveCount(0);
-  await expect(tree.getByRole('button', { name: /^\d+ more running$/ })).toBeVisible();
-  expect(await tree.getByRole('link').count()).toBeLessThanOrEqual(3);
-  for (const t of busy.slice(1)) await api(m, 'POST', `/api/runs/${t.run.id}/stop`);
-});
-
-test('two threads needing approval both show beside three others', async ({ page }) => {
+test('two threads needing approval both show first, beside three running', async ({ page }) => {
   const bot = await newBotAPI(m, 'Pair');
   const busy = [];
   for (let i = 0; i < 3; i++) busy.push(await openThreadAPI(m, bot.id, prompts.hang));
@@ -245,9 +144,7 @@ test('two threads needing approval both show beside three others', async ({ page
   for (let i = 0; i < 2; i++) asking.push(await openThreadAPI(m, bot.id, prompts.write));
   for (const t of busy) await waitStatus(t.id, 'running');
   for (const t of asking) await waitStatus(t.id, 'waiting');
-  await away(page);
-
-  const tree = threadTree(page, 'Pair');
+  const tree = await showPane(page, m, bot.id, 'Pair');
   const needs = tree.locator('[data-marker="needs-you"]');
   await expect(needs).toHaveCount(2);
   for (let i = 0; i < 2; i++) {
@@ -264,28 +161,15 @@ test('clicking a Bot opens its latest thread', async ({ page }) => {
   await waitStatus(older.id, 'done');
   const newer = await openThreadAPI(m, bot.id, prompts.keep);
   await waitStatus(newer.id, 'done');
-  await away(page);
+  await page.goto(`${m.url}/settings`);
   await sidebarRow(page, 'Latest').click();
   await expect(page).toHaveURL(`${m.url}/bots/${bot.id}/threads/${newer.id}`);
-});
-
-test('+ on Bot hover starts a new thread with that Bot', async ({ page }) => {
-  const bot = await newBotAPI(m, 'Hoverer');
-  await waitStatus((await openThreadAPI(m, bot.id, prompts.pong)).id, 'done');
-  await away(page);
-  await sidebarRow(page, 'Hoverer').hover();
-  await page
-    .getByRole('navigation', { name: 'Bots' })
-    .getByRole('button', { name: 'New thread with Hoverer' })
-    .click();
-  await expect(page.getByRole('heading', { name: 'What should Hoverer work on?' })).toBeVisible();
-  await expect(page).toHaveURL(new RegExp(`/bots/${bot.id}/`));
 });
 
 test('Bot right-click › New thread starts a new thread with that Bot', async ({ page }) => {
   const bot = await newBotAPI(m, 'Clicker');
   await waitStatus((await openThreadAPI(m, bot.id, prompts.pong)).id, 'done');
-  await away(page);
+  await page.goto(`${m.url}/settings`);
   await sidebarRow(page, 'Clicker').click({ button: 'right' });
   const menu = page.getByRole('menu');
   await expect(menu.getByRole('menuitem')).toHaveText([
@@ -337,7 +221,7 @@ test('thread hover × closes the thread and saves its unfinished work', async ({
     repo_id: repo.id,
   });
   await waitStatus(thread.id, 'done');
-  await away(page);
+  await showPane(page, m, bot.id, 'Closer');
 
   const closing = row(page, 'Closer', threadTitle(unfinished));
   await closing.hover();
@@ -355,7 +239,7 @@ test('thread right-click › Rename renames it', async ({ page }) => {
   const bot = await newBotAPI(m, 'Namer');
   const thread = await openThreadAPI(m, bot.id, prompts.pong);
   await waitStatus(thread.id, 'done');
-  await away(page);
+  await showPane(page, m, bot.id, 'Namer');
 
   await row(page, 'Namer', threadTitle(prompts.pong)).click({ button: 'right' });
   const menu = page.getByRole('menu');

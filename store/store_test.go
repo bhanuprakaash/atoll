@@ -1122,20 +1122,20 @@ func TestStore_Groups(t *testing.T) {
 		t.Fatalf("new groups go last: %q, want A,B,C", got)
 	}
 	moves := []struct {
-		name string
-		id   string
-		up   bool
-		want string
+		name   string
+		id     string
+		before string
+		want   string
 	}{
-		{"B up", ids[1], true, "B,A,C"},
-		{"B up at the top does nothing", ids[1], true, "B,A,C"},
-		{"B down", ids[1], false, "A,B,C"},
-		{"C down at the end does nothing", ids[2], false, "A,B,C"},
-		{"A down", ids[0], false, "B,A,C"},
+		{"B before A", ids[1], ids[0], "B,A,C"},
+		{"B before A again does nothing", ids[1], ids[0], "B,A,C"},
+		{"B last", ids[1], "", "A,C,B"},
+		{"C before B", ids[2], ids[1], "A,C,B"},
+		{"C last", ids[2], "", "A,B,C"},
 	}
 	for _, tt := range moves {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := st.MoveGroup(ctx, tt.id, tt.up); err != nil {
+			if err := st.MoveGroup(ctx, tt.id, tt.before); err != nil {
 				t.Fatal(err)
 			}
 			if got := names(); got != tt.want {
@@ -1143,8 +1143,11 @@ func TestStore_Groups(t *testing.T) {
 			}
 		})
 	}
-	if err := st.MoveGroup(ctx, "nope", true); !errors.Is(err, store.ErrNotFound) {
+	if err := st.MoveGroup(ctx, "nope", ""); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("move unknown group: %v, want ErrNotFound", err)
+	}
+	if err := st.MoveGroup(ctx, ids[0], "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("move before unknown group: %v, want ErrNotFound", err)
 	}
 
 	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
