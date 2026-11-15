@@ -1534,12 +1534,14 @@ Voice
     muted; removed lines are soft pink ink (`--color-del`) on a dark red ground. Brand and creature
     colours are identity, not state.
   *Red on every waiting item taught the user to skim past red (#146).*
-- Bot looks: 12, each the same soft pebble with one small sea trait at its edge, its own flat
-  colour, two thin tick eyes and a slight tilt: jellyfish (Chief, as the logo; tentacles), whale
-  (spout), shark (fin), penguin (belly), anglerfish (lure), pufferfish (spikes), octopus (arms),
+- Bot looks: 12, each the same soft pebble, 8% taller than wide, with one small sea trait at its
+  edge, its own flat colour, two short upright pill eyes set right of centre, and the same 8° lean
+  to the left, so the face reads as turned: jellyfish (Chief, as the logo; four wavy tentacles),
+  whale (spout), shark (fin), penguin (belly), anglerfish (lure), pufferfish (spikes), octopus (arms),
   crab (claws), seal (whiskers), manta (wings), scallop (ridges), narwhal (tusk). A Bot stores the
   look's name (`pufferfish`). *Replaces the 14 looks in three groups: the user picked pebble + one
-  trait on the canvas.*
+  trait on the canvas. The eyes, lean and height follow the canvas's Grok-inspired looks
+  (https://claude.ai/artifact/Nw8knYvm9Mxk4PwfuXwbeY); the user found thin ticks too small.*
   - Traits move while idle or working, still while asleep or failed: tentacles and arms sway, the
     spout puffs, the shark swims and its fin moves, the lure glows, spikes puff, the crab steps
     sideways and snips, whiskers twitch, wings flap, the penguin waddles, the rest bob. Idle
@@ -1559,7 +1561,7 @@ Voice
   threads per Bot and helper lines; with 7 Bots and 2 running it read as a tree, not a list.*
   - Rail: 76 px, fixed. Top to bottom: Now, Chief, pinned Bots in pinned order (no heading), the
     user's groups in order, Ungrouped; at the bottom `+` (New Bot, New group) and the user's avatar
-    (Settings). No logo, no search field, no group chats. A face is the Bot's 32 px creature with
+    (Settings). No logo, no search field, no group chats. A face is the Bot's 40 px creature with
     its name under it, 11 px, one line, cut with `…` at 64 px. No cost, time or activity line on
     the rail.
   - Hover or keyboard focus on a face shows a label beside the rail: the full name and the Bot's
