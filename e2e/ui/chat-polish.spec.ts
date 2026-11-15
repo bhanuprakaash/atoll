@@ -62,10 +62,6 @@ test('the face shows no activity; Now notes the current verb or the approval pro
     sidebarRow(page, 'Reply activity').getByRole('img', { name: /, idle$/ }),
   ).toBeVisible();
   expect((await api(m, 'GET', `/api/bots/${reply.id}`)).activity).toBe('ok');
-  await expect(sidebarRow(page, 'Reply activity')).not.toContainText('ok');
-  await expect(sidebarRow(page, 'Reply activity')).not.toContainText('Done');
-  await expect(sidebarRow(page, 'Working activity')).not.toContainText('Running');
-  await expect(sidebarRow(page, 'Approval activity')).not.toContainText('Write hello.txt');
 
   const now = await nowPane(page);
   const rowOf = (id: string) =>

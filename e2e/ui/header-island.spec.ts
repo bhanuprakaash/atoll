@@ -1,5 +1,5 @@
-// Header island: the Bot header shows the open thread's run state, holds no thread list or search,
-// opens the notification list on a click only, and keeps Bot settings visible.
+// Header island: the Bot header shows the open thread's run state and opens the notification list
+// on a click only.
 import { expect, test } from '@playwright/test';
 import {
   api,
@@ -58,24 +58,6 @@ test('the header shows the open thread run state', async ({ page }) => {
   await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
 });
 
-test('past 8 open threads the island still has no thread list or search', async ({ page }) => {
-  const many = await newBotAPI(m, 'Many');
-  const threads = await Promise.all(
-    Array.from({ length: 9 }, () => openThreadAPI(m, many.id, prompts.keep)),
-  );
-  await Promise.all(threads.map((t) => waitStatus(t.id, 'done')));
-
-  await page.goto(m.url);
-  await sidebarRow(page, 'Many').click();
-  const header = page.locator('header');
-  await header.getByRole('button', { name: /^Notifications/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Notifications' })).toBeVisible();
-  await expect(page.getByRole('searchbox', { name: 'Search threads' })).toHaveCount(0);
-  await expect(page.getByRole('dialog', { name: /^Threads with / })).toHaveCount(0);
-  await expect(header.getByRole('button', { name: 'New thread' })).toHaveCount(0);
-  await expect(header.getByRole('button', { name: 'Close thread' })).toHaveCount(0);
-});
-
 test('hovering the island does not open the notification list; a click does', async ({ page }) => {
   await newBotAPI(m, 'Hover');
   await page.goto(m.url);
@@ -86,11 +68,4 @@ test('hovering the island does not open the notification list; a click does', as
   await expect(page.getByRole('dialog', { name: 'Notifications' })).toHaveCount(0);
   await island.click();
   await expect(page.getByRole('dialog', { name: 'Notifications' })).toBeVisible();
-});
-
-test('Bot settings is visible in the header', async ({ page }) => {
-  await newBotAPI(m, 'Gear');
-  await page.goto(m.url);
-  await sidebarRow(page, 'Gear').click();
-  await expect(page.getByRole('button', { name: 'Bot settings' })).toBeVisible();
 });

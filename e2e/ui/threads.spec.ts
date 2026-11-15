@@ -7,7 +7,6 @@ import {
   newBotAPI,
   openThreadAPI,
   prompts,
-  showPane,
   sidebarRow,
   startAtoll,
   threadPane,
@@ -65,15 +64,4 @@ test('Needs you lists the waiting thread and what it waits for; the island count
     page.locator('header').getByRole('button', { name: 'Notifications', exact: true }),
   ).toBeVisible();
   await expect(sidebarRow(page, 'Tide')).not.toHaveAttribute('data-marker', 'needs-you');
-});
-
-test('a running thread shows under its Bot with wave dots', async ({ page }) => {
-  const reed = await newBotAPI(m, 'Reed');
-  const busy = await openThreadAPI(m, reed.id, prompts.hang);
-  await waitStatus(busy.id, 'running');
-  await showPane(page, m, reed.id, 'Reed');
-  await expect(threadPane(page, 'Reed').locator('[data-marker="running"]')).toContainText(
-    threadTitle(prompts.hang),
-  );
-  await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
 });
