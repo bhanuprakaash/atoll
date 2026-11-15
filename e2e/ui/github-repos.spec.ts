@@ -16,6 +16,7 @@ import {
   sidebarRow,
   startAtoll,
 } from "./atoll";
+import { pollConnected } from "./github-fixture";
 
 const fixPrompt = "Fix the seeded bug and open a PR.";
 const prTitle = "fix: correct seeded answer";
@@ -182,14 +183,7 @@ test("a thread shows the pull request a Bot opened with gh: link and number", as
   await api(m, "POST", "/api/repos", { name: "scratch-pr", path });
 
   const start = await api(m, "POST", "/api/connections/github/start");
-  for (let i = 0; i < 5; i++) {
-    await new Promise((ok) => setTimeout(ok, 1100));
-    if (
-      (await api(m, "POST", `/api/connections/${start.id}/poll`)).status ===
-      "connected"
-    )
-      break;
-  }
+  await pollConnected(m, start.id);
   await newBotAPI(m, "Octo", "claude", { connections: [start.id] });
 
   await page.goto(m.url);

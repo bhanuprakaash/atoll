@@ -4,6 +4,7 @@
 import { createServer, type Server } from 'node:http';
 import { expect, test, type Page } from '@playwright/test';
 import { api, type Machine, newBotAPI, openThreadAPI, prompts, sidebarRow, startAtoll } from './atoll';
+import { pollConnected } from './github-fixture';
 
 let m: Machine;
 let github: Server;
@@ -22,10 +23,7 @@ async function githubConnection(): Promise<{ id: string; kind: string; status: s
   if (existing) return existing;
   approved = true;
   const start = await api(m, 'POST', '/api/connections/github/start');
-  for (let i = 0; i < 5; i++) {
-    await new Promise((ok) => setTimeout(ok, 1100));
-    if ((await api(m, 'POST', `/api/connections/${start.id}/poll`)).status === 'connected') break;
-  }
+  await pollConnected(m, start.id);
   return (await connections()).find((c) => c.kind === 'github')!;
 }
 

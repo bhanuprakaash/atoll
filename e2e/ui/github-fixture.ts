@@ -143,10 +143,15 @@ export async function seedRepo(m: Machine, github: GitHubFake, root: string) {
   git(path, 'push', bare, 'main');
   const repo = await api(m, 'POST', '/api/repos', { name: 'octo-hello', path });
   const connection = await api(m, 'POST', '/api/connections/github/start');
+  await pollConnected(m, connection.id);
+  return { repo, connection };
+}
+
+// pollConnected polls a device-flow connection until its sign-in completes.
+export async function pollConnected(m: Machine, id: string) {
   await expect
-    .poll(async () => (await api(m, 'POST', `/api/connections/${connection.id}/poll`)).status, {
+    .poll(async () => (await api(m, 'POST', `/api/connections/${id}/poll`)).status, {
       intervals: [1_100],
     })
     .toBe('connected');
-  return { repo, connection };
 }
