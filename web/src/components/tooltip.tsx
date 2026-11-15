@@ -14,7 +14,11 @@ export function useTooltip() {
         if (!hover) setHover(rect(event));
       },
       onMouseLeave: () => setHover(null),
-      onFocus: (event: FocusEvent) => setFocus(rect(event)),
+      // A drag fires no mouseleave on the dragged element.
+      onDragStartCapture: () => setHover(null),
+      onFocus: (event: FocusEvent) => {
+        if (event.currentTarget.matches(':focus-visible')) setFocus(rect(event));
+      },
       onBlur: () => setFocus(null),
     },
   ] as const;
