@@ -8,6 +8,9 @@ or through the UI it serves (Playwright specs). No product package is imported.
 - Providers are fakes: `claude`, `codex`, `glab`, `gh` and an MCP stdio server, in `e2e/fakes/`.
   They replay recordings from `e2e/testdata/{claude,codex}/*.jsonl`, chosen by the prompt text.
   They enforce no sandbox and no permission; they play what the real CLI was seen to do.
+- A test runs on both providers only when it reads something they handle differently: argv, stdin,
+  env, resume, approvals, steer, transports, isolation, sandbox, auth, recordings, usage limit,
+  sign-in or cost; any other test runs on claude, with one doubled smoke test per feature.
 - Each test gets a temporary machine: its own `home`, data folder and `bin` (the fakes). Nothing
   touches your real home, logins or repos.
 - Nothing uses the network. Git remotes are local bare repos, and the GitHub, GitLab, Slack and
