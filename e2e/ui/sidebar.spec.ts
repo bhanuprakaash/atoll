@@ -83,7 +83,7 @@ const waves = (el: Locator) =>
         .filter((a) => (a as CSSAnimation).animationName === 'wave').length,
   );
 
-test('a face is a 32px creature with its name under it and no activity line; the creature follows the runs', async ({
+test('a face is a 40px creature with its name under it and no activity line; the creature follows the runs', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -97,7 +97,7 @@ test('a face is a 32px creature with its name under it and no activity line; the
   const idle = row.getByRole('img', { name: 'Whale, idle', exact: true });
   await expect(idle).toBeVisible();
   const c = (await idle.boundingBox())!;
-  expect(Math.abs(c.width - 32)).toBeLessThanOrEqual(1);
+  expect(Math.abs(c.width - 40)).toBeLessThanOrEqual(1);
   const name = row.getByText('Calm', { exact: true });
   expect((await name.boundingBox())!.y).toBeGreaterThanOrEqual(c.y + c.height - 1);
   await expect(row).not.toContainText(replied);
