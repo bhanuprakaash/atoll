@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// Contract: fill-helper-slots-contract.md.
-
 const _bossRule = "- Don't leave a helper slot free while work waits."
 
 // Hung helpers whose thread titles differ: a title is the brief's first words.

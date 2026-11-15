@@ -1,6 +1,6 @@
 // Issue #221: Settings > General shows the version, checks GitHub Releases for a newer Reef and
 // installs it. The Tauri shell is not running here, so each test stands in for it with a scripted
-// window.__TAURI_INTERNALS__.invoke (see app-update-contract.md).
+// window.__TAURI_INTERNALS__.invoke.
 import { expect, type Page, test } from "@playwright/test";
 import { type Machine, startAtoll } from "./atoll";
 

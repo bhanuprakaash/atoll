@@ -9,8 +9,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: titles-contract.md → Label prefixes and cut titles.
-
 // _plainPrompt is a recorded prompt that holds no title trigger: its title session fails.
 const _plainPrompt = "Reply with exactly: pong"
 

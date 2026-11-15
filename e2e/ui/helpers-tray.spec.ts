@@ -1,6 +1,6 @@
 // The helpers tray above the composer: one calm line, a popover for the list, an approval line
 // only when a helper needs you, reported helpers until their report was seen. Issue #175;
-// contract: e2e/helpers-ui-contract.md. Fake Claude only.
+// Fake Claude only.
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, prompts, recordText, seenText, startAtoll } from './atoll';
 import {

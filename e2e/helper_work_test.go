@@ -12,8 +12,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: helper-work-contract.md.
-
 const _notIncluded = "Uncommitted changes in your worktree are not included."
 
 // handoff is a delegate result.

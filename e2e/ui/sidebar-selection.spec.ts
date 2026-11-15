@@ -1,6 +1,6 @@
 // The sidebar marks where you are once: with a thread open only its row in the pane is selected;
 // on a Bot's New thread screen no row is, and the face's bar alone marks the Bot. Issues #176, #469,
-// #470; rule in docs/design.md (Selected row). Contract: e2e/sidebar-rail-contract.md.
+// #470; rule in docs/design.md (Selected row).
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
   api,

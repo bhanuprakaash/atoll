@@ -9,8 +9,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: boss-quiet-contract.md.
-
 // _finishedThread is in the first line of a helper's notice: `Reef: Tester finished thread {id}:`.
 const _finishedThread = "finished thread "
 

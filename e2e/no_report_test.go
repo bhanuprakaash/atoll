@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-// Contract: no-report-contract.md.
-
 // processFor waits for the provider process whose first user prompt satisfies match (the fake logs
 // the prompt a moment after the run starts) and returns its pid and the whole prompt log.
 func processFor(t *testing.T, m *machine, p string, match func(prompt string) bool) (int, []promptRecord) {

@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// Contract: prompt-contract.md, "Platform block text".
-
 const (
 	_platformBlockMaxBytes = 2000
 	_guideHeading          = "Reef guide"

@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// Contract: prompt-contract.md → Repo access at every run.
-
 // repoBlock reports whether a first message carries the thread's repo block.
 func repoBlock(message, repoID string) bool {
 	return slices.ContainsFunc(strings.Split(message, "\n"), func(l string) bool {

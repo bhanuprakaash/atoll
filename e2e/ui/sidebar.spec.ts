@@ -1,5 +1,5 @@
 // Slice 6 sidebar on the rail (#469): one face per Bot, Chief first, its creature showing the Bot's
-// state; reduced motion stops every animation. Contract: e2e/sidebar-rail-contract.md.
+// state; reduced motion stops every animation.
 import { expect, type Locator, test } from '@playwright/test';
 import {
   api,

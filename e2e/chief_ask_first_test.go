@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-// Contract: prompt-contract.md, "Platform block text".
-
 func TestPrompt_ChiefAskFirstCarriesProposal(t *testing.T) {
 	t.Parallel()
 	for _, p := range _providers {

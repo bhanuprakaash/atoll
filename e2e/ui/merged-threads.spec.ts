@@ -1,7 +1,6 @@
 // A thread the person started whose PR merged is hidden but stays open: it stays a row under Recent
 // in its Bot's pane, opens with its history, and is left out of Now until the person writes in it.
 // An open approval and a pin keep it shown. GitHub is a scripted server the PR watcher reads.
-// Contracts: e2e/helpers-sidebar-contract.md, e2e/sidebar-rail-contract.md.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

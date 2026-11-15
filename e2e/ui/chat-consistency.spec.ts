@@ -1,5 +1,5 @@
 // One rule per message kind: the run footer, the handoff line, clamps, Close thread on the thread
-// row and a window that never scrolls. Contract: e2e/titles-contract.md and issue #93.
+// row and a window that never scrolls.
 import { expect, test } from '@playwright/test';
 import {
   api,

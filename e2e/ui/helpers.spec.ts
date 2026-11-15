@@ -1,5 +1,5 @@
 // Helpers in the boss's thread: the tray above the composer, the header island, and a read-only
-// helper thread. Contract: e2e/helpers-ui-contract.md.
+// helper thread.
 import { expect, test } from '@playwright/test';
 import { api, type Machine, prompts, sidebarRow, startAtoll, threadPane } from './atoll';
 import {

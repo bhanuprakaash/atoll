@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// Contract: sign-in-expired-contract.md.
-
 var _credentials = map[string]string{"claude": ".credentials.json", "codex": "auth.json"}
 
 func TestSignIn_RefusedStaysSignedOutUntilRefresh(t *testing.T) {

@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// Contract: queued-messages-contract.md.
-
 // _slowPrompt plays testdata/*/queued-slow.jsonl: a run that takes about 6 s and ends done, in
 // the session that _askPrompt resumes.
 const (

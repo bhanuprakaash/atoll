@@ -1,7 +1,6 @@
 // Keyboard: the composer has focus when a thread opens, a printable key with nothing focused
 // types into it, Ctrl+K (⌘K on macOS) opens a switcher over the Bots and the open threads of
-// every Bot. The thread pane's search is in sidebar-rail.spec.ts. Contracts:
-// e2e/keyboard-nav-contract.md, e2e/sidebar-rail-contract.md.
+// every Bot. The thread pane's search is in sidebar-rail.spec.ts.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

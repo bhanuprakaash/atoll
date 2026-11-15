@@ -1,7 +1,5 @@
 package e2e
 
-// Contract: allow-in-thread-contract.md.
-
 import (
 	"encoding/json"
 	"net/http"

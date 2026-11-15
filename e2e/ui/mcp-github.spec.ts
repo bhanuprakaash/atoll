@@ -1,7 +1,6 @@
 // Settings > MCP servers with a GitHub connection: the connection is a read-only row, and a server
 // added at GitHub's MCP URL asks whether to use the connection instead. GitHub is a local server
-// (sign-in only), as in github-connection.spec.ts. Contract: mcp-servers-contract.md, "From
-// connections". The Go tests prove what a run gets.
+// (sign-in only), as in github-connection.spec.ts. The Go tests prove what a run gets.
 import { createServer, type Server } from 'node:http';
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, startAtoll } from './atoll';

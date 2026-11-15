@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Contract: prompt-contract.md, "Prompt text". The expected text is docs/design.md, Prompt, copied
+// The expected text is docs/design.md, Prompt, copied
 // word for word.
 
 // The platform prompt of docs/design.md, one section a constant. {bot}, {user} and {boss} are

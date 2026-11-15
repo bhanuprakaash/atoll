@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// Contract: docs/design.md, Repos and worktrees (the read-only checkout's base, the behind note).
-
 // advanceOrigin pushes a commit that sets answer.txt to answer onto the bare origin and updates
 // the registered clone's origin/main with git fetch. Its local main stays where it was. It
 // returns the new origin/main commit.

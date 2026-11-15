@@ -1,6 +1,6 @@
 // A run a provider's usage limit stopped is its own kind, not a failure: the thread shows one calm
 // line, "<Bot> hit its <provider> limit; back at <time>", with no red, no Retry and none of the
-// provider's text. Contract: usage-limit-contract.md.
+// provider's text.
 import { expect, type Locator, test } from '@playwright/test';
 import {
   api,

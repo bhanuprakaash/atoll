@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// Contract: usage-limit-contract.md.
-
 type limitRun struct {
 	Status    string `json:"status"`
 	Error     string `json:"error"`

@@ -1,5 +1,5 @@
 // Chief has no repo access, so its settings and empty thread offer no repo. A thread whose Bot
-// lost access to the thread's repo says so. Contract: prompt-contract.md.
+// lost access to the thread's repo says so.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

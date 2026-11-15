@@ -1,7 +1,6 @@
 // Slice 6 acceptance, from a fresh install with no terminal: sign in to a provider and GitLab,
 // register a repo, ask a Bot to fix a seeded bug, approve a step, get the MR link. Fakes stand in
-// for the provider (its login too), glab and GitLab's OAuth; git and the origin are real. Real
-// providers and gitlab.com are in mac-app-contract.md, "Only you can check".
+// for the provider (its login too), glab and GitLab's OAuth; git and the origin are real.
 import { execFileSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';

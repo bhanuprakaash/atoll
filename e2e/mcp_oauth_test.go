@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// Contract: mcp-oauth-contract.md.
-
 func TestMCPOAuth_CatalogListsHostedServers(t *testing.T) {
 	t.Parallel()
 	f := newMCPFixture(t, "claude")

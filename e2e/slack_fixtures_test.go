@@ -15,8 +15,6 @@ import (
 	"testing"
 )
 
-// Contract: slack-mcp-contract.md.
-
 const (
 	_slackClientID = "fake-slack-client-1.1"
 	_slackAnswer   = "slack-answer-42"

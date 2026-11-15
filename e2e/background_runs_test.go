@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-// Contract: no-report-contract.md, "Background runs".
-
 // The helper plays testdata/*/helper-blocker.jsonl: it answers at once, `_blockerReply`. The boss
 // woken with that reply plays testdata/*/wake-tell.jsonl: two tell_user calls, then a final message.
 const (

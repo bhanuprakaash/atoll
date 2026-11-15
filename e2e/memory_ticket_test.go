@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-// Contract: memory-ticket-contract.md.
-
 const _ticketBody = "SQLite round 1 call from Bhanu: %s for the journal."
 
 // merged1 is the wake of PR #1 merging into the default branch at its fake head.

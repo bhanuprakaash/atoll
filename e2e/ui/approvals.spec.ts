@@ -1,5 +1,4 @@
 // Approval cards show only open approvals, and links in replies leave the app.
-// Contract: e2e/approvals-contract.md.
 import { expect, type Page, test } from "@playwright/test";
 import { api, type Machine, newBotAPI, sidebarRow, startAtoll } from "./atoll";
 

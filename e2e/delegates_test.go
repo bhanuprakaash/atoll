@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// Contract: delegates-contract.md.
-
 // delegates returns a Bot's raw "delegates" as sorted ids; absent or null fails the test.
 func delegates(t *testing.T, where string, raw json.RawMessage) []string {
 	t.Helper()

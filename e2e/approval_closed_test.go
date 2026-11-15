@@ -1,7 +1,5 @@
 package e2e
 
-// Contract: approvals-contract.md.
-
 import (
 	"encoding/json"
 	"fmt"

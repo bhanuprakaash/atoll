@@ -1,7 +1,7 @@
 // Drag to reorder Bots and groups on the rail (#246): native HTML5 drag and drop. A face dropped on
 // the top half of another face lands before it, on the bottom half after it; a face dropped on a
 // group's line goes last in that group; a group's line dropped on another group's line lands before
-// that group. Selectors: e2e/sidebar-rail-contract.md. The API and the upgrade are in
+// that group. The API and the upgrade are in
 // e2e/sidebar_place_test.go.
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, showPane, sidebarRow, startAtoll } from './atoll';

@@ -15,8 +15,6 @@ import (
 	"time"
 )
 
-// Contract: proc-secrets-contract.md.
-
 const (
 	_holdPrompt = "Hold the secrets watch."
 	_scanPrompt = "Scan the process list for secrets of other runs."

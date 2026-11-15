@@ -1,5 +1,5 @@
 // What the helpers specs share: Poteto as the boss, its helpers, and the prompts that hand work
-// off. Contract: e2e/helpers-ui-contract.md.
+// off.
 import { expect, type Locator, type Page } from '@playwright/test';
 import { api, type Machine, newBotAPI, sidebarRow } from './atoll';
 

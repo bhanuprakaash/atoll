@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// Contract: secret-store-down-contract.md.
-
 const _secretStoreSentence = "Reef can't reach its secret store. Restart Reef, or unlock it, then send again."
 
 // storeDown restarts the machine's server with the secret store unreachable, on the same data.

@@ -1,5 +1,5 @@
 // A tell_user message reaches the person when the Bot sends it, not when its background run ends:
-// in the open chat, and under the island's Earlier list. Contract: e2e/no-report-contract.md.
+// in the open chat, and under the island's Earlier list.
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, startAtoll } from './atoll';
 import { delegate, helperThreads, makeBoss, runStatus, startThread } from './helpers-fixture';

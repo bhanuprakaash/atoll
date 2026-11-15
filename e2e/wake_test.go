@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-// Contract: wake-contract.md.
-
 // The helper plays testdata/*/helper-report.jsonl: it asks to run make check, then replies. Every
 // wake text names the helper Bot, Tester: the prompt of testdata/*/wake.jsonl, which the boss's
 // resumed session plays.

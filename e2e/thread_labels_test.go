@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Contract: no-report-contract.md, "Thread labels". The API's `state` of a thread in GET /api/bots
+// The API's `state` of a thread in GET /api/bots
 // is needs_you, running, failed, limited or new (Replied), or empty; the UI turns them into words.
 
 func opened(t *testing.T, s *server, th thread) {

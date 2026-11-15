@@ -12,8 +12,6 @@ import (
 	"testing"
 )
 
-// Contract: chief-no-shell-contract.md.
-
 // _rpcCode matches the line the fake adds to a platform call that failed with a JSON-RPC error.
 var _rpcCode = regexp.MustCompile(`\n\(JSON-RPC error (-?\d+)\)$`)
 

@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// Contract: bot-mode-contract.md.
-
 var _modes = []string{"auto", "ask", "full"}
 
 func TestBotMode_APIRoundTrip(t *testing.T) {

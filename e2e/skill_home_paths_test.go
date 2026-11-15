@@ -12,8 +12,6 @@ import (
 	"testing"
 )
 
-// Contract: skill-home-paths-contract.md.
-
 // spacedHome gives the machine a HOME with a space in its name, symlinks resolved (on macOS the
 // temporary folder is behind /var -> /private/var), and returns it.
 func spacedHome(t *testing.T, m *machine) string {

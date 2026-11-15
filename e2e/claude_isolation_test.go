@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-// Contract: claude-isolation-contract.md.
-
 // _shellPrefixScript is the script docs/design.md → Providers gives Bash through
 // CLAUDE_CODE_SHELL_PREFIX.
 const _shellPrefixScript = `#!/bin/bash

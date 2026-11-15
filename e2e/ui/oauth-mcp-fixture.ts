@@ -1,6 +1,6 @@
 // A hosted MCP server that needs sign-in, as e2e/mcp_oauth_fixtures_test.go has it, on one origin:
 // the 401 names the protected-resource metadata, which names the auth server (the same origin).
-// Authorize redirects at once, as a user clicking Allow would. Contract: e2e/mcp-oauth-contract.md.
+// Authorize redirects at once, as a user clicking Allow would.
 import { createHash } from "node:crypto";
 import {
   createServer,

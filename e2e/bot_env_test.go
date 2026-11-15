@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// Contract: bot-env-contract.md.
-
 var _secretServiceVars = []string{"DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "DISPLAY"}
 
 // _sentinelEnv is a server env that reaches a Linux secret store by no real path.

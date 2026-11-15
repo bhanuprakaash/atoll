@@ -1,6 +1,6 @@
 // Narrow windows (#472): below 900 px the 76 px rail stays docked and the thread pane floats over
 // the thread column, closed by default; the whole-sidebar drawer and its Sidebar button are gone.
-// Design: docs/design.md, "Narrow windows". Contract: e2e/sidebar-rail-contract.md. The floating
+// Design: docs/design.md, "Narrow windows". The floating
 // pane's opening and closing is in sidebar-rail.spec.ts.
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import {

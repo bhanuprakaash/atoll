@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-// Contract: sign-in-lost-contract.md.
-
 // serverLogText is <data dir>/logs/server.log; it fails the test when the file is missing.
 func serverLogText(t *testing.T, m *machine) string {
 	t.Helper()

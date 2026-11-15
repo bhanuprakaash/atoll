@@ -1,5 +1,4 @@
-// What a designed error looks like on the page (docs/design.md, App and UI: Errors). Contract:
-// designed-errors-contract.md.
+// What a designed error looks like on the page (docs/design.md, App and UI: Errors).
 import { expect, type Locator, type Page } from '@playwright/test';
 
 const danger = 'rgb(229, 72, 77)';

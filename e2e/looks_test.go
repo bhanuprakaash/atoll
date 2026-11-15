@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-// Contract: mac-app-contract.md → Bots.
-
 func TestLooks_RetiredLooksComeBackAsNewOnes(t *testing.T) {
 	t.Parallel()
 	m, s := start(t, "claude")

@@ -8,7 +8,7 @@ import (
 
 // Drag to reorder on the rail (#246): PUT /api/bots/{id}/place {pinned, group_id, before} moves a
 // Bot to a place in Pinned, a group or Ungrouped, POST /api/groups/{id}/move {before} moves a group,
-// and an upgrade keeps the order an install already had. Contract: e2e/sidebar-rail-contract.md.
+// and an upgrade keeps the order an install already had.
 
 type placedBot struct {
 	ID      string `json:"id"`

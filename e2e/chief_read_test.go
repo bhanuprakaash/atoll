@@ -10,8 +10,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: chief-read-contract.md.
-
 const (
 	_readAllPrompt   = "List every Bot, skill, connection, repo and model."
 	_whichBotsPrompt = "Which Bots do I have?"

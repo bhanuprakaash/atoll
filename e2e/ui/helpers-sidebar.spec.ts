@@ -1,6 +1,6 @@
 // Delegated work in the thread pane: one line under the boss thread, the helper thread a row of its
 // own Bot's pane only once it is finished (under Recent), a breadcrumb from the helper thread
-// back to the boss thread. Contracts: e2e/helpers-sidebar-contract.md, e2e/sidebar-rail-contract.md.
+// back to the boss thread.
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, prompts, showPane, startAtoll, threadPane } from './atoll';
 import { bossHandsOff, reportPrompt, reportReply, runStatus, tray } from './helpers-fixture';

@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// Contract: chief-bot-contract.md.
-
 // _fakeModels are the model ids each fake provider lists, in its order.
 var _fakeModels = map[string][]string{
 	"claude": {"default", "opus", "sonnet", "reef-probe"},

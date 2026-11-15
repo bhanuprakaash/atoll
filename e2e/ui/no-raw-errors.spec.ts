@@ -1,6 +1,6 @@
 // The sweep behind designed-errors.spec.ts: no screen renders an error's message itself, and every
 // screen that could (the sites #149 found) goes through the one component. Design: docs/design.md,
-// App and UI (Errors). Contract: designed-errors-contract.md.
+// App and UI (Errors).
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { expect, test } from '@playwright/test';

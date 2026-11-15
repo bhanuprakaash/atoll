@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Issue #149. Contract: designed-errors-contract.md.
+// Issue #149.
 
 type failure struct {
 	Error string `json:"error"`
