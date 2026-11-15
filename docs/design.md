@@ -1534,13 +1534,12 @@ Voice
     muted; removed lines are soft pink ink (`--color-del`) on a dark red ground. Brand and creature
     colours are identity, not state.
   *Red on every waiting item taught the user to skim past red (#146).*
-- Bot looks: 12, each the same soft pebble, 8% taller than wide, with one small sea trait at its
-  edge, its own flat colour, two short upright pill eyes set right of centre, and the same 8° lean
-  to the left, so the face reads as turned: jellyfish (Chief, as the logo; four wavy tentacles),
-  whale (spout), shark (fin), penguin (belly), anglerfish (lure), pufferfish (spikes), octopus (arms),
-  crab (claws), seal (whiskers), manta (wings), scallop (ridges), narwhal (tusk). A Bot stores the
+- Bot looks: 12, each the same soft pebble with one small sea trait at its edge, its own flat
+  colour, two short upright pill eyes set right of centre, and the same 8° lean to the left, so
+  the face reads as turned: jellyfish (Chief, as the logo; four wavy tentacles), whale (spout),
+  shark (fin), penguin (belly), anglerfish (lure), pufferfish (spikes), octopus (arms), crab (claws), seal (whiskers), manta (wings), scallop (ridges), narwhal (tusk). A Bot stores the
   look's name (`pufferfish`). *Replaces the 14 looks in three groups: the user picked pebble + one
-  trait on the canvas. The eyes, lean and height follow the canvas's Grok-inspired looks
+  trait on the canvas. The eyes and lean follow the canvas's Grok-inspired looks
   (https://claude.ai/artifact/Nw8knYvm9Mxk4PwfuXwbeY); the user found thin ticks too small.*
   - Traits move while idle or working, still while asleep or failed: tentacles and arms sway, the
     spout puffs, the shark swims and its fin moves, the lure glows, spikes puff, the crab steps

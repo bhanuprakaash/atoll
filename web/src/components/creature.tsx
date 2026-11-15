@@ -204,9 +204,7 @@ export function Creature({
       aria-label={`${lookName(look)}, ${state.replace('_', ' ')}`}
       className="shrink-0 overflow-visible"
     >
-      <g
-        transform={`translate(0 56) scale(1 1.08) translate(0 -56)${state === 'failed' ? '' : ' rotate(-8 32 34)'}`}
-      >
+      <g transform={state === 'failed' ? undefined : 'rotate(-8 32 34)'}>
         <g className={moving ? `creature-${drawing.motion}` : undefined}>
           <g
             className={
