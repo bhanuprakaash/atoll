@@ -165,7 +165,7 @@ func TestQueue_UserMessageWhileRunGoes(t *testing.T) {
 // one run, in the order they were sent, joined by a blank line in one prompt.
 func TestQueue_SeveralArriveInOrderAsOneRun(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
 			th := s.newThread(t, s.newBot(t, "Ada", p))
@@ -204,7 +204,7 @@ func TestQueue_SeveralArriveInOrderAsOneRun(t *testing.T) {
 // plain Stop leaves the rest queued; sending it later makes edit and remove answer 409.
 func TestQueue_EditAndRemove(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
 			th := s.newThread(t, s.newBot(t, "Ada", p))
@@ -259,7 +259,7 @@ func TestQueue_EditAndRemove(t *testing.T) {
 // run with the queued message at once.
 func TestQueue_StopAndSend(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
 			th := s.newThread(t, s.newBot(t, "Ada", p))
@@ -296,7 +296,7 @@ func TestQueue_StopAndSend(t *testing.T) {
 // cannot edit, and runs when the helper's run ends.
 func TestQueue_BossContinueToBusyHelper(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
 			poteto, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)

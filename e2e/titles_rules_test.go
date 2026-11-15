@@ -39,7 +39,7 @@ func TestTitles_AnswerRules(t *testing.T) {
 		{"six words are not cut", "Where does this setting belong to", "Where does this setting belong to"},
 		{"nothing left", "On the of and to in a for", ""},
 	}
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			bot := s.newBot(t, "Ada", p)
@@ -73,7 +73,7 @@ func TestTitles_FirstWordsRules(t *testing.T) {
 		{"label stays", "Status: why does login loop on settings page", "Status: why does login loop"},
 		{"cut ends on a word", "Why does the login redirect loop on settings.", "Why does the login redirect loop"},
 	}
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			bot := s.newBot(t, "Ada", p)

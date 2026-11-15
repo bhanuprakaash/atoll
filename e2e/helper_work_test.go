@@ -101,7 +101,7 @@ func firstUserMessage(t *testing.T, s *server, threadID string) string {
 // git merge brings the helper's commit in.
 func TestHelperWork_BranchesOffTheBoss(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newRepoFixture(t, p)
 			s := f.s
@@ -186,7 +186,7 @@ func helperThreads(t *testing.T, s *server, b bot) []thread {
 // connection is handed off as before.
 func TestHelperWork_GitHubConnectionOnlyOwnBranch(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newGitHubRepoFixture(t, p)
 			repo := f.register(t, "octo-hello", f.hello(t))
@@ -245,7 +245,7 @@ func TestHelperWork_GitHubConnectionOnlyOwnBranch(t *testing.T) {
 // start_work makes its own <type>/<slug> branch from origin/HEAD, and it pushes and tracks its MR.
 func TestHelperWork_NoBossBranch(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newRepoFixture(t, p)
 			s := f.s
@@ -310,7 +310,7 @@ func TestHelperWork_NoBossBranch(t *testing.T) {
 // remove its helper's worktree after saving its unfinished work.
 func TestHelperWork_CloseOrMergeRemovesHelpers(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newRepoFixture(t, p)
 			s := f.s

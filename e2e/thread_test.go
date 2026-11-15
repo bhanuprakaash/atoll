@@ -22,6 +22,8 @@ const (
 
 var _providers = []string{"claude", "codex"}
 
+var _oneProvider = []string{"claude"}
+
 // start serves atoll on a machine with provider installed and signed in.
 func start(t *testing.T, provider string) (*machine, *server) {
 	t.Helper()

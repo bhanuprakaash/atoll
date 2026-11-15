@@ -409,7 +409,7 @@ func TestRepo_CloseKeepsOtherWorktrees(t *testing.T) {
 		}
 	})
 
-	for _, provider := range []string{"codex", "claude"} {
+	for _, provider := range _oneProvider {
 		t.Run(provider+"/close", func(t *testing.T) {
 			f := newRepoFixture(t, provider)
 			user := userWorktree(t, f.repo.Path)

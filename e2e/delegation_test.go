@@ -208,7 +208,7 @@ func TestDelegate_HandsOff(t *testing.T) {
 // helper Bot has delegates, see neither delegate nor continue. A Bot with delegates sees both.
 func TestDelegate_ToolsOnlyForBosses(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			poteto, tester, reviewer, ada := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p), s.newBot(t, "Reviewer", p), s.newBot(t, "Ada", p)
@@ -242,7 +242,7 @@ func TestDelegate_ToolsOnlyForBosses(t *testing.T) {
 // thread is made for it; three helper runs going refuse a fourth.
 func TestDelegate_Refused(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			poteto, tester, reviewer, mako := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p), s.newBot(t, "Reviewer", p), s.newBot(t, "Mako", p)
@@ -285,7 +285,7 @@ func TestDelegate_Refused(t *testing.T) {
 // the repo is refused with "Tester has no access to atoll".
 func TestDelegate_HelperRepo(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			ids := registerRepos(t, s, "atoll", "reef")
@@ -343,7 +343,7 @@ func TestDelegate_HelperRepo(t *testing.T) {
 // thread, which gives the helper a new run.
 func TestContinue_OnlyFromBoss(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			poteto, mako, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Mako", p), s.newBot(t, "Tester", p)

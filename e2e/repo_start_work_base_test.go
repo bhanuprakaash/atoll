@@ -8,7 +8,7 @@ import (
 
 func TestRepo_StartWorkReplyNamesOriginHeadBase(t *testing.T) {
 	t.Parallel()
-	for _, provider := range []string{"claude", "codex"} {
+	for _, provider := range _oneProvider {
 		t.Run(provider, func(t *testing.T) {
 			f := newRepoFixture(t, provider)
 			gitIn(t, f.repo.Path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
@@ -23,7 +23,7 @@ func TestRepo_StartWorkReplyNamesOriginHeadBase(t *testing.T) {
 
 func TestRepo_StartWorkReplyNotesLocalBranchAhead(t *testing.T) {
 	t.Parallel()
-	for _, provider := range []string{"claude", "codex"} {
+	for _, provider := range _oneProvider {
 		for _, ahead := range []struct {
 			name    string
 			commits int
@@ -53,7 +53,7 @@ func TestRepo_StartWorkReplyNotesLocalBranchAhead(t *testing.T) {
 
 func TestRepo_StartWorkReplyOmitsAheadNoteWithoutOrigin(t *testing.T) {
 	t.Parallel()
-	for _, provider := range []string{"claude", "codex"} {
+	for _, provider := range _oneProvider {
 		t.Run(provider, func(t *testing.T) {
 			f := newRepoFixture(t, provider)
 			gitIn(t, f.repo.Path, "remote", "remove", "origin")

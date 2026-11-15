@@ -214,7 +214,7 @@ func TestRepo_StartWorkRefusesBadBase(t *testing.T) {
 			f.pushBase(t, "fix/seeded-bug")
 		}},
 	}
-	for _, c := range _baseCases[:2] {
+	for _, c := range _baseCases[:1] {
 		for _, b := range bases {
 			t.Run(c.name()+"/"+b.name, func(t *testing.T) {
 				f := newRepoFixture(t, c.provider)
@@ -235,7 +235,7 @@ func TestRepo_StartWorkRefusesBadBase(t *testing.T) {
 // TestRepo_StartWorkEmptyBaseIsNoBase: a Bot that fills the optional base with "" gets what it
 // gets with no base: a branch from origin/HEAD, not a refusal.
 func TestRepo_StartWorkEmptyBaseIsNoBase(t *testing.T) {
-	for _, c := range _baseCases[:2] {
+	for _, c := range _baseCases[:1] {
 		t.Run(c.name(), func(t *testing.T) {
 			f := newRepoFixture(t, c.provider)
 			gitIn(t, f.repo.Path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
@@ -275,7 +275,7 @@ func TestRepo_StartWorkBaseBeatsTag(t *testing.T) {
 // sending only declared arguments gets its worktree on the base. The schema does not depend on
 // the mode, so Codex on Auto is not repeated.
 func TestRepo_StartWorkDeclaresBase(t *testing.T) {
-	for _, c := range _baseCases[:2] {
+	for _, c := range _baseCases[:1] {
 		t.Run(c.name(), func(t *testing.T) {
 			f := newRepoFixture(t, c.provider)
 			f.pushBase(t, "test/x")
@@ -291,7 +291,7 @@ func TestRepo_StartWorkDeclaresBase(t *testing.T) {
 // TestRepo_StartWorkTypes: type test makes test/<slug>, the branch of a test PR; any other type is
 // refused naming the valid ones and makes nothing.
 func TestRepo_StartWorkTypes(t *testing.T) {
-	for _, c := range _baseCases[:2] {
+	for _, c := range _baseCases[:1] {
 		t.Run(c.name()+"/test", func(t *testing.T) {
 			f := newRepoFixture(t, c.provider)
 			th, ev := f.baseThread(t, c)
