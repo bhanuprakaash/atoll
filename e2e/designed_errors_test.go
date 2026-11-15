@@ -113,10 +113,10 @@ func TestErrors_UnknownCauseIsGenericAndTheChainIsLogged(t *testing.T) {
 	if strings.Contains(got.Error, chain) {
 		t.Errorf("error %q holds the chain", got.Error)
 	}
-	log := s.log.String()
-	if !strings.Contains(log, "request failed") || !strings.Contains(log, "/api/repos/pick-folder") || !strings.Contains(log, chain) {
-		t.Errorf("server log lacks the failed request with its chain:\n%s", log)
-	}
+	eventually(t, 15*time.Second, "the server logs the failed request with its chain", func() bool {
+		log := s.log.String()
+		return strings.Contains(log, "request failed") && strings.Contains(log, "/api/repos/pick-folder") && strings.Contains(log, chain)
+	})
 }
 
 // A device-flow sign-in that GitHub says expired is a sign-in problem, not a bad gateway.
