@@ -4,14 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 
 	"atoll/e2e/fakes/fake"
@@ -397,120 +394,5 @@ func TestChiefBot_MCPServers(t *testing.T) {
 				t.Fatalf("edit_bot with an unknown server changed the picks to %v", got)
 			}
 		})
-	}
-}
-
-// TestMCPFixtures_ProviderScenarios drives the fake providers by hand, before the product writes
-// any MCP config, to prove the mcp-use scenario: a stdio server and an HTTP server with a header
-// in the config, a call on each, an ask before each, and nothing for a server the config lacks.
-func TestMCPFixtures_ProviderScenarios(t *testing.T) {
-	t.Parallel()
-	for _, p := range _providers {
-		for _, decision := range []string{"allow", "deny"} {
-			t.Run(p+"/"+decision, func(t *testing.T) {
-				m := newMachine(t, p)
-				remote := newHTTPMCP(t)
-				stdio := installMCPStdio(t)
-				var mu sync.Mutex
-				asked := 0
-				atoll := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					var req struct {
-						ID     json.RawMessage `json:"id"`
-						Method string          `json:"method"`
-						Params struct {
-							Name string `json:"name"`
-						} `json:"params"`
-					}
-					_ = json.NewDecoder(r.Body).Decode(&req)
-					if len(req.ID) == 0 {
-						w.WriteHeader(http.StatusAccepted)
-						return
-					}
-					var result any = map[string]any{}
-					switch req.Method {
-					case "initialize":
-						result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{}, "serverInfo": map[string]string{"name": "stub", "version": "0"}}
-					case "tools/list":
-						result = map[string]any{"tools": []any{}}
-					case "tools/call":
-						text := "Report saved."
-						if req.Params.Name == "approve" {
-							mu.Lock()
-							asked++
-							mu.Unlock()
-							text = `{"behavior":"` + decision + `","message":"no"}`
-						}
-						result = map[string]any{"content": []map[string]string{{"type": "text", "text": text}}}
-					}
-					w.Header().Set("Content-Type", "application/json")
-					_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": result})
-				}))
-				defer atoll.Close()
-
-				calls := append(useAll(), mcpCall("docs-gone", "answer", `{}`))
-				prompt := _mcpPromptHead + mustJSON(calls)
-				var cmd *exec.Cmd
-				if p == "claude" {
-					config, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{
-						"atoll":       map[string]any{"type": "http", "url": atoll.URL},
-						"docs-local":  map[string]any{"type": "stdio", "command": stdio, "args": []string{"--tag", "one"}, "env": map[string]string{_mcpEnvName: _mcpEnvSecret}},
-						"docs-remote": map[string]any{"type": "http", "url": remote.url(), "headers": map[string]string{_mcpHeaderName: _mcpHeaderSecret}},
-					}})
-					cmd = fakeCmd(t, m, p, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--mcp-config", string(config),
-						"--permission-prompt-tool", "mcp__atoll__approve", "--allowedTools", "mcp__atoll")
-					input, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]string{"role": "user", "content": prompt}})
-					cmd.Stdin = strings.NewReader(string(input) + "\n")
-				} else {
-					cmd = fakeCmd(t, m, p, "app-server")
-					action := map[string]string{"allow": "accept", "deny": "decline"}[decision]
-					var input strings.Builder
-					for _, req := range []map[string]any{
-						{"id": 1, "method": "initialize", "params": map[string]any{}},
-						{"id": 2, "method": "thread/start", "params": map[string]any{"config": map[string]any{"mcp_servers": map[string]any{
-							"atoll":       map[string]any{"url": atoll.URL},
-							"docs-local":  map[string]any{"command": stdio, "args": []string{"--tag", "one"}, "env": map[string]string{_mcpEnvName: _mcpEnvSecret}, "default_tools_approval_mode": "prompt"},
-							"docs-remote": map[string]any{"url": remote.url(), "http_headers": map[string]string{_mcpHeaderName: _mcpHeaderSecret}, "default_tools_approval_mode": "prompt"},
-						}}}},
-						{"id": 3, "method": "turn/start", "params": map[string]any{"input": []map[string]string{{"type": "text", "text": prompt}}}},
-						{"id": 9001, "result": map[string]string{"action": action}},
-						{"id": 9002, "result": map[string]string{"action": action}},
-						{"id": 9003, "result": map[string]string{"action": action}},
-					} {
-						b, _ := json.Marshal(req)
-						input.Write(b)
-						input.WriteByte('\n')
-					}
-					cmd.Stdin = strings.NewReader(input.String())
-				}
-				out, err := cmd.CombinedOutput()
-				if err != nil {
-					t.Fatalf("fake %s: %v\n%s", p, err, out)
-				}
-				want := []string{
-					"docs-local/inspect: args=--tag|one;env=" + envDigest(_mcpEnvSecret),
-					"docs-local/answer: stdio-answer-42",
-					"docs-remote/answer: http-answer-42",
-				}
-				if decision == "deny" {
-					want = []string{"docs-local/inspect: denied", "docs-local/answer: denied", "docs-remote/answer: denied"}
-				}
-				want = append(want, "docs-gone/answer: unavailable")
-				for _, line := range want {
-					if !strings.Contains(string(out), line) {
-						t.Errorf("fake %s output lacks %q:\n%s", p, line, out)
-					}
-				}
-				if called, rejected := remote.calls(); rejected != 0 || (called == 1) != (decision == "allow") {
-					t.Errorf("remote server saw %d calls and %d requests without its header after %s", called, rejected, decision)
-				}
-				if p == "claude" {
-					mu.Lock()
-					defer mu.Unlock()
-					if asked != 3 {
-						t.Errorf("permission prompt tool asked %d times, want once per call to a configured server", asked)
-					}
-				}
-			})
-		}
 	}
 }
