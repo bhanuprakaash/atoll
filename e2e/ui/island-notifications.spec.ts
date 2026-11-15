@@ -116,6 +116,7 @@ test("an approval in another Bot's thread drops the island open; Esc leaves a re
 test('a run ending in another thread widens the island for about 4 s, then it returns to rest', async ({
   page,
 }) => {
+  await page.clock.install();
   const { header } = await viewA(page);
   const reviewer = await newBotAPI(m, 'Reviewer');
   const b = await openThreadAPI(m, reviewer.id, prompts.pong);
@@ -128,9 +129,10 @@ test('a run ending in another thread widens the island for about 4 s, then it re
   await expect(header).toContainText('View');
   await expect(header.getByRole('button', { name: /^(Allow|Deny)$/ })).toHaveCount(0);
   // The line is about time: the notice stays a few seconds, then leaves on its own.
-  await page.waitForTimeout(2_000);
+  await page.clock.fastForward(2_000);
   await expect(finished).toBeVisible();
-  await expect(finished).toHaveCount(0, { timeout: 6_000 });
+  await page.clock.fastForward(2_500);
+  await expect(finished).toHaveCount(0);
   await expect(header.getByRole('heading', { level: 1, name: 'Pilot' })).toBeVisible();
   await expect(header.getByRole('heading', { name: threadTitle(prompts.keep) })).toBeVisible();
 });
@@ -138,7 +140,7 @@ test('a run ending in another thread widens the island for about 4 s, then it re
 // islandWidth is the width of the open island once its opening motion has settled.
 async function islandWidth(page: Page) {
   const island = page.locator('header [data-island]');
-  await page.waitForTimeout(900);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   return (await island.boundingBox())!.width;
 }
 
@@ -183,6 +185,7 @@ test('the open island keeps one width whatever its rows say, and long lines end 
 
 test('at 420 px wide the page does not scroll sideways with the island open', async ({ page }) => {
   await page.setViewportSize({ width: 420, height: 800 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const pilot = await newBotAPI(m, 'Pilot');
   await page.goto(`${m.url}/bots/${pilot.id}`);
   const longName = Array.from({ length: 60 }, () => 'wordy')
@@ -191,7 +194,6 @@ test('at 420 px wide the page does not scroll sideways with the island open', as
   await approvalFrom(longName);
   const header = page.locator('header');
   await expect(header.getByRole('button', { name: 'Allow', exact: true })).toBeVisible();
-  await page.waitForTimeout(900);
   const sideways = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
