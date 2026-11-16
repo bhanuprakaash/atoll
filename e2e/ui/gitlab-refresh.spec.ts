@@ -4,6 +4,7 @@
 import { createServer, type Server } from 'node:http';
 import { expect, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, openThreadAPI, prompts, startAtoll } from './atoll';
+import { pollConnected } from './github-fixture';
 
 let m: Machine;
 let gitlab: Server;
@@ -74,10 +75,7 @@ test.beforeAll(async () => {
   const start = await api(m, 'POST', '/api/connections/gitlab/start', {
     instance_url: gitlabURL,
   });
-  for (let i = 0; i < 5; i++) {
-    await sleep(1100);
-    if ((await api(m, 'POST', `/api/connections/${start.id}/poll`)).status === 'connected') break;
-  }
+  await pollConnected(m, start.id);
   const bot = await newBotAPI(m, 'Fixer', 'claude', {
     connections: [start.id],
   });

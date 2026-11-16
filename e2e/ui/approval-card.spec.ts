@@ -10,6 +10,7 @@ import {
   prompts,
   sidebarRow,
   startAtoll,
+  waitStatus,
 } from './atoll';
 
 let m: Machine;
@@ -33,15 +34,6 @@ async function openBot(page: Page, name: string) {
 async function send(page: Page, text: string) {
   await page.getByRole('textbox', { name: 'Message' }).fill(text);
   await page.getByRole('button', { name: 'Send' }).click();
-}
-
-async function waitStatus(threadID: string, status: string) {
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
-      timeout: 15_000,
-      intervals: [100],
-    })
-    .toBe(status);
 }
 
 // reds lists what inside root is drawn red: a text, background, border, or icon colour with hue
@@ -224,7 +216,7 @@ test('writing in the chat answers the card: it collapses to You replied instead 
   await expect(log.getByText(`${tmp}: ran`).first()).toBeVisible();
 
   const [t] = await api(m, 'GET', `/api/bots/${bot.id}/threads`);
-  await waitStatus(t.id, 'done');
+  await waitStatus(m, t.id, 'done');
   await page.reload();
   await expect(log.getByText('You replied instead')).toHaveCount(1);
   await expect(card).toHaveCount(0);
@@ -274,7 +266,7 @@ test('a helper approval in the boss thread is answered by writing there', async 
   await expect
     .poll(async () => (await api(m, 'GET', `/api/threads/${helper.id}`)).approval ?? null)
     .toBeNull();
-  await waitStatus(helper.id, 'done');
+  await waitStatus(m, helper.id, 'done');
   await page.reload();
   await expect(log.getByText('You replied instead')).toHaveCount(1);
 });
@@ -298,7 +290,7 @@ test('an approval in another thread: the face, the dropped island, its count and
   const asker = await newBotAPI(m, 'Asker', 'claude', { look: 'whale' });
   await openBot(page, 'Elsewhere');
   const waiting = await openThreadAPI(m, asker.id, prompts.write);
-  await waitStatus(waiting.id, 'waiting');
+  await waitStatus(m, waiting.id, 'waiting');
   const header = page.locator('header');
   const body = page.locator('body');
 
@@ -336,7 +328,7 @@ test('a group with a Bot that needs you shows no red', async ({ page }) => {
   await expect(group.getByRole('link', { name: /\bPager\b/ })).toBeVisible();
 
   const waiting = await openThreadAPI(m, pager.id, prompts.write);
-  await waitStatus(waiting.id, 'waiting');
+  await waitStatus(m, waiting.id, 'waiting');
   await expect(sidebarRow(page, 'Pager')).toHaveAttribute('data-marker', 'needs-you');
   await page.mouse.move(0, 0);
   expect(await reds(group)).toEqual([]);
@@ -350,7 +342,7 @@ test('a closed MR is not red', async ({ page }) => {
     bot.id,
     `Use MCP tools. [{"server":"atoll","tool":"track_mr","args":{"url":"${url}","title":"Closed change"}}]`,
   );
-  await waitStatus(thread.id, 'done');
+  await waitStatus(m, thread.id, 'done');
   // What the PR watcher writes for a closed PR, set in the server's database as it would.
   const db = new DatabaseSync(join(m.data, 'atoll.db'));
   try {
@@ -373,7 +365,7 @@ test('a closed MR is not red', async ({ page }) => {
 test('a failed run keeps its red icon and nothing else in the header is red', async ({ page }) => {
   const bot = await newBotAPI(m, 'Wren', 'claude', { look: 'whale' });
   const failed = await openThreadAPI(m, bot.id, prompts.none);
-  await waitStatus(failed.id, 'failed');
+  await waitStatus(m, failed.id, 'failed');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${failed.id}`);
   const log = page.getByRole('log', { name: 'Messages' });
   await expect(log.getByText(/^(Run failed|Didn't run)/)).toBeVisible();

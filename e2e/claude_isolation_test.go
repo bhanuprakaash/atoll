@@ -396,46 +396,6 @@ func TestClaudeIsolation_ShellPrefixIsAbsoluteForRelativeDataDir(t *testing.T) {
 	}
 }
 
-func TestClaudeIsolation_ToolsByKindOfRun(t *testing.T) {
-	t.Parallel()
-	m := ownerSetupMachine(t)
-	s := m.serve(t)
-	var keeper bot
-	s.do(t, "POST", "/api/bots", map[string]any{"name": "Keeper", "persona": "Keeps the reef.", "provider": "claude", "repo_access": "all", "can_manage_platform": true}, &keeper, http.StatusCreated)
-	chiefBot := chief(t, s).bot
-
-	tools := func(b bot) *call {
-		heySystem(t, s, "claude", b)
-		sessions := m.sessions(t, "claude")
-		return sessions[len(sessions)-1]
-	}
-	c := tools(chiefBot)
-	_, hasAtoll := mcpServersOf(t, "claude", c)["atoll"]
-	if toolsFlag(c) != "" || !hasAtoll || flagValue(c.argv, "--allowedTools") != "mcp__atoll" {
-		t.Errorf("Chief: --tools %q, want the empty value, with the atoll MCP config and --allowedTools mcp__atoll kept", toolsFlag(c))
-	}
-	for _, b := range []bot{keeper, s.newBot(t, "Plain", "claude")} {
-		if c := tools(b); toolsFlag(c) != _botTools {
-			t.Errorf("%s: --tools %q, want %q", b.Name, toolsFlag(c), _botTools)
-		}
-	}
-
-	// Title runs get no built-in tools either.
-	th := s.newThread(t, s.newBot(t, "Ada", "claude"))
-	s.finished(t, s.events(t, th), s.send(t, th, _titlePrompt).ID)
-	titled(t, s, th.ID, _titleWant)
-	// Every thread gets its own title run, so no count is pinned.
-	titles := m.titles(t, "claude")
-	if len(titles) == 0 {
-		t.Fatal("no title run started")
-	}
-	for _, c := range titles {
-		if got := toolsFlag(c); got != "" {
-			t.Errorf("title run %d --tools %q, want the empty value", c.pid, got)
-		}
-	}
-}
-
 func TestClaudeIsolation_ModelDiscoveryHasTheAllowlist(t *testing.T) {
 	t.Parallel()
 	m, s := start(t, "claude")

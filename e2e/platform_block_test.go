@@ -86,6 +86,47 @@ func TestPrompt_ChiefPlatformBlock(t *testing.T) {
 	}
 }
 
+func TestPrompt_ChiefSectionsSay(t *testing.T) {
+	t.Parallel()
+	for _, p := range _providers {
+		t.Run(p, func(t *testing.T) {
+			_, s := start(t, p)
+			block := platformBlock(t, heySystem(t, s, p, chief(t, s).bot))
+			for _, c := range []struct {
+				heading, name string
+				lower         bool
+				has, lacks    []string
+				blockLacks    []string
+			}{
+				{heading: _importHeading, name: "import_agent", has: []string{"import_agent"}, blockLacks: []string{"read it,", "file tool", "Read tool"}},
+				{heading: _importHeading, name: "import_skill and persona", has: []string{"import_skill", "persona"}},
+				{heading: _importHeading, name: "refused, not flagged", has: []string{"refused"}, lacks: []string{"flagged"}},
+				{heading: _askHeading, name: "the full proposal", lower: true, has: []string{"proposal", "model", "skills", "repo", "connections"}},
+			} {
+				text := strings.Join(section(t, block, c.heading), "\n")
+				if c.lower {
+					text = strings.ToLower(text)
+				}
+				for _, want := range c.has {
+					if !strings.Contains(text, want) {
+						t.Errorf("%q does not name %q (%s):\n%s", c.heading, want, c.name, text)
+					}
+				}
+				for _, bad := range c.lacks {
+					if strings.Contains(text, bad) {
+						t.Errorf("%q names %q (%s):\n%s", c.heading, bad, c.name, text)
+					}
+				}
+				for _, bad := range c.blockLacks {
+					if strings.Contains(block, bad) {
+						t.Errorf("platform block still tells Chief to read files itself (%q):\n%s", bad, block)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestPrompt_NoSwitchNoPlatformTextNoVoice(t *testing.T) {
 	t.Parallel()
 	for _, p := range _providers {

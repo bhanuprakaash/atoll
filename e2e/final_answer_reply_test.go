@@ -73,9 +73,9 @@ func TestFinalAnswer_ReplyIsFinalMessage(t *testing.T) {
 				t.Errorf("bot message %q, want the final message %q", got, _finalReply)
 			}
 			got := streamed(events)
-			for _, earlier := range []string{_finalOpening, _finalMiddle, _finalAnswer} {
-				if !strings.Contains(got, earlier) {
-					t.Errorf("text events carry %q, want them to hold the earlier text %q", got, earlier)
+			for _, want := range []string{_finalOpening, _finalMiddle, _finalAnswer, _finalReply} {
+				if !strings.Contains(got, want) {
+					t.Errorf("text events carry %q, want them to hold %q", got, want)
 				}
 			}
 		})
@@ -92,12 +92,6 @@ func TestFinalAnswer_EarlierTextStillStreams(t *testing.T) {
 			run := s.send(t, th, _finalPrompt)
 			events := until(t, ev, run.ID, "run_finished")
 
-			got := streamed(events)
-			for _, want := range []string{_finalOpening, _finalMiddle, _finalAnswer, _finalReply} {
-				if !strings.Contains(got, want) {
-					t.Errorf("text events carry %q, want them to hold %q", got, want)
-				}
-			}
 			text := slices.IndexFunc(events, func(e event) bool {
 				s, _ := e.Data["text"].(string)
 				return e.Type == "text" && strings.Contains(s, _finalOpening)

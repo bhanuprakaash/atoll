@@ -14,21 +14,11 @@ import {
   sidebarRow,
   startAtoll,
   threadPane,
+  waitStatus,
 } from "./atoll";
 
 let m: Machine;
 const ids: Record<string, string> = {};
-
-async function waitStatus(threadID: string, status: string) {
-  await expect
-    .poll(
-      async () => (await api(m, "GET", `/api/threads/${threadID}`)).run_status,
-      {
-        timeout: 15_000,
-      },
-    )
-    .toBe(status);
-}
 
 // thread opens a thread one after the other, so the last activity runs in the order called.
 async function thread(
@@ -42,7 +32,7 @@ async function thread(
     text,
     ...extra,
   });
-  await waitStatus(t.id, status);
+  await waitStatus(m, t.id, status);
   await api(m, "PATCH", `/api/threads/${t.id}`, { title: name });
   ids[name] = t.id;
   return t;

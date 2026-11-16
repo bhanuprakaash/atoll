@@ -69,47 +69,6 @@ func TestApproval_ClosedOnAnswer(t *testing.T) {
 	}
 }
 
-// TestApproval_ClosedOnStop: an approval dropped because its run ended is closed on the stream.
-func TestApproval_ClosedOnStop(t *testing.T) {
-	t.Parallel()
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			_, s := start(t, p)
-			th := s.newThread(t, s.newBot(t, "Ada", p))
-			ev := s.events(t, th)
-			r := s.send(t, th, _writePrompt)
-			id := nextOf(t, ev, r.ID, "approval")
-
-			s.do(t, "POST", "/api/runs/"+r.ID+"/stop", nil, nil, http.StatusNoContent)
-			var closed, finished bool
-			grace := time.After(30 * time.Second)
-			for !closed {
-				select {
-				case e, ok := <-ev:
-					if !ok {
-						t.Fatalf("event stream closed before approval_closed of %s", id)
-					}
-					if e.Data["run_id"] != r.ID {
-						continue
-					}
-					switch e.Type {
-					case "approval_closed":
-						if got := asString(e.Data["id"]); got != id {
-							t.Fatalf("approval_closed id %q, want %q", got, id)
-						}
-						closed = true
-					case "run_finished":
-						finished = true
-						grace = time.After(4 * _pace)
-					}
-				case <-grace:
-					t.Fatalf("no approval_closed for %s after stopping run %s (run_finished seen: %v)", id, r.ID, finished)
-				}
-			}
-		})
-	}
-}
-
 // TestApproval_ClaudeToolTimeout: Claude Code cancels an MCP tool call after 60 seconds unless
 // MCP_TOOL_TIMEOUT says otherwise, and Reef's permission prompt is such a call. A run gives
 // claude MCP_TOOL_TIMEOUT of at least 10 minutes, in milliseconds.

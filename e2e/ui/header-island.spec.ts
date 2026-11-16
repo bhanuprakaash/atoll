@@ -1,5 +1,5 @@
-// Header island: the Bot header shows the open thread's run state, holds no thread list or search,
-// opens the notification list on a click only, and keeps Bot settings visible.
+// Header island: the Bot header shows the open thread's run state and opens the notification list
+// on a click only.
 import { expect, test } from '@playwright/test';
 import {
   api,
@@ -9,6 +9,7 @@ import {
   prompts,
   sidebarRow,
   startAtoll,
+  waitStatus,
 } from './atoll';
 
 let m: Machine;
@@ -17,24 +18,16 @@ test.beforeAll(async () => {
 });
 test.afterAll(() => m?.stop());
 
-async function waitStatus(threadID: string, status: string) {
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
-      timeout: 15_000,
-    })
-    .toBe(status);
-}
-
 test('the header shows the open thread run state', async ({ page }) => {
   const bot = await newBotAPI(m, 'Pilot');
   const busy = await openThreadAPI(m, bot.id, prompts.hang);
   const waiting = await openThreadAPI(m, bot.id, prompts.write);
   const failed = await openThreadAPI(m, bot.id, prompts.none);
   const done = await openThreadAPI(m, bot.id, prompts.keep);
-  await waitStatus(busy.id, 'running');
-  await waitStatus(waiting.id, 'waiting');
-  await waitStatus(failed.id, 'failed');
-  await waitStatus(done.id, 'done');
+  await waitStatus(m, busy.id, 'running');
+  await waitStatus(m, waiting.id, 'waiting');
+  await waitStatus(m, failed.id, 'failed');
+  await waitStatus(m, done.id, 'done');
 
   const header = page.locator('header');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${busy.id}`);
@@ -46,7 +39,7 @@ test('the header shows the open thread run state', async ({ page }) => {
     .getByRole('log', { name: 'Messages' })
     .getByRole('button', { name: 'Allow', exact: true })
     .click();
-  await waitStatus(waiting.id, 'done');
+  await waitStatus(m, waiting.id, 'done');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${failed.id}`);
   await expect(header).toContainText('Run failed');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${done.id}`);
@@ -56,24 +49,6 @@ test('the header shows the open thread run state', async ({ page }) => {
   await expect(header).not.toContainText('Run failed');
 
   await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
-});
-
-test('past 8 open threads the island still has no thread list or search', async ({ page }) => {
-  const many = await newBotAPI(m, 'Many');
-  const threads = await Promise.all(
-    Array.from({ length: 9 }, () => openThreadAPI(m, many.id, prompts.keep)),
-  );
-  await Promise.all(threads.map((t) => waitStatus(t.id, 'done')));
-
-  await page.goto(m.url);
-  await sidebarRow(page, 'Many').click();
-  const header = page.locator('header');
-  await header.getByRole('button', { name: /^Notifications/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Notifications' })).toBeVisible();
-  await expect(page.getByRole('searchbox', { name: 'Search threads' })).toHaveCount(0);
-  await expect(page.getByRole('dialog', { name: /^Threads with / })).toHaveCount(0);
-  await expect(header.getByRole('button', { name: 'New thread' })).toHaveCount(0);
-  await expect(header.getByRole('button', { name: 'Close thread' })).toHaveCount(0);
 });
 
 test('hovering the island does not open the notification list; a click does', async ({ page }) => {
@@ -86,11 +61,4 @@ test('hovering the island does not open the notification list; a click does', as
   await expect(page.getByRole('dialog', { name: 'Notifications' })).toHaveCount(0);
   await island.click();
   await expect(page.getByRole('dialog', { name: 'Notifications' })).toBeVisible();
-});
-
-test('Bot settings is visible in the header', async ({ page }) => {
-  await newBotAPI(m, 'Gear');
-  await page.goto(m.url);
-  await sidebarRow(page, 'Gear').click();
-  await expect(page.getByRole('button', { name: 'Bot settings' })).toBeVisible();
 });

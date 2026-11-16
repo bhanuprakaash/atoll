@@ -15,15 +15,6 @@ const (
 	_whichBotsPrompt = "Which Bots do I have?"
 )
 
-// _readResults is what the fixture MCP server answers for each read tool.
-var _readResults = map[string]any{
-	"list_bots":        []map[string]any{{"id": "chief", "name": "Chief"}, {"id": "dynamic-bot-id", "name": "Lagoon"}},
-	"list_skills":      []map[string]any{{"id": "dynamic-skill-id", "name": "reef-greeting"}},
-	"list_connections": []map[string]any{{"id": "dynamic-connection-id", "kind": "gitlab", "instance_url": "https://gitlab.example", "status": "connected"}},
-	"list_repos":       []map[string]any{{"id": "dynamic-repo-id", "name": "reef-repo", "path": "/repos/reef"}},
-	"list_models":      []map[string]any{{"name": "claude", "label": "Claude Code", "models": []map[string]string{{"id": "reef-probe", "name": "Reef Probe"}}}},
-}
-
 // pick keeps only keys of m; an absent key is nil.
 func pick(m map[string]any, keys ...string) map[string]any {
 	out := map[string]any{}

@@ -68,9 +68,15 @@ func TestRepo_PlantedFilterDoesNotRunButUserFilterDoes(t *testing.T) {
 				{"start_work", _fixRepoPrompt},
 			} {
 				r := f.s.send(t, th, step.prompt)
-				until(t, ch, r.ID, "run_finished")
+				es := until(t, ch, r.ID, "run_finished")
 				if done := f.s.run(t, r.ID); done.Status != "done" {
 					t.Fatalf("run %q: %+v", step.prompt, done)
+				}
+				if step.prompt == _fixRepoPrompt {
+					worktree, _ := repoEvent(t, es, "worktree_created").Data["path"].(string)
+					if _, err := os.Stat(filepath.Join(worktree, "user.dat")); err != nil {
+						t.Errorf("start_work made a worktree without user.dat: %v", err)
+					}
 				}
 				if ran, err := os.ReadFile(evil); err == nil {
 					t.Errorf("%s ran the filter the Bot planted in the repo config:\n%s", step.git, ran)

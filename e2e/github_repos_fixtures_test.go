@@ -4,13 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
-	"sync"
 	"testing"
 )
 
@@ -140,106 +136,4 @@ func loggedCalls(t *testing.T, m *machine, name string) []*call {
 		return nil
 	}
 	return m.calls(t, name)
-}
-
-// TestGitHubReposFixtures_ProviderScenario proves the repo-github-fix scenario, the fake gh and the
-// fake GitHub's pull request route work without the product: the fake provider is started by hand
-// with the env of a run of a Bot with GitHub, against a stub of Reef's MCP tools.
-func TestGitHubReposFixtures_ProviderScenario(t *testing.T) {
-	t.Parallel()
-	for _, provider := range _providers {
-		t.Run(provider, func(t *testing.T) {
-			m := newMachine(t, provider, "gh")
-			g := newFakeGitHub(t)
-			g.set(func() { g.token = "fake-gho-direct" })
-			writeFile(t, filepath.Join(m.bin, "github-url"), g.URL)
-			repoPath := seedRepo(t, g.URL+"/octo/hello.git")
-			gitIn(t, repoPath, "push", filepath.Join(g.root, "octo", "hello.git"), "main")
-			work := filepath.Join(t.TempDir(), "work")
-			gitIn(t, repoPath, "worktree", "add", "-b", "fix/seeded-bug", work)
-			empty := t.TempDir()
-			writeFile(t, filepath.Join(empty, "hosts.yml"), "")
-
-			var mu sync.Mutex
-			calls := map[string]json.RawMessage{}
-			stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var req struct {
-					ID     json.RawMessage `json:"id"`
-					Method string          `json:"method"`
-					Params struct {
-						Name      string          `json:"name"`
-						Arguments json.RawMessage `json:"arguments"`
-					} `json:"params"`
-				}
-				_ = json.NewDecoder(r.Body).Decode(&req)
-				if len(req.ID) == 0 {
-					w.WriteHeader(202)
-					return
-				}
-				var result any = map[string]any{}
-				switch req.Method {
-				case "initialize":
-					result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{}, "serverInfo": map[string]string{"name": "fixture", "version": "0"}}
-				case "tools/list":
-					result = map[string]any{"tools": []any{}}
-				case "tools/call":
-					mu.Lock()
-					calls[req.Params.Name] = req.Params.Arguments
-					mu.Unlock()
-					text := "saved"
-					if req.Params.Name == "start_work" {
-						text = fmt.Sprintf(`{"path":%q,"branch":"fix/seeded-bug"}`, work)
-					}
-					result = map[string]any{"content": []map[string]string{{"type": "text", "text": text}}}
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": result})
-			}))
-			defer stub.Close()
-
-			var cmd *exec.Cmd
-			if provider == "claude" {
-				config, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"atoll": map[string]string{"type": "http", "url": stub.URL}}})
-				cmd = exec.CommandContext(t.Context(), filepath.Join(m.bin, provider), "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--mcp-config", string(config), "--allowedTools", "mcp__atoll__*")
-				input, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]string{"role": "user", "content": _githubFixPrompt}})
-				cmd.Stdin = strings.NewReader(string(input) + "\n")
-			} else {
-				cmd = exec.CommandContext(t.Context(), filepath.Join(m.bin, provider), "app-server")
-				var input strings.Builder
-				for i, req := range []map[string]any{
-					{"method": "initialize", "params": map[string]any{}},
-					{"method": "thread/start", "params": map[string]any{"cwd": repoPath, "config": map[string]any{"mcp_servers": map[string]any{"atoll": map[string]string{"url": stub.URL}}}}},
-					{"method": "turn/start", "params": map[string]any{"input": []map[string]string{{"type": "text", "text": _githubFixPrompt}}}},
-				} {
-					req["id"] = i + 1
-					b, _ := json.Marshal(req)
-					input.Write(b)
-					input.WriteByte('\n')
-				}
-				cmd.Stdin = strings.NewReader(input.String())
-			}
-			cmd.Dir = repoPath
-			cmd.Env = []string{
-				"HOME=" + m.home, "PATH=" + m.path, "GH_TOKEN=fake-gho-direct", "GH_CONFIG_DIR=" + empty,
-				"GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
-				"GIT_CONFIG_KEY_1=credential." + g.URL + ".helper",
-				"GIT_CONFIG_VALUE_1=" + `!f() { test "$1" = get && echo username=x-access-token && echo "password=$GH_TOKEN"; }; f`,
-			}
-			if out, err := cmd.CombinedOutput(); err != nil {
-				t.Fatalf("scenario: %v: %s", err, out)
-			}
-			url := g.URL + "/octo/hello/pull/1"
-			if got := gitIn(t, g.root, "--git-dir", filepath.Join(g.root, "octo", "hello.git"), "show", "refs/heads/fix/seeded-bug:answer.txt"); got != "42" {
-				t.Errorf("fake did not push the fix: %q", got)
-			}
-			if got, want := g.pullRequests(), []githubPull{{"octo", "hello", "fix/seeded-bug", "main", _githubPRTitle, "Correct the fixture answer."}}; !slices.Equal(got, want) {
-				t.Errorf("pull requests %+v, want %+v", got, want)
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			if got, want := string(calls["track_mr"]), fmt.Sprintf(`{"title":%q,"url":%q}`, _githubPRTitle, url); got != want {
-				t.Errorf("track_mr arguments %s, want %s", got, want)
-			}
-		})
-	}
 }

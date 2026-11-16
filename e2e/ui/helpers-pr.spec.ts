@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { api, type Machine, prompts, startAtoll } from './atoll';
 import { delegate, helperThreads, makeBoss, popover, startThread, tray } from './helpers-fixture';
+import { pollConnected } from './github-fixture';
 
 const prBrief = 'Fix the seeded bug, open a PR and wait for CI.';
 
@@ -154,10 +155,7 @@ test('a helper row shows its PR and CI as the watcher read them; a helper with n
   git(path, 'push', bare, 'main');
   const repo = await api(m, 'POST', '/api/repos', { name: 'scratch-pr', path });
   const start = await api(m, 'POST', '/api/connections/github/start');
-  for (let i = 0; i < 5; i++) {
-    await new Promise((ok) => setTimeout(ok, 1100));
-    if ((await api(m, 'POST', `/api/connections/${start.id}/poll`)).status === 'connected') break;
-  }
+  await pollConnected(m, start.id);
   const coder = { repo_access: [repo.id], connections: [start.id] };
   const { bots } = await makeBoss(m, ['Tester', 'Builder', 'Reviewer'], {
     Tester: coder,

@@ -9,6 +9,7 @@ import {
   prompts,
   startAtoll,
   threadTitle,
+  waitStatus,
 } from './atoll';
 
 let m: Machine;
@@ -17,20 +18,11 @@ test.beforeEach(async () => {
 });
 test.afterEach(() => m?.stop());
 
-async function waitStatus(threadID: string, status: string) {
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
-      timeout: 15_000,
-      intervals: [100],
-    })
-    .toBe(status);
-}
-
 // viewA opens Pilot's done thread A and returns the Bot and A.
 async function viewA(page: Page) {
   const pilot = await newBotAPI(m, 'Pilot');
   const a = await openThreadAPI(m, pilot.id, prompts.keep);
-  await waitStatus(a.id, 'done');
+  await waitStatus(m, a.id, 'done');
   const url = `${m.url}/bots/${pilot.id}/threads/${a.id}`;
   await page.goto(url);
   const header = page.locator('header');
@@ -42,9 +34,9 @@ test('the island has no thread list; clicking it opens the notification list', a
   const { header } = await viewA(page);
   const scout = await newBotAPI(m, 'Scout');
   const finished = await openThreadAPI(m, scout.id, prompts.pong);
-  await waitStatus(finished.id, 'done');
+  await waitStatus(m, finished.id, 'done');
   const waiting = await openThreadAPI(m, scout.id, prompts.write);
-  await waitStatus(waiting.id, 'waiting');
+  await waitStatus(m, waiting.id, 'waiting');
   await expect(header.getByRole('button', { name: 'Allow', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(header.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
@@ -69,7 +61,7 @@ test('the island has no thread list; clicking it opens the notification list', a
   );
 
   await needs.getByRole('button', { name: 'Allow', exact: true }).click();
-  await waitStatus(waiting.id, 'done');
+  await waitStatus(m, waiting.id, 'done');
   await expect(list.getByRole('list', { name: 'Needs you' }).getByRole('listitem')).toHaveCount(0);
   await expect(island).toHaveAccessibleName('Notifications');
 });
@@ -79,7 +71,7 @@ test('an approval in another thread of the same Bot drops the island open; Allow
 }) => {
   const { pilot, url, header } = await viewA(page);
   const b = await openThreadAPI(m, pilot.id, prompts.write);
-  await waitStatus(b.id, 'waiting');
+  await waitStatus(m, b.id, 'waiting');
 
   await expect(header).toContainText(threadTitle(prompts.write));
   await expect(header).toContainText('hello.txt');
@@ -90,7 +82,7 @@ test('an approval in another thread of the same Bot drops the island open; Allow
   await expect(header.getByRole('button', { name: 'Deny', exact: true })).toBeVisible();
   await header.getByRole('button', { name: 'Allow', exact: true }).click();
 
-  await waitStatus(b.id, 'done');
+  await waitStatus(m, b.id, 'done');
   expect(page.url()).toBe(url);
   await expect(header.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
 });
@@ -101,7 +93,7 @@ test("an approval in another Bot's thread drops the island open; Esc leaves a re
   const { url, header } = await viewA(page);
   const scout = await newBotAPI(m, 'Scout');
   const b = await openThreadAPI(m, scout.id, prompts.write);
-  await waitStatus(b.id, 'waiting');
+  await waitStatus(m, b.id, 'waiting');
 
   await expect(header).toContainText('Scout');
   await expect(header).toContainText(threadTitle(prompts.write));
@@ -127,7 +119,7 @@ test('a run ending in another thread widens the island for about 4 s, then it re
   const { header } = await viewA(page);
   const reviewer = await newBotAPI(m, 'Reviewer');
   const b = await openThreadAPI(m, reviewer.id, prompts.pong);
-  await waitStatus(b.id, 'done');
+  await waitStatus(m, b.id, 'done');
 
   const finished = header.getByText(
     new RegExp(`Reviewer finished ${threadTitle(prompts.pong)}`, 'i'),
@@ -154,7 +146,7 @@ async function islandWidth(page: Page) {
 async function approvalFrom(name: string) {
   const bot = await newBotAPI(m, name);
   const t = await openThreadAPI(m, bot.id, prompts.write);
-  await waitStatus(t.id, 'waiting');
+  await waitStatus(m, t.id, 'waiting');
   return t;
 }
 
@@ -166,7 +158,7 @@ test('the open island keeps one width whatever its rows say, and long lines end 
   await expect(header.getByRole('button', { name: 'Allow', exact: true })).toBeVisible();
   const narrow = await islandWidth(page);
   await header.getByRole('button', { name: 'Allow', exact: true }).click();
-  await waitStatus(short.id, 'done');
+  await waitStatus(m, short.id, 'done');
   await expect(header.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
 
   const longName = Array.from({ length: 60 }, () => 'wordy')

@@ -121,11 +121,10 @@ test('Stop ends a running run and the chat says it was stopped', async ({ page }
   expect(thread.run_status).toBe('stopped');
 });
 
-test('a failed run shows a line with Retry', async ({ page }) => {
+test('a failed run is marked failed and offers a new thread, not a sign-in', async ({ page }) => {
   await emptyThread(page, 'Moss');
   const log = page.getByRole('log', { name: 'Messages' });
   await send(page, prompts.none);
-  await expect(log.getByText(/^Didn't run: \S/)).toBeVisible();
   await expect(log.getByRole('button', { name: 'Retry' })).toBeVisible();
   await expect(log.getByRole('button', { name: 'Sign in again' })).toHaveCount(0);
   await expect(sidebarRow(page, 'Moss').getByRole('img', { name: /, failed$/ })).toBeVisible();

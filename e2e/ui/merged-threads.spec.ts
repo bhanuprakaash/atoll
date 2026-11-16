@@ -15,6 +15,7 @@ import {
   showPane,
   startAtoll,
   threadPane,
+  waitStatus,
 } from './atoll';
 import { githubEnv, type GitHubFake, seedRepo, startGitHub } from './github-fixture';
 
@@ -60,21 +61,13 @@ test.afterEach(() => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-async function waitStatus(threadID: string, status: string) {
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).run_status, {
-      timeout: 30_000,
-    })
-    .toBe(status);
-}
-
 // prThread is a thread of Coder whose Bot opened pull request n.
 async function prThread(n: number, text = fix) {
   const t = await api(m, 'POST', `/api/bots/${coder.id}/threads`, {
     text,
     repo_id: repo.id,
   });
-  await waitStatus(t.id, 'done');
+  await waitStatus(m, t.id, 'done', 30_000);
   expect((await api(m, 'GET', `/api/threads/${t.id}`)).mr_url).toBe(
     `${github.url}/octo/hello/pull/${n}`,
   );
@@ -107,7 +100,7 @@ async function woken(threadID: string) {
       { timeout: 30_000 },
     )
     .toBe(1);
-  await waitStatus(threadID, 'done');
+  await waitStatus(m, threadID, 'done', 30_000);
 }
 
 // away is a page on another Bot, so no thread of Coder is open: an open thread always shows.
@@ -163,7 +156,7 @@ test('a merged thread with an approval waiting stays in Now while it waits', asy
 }) => {
   const id = await prThread(1, fix);
   await api(m, 'POST', `/api/threads/${id}/messages`, { text: prompts.write });
-  await waitStatus(id, 'waiting');
+  await waitStatus(m, id, 'waiting', 30_000);
   await away(page);
   await nowPane(page);
   await expect(inNow(page, id)).toHaveCount(1);
@@ -179,7 +172,7 @@ test('a merged thread with an approval waiting stays in Now while it waits', asy
     .getByRole('log', { name: 'Messages' })
     .getByRole('button', { name: 'Allow', exact: true })
     .click();
-  await waitStatus(id, 'done');
+  await waitStatus(m, id, 'done', 30_000);
   // Allow ends the wait: the merged thread leaves Now again, still open.
   await expect(inNow(page, id)).toHaveCount(0, { timeout: 15_000 });
   expect((await api(m, 'GET', `/api/threads/${id}`)).closed).toBe(false);

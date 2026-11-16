@@ -229,7 +229,7 @@ func TestSkillFiles_BotRunsPlacedScript(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
-			files := libraryFiles(potetoFixture())
+			files := append(libraryFiles(potetoFixture()), skillFile{Path: "scripts/hello", Content: "#!/bin/sh\necho hi\n", Executable: true})
 			b, _ := seedPotetoBot(t, s, p, files)
 			th := s.newThread(t, b.bot)
 			ch := s.events(t, th)
@@ -247,6 +247,12 @@ func TestSkillFiles_BotRunsPlacedScript(t *testing.T) {
 			}
 			checkPlaced(t, placed.Files, filepath.Dir(placed.Path), files)
 			folderGone(t, filepath.Join(m.providerDir(p), "runs", r.ID))
+
+			r = s.send(t, th, "Run the poteto-mode script scripts/hello.")
+			got = s.finished(t, ch, r.ID)
+			if want := "Ran " + filepath.Join(placedDir(m, p, r.ID), "scripts", "hello") + ": hi"; got.Status != "done" || got.Reply != want {
+				t.Fatalf("run of the added script: %+v, want the reply %q", got, want)
+			}
 		})
 	}
 }

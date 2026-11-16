@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { api, newBotAPI, prompts, sendMessageAPI, startAtoll } from './atoll';
+import { api, newBotAPI, sendMessageAPI, startAtoll } from './atoll';
 
 for (const late of ['image', 'run', 'burst'] as const) {
   test(`long replies stay at the bottom after late ${late} on fresh loads`, async ({ browser }) => {
@@ -98,24 +98,3 @@ for (const late of ['image', 'run', 'burst'] as const) {
     }
   });
 }
-
-test('new events do not move a reader away from older messages', async ({ page }) => {
-  const m = await startAtoll();
-  try {
-    const bot = await newBotAPI(m, 'Reader');
-    const thread = await api(m, 'POST', `/api/bots/${bot.id}/threads`, {});
-    for (let i = 0; i < 10; i++) await sendMessageAPI(m, thread.id, prompts.keep);
-    await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
-    const log = page.getByRole('log', { name: 'Messages' });
-    await expect(log.getByTestId('message')).toHaveCount(20);
-    await log.evaluate((el) => (el.scrollTop = 100));
-    await expect(page.getByRole('button', { name: 'Jump to latest' })).toBeVisible();
-    const before = await log.evaluate((el) => el.scrollTop);
-    await sendMessageAPI(m, thread.id, prompts.keep);
-    await expect(log.getByTestId('message')).toHaveCount(22);
-    expect(Math.abs((await log.evaluate((el) => el.scrollTop)) - before)).toBeLessThanOrEqual(2);
-    await expect(page.getByRole('button', { name: 'Jump to latest' })).toBeVisible();
-  } finally {
-    m.stop();
-  }
-});

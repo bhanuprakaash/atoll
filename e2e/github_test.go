@@ -3,7 +3,6 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -381,67 +380,5 @@ func TestGitHub_ChiefHandlesTheConnection(t *testing.T) {
 	guide := strings.Join(section(t, platformBlock(t, system), _guideHeading), "\n")
 	if !strings.Contains(guide, "GitHub") {
 		t.Errorf("Reef guide does not name GitHub among the connections:\n%s", guide)
-	}
-}
-
-// TestGitHubFixtures_ProviderScenario proves the github-probe scenario, the fake gh and the fake
-// GitHub work without the product: the fake provider is started by hand with the env and MCP
-// config the contract describes for a run of a Bot with GitHub.
-func TestGitHubFixtures_ProviderScenario(t *testing.T) {
-	t.Parallel()
-	for _, provider := range _providers {
-		t.Run(provider, func(t *testing.T) {
-			m := newMachine(t, provider, "gh")
-			g := newFakeGitHub(t)
-			g.set(func() { g.token = "fake-gho-direct" })
-			writeFile(t, filepath.Join(m.bin, "github-url"), g.URL)
-			empty := t.TempDir()
-			writeFile(t, filepath.Join(empty, "hosts.yml"), "")
-			mcpURL, auth := g.URL+"/mcp/", "Bearer fake-gho-direct"
-
-			var cmd *exec.Cmd
-			if provider == "claude" {
-				config, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"github": map[string]any{"type": "http", "url": mcpURL, "headers": map[string]string{"Authorization": auth}}}})
-				cmd = exec.CommandContext(t.Context(), filepath.Join(m.bin, provider), "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--mcp-config", string(config), "--allowedTools", "mcp__atoll__*")
-				input, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]string{"role": "user", "content": _githubPrompt}})
-				cmd.Stdin = strings.NewReader(string(input) + "\n")
-			} else {
-				cmd = exec.CommandContext(t.Context(), filepath.Join(m.bin, provider), "app-server")
-				var input strings.Builder
-				for i, req := range []map[string]any{
-					{"method": "initialize", "params": map[string]any{}},
-					{"method": "thread/start", "params": map[string]any{"cwd": t.TempDir(), "config": map[string]any{"mcp_servers": map[string]any{"github": map[string]any{"url": mcpURL, "http_headers": map[string]string{"Authorization": auth}}}}}},
-					{"method": "turn/start", "params": map[string]any{"input": []map[string]string{{"type": "text", "text": _githubPrompt}}}},
-				} {
-					req["id"] = i + 1
-					b, _ := json.Marshal(req)
-					input.Write(b)
-					input.WriteByte('\n')
-				}
-				cmd.Stdin = strings.NewReader(input.String())
-			}
-			cmd.Dir = t.TempDir()
-			cmd.Env = []string{
-				"HOME=" + m.home, "PATH=" + m.path, "GH_TOKEN=fake-gho-direct", "GH_CONFIG_DIR=" + empty,
-				"GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
-				"GIT_CONFIG_KEY_1=credential." + g.URL + ".helper",
-				"GIT_CONFIG_VALUE_1=" + `!f() { test "$1" = get && echo username=x-access-token && echo "password=$GH_TOKEN"; }; f`,
-			}
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				t.Fatalf("scenario: %v: %s", err, out)
-			}
-			for _, want := range []string{"reef-fixture", "x-access-token", "source"} {
-				if !strings.Contains(string(out), want) {
-					t.Errorf("scenario reply lacks %q: %s", want, out)
-				}
-			}
-			if got := gitIn(t, g.root, "--git-dir", filepath.Join(g.root, "octo", "hello.git"), "show", "refs/heads/reef-push:probe.txt"); got != "pushed by the probe" {
-				t.Errorf("fake did not push: %q", got)
-			}
-			if reqs := g.mcpRequests(); len(reqs) == 0 || reqs[len(reqs)-1].Tool != "get_me" || reqs[len(reqs)-1].Auth != auth {
-				t.Errorf("MCP requests %+v, want the last to be get_me with %s", reqs, auth)
-			}
-		})
 	}
 }

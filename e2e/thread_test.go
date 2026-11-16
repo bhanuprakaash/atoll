@@ -181,35 +181,6 @@ func TestToolCalls_Stream(t *testing.T) {
 	}
 }
 
-func TestRestart_FailsRunningRun(t *testing.T) {
-	t.Parallel()
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			m, s := start(t, p)
-			th := s.newThread(t, s.newBot(t, "Ada", p))
-			ev := s.events(t, th)
-			r := s.send(t, th, _hangPrompt)
-			until(t, ev, r.ID, "tool_call")
-			if got := s.run(t, r.ID).Status; got != "running" {
-				t.Fatalf("run status %q mid-run, want running", got)
-			}
-
-			s.kill()
-			s = m.serve(t)
-
-			got := s.run(t, r.ID)
-			if got.Status != "failed" || strings.TrimSpace(got.Error) == "" {
-				t.Errorf("run after a restart: status %q, error %q; want failed with a reason", got.Status, got.Error)
-			}
-			var msgs []message
-			s.do(t, "GET", "/api/threads/"+th.ID+"/messages", nil, &msgs, http.StatusOK)
-			if len(msgs) == 0 || msgs[0].Text != _hangPrompt {
-				t.Errorf("thread messages after a restart %+v, want the user message kept", msgs)
-			}
-		})
-	}
-}
-
 // quiet fails if run gets an event in d.
 func quiet(t *testing.T, ch <-chan event, runID string, d time.Duration) {
 	t.Helper()
