@@ -2026,9 +2026,9 @@ Voice
   its run goes, `Stop`. *The boss thread's stream carries only the boss's events, so the UI polls: a
   thread summary (`GET /api/threads/{id}`, `GET /api/bots/{id}/threads`) holds `helpers` (the helper
   threads' summaries, with `run_status`, `step` and `approval`) and, on a helper thread,
-  `parent_bot_id`; while a Stop holds helper reports it also holds `holds_reports` and
-  `reports_waiting`, the count of held helper notices); the thread query polls every 2 s, as the sidebar does. The handoff line is found
-  from the helper threads' creation time, so it survives a reload.*
+  `parent_bot_id`; `holds_reports` says a Stop holds helper reports, and `reports_waiting` counts the
+  helper notices held (0 when none is held); the thread query polls every 2 s, as the sidebar does.
+  The handoff line is found from the helper threads' creation time, so it survives a reload.*
 - No ledger. Helper reports never enter the boss's chat and background runs add no messages
   (Delegation), so nothing is left to fold. *Reversed: the ledger answered Round 2's 73 messages and
   38 screens in 21 minutes, made of helper reports and status replies; neither reaches the chat
