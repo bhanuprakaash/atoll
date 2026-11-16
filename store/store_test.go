@@ -715,7 +715,11 @@ func TestStore_Watched_OpenedOnly(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
-	thread, err := st.CreateThread(ctx, bot.ID, "")
+	repo, err := st.CreateRepo(ctx, "r", "/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, repo.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -728,10 +732,27 @@ func TestStore_Watched_OpenedOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	boss, err := st.CreateThread(ctx, bot.ID, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed, err := st.CreateThread(ctx, bot.ID, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const bossPR, closedPR = "https://github.com/o/r/pull/3", "https://github.com/o/r/pull/4"
+	for _, c := range []struct{ id, url string }{{boss.ID, bossPR}, {closed.ID, closedPR}} {
+		if _, err := st.SetMR(ctx, c.id, c.url, "opened", "T"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.SetClosed(ctx, closed.ID); err != nil {
+		t.Fatal(err)
+	}
 	for i, want := range []struct {
-		watched string
+		watched []string
 		done    int
-	}{{opened, 0}, {"", 1}} {
+	}{{[]string{opened, bossPR}, 0}, {[]string{bossPR}, 1}} {
 		if i == 1 {
 			if _, err := st.StoreMR(ctx, thread.ID, store.MRRead{URL: opened, Prev: "opened", State: "closed", Title: "T"}); err != nil {
 				t.Fatal(err)
@@ -745,8 +766,12 @@ func TestStore_Watched_OpenedOnly(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(done) != want.done || (want.watched == "") != (len(watched) == 0) || len(watched) > 0 && watched[0].PR.URL != want.watched {
-			t.Errorf("step %d: Watched %+v, Done %d threads; want %q watched, %d done", i, watched, len(done), want.watched, want.done)
+		var urls []string
+		for _, w := range watched {
+			urls = append(urls, w.PR.URL)
+		}
+		if len(done) != want.done || !slices.Equal(urls, want.watched) {
+			t.Errorf("step %d: Watched %v, Done %d threads; want %v watched, %d done", i, urls, len(done), want.watched, want.done)
 		}
 	}
 }
