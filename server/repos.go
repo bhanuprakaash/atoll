@@ -266,9 +266,9 @@ func (a *api) pollConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	var save func() error
 	if c.Kind == store.KindGitHub {
-		var token string
-		token, err = connection.PollGitHubToken(r.Context(), a.http, dev.code)
-		save = func() error { return connection.SaveGitHubToken(c.ID, token) }
+		var tokens connection.GitHubTokens
+		tokens, err = connection.PollGitHubToken(r.Context(), a.http, dev.code)
+		save = func() error { return connection.SaveGitHubToken(c.ID, tokens) }
 	} else {
 		var tokens connection.Tokens
 		tokens, err = connection.PollToken(r.Context(), a.http, c.InstanceURL, dev.code)

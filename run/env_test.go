@@ -33,7 +33,7 @@ func githubBot(t *testing.T) (*Manager, store.Bot, *atomic.Int32) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := connection.SaveGitHubToken(c.ID, "fake-gho"); err != nil {
+	if err := connection.SaveGitHubToken(c.ID, connection.GitHubTokens{AccessToken: "fake-gho"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.st.SetConnectionStatus(t.Context(), c.ID, store.ConnectionConnected); err != nil {
