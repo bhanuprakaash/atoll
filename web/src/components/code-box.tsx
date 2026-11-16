@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { highlight, type TokenKind } from '@/utils/highlight';
 
 const _limit = 20;
@@ -22,10 +22,31 @@ const _svg = {
   strokeLinejoin: 'round',
 } as const;
 
+const _wrapKey = 'code-wrap';
+const _wrapListeners = new Set<() => void>();
+
+function readWrap() {
+  return localStorage.getItem(_wrapKey) === 'true';
+}
+
+function subscribeWrap(listener: () => void) {
+  _wrapListeners.add(listener);
+  window.addEventListener('storage', listener);
+  return () => {
+    _wrapListeners.delete(listener);
+    window.removeEventListener('storage', listener);
+  };
+}
+
+function saveWrap(on: boolean) {
+  localStorage.setItem(_wrapKey, String(on));
+  _wrapListeners.forEach((l) => l());
+}
+
 export function CodeBox({ source, lang }: { source: string; lang?: string }) {
   const [all, setAll] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [wrap, setWrap] = useState(false);
+  const wrap = useSyncExternalStore(subscribeWrap, readWrap);
   useEffect(() => {
     if (!copied) return;
     const t = setTimeout(() => setCopied(false), 1500);
@@ -44,7 +65,7 @@ export function CodeBox({ source, lang }: { source: string; lang?: string }) {
             aria-label="Wrap"
             aria-pressed={wrap}
             className={`${_icon} ${wrap ? 'text-ink' : ''}`}
-            onClick={() => setWrap(!wrap)}
+            onClick={() => saveWrap(!wrap)}
           >
             <svg {..._svg}>
               <path d="M3 6h18M3 12h14a3 3 0 0 1 0 6h-4M3 18h5" />
