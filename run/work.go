@@ -921,13 +921,22 @@ func (m *Manager) releaseDone() {
 	}
 	for _, t := range threads {
 		rp, err := m.cfg.Store.Repo(m.ctx, t.RepoID)
-		if err == nil && RepoHost(m.ctx, rp.Path) != _hostGitHub {
+		if err == nil && m.repoHost(rp) != _hostGitHub {
 			err = m.releaseDoneThread(t, rp)
 		}
 		if err != nil && m.ctx.Err() == nil {
 			m.cfg.Log.Warn("release worktree", "thread_id", t.ID, "error", err)
 		}
 	}
+}
+
+func (m *Manager) repoHost(rp store.Repo) string {
+	if host, ok := m.hosts.Load(rp.ID); ok {
+		return host.(string)
+	}
+	host := RepoHost(m.ctx, rp.Path)
+	m.hosts.Store(rp.ID, host)
+	return host
 }
 
 func (m *Manager) releaseDoneThread(t store.Thread, rp store.Repo) error {
