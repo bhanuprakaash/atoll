@@ -701,6 +701,20 @@ func TestStore_SetMR(t *testing.T) {
 	if len(got) != 1 || got[0].URL != second {
 		t.Errorf("OpenedMRsSince = %+v, want only %s", got, second)
 	}
+	got, err = st.OpenedMRsSince(ctx, time.Time{})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("OpenedMRsSince = %+v, %v, want both PRs", got, err)
+	}
+	if err := st.DismissMR(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DismissMR(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.OpenedMRsSince(ctx, time.Time{})
+	if err != nil || len(got) != 1 || got[0].URL != first {
+		t.Errorf("after dismissing %s: OpenedMRsSince = %+v, %v, want only %s", second, got, err, first)
+	}
 	set(first, "merged", "opened")
 	const third = "https://github.com/o/r/pull/3"
 	set(third, "merged", "merged")
