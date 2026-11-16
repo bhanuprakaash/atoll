@@ -13,6 +13,7 @@ export type GitHubFake = {
   url: string;
   // merge turns pull request n merged, as GitHub does when the person merges it.
   merge: (n: number) => void;
+  setCI: (n: number, state: 'running' | 'passed' | 'failed') => void;
   // reads is how many times the server asked about pull request n.
   reads: (n: number) => number;
   close: () => void;
@@ -23,6 +24,7 @@ const sha = (n: number) => `head${n}`.padEnd(40, '0');
 export async function startGitHub(): Promise<GitHubFake> {
   const pulls: { title: string; state: string; merged: boolean }[] = [];
   const reads = new Map<number, number>();
+  const ci = new Map<number, 'running' | 'passed' | 'failed'>();
   let token = '';
   let url = '';
   const server: Server = createServer((req, res) => {
@@ -80,8 +82,19 @@ export async function startGitHub(): Promise<GitHubFake> {
         }
         res.writeHead(200, { 'Content-Type': 'application/json', ETag: etag });
         res.end(payload);
-      } else if (/^\/repos\/octo\/hello\/commits\/[0-9a-z]+\/check-runs/.test(path)) {
-        json(200, { total_count: 0, check_runs: [] });
+      } else if ((match = path.match(/^\/repos\/octo\/hello\/commits\/head(\d+)0*\/check-runs/))) {
+        const n = pulls.findIndex((_, i) => path.includes(`/commits/${sha(i + 1)}/`)) + 1;
+        const state = ci.get(n);
+        const runs = state
+          ? [
+              {
+                name: 'build',
+                status: state === 'running' ? 'in_progress' : 'completed',
+                conclusion: state === 'passed' ? 'success' : state === 'failed' ? 'failure' : null,
+              },
+            ]
+          : [];
+        json(200, { total_count: runs.length, check_runs: runs });
       } else if (/^\/repos\/octo\/hello\/commits\/[0-9a-z]+\/status/.test(path)) {
         json(200, { state: 'pending', total_count: 0, statuses: [] });
       } else {
@@ -97,6 +110,9 @@ export async function startGitHub(): Promise<GitHubFake> {
     merge: (n) => {
       pulls[n - 1].state = 'closed';
       pulls[n - 1].merged = true;
+    },
+    setCI: (n, state) => {
+      ci.set(n, state);
     },
     reads: (n) => reads.get(n) ?? 0,
     close: () => {

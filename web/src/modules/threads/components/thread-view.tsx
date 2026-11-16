@@ -23,9 +23,8 @@ import { approvalTarget } from '@/modules/threads/components/approval-card';
 import { QueuedMessage } from '@/modules/threads/components/queued-message';
 import { FailedLine, FailedRun } from '@/modules/threads/components/failed-run-line';
 import { chatText, LiveRun } from '@/modules/threads/components/live-run';
-import { HelpersTray } from '@/modules/threads/components/helpers-tray';
+import { HelperNotices } from '@/modules/threads/components/helper-notices';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
-import { MrChip } from '@/modules/threads/components/mr-chip';
 import { mrRef } from '@/modules/threads/utils/mr-ref';
 import { clockTime, messageTime } from '@/utils/time';
 import { usageLine } from '@/utils/usage';
@@ -276,7 +275,6 @@ function EmptyThread({
   setRepoId,
   threadId,
   disabled,
-  context,
   sendFirst,
   onSent,
 }: {
@@ -288,7 +286,6 @@ function EmptyThread({
   setRepoId: (id: string) => void;
   threadId: string;
   disabled: boolean;
-  context?: ReactNode;
   sendFirst: (text: string, images?: ImageInput[], restore?: () => void) => void;
   onSent: (run: Run) => void;
 }) {
@@ -336,7 +333,6 @@ function EmptyThread({
           botName={botName}
           disabled={disabled}
           onSent={onSent}
-          context={context}
           onFirstSend={sendFirst}
         />
       </div>
@@ -419,7 +415,6 @@ export function ThreadView({
   bots,
   bot,
   repos,
-  repoName,
   lostRepo,
   afterRun,
   signedOut,
@@ -431,7 +426,6 @@ export function ThreadView({
   bots: Bots;
   bot?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
-  repoName?: string;
   lostRepo?: string;
   afterRun?: (runId: string) => ReactNode;
   signedOut?: (provider: Run['provider']) => ReactNode;
@@ -547,52 +541,6 @@ export function ThreadView({
   const mrUrl = mr?.url ?? thread?.mr_url;
   const mrState = mr?.state ?? thread?.mr_state;
   const ref = mrRef(mrUrl);
-  const chip = 'flex h-7 flex-none items-center gap-1.5 rounded-full bg-selected px-2.5';
-  const mrChip = mrUrl && (
-    <MrChip url={mrUrl} state={mrState} title={mr?.title ?? thread?.mr_title} />
-  );
-  const context = (
-    <>
-      <span className={chip}>
-        <svg
-          aria-hidden="true"
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        </svg>
-        {repoName ?? (thread?.repo_id || 'No repo')}
-      </span>
-      {thread?.branch && (
-        <span className={`${chip} min-w-0 flex-initial`} title={thread.branch}>
-          <svg
-            aria-hidden="true"
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="6" cy="5" r="2" />
-            <circle cx="6" cy="19" r="2" />
-            <circle cx="18" cy="7" r="2" />
-            <path d="M6 7v10M18 9c0 5-6 4-12 8" />
-          </svg>
-          <span className="truncate font-mono">{thread.branch}</span>
-        </span>
-      )}
-      {mrChip}
-    </>
-  );
   const helpers = thread?.helpers ?? [];
   const handoffs = new Map<string, { name: string; href: string }[]>();
   for (const h of helpers) {
@@ -684,7 +632,6 @@ export function ThreadView({
                 setRepoId={setRepoId}
                 threadId={threadId}
                 disabled={!connected}
-                context={context}
                 sendFirst={sendFirst}
                 onSent={(run) => begin(run.id)}
               />
@@ -891,10 +838,8 @@ export function ThreadView({
               runId={activeId}
               disabled={!connected || !!thread?.closed}
               onSent={(run) => begin(run.id)}
-              context={context}
-              tray={
-                <HelpersTray
-                  boss={botName}
+              above={
+                <HelperNotices
                   helpers={helpers}
                   bots={bots}
                   held={thread?.holds_reports ? thread.reports_waiting : null}

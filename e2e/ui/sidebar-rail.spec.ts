@@ -18,7 +18,7 @@ import {
   threadTitle,
   waitStatus,
 } from './atoll';
-import { bossHandsOff, tray } from './helpers-fixture';
+import { bossHandsOff, details } from './helpers-fixture';
 
 let m: Machine;
 test.beforeEach(async () => {
@@ -80,8 +80,12 @@ test.describe('#469 rail and the Bot pane', () => {
     for (const name of ['Ivy', 'Oak', 'Elm', long]) bots[name] = await newBotAPI(m, name);
     const backend = await api(m, 'POST', '/api/groups', { name: 'Backend' });
     const frontend = await api(m, 'POST', '/api/groups', { name: 'Frontend' });
-    await api(m, 'PUT', `/api/bots/${bots.Oak.id}/group`, { group_id: frontend.id });
-    await api(m, 'PUT', `/api/bots/${bots.Ivy.id}/group`, { group_id: backend.id });
+    await api(m, 'PUT', `/api/bots/${bots.Oak.id}/group`, {
+      group_id: frontend.id,
+    });
+    await api(m, 'PUT', `/api/bots/${bots.Ivy.id}/group`, {
+      group_id: backend.id,
+    });
 
     await page.goto(`${m.url}/settings`);
     await expect(rail(page)).toBeVisible();
@@ -260,8 +264,9 @@ test.describe('#469 rail and the Bot pane', () => {
 
     await line.click();
     await expect(page).toHaveURL(`${m.url}/bots/${poteto.id}/threads/${boss}`);
-    await expect(tray(page)).toContainText('Working with Poteto');
-    await expect(tray(page)).toBeInViewport();
+    await expect(details(page)).toContainText('Tester');
+    await expect(page.getByText(/Working with/)).toHaveCount(0);
+    await expect(details(page)).toBeInViewport();
   });
 
   test('a group line shows the group name and Bot count on hover and focus, and opens the group menu on right-click', async ({
@@ -272,7 +277,9 @@ test.describe('#469 rail and the Bot pane', () => {
     const ops = await api(m, 'POST', '/api/groups', { name: 'Ops' });
     const quiet = await api(m, 'POST', '/api/groups', { name: 'Quiet' });
     await api(m, 'PUT', `/api/bots/${bots.Ivy.id}/group`, { group_id: ops.id });
-    await api(m, 'PUT', `/api/bots/${bots.Oak.id}/group`, { group_id: quiet.id });
+    await api(m, 'PUT', `/api/bots/${bots.Oak.id}/group`, {
+      group_id: quiet.id,
+    });
     await page.goto(`${m.url}/settings`);
 
     await groupLine(page, 'Ops').hover();
@@ -320,7 +327,9 @@ test.describe('#469 rail and the Bot pane', () => {
     git('add', 'answer.txt');
     git('commit', '-m', 'seed bug');
     const repo = await api(m, 'POST', '/api/repos', { name: 'seeded', path });
-    const bot = await newBotAPI(m, 'Lantern', 'claude', { repo_access: [repo.id] });
+    const bot = await newBotAPI(m, 'Lantern', 'claude', {
+      repo_access: [repo.id],
+    });
     const other = await newBotAPI(m, 'Other');
     const track = (url: string) =>
       `Use MCP tools. [{"server":"atoll","tool":"track_mr","args":{"url":"${url}","title":"Tidy the logs"}}]`;
@@ -349,7 +358,9 @@ test.describe('#469 rail and the Bot pane', () => {
       await api(m, 'PATCH', `/api/threads/${t.id}`, { title });
     }
     await waitStatus(m, elsewhere.id, 'done');
-    await api(m, 'PATCH', `/api/threads/${elsewhere.id}`, { title: 'Gamma elsewhere' });
+    await api(m, 'PATCH', `/api/threads/${elsewhere.id}`, {
+      title: 'Gamma elsewhere',
+    });
     expect((await api(m, 'GET', `/api/threads/${threads['Bravo notes'].id}`)).branch).toBe(
       'fix/seeded-bug',
     );
@@ -434,7 +445,9 @@ test.describe('#470 row actions, Closed and New thread', () => {
     await waitStatus(m, asking.id, 'waiting');
     for (const name of names) {
       await waitStatus(m, threads[name].id, 'done');
-      await api(m, 'PATCH', `/api/threads/${threads[name].id}`, { title: `${name} notes` });
+      await api(m, 'PATCH', `/api/threads/${threads[name].id}`, {
+        title: `${name} notes`,
+      });
     }
 
     const pane = await showPane(page, m, bot.id, 'Beacon');
@@ -510,7 +523,9 @@ test.describe('#470 row actions, Closed and New thread', () => {
     for (const name of ['Alpha', 'Bravo', 'Charlie']) {
       const t = await openThreadAPI(m, bot.id, prompts.keep);
       await waitStatus(m, t.id, 'done');
-      await api(m, 'PATCH', `/api/threads/${t.id}`, { title: `${name} closed` });
+      await api(m, 'PATCH', `/api/threads/${t.id}`, {
+        title: `${name} closed`,
+      });
       await api(m, 'POST', `/api/threads/${t.id}/close`);
       closed[name] = t;
     }
@@ -543,7 +558,9 @@ test.describe('#470 row actions, Closed and New thread', () => {
     const bot = await newBotAPI(m, 'Keyer');
     const t = await openThreadAPI(m, bot.id, prompts.pong);
     await waitStatus(m, t.id, 'done');
-    const heading = page.getByRole('heading', { name: 'What should Keyer work on?' });
+    const heading = page.getByRole('heading', {
+      name: 'What should Keyer work on?',
+    });
     const expectNewThread = async () => {
       await expect(heading).toBeVisible();
       await expect(page).toHaveURL(new RegExp(`/bots/${bot.id}/`));

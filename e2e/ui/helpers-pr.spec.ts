@@ -1,7 +1,7 @@
-// The helpers tray carries each helper's PR and its CI. GitHub is a local server the watcher
+// Thread details carries each helper's PR and its CI. GitHub is a local server the watcher
 // reads (ATOLL_GITHUB_URL); the helpers play testdata/claude/helper-pr-hang.jsonl (opens and
 // tracks a PR with the fake gh, then waits) and run-hang. Needs the PR watcher of #163 (CI) and
-// the tray of #175.
+// the helper rows in Thread details.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
@@ -10,7 +10,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { api, type Machine, prompts, startAtoll } from './atoll';
-import { delegate, helperThreads, makeBoss, popover, startThread, tray } from './helpers-fixture';
+import {
+  delegate,
+  helperThreads,
+  makeBoss,
+  details,
+  startThread,
+  openDetails,
+} from './helpers-fixture';
 import { pollConnected } from './github-fixture';
 
 const prBrief = 'Fix the seeded bug, open a PR and wait for CI.';
@@ -50,13 +57,18 @@ test.beforeEach(async () => {
     req.on('data', (c) => (body += c));
     req.on('end', () => {
       const json = (status: number, value: unknown, headers: Record<string, string> = {}) => {
-        res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
+        res.writeHead(status, {
+          'Content-Type': 'application/json',
+          ...headers,
+        });
         res.end(JSON.stringify(value));
       };
       const form = (value: Record<string, string | number>) => {
         const wantsJSON = (req.headers.accept ?? '').includes('application/json');
         if (wantsJSON) return json(200, value);
-        res.writeHead(200, { 'Content-Type': 'application/x-www-form-urlencoded' });
+        res.writeHead(200, {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        });
         res.end(
           new URLSearchParams(Object.entries(value).map(([k, v]) => [k, String(v)])).toString(),
         );
@@ -76,7 +88,11 @@ test.beforeEach(async () => {
         });
       } else if (req.method === 'POST' && url === '/login/oauth/access_token') {
         token = 'fake-gho-ui-helpers-pr';
-        form({ access_token: token, token_type: 'bearer', scope: 'repo,read:org,workflow' });
+        form({
+          access_token: token,
+          token_type: 'bearer',
+          scope: 'repo,read:org,workflow',
+        });
       } else if (req.method === 'GET' && url === '/user') {
         json(
           authorised ? 200 : 401,
@@ -137,7 +153,7 @@ test.afterEach(() => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test('a helper row shows its PR and CI as the watcher read them; a helper with no PR shows none; the resting line has no PR text', async ({
+test('a helper row shows its PR and CI as the watcher read them; a helper with no PR shows none; the composer has no PR text', async ({
   page,
 }) => {
   test.setTimeout(180_000);
@@ -194,11 +210,9 @@ test('a helper row shows its PR and CI as the watcher read them; a helper with n
     )
     .toBe(true);
 
-  const region = tray(page);
-  await expect(region).toContainText('3 working');
-  await expect(region).not.toContainText(/#\d|running|passed|failed|merged|closed/);
-  await region.getByRole('button', { name: 'Show', exact: true }).click();
-  const rows = popover(page).getByRole('listitem');
+  await expect(page.getByText(/Working with/)).toHaveCount(0);
+  await openDetails(page);
+  const rows = details(page).getByRole('listitem');
   const row = (name: string) => rows.filter({ hasText: name });
   const link = (name: string) =>
     row(name).getByRole('link', { name: `#${prOf[name]}`, exact: true });

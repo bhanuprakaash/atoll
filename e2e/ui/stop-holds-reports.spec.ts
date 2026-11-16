@@ -1,8 +1,8 @@
-// While the person's Stop holds a lead's helper reports, the helpers tray says how many helpers
+// While the person's Stop holds a lead's helper reports, the composer line says how many helpers
 // still run and how many reports wait. Issue #499; Fake Claude only.
 import { expect, test } from '@playwright/test';
 import { api, type Machine, prompts, startAtoll } from './atoll';
-import { bossHandsOff, runStatus, send, tray } from './helpers-fixture';
+import { bossHandsOff, runStatus, send, composerArea } from './helpers-fixture';
 
 let m: Machine;
 test.beforeEach(async () => {
@@ -15,7 +15,7 @@ async function stopRun(threadID: string) {
   await api(m, 'POST', `/api/runs/${run_id}/stop`);
 }
 
-test('after a Stop on the lead the tray counts helpers still running and reports waiting, a part at 0 left out, and clears with the next message', async ({
+test('after a Stop on the lead the composer line counts helpers still running and reports waiting, a part at 0 left out, and clears with the next message', async ({
   page,
 }) => {
   const { boss, helpers } = await bossHandsOff(m, page, [
@@ -23,8 +23,8 @@ test('after a Stop on the lead the tray counts helpers still running and reports
     ['Tester', `Header island width. ${prompts.hang}`],
   ]);
   await expect.poll(() => runStatus(m, boss)).toBe('done');
-  const region = tray(page);
-  await expect(region).toContainText('2 working');
+  const region = composerArea(page);
+  expect(helpers).toHaveLength(2);
 
   await send(page, prompts.chatPolishHang);
   await expect.poll(() => runStatus(m, boss)).toBe('running');
@@ -50,5 +50,5 @@ test('after a Stop on the lead the tray counts helpers still running and reports
 
   await send(page, 'Tester, any news?');
   await expect.poll(() => runStatus(m, boss)).toBe('done');
-  await expect(tray(page)).toHaveCount(0);
+  await expect(composerArea(page)).not.toContainText(/helpers? still running|reports? waiting/);
 });

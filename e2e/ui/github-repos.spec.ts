@@ -188,17 +188,24 @@ test("a thread shows the pull request a Bot opened with gh: link and number", as
 
   await page.goto(m.url);
   await sidebarRow(page, "Octo").click();
-  await choose(page, page.getByRole("combobox", { name: "Repo" }), "scratch-pr");
+  await choose(
+    page,
+    page.getByRole("combobox", { name: "Repo" }),
+    "scratch-pr",
+  );
   await page.getByRole("textbox", { name: "Message" }).fill(fixPrompt);
   await page.getByRole("button", { name: "Send" }).click();
 
   const log = page.getByRole("log", { name: "Messages" });
-  const context = page.getByRole("group", { name: "Thread context" });
-  const pr = context.getByRole("link", { name: "#1", exact: true });
+  await page
+    .getByRole("button", { name: "Thread details", exact: true })
+    .click();
+  const context = page.getByRole("dialog", { name: "Thread details" });
+  const pr = context.getByRole("link", { name: /#1\b/ });
   await expect(pr).toHaveAttribute("href", `${githubURL}/octo/hello/pull/1`, {
     timeout: 30_000,
   });
-  await expect(pr).toHaveAttribute("title", prTitle);
+  await expect(context).toContainText(prTitle);
   await expect(log.getByRole("link", { name: /#1\b/ })).toHaveCount(0);
   await expect(context).toContainText("scratch-pr");
   await expect(context).toContainText("fix/seeded-bug");
