@@ -116,7 +116,10 @@ test('a one-line command is a compact card: the command in a code line, Allow an
     expect(middle).toBeLessThan(line!.y + line!.height);
   }
   await expect(card.getByRole('button', { name: /^Show (all|less)$/ })).toHaveCount(0);
-  await test.info().attach('card', { body: await card.screenshot(), contentType: 'image/png' });
+  await test.info().attach('card', {
+    body: await card.screenshot(),
+    contentType: 'image/png',
+  });
 });
 
 test('the card is quiet: nothing red at rest, Deny red only on hover and keyboard focus, the thread says Needs you', async ({
@@ -239,7 +242,7 @@ async function handOff(page: Page) {
     `Use MCP tools. [{"server":"atoll","tool":"delegate","args":{"bot":"Tester","brief":${escaped(reportPrompt)}}}]`,
   );
   await expect(page).toHaveURL(new RegExp(`/bots/${poteto.id}/threads/[^/]+$`));
-  const region = page.getByRole('region', { name: 'Helpers' });
+  const region = page.getByRole('textbox', { name: /^Message/ }).locator('xpath=ancestor::form/..');
   await expect(region.getByRole('button', { name: 'Allow', exact: true })).toBeVisible();
   return { tester, region };
 }
@@ -355,7 +358,10 @@ test('a closed MR is not red', async ({ page }) => {
     mr_state: 'closed',
   });
   await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
-  const chip = page.getByRole('link', { name: '#12' });
+  await page.getByRole('button', { name: 'Thread details', exact: true }).click();
+  const chip = page
+    .getByRole('dialog', { name: 'Thread details' })
+    .getByRole('link', { name: /#12/ });
   await expect(chip).toBeVisible();
   await page.mouse.move(0, 0);
   expect(await reds(page.locator('body'))).toEqual([]);

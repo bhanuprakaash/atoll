@@ -41,7 +41,10 @@ export async function makeBoss(m: Machine, names: string[], extra: Record<string
   const poteto = await newBotAPI(m, 'Poteto', 'claude', { look: 'whale' });
   const bots: Record<string, { id: string }> = {};
   for (const name of names)
-    bots[name] = await newBotAPI(m, name, 'claude', { look: 'shark', ...extra[name] });
+    bots[name] = await newBotAPI(m, name, 'claude', {
+      look: 'shark',
+      ...extra[name],
+    });
   await api(m, 'PUT', `/api/bots/${poteto.id}`, {
     delegates: Object.values(bots).map((b) => b.id),
   });
@@ -99,5 +102,15 @@ export async function runStatus(m: Machine, threadID: string) {
 
 export const box = async (l: Locator) => (await l.boundingBox())!;
 
-export const tray = (page: Page) => page.getByRole('region', { name: 'Helpers' });
-export const popover = (page: Page) => page.getByRole('dialog', { name: 'Helper tasks' });
+// Approvals remain with the message that answers them.
+export const composerArea = (page: Page) =>
+  page.getByRole('textbox', { name: /^Message/ }).locator('xpath=ancestor::form/..');
+export const details = (page: Page) => page.getByRole('dialog', { name: 'Thread details' });
+
+export async function openDetails(page: Page) {
+  const icon = page.getByRole('button', { name: 'Thread details', exact: true });
+  await expect(icon).toBeVisible();
+  await icon.click();
+  await expect(details(page)).toBeVisible();
+  return details(page);
+}

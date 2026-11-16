@@ -1,15 +1,16 @@
-// Helpers in the boss's thread: the tray above the composer, the header island, and a read-only
+// Helpers in the boss's thread: Thread details, the header island, and a read-only
 // helper thread.
 import { expect, test } from '@playwright/test';
 import { api, type Machine, prompts, sidebarRow, startAtoll, threadPane } from './atoll';
 import {
   box,
+  openDetails,
   bossHandsOff,
-  popover,
+  details,
   reportPrompt,
   reportReply,
   runStatus,
-  tray,
+  composerArea,
 } from './helpers-fixture';
 
 let m: Machine;
@@ -18,7 +19,7 @@ test.beforeEach(async () => {
 });
 test.afterEach(() => m?.stop());
 
-test('two helpers: one handoff line, a line each above the composer and in the island; Stop in the helper thread', async ({
+test('two helpers: one handoff line, a row each in Thread details and a creature in the island; Stop in the helper thread', async ({
   page,
 }) => {
   const { bots, thread } = await bossHandsOff(m, page, [
@@ -32,25 +33,17 @@ test('two helpers: one handoff line, a line each above the composer and in the i
   await expect(handedOff).toHaveCount(1);
   await expect(log.getByText('Handed off to Tester', { exact: true })).toHaveCount(0);
 
-  const region = tray(page);
-  await expect(region).toContainText('2 working');
+  const region = await openDetails(page);
   await expect(region.getByLabel('Tester: working', { exact: true })).toHaveCount(1);
   await expect(region.getByLabel('Reviewer: working', { exact: true })).toHaveCount(1);
-  await region.getByRole('button', { name: 'Show', exact: true }).click();
-  const rows = popover(page).getByRole('listitem');
+  const rows = details(page).getByRole('listitem');
   await expect(rows).toHaveCount(2);
   await expect(rows.filter({ hasText: 'Tester' }).getByText('Running make build')).toHaveCount(1);
   await expect(rows.filter({ hasText: 'Reviewer' }).getByText('Running make build')).toHaveCount(1);
-  await expect(popover(page)).not.toContainText('Needs you');
-  const open = popover(page).getByRole('link', { name: 'Open' });
+  await expect(details(page)).not.toContainText('Needs you');
+  const open = details(page).getByRole('link').filter({ hasNotText: /^[#!]/ });
   await expect(open).toHaveCount(2);
-  const composer = page.getByRole('textbox', { name: 'Message' });
-  expect((await box(handedOff)).y + (await box(handedOff)).height).toBeLessThanOrEqual(
-    (await box(region)).y,
-  );
-  expect((await box(region)).y + (await box(region)).height).toBeLessThanOrEqual(
-    (await box(composer)).y,
-  );
+  await expect(page.getByText(/Working with/)).toHaveCount(0);
 
   const header = page.locator('header');
   const name = await box(header.getByRole('heading', { level: 1, name: 'Poteto' }));
@@ -75,8 +68,8 @@ test('a helper that hands off reads "Handing off" on its line, never "Setting up
   page,
 }) => {
   await bossHandsOff(m, page, [['Tester', prompts.handOff]]);
-  await tray(page).getByRole('button', { name: 'Show', exact: true }).click();
-  const line = popover(page).getByRole('listitem').filter({ hasText: 'Tester' });
+  await openDetails(page);
+  const line = details(page).getByRole('listitem').filter({ hasText: 'Tester' });
   await expect(line.getByText('Handing off', { exact: true })).toHaveCount(1);
   await expect(line).not.toContainText('Setting up');
 });
@@ -89,7 +82,7 @@ test('a helper approval shows under its line and Allow works there; the helperâ€
   const log = page.getByRole('log', { name: 'Messages' });
   await expect(log.getByText('Handed off to Tester', { exact: true })).toHaveCount(1);
 
-  const region = tray(page);
+  const region = composerArea(page);
   await expect(region).toContainText('Tester');
   await expect(region).toContainText('make check');
   const allow = region.getByRole('button', { name: 'Allow', exact: true });
@@ -117,7 +110,9 @@ test('a helper approval shows under its line and Allow works there; the helperâ€
 
   // The helper's reply and Reef's notice to the boss are not messages of the boss chat.
   await expect(log.getByRole('article', { name: 'Tester' })).toHaveCount(0);
-  await expect(log.getByRole('article', { name: 'You' }).filter({ hasText: reportReply })).toHaveCount(0);
+  await expect(
+    log.getByRole('article', { name: 'You' }).filter({ hasText: reportReply }),
+  ).toHaveCount(0);
   await expect(log).not.toContainText(reportReply);
   await expect(log).not.toContainText('finished thread');
   await expect(log).not.toContainText('Done:');
@@ -134,7 +129,7 @@ test('the helper thread is not a row of the boss pane and is read-only; Allow th
   context,
 }) => {
   const { poteto, bots, boss, thread } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
-  const bossAllow = tray(page).getByRole('button', {
+  const bossAllow = composerArea(page).getByRole('button', {
     name: 'Allow',
     exact: true,
   });

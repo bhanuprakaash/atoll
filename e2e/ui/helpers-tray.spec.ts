@@ -1,6 +1,4 @@
-// The helpers tray above the composer: one calm line, a popover for the list, an approval line
-// only when a helper needs you, reported helpers until their report was seen. Issue #175;
-// Fake Claude only.
+// Thread details holds helper status; approvals stay beside the composer. Fake Claude only.
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, prompts, recordText, seenText, startAtoll } from './atoll';
 import {
@@ -10,13 +8,14 @@ import {
   type Handoff,
   helperThreads,
   makeBoss,
-  popover,
+  details,
+  openDetails,
   reportPrompt,
   reportReply,
   runStatus,
   send,
   startThread,
-  tray,
+  composerArea,
 } from './helpers-fixture';
 
 let m: Machine;
@@ -43,7 +42,7 @@ async function pendingApproval(threadID: string) {
   return id;
 }
 
-test('three helpers running: the tray is one line of 36px at most, attached to the composer, and the chat keeps its height', async ({
+test('three running helpers live in Thread details and leave the composer and chat height alone', async ({
   page,
 }) => {
   await makeBoss(m, ['Tester', 'Reviewer']);
@@ -51,7 +50,6 @@ test('three helpers running: the tray is one line of 36px at most, attached to t
   const boss = await startThread(page, 'Poteto', prompts.keep);
   await expect.poll(() => runStatus(m, boss)).toBe('done');
   const log = page.getByRole('log', { name: 'Messages' });
-  await expect(tray(page)).toHaveCount(0);
   const before = await box(log);
 
   await send(
@@ -62,28 +60,19 @@ test('three helpers running: the tray is one line of 36px at most, attached to t
       ['Reviewer', hang('Sidebar rail')],
     ]),
   );
-  const region = tray(page);
-  await expect(region).toBeVisible();
-  await expect(region).toContainText('3 working');
-  await expect(region).not.toContainText('reported');
-  await expect(region.getByLabel('Tester: working', { exact: true })).toHaveCount(2);
-  await expect(region.getByLabel('Reviewer: working', { exact: true })).toHaveCount(1);
-  await expect(region.getByRole('button', { name: 'Show', exact: true })).toBeVisible();
-  await expect(region.getByRole('link', { name: 'Open' })).toHaveCount(0);
-  await expect(region.getByRole('button', { name: /^(Allow|Deny)$/ })).toHaveCount(0);
-
-  const line = await box(region);
-  expect(line.height).toBeLessThanOrEqual(36);
-  const card = await box(composerCard(page));
-  const inside = line.y >= card.y - 1 && line.y + line.height <= card.y + card.height + 1;
-  const touching = Math.abs(line.y + line.height - card.y) <= 2;
-  expect(inside || touching, 'the tray is part of the composer card, not a block above it').toBe(
-    true,
-  );
-  expect((await box(log)).height).toBeGreaterThanOrEqual(before.height - 36);
+  await helperThreads(m, boss, 3);
+  await expect.poll(() => runStatus(m, boss)).toBe('done');
+  await expect(page.getByText(/Working with/)).toHaveCount(0);
+  await expect(composerArea(page)).not.toContainText(/Tester|Reviewer|working|reported/);
+  expect((await box(log)).height).toBe(before.height);
+  const panel = await openDetails(page);
+  await expect(panel.getByRole('listitem')).toHaveCount(3);
+  await expect(panel.getByLabel('Tester: working', { exact: true })).toHaveCount(2);
+  await expect(panel.getByLabel('Reviewer: working', { exact: true })).toHaveCount(1);
+  expect((await box(log)).height).toBe(before.height);
 });
 
-test('two helpers of one Bot are two creatures and, in the popover, two rows with different task titles', async ({
+test('two helpers of one Bot have two creatures and two rows with different task titles', async ({
   page,
 }) => {
   const { bots, helpers } = await bossHandsOff(m, page, [
@@ -91,11 +80,10 @@ test('two helpers of one Bot are two creatures and, in the popover, two rows wit
     ['Tester', hang('Header island width')],
     ['Reviewer', hang('Sidebar rail')],
   ]);
-  const region = tray(page);
+  const region = await openDetails(page);
   await expect(region.getByLabel('Tester: working', { exact: true })).toHaveCount(2);
-  await region.getByRole('button', { name: 'Show', exact: true }).click();
 
-  const rows = popover(page).getByRole('listitem');
+  const rows = details(page).getByRole('listitem');
   await expect(rows).toHaveCount(3);
   const testers = helpers.filter((h) => h.bot_id === bots.Tester.id);
   expect(testers).toHaveLength(2);
@@ -106,7 +94,7 @@ test('two helpers of one Bot are two creatures and, in the popover, two rows wit
     await expect(row).toContainText('Tester');
     await expect(row.getByText('Running make build')).toBeVisible();
     await expect(row).toContainText(/\b\d+\s?(s|m|h)\b/);
-    await expect(row.getByRole('link', { name: 'Open' })).toHaveAttribute(
+    await expect(row.getByRole('link').filter({ hasNotText: /^[#!]/ })).toHaveAttribute(
       'href',
       `/bots/${bots.Tester.id}/threads/${t.id}`,
     );
@@ -116,7 +104,7 @@ test('two helpers of one Bot are two creatures and, in the popover, two rows wit
   await expect(reviewer.getByRole('img', { name: 'Reviewer: working' })).toBeVisible();
 });
 
-test('Show opens a popover over the chat that does not move it; Esc and an outside click close it', async ({
+test('Thread details overlays the chat without moving it; Esc, outside click and the icon close it', async ({
   page,
 }) => {
   const { boss } = await bossHandsOff(m, page, [
@@ -126,20 +114,25 @@ test('Show opens a popover over the chat that does not move it; Esc and an outsi
   const log = page.getByRole('log', { name: 'Messages' });
   await expect.poll(() => runStatus(m, boss)).toBe('done');
   await expect(log.getByRole('status')).toHaveCount(0);
-  const region = tray(page);
-  const show = region.getByRole('button', { name: 'Show', exact: true });
-  const [logBefore, trayBefore] = [await box(log), await box(region)];
+  const show = page.getByRole('button', {
+    name: 'Thread details',
+    exact: true,
+  });
+  const logBefore = await box(log);
+  await log.evaluate((el) => {
+    el.scrollTop = 0;
+  });
   const scrollBefore = await log.evaluate((el) => el.scrollTop);
 
   await show.click();
-  const pop = popover(page);
+  const pop = details(page);
   await expect(pop).toBeVisible();
   await expect(pop.getByRole('listitem')).toHaveCount(2);
   const over = await box(pop);
   expect(over.y).toBeGreaterThanOrEqual(logBefore.y);
-  expect(over.y + over.height).toBeLessThanOrEqual(trayBefore.y + 1);
+  expect(over.y + over.height).toBeLessThanOrEqual((await box(composerCard(page))).y);
+  expect(over.width).toBe(340);
   expect(await box(log)).toEqual(logBefore);
-  expect(await box(region)).toEqual(trayBefore);
   expect(await log.evaluate((el) => el.scrollTop)).toBe(scrollBefore);
 
   await page.keyboard.press('Escape');
@@ -148,19 +141,22 @@ test('Show opens a popover over the chat that does not move it; Esc and an outsi
 
   await show.click();
   await expect(pop).toBeVisible();
-  const view = page.viewportSize()!;
-  await page.mouse.click(view.width - 20, view.height / 2);
+  await page.getByRole('textbox', { name: /^Message/ }).click();
   await expect(pop).toHaveCount(0);
   expect(await box(log)).toEqual(logBefore);
   expect(await log.evaluate((el) => el.scrollTop)).toBe(scrollBefore);
+  await show.click();
+  await expect(pop).toBeVisible();
+  await show.click();
+  await expect(pop).toHaveCount(0);
 });
 
-test('the popover has a shortcut, arrow keys and Enter, and Stop on hover', async ({ page }) => {
+test('the panel has a shortcut, arrow keys and Enter, and Stop on hover', async ({ page }) => {
   const { bots, helpers } = await bossHandsOff(m, page, [
     ['Tester', hang('Poll cost flake')],
     ['Reviewer', hang('Sidebar rail')],
   ]);
-  const pop = popover(page);
+  const pop = details(page);
   await page.getByRole('textbox', { name: /^Message/ }).focus();
   await page.keyboard.press('ControlOrMeta+.');
   await expect(pop).toBeVisible();
@@ -181,12 +177,16 @@ test('the popover has a shortcut, arrow keys and Enter, and Stop on hover', asyn
   await page.keyboard.press('ArrowDown');
   const second = await focused();
   expect(second).not.toBe(first);
-  const href = await rows.nth(second).getByRole('link', { name: 'Open' }).getAttribute('href');
+  const href = await rows
+    .nth(second)
+    .getByRole('link')
+    .filter({ hasNotText: /^[#!]/ })
+    .getAttribute('href');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(`${m.url}${href}`);
 
   await page.goBack();
-  await tray(page).getByRole('button', { name: 'Show', exact: true }).click();
+  await openDetails(page);
   const stops: string[] = [];
   page.on('request', (r) => {
     if (r.url().endsWith('/stop')) stops.push(new URL(r.url()).pathname);
@@ -202,7 +202,7 @@ test('the popover has a shortcut, arrow keys and Enter, and Stop on hover', asyn
   expect(await runStatus(m, reviewer.id)).toBe('running');
 });
 
-test('a helper approval is one line under the summary within 2s; two waiting show the first and 1 more; Allow and Deny answer it in both threads', async ({
+test('a helper approval stays above the composer within 2s; two waiting show the first and 1 more; Allow and Deny answer it in both threads', async ({
   page,
   context,
 }) => {
@@ -210,7 +210,7 @@ test('a helper approval is one line under the summary within 2s; two waiting sho
     ['Tester', reportPrompt],
     ['Reviewer', reportPrompt],
   ]);
-  const region = tray(page);
+  const region = composerArea(page);
   const ids = helpers.map((h) => h.id);
   for (const id of ids) await pendingApproval(id);
   const allow = region.getByRole('button', { name: 'Allow', exact: true });
@@ -219,10 +219,11 @@ test('a helper approval is one line under the summary within 2s; two waiting sho
   await expect(deny).toHaveCount(1);
   await expect(region).toContainText('make check');
   await expect(region).toContainText('1 more');
-  await expect(region).toContainText('2 working');
-
-  const summary = await box(region.getByRole('button', { name: 'Show', exact: true }));
-  expect((await box(allow)).y).toBeGreaterThanOrEqual(summary.y + summary.height);
+  await expect(region.getByRole('img')).toBeVisible();
+  expect((await box(allow)).y).toBeLessThan(
+    (await box(page.getByRole('textbox', { name: /^Message/ }))).y,
+  );
+  await expect(details(page)).toHaveCount(0);
 
   const waitingName = /Tester\s*wants/i.test((await region.textContent())!) ? 'Tester' : 'Reviewer';
   const otherName = waitingName === 'Tester' ? 'Reviewer' : 'Tester';
@@ -268,11 +269,13 @@ test('a step never shows a raw shell fragment: a loop shows its first command', 
   const boss = await startThread(page, 'Poteto', delegate([['Tester', loopPrompt]]));
   const [helper] = await helperThreads(m, boss, 1);
   await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${helper.id}`)).step, { timeout: 15_000 })
+    .poll(async () => (await api(m, 'GET', `/api/threads/${helper.id}`)).step, {
+      timeout: 15_000,
+    })
     .not.toBe('');
 
-  await tray(page).getByRole('button', { name: 'Show', exact: true }).click();
-  const row = popover(page).getByRole('listitem').filter({ hasText: helper.title });
+  await openDetails(page);
+  const row = details(page).getByRole('listitem').filter({ hasText: helper.title });
   await expect(row.getByText('Running gh pr', { exact: true })).toBeVisible();
   const seen = await seenText(page);
   expect(seen).not.toMatch(/Running for\b|for n in|\bdo gh\b|; done/);
@@ -284,7 +287,65 @@ test('with no helper running or unread nothing shows above the composer', async 
   const boss = await startThread(page, 'Poteto', prompts.keep);
   await expect.poll(() => runStatus(m, boss)).toBe('done');
   await expect(page.getByRole('textbox', { name: /^Message/ })).toBeVisible();
-  await expect(tray(page)).toHaveCount(0);
+  await expect(composerArea(page)).not.toContainText(/working|reported|Working with/);
   await expect(page.getByRole('button', { name: 'Show', exact: true })).toHaveCount(0);
-  await expect(popover(page)).toHaveCount(0);
+  await expect(details(page)).toHaveCount(0);
+});
+
+test('finished helpers stay under Done after running helpers, also after reopening the thread', async ({
+  page,
+}) => {
+  const { poteto, bots, boss, thread } = await bossHandsOff(m, page, [
+    ['Tester', reportPrompt],
+    ['Reviewer', prompts.hang],
+  ]);
+  await composerArea(page).getByRole('button', { name: 'Allow', exact: true }).click();
+  await expect.poll(() => runStatus(m, thread('Tester')), { timeout: 30_000 }).toBe('done');
+  for (const reload of [false, true]) {
+    if (reload) await page.reload();
+    const panel = await openDetails(page);
+    await expect(panel.getByText('Helpers', { exact: true })).toBeVisible();
+    const rows = panel.getByRole('listitem');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText('Reviewer');
+    await expect(rows.nth(1)).toContainText('Tester');
+    const done = panel.getByText('Done', { exact: true });
+    expect(await done.count()).toBeGreaterThanOrEqual(2);
+    const finished = rows.nth(1);
+    await expect(finished.getByText('Done', { exact: true })).toBeVisible();
+    await expect(finished.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
+    const name = await box(rows.nth(0).getByText('Reviewer', { exact: true }));
+    const step = await box(rows.nth(0).getByText('Running make build', { exact: true }));
+    expect(step.y).toBeGreaterThan(name.y);
+    await page.keyboard.press('Escape');
+  }
+  await openDetails(page);
+  await details(page).getByRole('listitem').filter({ hasText: 'Tester' }).click();
+  await expect(page).toHaveURL(`${m.url}/bots/${bots.Tester.id}/threads/${thread('Tester')}`);
+  await expect(page.getByRole('log', { name: 'Messages' })).toContainText(reportReply);
+  await page.goto(`${m.url}/bots/${poteto.id}/threads/${boss}`);
+  await expect(page.getByText(/Working with/)).toHaveCount(0);
+});
+
+test('after Stop the held-reports line stays above the composer while another helper runs', async ({
+  page,
+}) => {
+  const { boss, thread } = await bossHandsOff(m, page, [
+    ['Tester', reportPrompt],
+    ['Reviewer', prompts.hang],
+  ]);
+  await expect.poll(() => runStatus(m, boss)).toBe('done');
+  // Hold the boss on a real approval so the helper report cannot start a wake run.
+  await send(page, prompts.write);
+  await expect.poll(() => runStatus(m, boss)).toBe('waiting');
+  const bossRun = (await api(m, 'GET', `/api/threads/${boss}`)).run_id;
+  await api(m, 'POST', `/api/runs/${bossRun}/stop`);
+  await expect.poll(() => runStatus(m, boss)).toBe('stopped');
+  await composerArea(page).getByRole('button', { name: 'Allow', exact: true }).click();
+  await expect.poll(() => runStatus(m, thread('Tester')), { timeout: 30_000 }).toBe('done');
+  await expect(
+    composerArea(page).getByText('1 helpers still running · 1 reports waiting', { exact: true }),
+  ).toBeVisible();
+  expect(await runStatus(m, thread('Reviewer'))).toBe('running');
+  expect(await runStatus(m, boss)).toBe('stopped');
 });

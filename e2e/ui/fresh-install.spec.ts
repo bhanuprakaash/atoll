@@ -155,10 +155,11 @@ test('fresh install to an MR link without a terminal', async ({ page, context })
   await expect(log.getByText('go test ./...').first()).toBeVisible();
   await log.getByRole('button', { name: 'Allow', exact: true }).click();
 
-  const context_ = page.getByRole('group', { name: 'Thread context' });
-  const mr = context_.getByRole('link', { name: '!1', exact: true });
+  await page.getByRole('button', { name: 'Thread details', exact: true }).click();
+  const context_ = page.getByRole('dialog', { name: 'Thread details' });
+  const mr = context_.getByRole('link', { name: /!1\b/ });
   await expect(mr).toHaveAttribute('href', mrURL, { timeout: 30_000 });
-  await expect(mr).toHaveAttribute('title', /\S/);
+  await expect(context_).toContainText(/\S/);
   await expect(log.getByRole('link', { name: /!1\b/ })).toHaveCount(0);
   await expect(context_).toContainText('seeded');
   await expect(context_).toContainText('fix/seeded-bug');

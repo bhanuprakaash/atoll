@@ -3,7 +3,14 @@
 // back to the boss thread.
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, prompts, showPane, startAtoll, threadPane } from './atoll';
-import { bossHandsOff, reportPrompt, reportReply, runStatus, tray } from './helpers-fixture';
+import {
+  bossHandsOff,
+  reportPrompt,
+  reportReply,
+  runStatus,
+  composerArea,
+  details,
+} from './helpers-fixture';
 
 let m: Machine;
 test.beforeEach(async () => {
@@ -66,7 +73,10 @@ test('a helper waiting on approval: Needs you shows once, on the line; Allow in 
   page,
 }) => {
   const { poteto } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
-  const allow = tray(page).getByRole('button', { name: 'Allow', exact: true });
+  const allow = composerArea(page).getByRole('button', {
+    name: 'Allow',
+    exact: true,
+  });
   await expect(allow).toHaveCount(1);
   const pane = await showPane(page, m, poteto.id, 'Poteto');
 
@@ -88,8 +98,9 @@ test('clicking the line opens the boss thread with the helpers panel in view', a
 
   await line(page).click({ timeout: 10_000 });
   await expect(page).toHaveURL(`${m.url}/bots/${poteto.id}/threads/${boss}`);
-  await expect(tray(page)).toContainText('Working with Poteto');
-  await expect(tray(page)).toBeInViewport();
+  await expect(details(page)).toContainText('Tester');
+  await expect(page.getByText(/Working with/)).toHaveCount(0);
+  await expect(details(page)).toBeInViewport();
 });
 
 test('the helper thread header is a breadcrumb: the boss thread title, then the helper Bot', async ({
@@ -112,14 +123,17 @@ test('after the helper reports the line is gone and the helper thread is a row u
 }) => {
   const { poteto, bots, thread } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
   const helper = thread('Tester');
-  await tray(page).getByRole('button', { name: 'Allow', exact: true }).click();
+  await composerArea(page).getByRole('button', { name: 'Allow', exact: true }).click();
   await expect.poll(() => runStatus(m, helper), { timeout: 30_000 }).toBe('done');
   await showPane(page, m, poteto.id, 'Poteto');
   await expect(line(page)).toHaveCount(0);
   await expect(rowOf(page, 'Poteto', helper)).toHaveCount(0);
 
   const recent = (page: Page) =>
-    threadPane(page, 'Tester').getByRole('list', { name: 'Recent', exact: true });
+    threadPane(page, 'Tester').getByRole('list', {
+      name: 'Recent',
+      exact: true,
+    });
   await showPane(page, m, bots.Tester.id, 'Tester');
   await expect(recent(page).locator(`a[href$="/threads/${helper}"]`)).toHaveCount(1);
   await page.reload();
