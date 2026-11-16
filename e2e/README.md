@@ -38,15 +38,11 @@ One spec (after `make ui e2e/ui/node_modules`):
 cd e2e/ui && pnpm exec playwright test <name>.spec.ts
 ```
 
-The real-Claude tests carry the `realclaude` build tag. They need `claude` on PATH and a test home
-of their own, `atoll-e2e/claude` in your user config folder (`~/Library/Application Support` on
-macOS), signed in once. On macOS the login lives in the keychain, keyed by that folder, so the test
-cannot reuse your own Claude Code login and never copies it. Without the sign-in the tests fail at
-once and print this command:
-
-```sh
-CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/atoll-e2e/claude" claude auth login
-```
+The real-Claude tests carry the `realclaude` build tag. They need `claude` on PATH and Reef's own
+signed-in Claude: they run it with `CLAUDE_CONFIG_DIR` set to `providers/claude` in Reef's data
+folder (`$ATOLL_DATA_DIR`, else `~/Library/Application Support/Atoll` on macOS). There is no test
+home and nothing to sign in beyond Reef itself; the sign-in is used in place, never copied. If Reef's
+Claude is not signed in, the tests fail at once and say to sign in under Settings → Connections.
 
 Neither `make e2e` nor CI runs them:
 

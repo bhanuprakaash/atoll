@@ -73,24 +73,27 @@ func probeMCP(t *testing.T, tools ...string) (url string, auth func() []string) 
 }
 
 // realClaude returns claude on PATH and the environment to run it in: the caller's, without its
-// ANTHROPIC_* and CLAUDE* entries, and CLAUDE_CONFIG_DIR pointing at a test home of its own, so
-// no setting, hook or CLAUDE.md of the developer's Claude Code reaches the test and nothing of
-// their login is copied. On macOS the login is in the keychain, keyed by that folder, so the test
-// home needs its own one-time sign-in.
+// ANTHROPIC_* and CLAUDE* entries, and CLAUDE_CONFIG_DIR pointing at Reef's own Claude folder
+// (providers/claude in Reef's data folder, found as cmd/atoll dataDir finds it). Reef's sign-in is
+// used in place and copied nowhere, and no setting, hook or CLAUDE.md of the developer's own
+// Claude Code reaches the test.
 func realClaude(t *testing.T) (string, []string) {
 	t.Helper()
 	claude, err := exec.LookPath("claude")
 	if err != nil {
 		t.Fatal("no claude on PATH: run this test only on a machine with Claude Code installed")
 	}
-	cfg, err := os.UserConfigDir()
+	data := os.Getenv("ATOLL_DATA_DIR")
+	if data != "" {
+		data, err = filepath.Abs(data)
+	} else {
+		data, err = os.UserConfigDir()
+		data = filepath.Join(data, "Atoll")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(cfg, "atoll-e2e", "claude")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	dir := filepath.Join(data, "providers", "claude")
 	var env []string
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, "ANTHROPIC_") && !strings.HasPrefix(kv, "CLAUDE") {
@@ -98,12 +101,16 @@ func realClaude(t *testing.T) (string, []string) {
 		}
 	}
 	env = append(env, "CLAUDE_CONFIG_DIR="+dir)
+	notSignedIn := "Reef's Claude is not signed in (looked in %s: %v).\nSign in to Claude in Reef (Settings → Connections), then run the test again."
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf(notSignedIn, dir, err)
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	status := exec.CommandContext(ctx, claude, "auth", "status")
 	status.Env = env
 	if err := status.Run(); err != nil {
-		t.Fatalf("the test's Claude home %s is not signed in (%v).\nSign it in once, then run the test again:\n  CLAUDE_CONFIG_DIR=%q claude auth login", dir, err, dir)
+		t.Fatalf(notSignedIn, dir, err)
 	}
 	return claude, env
 }
