@@ -220,11 +220,6 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
-		case "github-base-merged":
-			if err := fake.BaseMergedStep(t.userMessage, t.cwd); err != nil {
-				return err
-			}
-			continue
 		case "logins-probe":
 			var err error
 			if repoReply, err = fake.LoginsProbe(); err != nil {
