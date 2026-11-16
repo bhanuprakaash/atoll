@@ -911,7 +911,7 @@ func (m *Manager) check(w *watcher, wp store.WatchedPR) error {
 	if p.Title != "" {
 		title = p.Title
 	}
-	if err := m.update(wp, "", store.MRRead{State: state, Title: title, CI: p.CI, Woke: p.Woke, Head: p.Head, BaseWoke: p.BaseWoke}, ""); err != nil {
+	if err := m.update(wp, "", store.MRRead{State: state, Title: title, CI: p.CI, Woke: p.Woke, Head: p.Head}, ""); err != nil {
 		return err
 	}
 	prs, err := m.cfg.Store.PRs(m.ctx, t.ID)

@@ -221,12 +221,6 @@ func (p *player) play(lines []string) error {
 				return err
 			}
 			continue
-		case "github-base-merged":
-			cwd, _ := os.Getwd()
-			if err := fake.BaseMergedStep(p.userMessage, cwd); err != nil {
-				return err
-			}
-			continue
 		case "logins-probe":
 			var err error
 			if repoReply, err = fake.LoginsProbe(); err != nil {
