@@ -133,7 +133,7 @@ function HelpersLine({
         </span>
         <span className="flex-none text-ink">
           {needsYou ? workers[0].bot.name : workerNames(workers)}
-        </span>
+        </span>{' '}
         {needsYou ? (
           <>
             <span className="flex-none text-ink">Needs you</span>
