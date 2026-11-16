@@ -220,7 +220,10 @@ func TestStopHolds_StopAndSendDelivers(t *testing.T) {
 			ev := s.events(t, boss)
 			ids, _ := delegateTester(t, s, boss, ev, _slowPrompt)
 			busy := s.send(t, boss, _bossHangPrompt)
-			until(t, ev, busy.ID, "tool_call")
+			eventually(t, 30*time.Second, "the boss's run "+busy.ID+" going", func() bool {
+				th := getThread(t, s, boss.ID)
+				return th.RunID == busy.ID && th.RunStatus == "running"
+			})
 			const ask = "Tester, report now."
 			q := queue(t, s, boss, ask)
 			if r := settled(t, s, ids[0]); r.Status != "done" {
