@@ -8,6 +8,10 @@ import (
 
 const _holdWindow = 3 * time.Second
 
+// _bossHangPrompt plays testdata/claude/chat-polish-hang.jsonl: a run on the boss's session that
+// never ends. A message that names Tester plays the wake recording on the same session.
+const _bossHangPrompt = "Continue waiting for the build to finish."
+
 // stoppedLead is a boss thread whose run the person stopped, with two helpers of Tester: slow, whose
 // run ends done by itself and whose report is held, and hung, whose run goes on.
 type stoppedLead struct {
@@ -151,7 +155,7 @@ func TestStopHolds_HelpersKeepRunning(t *testing.T) {
 			s := l.s
 			stays(t, s, l.hung, l.hungRun, "running")
 
-			if got := s.finished(t, l.ev, s.send(t, l.boss, "Carry on.").ID); got.Status != "done" {
+			if got := s.finished(t, l.ev, s.send(t, l.boss, "Tester, any news?").ID); got.Status != "done" {
 				t.Fatalf("boss run for the person's message: status %q, error %q; want done", got.Status, got.Error)
 			}
 			stays(t, s, l.hung, l.hungRun, "running")
@@ -215,7 +219,7 @@ func TestStopHolds_StopAndSendDelivers(t *testing.T) {
 			boss := s.newThread(t, poteto)
 			ev := s.events(t, boss)
 			ids, _ := delegateTester(t, s, boss, ev, _slowPrompt)
-			busy := s.send(t, boss, _hangPrompt)
+			busy := s.send(t, boss, _bossHangPrompt)
 			until(t, ev, busy.ID, "tool_call")
 			const ask = "Tester, report now."
 			q := queue(t, s, boss, ask)

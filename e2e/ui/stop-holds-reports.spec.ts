@@ -26,7 +26,7 @@ test('after a Stop on the lead the tray counts helpers still running and reports
   const region = tray(page);
   await expect(region).toContainText('2 working');
 
-  await send(page, prompts.hang);
+  await send(page, prompts.chatPolishHang);
   await expect.poll(() => runStatus(m, boss)).toBe('running');
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect.poll(() => runStatus(m, boss)).toBe('stopped');
