@@ -2009,8 +2009,8 @@ Voice
   usually one click; it should not compete with the reply.*
 - Thread panel. A list icon at the right of the Bot header, before Bot settings, named `Thread
   details`, opens the open thread's panel: a card that drops from the icon over the chat (the chat
-  stays put; nothing shifts), 340 px wide or the thread column minus 32 px if narrower, at most the
-  column's height minus the composer, scrolling inside. Esc, a click outside, the icon again or
+  stays put; nothing shifts), 340 px wide or the thread column minus 32 px if narrower, at most
+  480 px tall or, if smaller, the column's height minus the composer, scrolling inside. Esc, a click outside, the icon again or
   opening another thread closes it; `⌘.` (`Ctrl+.` off macOS) toggles it. The icon carries no count
   or dot: a merged PR, a failed check or a finished helper reaches the person as the Bot's reply or
   on the island, as before.
@@ -2020,13 +2020,16 @@ Voice
     worktree shows the repo and `No branch yet`; a thread with no repo shows `No repo`.
   - Pull requests: a list, one row per PR or MR: the state dot, the reference (`#92`, `!7`), its
     title, and while open its CI as a word (`running` muted, `passed` green, `failed` red). A row opens
-    the PR.
+    the PR. Open PRs all show; merged and closed show the 3 newest, then a quiet `Show N more`
+    that becomes `Show less`. With 3 or fewer there is no button.
   - Helpers: every helper task this thread delegated, running ones first, then a `Done` group, each
     newest first. A row is two lines: the creature; the Bot name, the task (the helper thread's
     title) and the time (`42s`, `3m`, `1h 5m`); under them, while its run goes, the step (the step
     words of Helpers) or `Needs you`, else `Done`, then its PR reference with dot and CI word when
     it tracks one, and `Stop` on hover or focus while its run goes. Clicking a row opens the helper
-    thread. Arrow keys move between rows.
+    thread. Arrow keys move between rows. Running helpers all show; the `Done` group shows its 3
+    newest, then `Show N more` / `Show less` the same way (the button is not a row; Tab reaches it).
+    Closing the panel folds both groups again.
 - Above the composer is only what the next message answers or carries: an open approval (the
   thread's own, or a helper's led by its creature and name, `Tester wants to run make check`, with
   `1 more` for a second), the held-reports line (`{N} helpers still running · {M} reports

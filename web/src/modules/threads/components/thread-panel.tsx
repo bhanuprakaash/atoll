@@ -213,6 +213,21 @@ function useNow(on: boolean) {
   return now;
 }
 
+const FOLDED = 3;
+
+function Fold({ hidden, open, onToggle }: { hidden: number; open: boolean; onToggle: () => void }) {
+  if (hidden <= 0 && !open) return null;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="px-2.5 py-1 text-xs text-muted hover:text-ink"
+    >
+      {open ? 'Show less' : `Show ${hidden} more`}
+    </button>
+  );
+}
+
 const newest = (a: Thread, b: Thread) => Date.parse(b.created_at) - Date.parse(a.created_at);
 
 // ThreadPanel is the card of the thread's status: its workspace, its pull request and its helpers.
@@ -227,14 +242,16 @@ export function ThreadPanel({
   bots: Bots;
 }) {
   const card = useRef<HTMLDivElement>(null);
+  const [allDone, setAllDone] = useState(false);
+  const [allPRs, setAllPRs] = useState(false);
   const helpers = [...(thread.helpers ?? [])].sort(newest);
   const newestFirst = [...thread.prs].reverse();
-  const prs = [
-    ...newestFirst.filter((p) => p.state === 'opened'),
-    ...newestFirst.filter((p) => p.state !== 'opened'),
-  ];
+  const openPRs = newestFirst.filter((p) => p.state === 'opened');
+  const donePRs = newestFirst.filter((p) => p.state !== 'opened');
+  const prs = [...openPRs, ...(allPRs ? donePRs : donePRs.slice(0, FOLDED))];
   const running = helpers.filter(isLiveHelper);
   const done = helpers.filter((h) => !isLiveHelper(h));
+  const shownDone = allDone ? done : done.slice(0, FOLDED);
   const now = useNow(running.length > 0);
   const repo = repoName ?? thread.repo_id;
 
@@ -244,7 +261,7 @@ export function ThreadPanel({
     const form = document.querySelector('[data-composer]')?.closest('form');
     if (!el || !form?.parentElement) return;
     const fit = () => {
-      el.style.maxHeight = `${Math.max(120, form.getBoundingClientRect().top - el.getBoundingClientRect().top - 8)}px`;
+      el.style.maxHeight = `${Math.min(480, Math.max(120, form.getBoundingClientRect().top - el.getBoundingClientRect().top - 8))}px`;
     };
     fit();
     const observer = new ResizeObserver(fit);
@@ -324,6 +341,11 @@ export function ThreadPanel({
               </li>
             ))}
           </ul>
+          <Fold
+            hidden={donePRs.length - FOLDED}
+            open={allPRs}
+            onToggle={() => setAllPRs(!allPRs)}
+          />
         </Section>
       )}
       {helpers.length > 0 && (
@@ -332,7 +354,12 @@ export function ThreadPanel({
           {done.length > 0 && (
             <>
               <h4 className="px-2.5 pt-2 pb-0.5 text-[11.5px] font-normal text-label">Done</h4>
-              {group(done)}
+              {group(shownDone)}
+              <Fold
+                hidden={done.length - FOLDED}
+                open={allDone}
+                onToggle={() => setAllDone(!allDone)}
+              />
             </>
           )}
         </Section>
