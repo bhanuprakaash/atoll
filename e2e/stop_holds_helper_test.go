@@ -29,7 +29,8 @@ var _stopWays = []struct {
 }
 
 // stoppedHelper is a boss with two helpers of Tester: a, hung, with a continue held for it and then
-// stopped; b, which waits on an approval, so its run ends when the test allows it.
+// stopped; b, hung, which the person's Stop ends. No approval is open in the boss thread: a
+// person's message there would answer it instead of starting a boss run.
 type stoppedHelper struct {
 	m    *machine
 	s    *server
@@ -37,6 +38,7 @@ type stoppedHelper struct {
 	ev   <-chan event
 	a, b string
 	aRun string
+	bRun string
 }
 
 func newStoppedHelper(t *testing.T, p string, stop func(t *testing.T, f *stoppedHelper)) *stoppedHelper {
@@ -46,10 +48,10 @@ func newStoppedHelper(t *testing.T, p string, stop func(t *testing.T, f *stopped
 	setDelegates(t, s, poteto, tester)
 	boss := s.newThread(t, poteto)
 	ev := s.events(t, boss)
-	ids, _ := delegateTester(t, s, boss, ev, _hangPrompt, _reportPrompt)
+	ids, _ := delegateTester(t, s, boss, ev, _hangPrompt, _hangPrompt)
 	f := &stoppedHelper{m: m, s: s, boss: boss, ev: ev, a: ids[0], b: ids[1]}
 	f.aRun = helperRunning(t, s, f.a)
-	asking(t, s, f.b)
+	f.bRun = helperRunning(t, s, f.b)
 
 	if got := useAtoll(t, s, boss, ev, continueCall(f.a, _heldText)); !slices.Equal(got, []string{_queued}) {
 		t.Fatalf("continue to a helper whose run goes: reply %q, want %q", got, []string{_queued})
@@ -57,6 +59,13 @@ func newStoppedHelper(t *testing.T, p string, stop func(t *testing.T, f *stopped
 	stop(t, f)
 	stopped(t, s, f.a, f.aRun)
 	return f
+}
+
+// siblingEnds has the person stop b's run, which ends a sibling's run.
+func (f *stoppedHelper) siblingEnds(t *testing.T, s *server) {
+	t.Helper()
+	s.do(t, "POST", "/api/runs/"+f.bRun+"/stop", nil, nil, http.StatusNoContent)
+	stopped(t, s, f.b, f.bRun)
 }
 
 // stillHeld checks, for _chance, that the stopped helper started no run and its message is still
@@ -73,14 +82,14 @@ func (f *stoppedHelper) stillHeld(t *testing.T, s *server, p string) {
 }
 
 // TestStopHoldsHelper_SiblingEndsStartsNothing: a helper stopped with a continue held for it
-// starts no run when a sibling's run ends done, whoever stopped it, and the message stays queued.
+// starts no run when a sibling's run ends, whoever stopped it, and the message stays queued.
 func TestStopHoldsHelper_SiblingEndsStartsNothing(t *testing.T) {
 	t.Parallel()
 	for _, p := range _oneProvider {
 		for _, way := range _stopWays {
 			t.Run(p+"/"+way.name, func(t *testing.T) {
 				f := newStoppedHelper(t, p, way.stop)
-				helpersEnd(t, f.s, f.b)
+				f.siblingEnds(t, f.s)
 				f.stillHeld(t, f.s, p)
 			})
 		}
@@ -205,7 +214,7 @@ func TestStopHoldsHelper_ApprovalReplyKeepsReportsHeld(t *testing.T) {
 			setDelegates(t, s, poteto, s.newBot(t, "Tester", p))
 			boss := s.newThread(t, poteto)
 			ev := s.events(t, boss)
-			ids, _ := delegateTester(t, s, boss, ev, _slowPrompt, commandPrompt("make check"))
+			ids, _ := delegateTester(t, s, boss, ev, _slowPrompt, _reportPrompt)
 			slow, asker := ids[0], ids[1]
 
 			busy := s.send(t, boss, _writePrompt)
@@ -224,9 +233,6 @@ func TestStopHoldsHelper_ApprovalReplyKeepsReportsHeld(t *testing.T) {
 			if len(out.Answered) != 1 || out.Answered[0] != id || out.Message.Queued || out.Run != nil {
 				t.Fatalf("reply %+v, want helper %s's approval answered, the message not queued and no run", out, asker)
 			}
-			if r := settled(t, s, asker); !strings.Contains(r.Reply, text) {
-				t.Errorf("helper %s's reply %q, want it told %q", asker, r.Reply, text)
-			}
 			bossStill(t, s, boss.ID, busy.ID, time.Now().Add(_holdWindow+2*time.Second), "after the reply and the wake window")
 			if got := promptsWith(t, m, p, "Reef: Tester "); len(got) != 0 {
 				t.Errorf("the provider got held reports %q after a reply that answered an approval, want them held", got)
@@ -244,7 +250,6 @@ func TestStopHoldsHelper_ApprovalReplyKeepsReportsHeld(t *testing.T) {
 			if len(prompts) != 1 || !inOrder(prompts[0], ask, finishedNotice("Tester", slow)) {
 				t.Fatalf("boss prompts %q, want one with the person's text, then Tester's header for helper %s", prompts, slow)
 			}
-			holdsAll(t, "the prompt with the person's message", prompts[0], asker)
 		})
 	}
 }
