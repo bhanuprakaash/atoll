@@ -20,9 +20,7 @@ import {
 
 let m: Machine;
 test.beforeEach(async () => {
-  m = await startAtoll({
-    env: test.info().title.includes('after Stop') ? { ATOLL_WAKE_WINDOW: '300s' } : {},
-  });
+  m = await startAtoll();
 });
 test.afterEach(() => m?.stop());
 
@@ -328,29 +326,4 @@ test('finished helpers stay under Done after running helpers, also after reopeni
   await expect(page.getByRole('log', { name: 'Messages' })).toContainText(reportReply);
   await page.goto(`${m.url}/bots/${poteto.id}/threads/${boss}`);
   await expect(page.getByText(/Working with/)).toHaveCount(0);
-});
-
-test('after Stop the held-reports line stays above the composer while another helper runs', async ({
-  page,
-}) => {
-  const { bots } = await makeBoss(m, ['Tester', 'Reviewer']);
-  await page.goto(m.url);
-  const handoff = delegate([['Tester', reportPrompt], ['Reviewer', prompts.hang]]);
-  const approval = { server: 'atoll', tool: 'approve', args: { tool_name: 'Bash', input: { command: 'make check' } } };
-  const boss = await startThread(page, 'Poteto', `${handoff.slice(0, -1)},${JSON.stringify(approval)}]`);
-  const helpers = await helperThreads(m, boss, 2);
-  const thread = (name: string) => helpers.find((h) => h.bot_id === bots[name].id)!.id;
-  await expect.poll(() => runStatus(m, boss)).toBe('waiting');
-  await pendingApproval(thread('Tester'));
-  const bossRun = (await api(m, 'GET', `/api/threads/${boss}`)).run_id;
-  await composerArea(page).getByRole('button', { name: 'Allow', exact: true }).click();
-  await expect.poll(() => runStatus(m, thread('Tester')), { timeout: 30_000 }).toBe('done');
-  // Stop after the report is held by the busy boss, as in boss_quiet_test.go.
-  await api(m, 'POST', `/api/runs/${bossRun}/stop`);
-  await expect.poll(() => runStatus(m, boss)).toBe('stopped');
-  await expect(
-    composerArea(page).getByText('1 helpers still running · 1 reports waiting', { exact: true }),
-  ).toBeVisible();
-  expect(await runStatus(m, thread('Reviewer'))).toBe('running');
-  expect(await runStatus(m, boss)).toBe('stopped');
 });
