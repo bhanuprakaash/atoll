@@ -272,6 +272,13 @@ func (p *player) play(lines []string) error {
 				fake.Pause(fake.PauseMS([]byte(s)))
 			}
 			continue
+		case "hold":
+			if !skip {
+				if err := fake.HoldSkills(); err != nil {
+					return err
+				}
+			}
+			continue
 		case "hang":
 			if !skip {
 				fake.Hang()
