@@ -168,6 +168,24 @@ func TestReadyNamesCommit_PromptHasNoFreezeOrDraftRules(t *testing.T) {
 // listedTools is what tools/list answers to a boss's run, tool name to description.
 func listedTools(t *testing.T, p string) map[string]string {
 	t.Helper()
+	out := map[string]string{}
+	for name, tool := range listedToolSpecs(t, p) {
+		out[name] = tool.Description
+	}
+	return out
+}
+
+type toolSpec struct {
+	Name, Description string
+	InputSchema       struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+		Required   []string                   `json:"required"`
+	} `json:"inputSchema"`
+}
+
+// listedToolSpecs is what tools/list answers to a boss's run, tool name to its description and schema.
+func listedToolSpecs(t *testing.T, p string) map[string]toolSpec {
+	t.Helper()
 	m, s := start(t, p)
 	boss, helper := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
 	setDelegates(t, s, boss, helper)
@@ -193,15 +211,15 @@ func listedTools(t *testing.T, p string) map[string]string {
 	body, _ := io.ReadAll(resp.Body)
 	var listed struct {
 		Result struct {
-			Tools []struct{ Name, Description string } `json:"tools"`
+			Tools []toolSpec `json:"tools"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(body, &listed); err != nil {
 		t.Fatalf("tools/list answered %s: %v", body, err)
 	}
-	out := map[string]string{}
+	out := map[string]toolSpec{}
 	for _, tool := range listed.Result.Tools {
-		out[tool.Name] = tool.Description
+		out[tool.Name] = tool
 	}
 	return out
 }

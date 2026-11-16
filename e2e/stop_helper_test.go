@@ -170,7 +170,7 @@ func TestStopHelper_KeepsUncommittedWork(t *testing.T) {
 			boss := f.thread(t, poteto)
 			ev := s.events(t, boss)
 
-			start := fake.MCPCall{Server: "atoll", Tool: "start_work", Args: json.RawMessage(`{"type":"fix","slug":"Seeded BUG"}`)}
+			start := fake.MCPCall{Server: "atoll", Tool: "start_work", Args: json.RawMessage(`{"branch":"fix/seeded-bug"}`)}
 			lines := useAtoll(t, s, boss, ev, start, delegateCall("Tester", _hangPrompt, ""))
 			h := handedOff(t, lines[1])
 			made := worktreeOf(t, f.repo.Path, startedWork(t, lines[0]).Branch+"--tester")

@@ -230,7 +230,7 @@ func WorktreeSkills(c *MCP, provider string, initial []SkillCopy) ([]SkillCopy, 
 	if c == nil {
 		return nil, fmt.Errorf("atoll MCP server absent")
 	}
-	text, bad, err := c.Call("start_work", json.RawMessage(`{"type":"fix","slug":"skill-discovery"}`))
+	text, bad, err := c.Call("start_work", json.RawMessage(`{"branch":"fix/skill-discovery"}`))
 	if err != nil {
 		return nil, err
 	}
