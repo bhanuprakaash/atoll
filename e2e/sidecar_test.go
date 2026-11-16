@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"bytes"
 	"io"
 	"net"
 	"net/http"
@@ -98,7 +97,7 @@ func freeAddr(t *testing.T) string {
 	return addr
 }
 
-func serveCommand(t *testing.T, m *machine, addr string, extra ...string) (*exec.Cmd, io.WriteCloser, <-chan error, *bytes.Buffer) {
+func serveCommand(t *testing.T, m *machine, addr string, extra ...string) (*exec.Cmd, io.WriteCloser, <-chan error, *syncLog) {
 	t.Helper()
 	args := append([]string{"serve", "--addr", addr}, extra...)
 	cmd := exec.Command(_atoll, args...)
@@ -110,7 +109,7 @@ func serveCommand(t *testing.T, m *machine, addr string, extra ...string) (*exec
 		"ATOLL_PROVIDER_PATH=" + m.bin,
 	}
 	cmd.Env = append(cmd.Env, m.env...)
-	stderr := &bytes.Buffer{}
+	stderr := &syncLog{}
 	cmd.Stderr = stderr
 	cmd.Stdout = io.Discard
 	stdin, err := cmd.StdinPipe()
@@ -131,7 +130,7 @@ func serveCommand(t *testing.T, m *machine, addr string, extra ...string) (*exec
 	return cmd, stdin, done, stderr
 }
 
-func waitForHTTP(t *testing.T, done <-chan error, stderr *bytes.Buffer, addr string) {
+func waitForHTTP(t *testing.T, done <-chan error, stderr *syncLog, addr string) {
 	t.Helper()
 	client := &http.Client{Timeout: 100 * time.Millisecond}
 	deadline := time.After(15 * time.Second)
