@@ -330,8 +330,8 @@ counts a Bot that is already gone as removed.
   `answered_approvals` (`[{id, tool, input}]`), so the chat shows one muted line under the bubble
   per approval, `You replied instead`, after a reload too. Each approval closes
   (`approval_closed`). The text starts no run and is not queued; a helper's approval gets it, not
-  also the boss. A Bot's `continue`, and a message with images, do not answer an approval: they
-  follow the busy-thread rule.
+  also the boss, and it delivers no report held after a Stop (Delegation). A Bot's `continue`,
+  and a message with images, do not answer an approval: they follow the busy-thread rule.
 - A thread that needs a browser gets its own Chrome, driven over the DevTools protocol and streamed
   into a pane the user can take over (v2).
 ### Long threads: bounded provider context (spike #194)
@@ -471,23 +471,34 @@ Follow-ups:
   going (`3 helpers running. Tell the user, and hand this off when one of them reports back.`).
 - `continue` is accepted only from the helper's boss thread and gives the helper a run with the
   message. A message for a thread whose run is going is held (the `inbox` table) and delivered when
-  that run ends (a run the user stopped starts none: they wait for that thread's next run to end).
-  `continue` never answers busy: to a helper whose run is going it answers `Queued: {Helper} is
-  working; it gets this when its run ends.`, else `Sent.`; the message is in the helper thread's
-  `queued` list until delivered. A helper thread's held messages are one run each, oldest first;
-  the person cannot edit or remove them. A message for a helper thread is also held while its boss
-  has 3 helper runs going, and goes out when one ends, so `continue` never takes a boss past 3. A
-  held message survives a restart: on start, after the going runs are marked `failed`, each
-  thread's held messages are delivered. A message for a closed or deleted thread is dropped.
+  that run ends (a run the user stopped starts none: they wait for that thread's next run to end,
+  or for a stopped helper its boss's next `continue`: below). `continue` never answers busy: to a
+  helper whose run is going it answers `Queued: {Helper} is working; it gets this when its run
+  ends.`, else `Sent.`; the message is in the helper thread's `queued` list until delivered. A
+  helper thread's held messages are one run each, oldest first, except after a Stop (below); the
+  person cannot edit or remove them. A message for a helper thread is also held while its boss has
+  3 helper runs going, and goes out when one ends, so `continue` never takes a boss past 3. A held
+  message survives a restart: on start, after the going runs are marked `failed`, each thread's
+  held messages are delivered, except a stopped helper's (below). A message for a closed or
+  deleted thread is dropped.
 - `stop_helper` is accepted only for a helper thread of the calling boss thread. On a helper whose
   run is going it stops that run as the person's Stop does (within 5 s; the run is `stopped` in the
   helper thread) and returns `Stopped {Helper}.`, then the helpers line on a new line (the stopped
   helper is not counted). It sends the boss no wake, since the boss already knows, and writes no
-  `helper_stopped` inbox row. Uncommitted changes stay in the helper's worktree. A held `continue`
-  message for that helper stays held, as after the person's Stop. A helper with no run going
-  returns `{Helper} is not running.` and the helpers line, as a normal result. Any other thread
-  (an unknown id, another boss's helper, the boss's own thread) returns, with `isError`,
-  `{thread} is not one of your helper threads.` and nothing stops.
+  `helper_stopped` inbox row. Uncommitted changes stay in the helper's worktree. Messages held for
+  that helper wait for the boss's next `continue` (A Stop holds a helper's messages). A helper with
+  no run going returns `{Helper} is not running.` and the helpers line, as a normal result. Any
+  other thread (an unknown id, another boss's helper, the boss's own thread) returns, with
+  `isError`, `{thread} is not one of your helper threads.` and nothing stops.
+- A Stop holds a helper's messages. After the person or `stop_helper` stops a helper's run, nothing
+  held for that helper thread starts a run: not a sibling's run ending, not a freed helper slot,
+  not a restart. They go out only with the boss's next `continue` to that helper, in one run with
+  it: the held messages and the new one, oldest first, as a stopped boss's held reports go with the
+  person's next message (A Stop holds helper reports). The hold is stored on the thread, so a
+  restart keeps it; that `continue` clears it, and its run starts as any `continue`'s does (held
+  while the boss has 3 helper runs going). *Slice #500 verification reproduced a stopped helper
+  restarting when a sibling finished (`flushHelpers` delivered its held `continue`). A Stop should
+  keep a helper stopped until its lead sends it work.*
 - `helpers()` returns `{"helpers": [...], "line": "<helpers line>"}`: one row per open helper
   thread of the calling boss thread, oldest first, with `bot`, `thread_id`, `title`, `state` (the
   last run's: `running`, `done`, `failed`, `stopped` or `limited`), `idle_s` (seconds since its last
@@ -563,7 +574,10 @@ Follow-ups:
   the person or `stop_helper` stops them), and a helper's notice (any of the above, and the restart
   message below) starts no boss run, at once or after the wake window. The held reports go with
   the person's next message to that boss thread, or with Stop and send (Send now), in the same run
-  (one run for what is held). The hold is stored on the thread, so a restart keeps it; that run
+  (one run for what is held). A reply in that thread that answers a helper's approval (Replying to
+  an approval) is not that next message: it delivers no held report and keeps the hold; the
+  person's next ordinary message still delivers them. *That reply answers the approval; it is not
+  addressed to the boss.* The hold is stored on the thread, so a restart keeps it; that run
   clears it. A boss the person did not stop wakes as before. While reports are held, the boss
   thread shows `{N} helpers still running · {M} reports waiting` above the composer (App and UI).
   *Thread "Slice 448 open questions before implementation" (Poteto, 2026-11-15): the lead had no
@@ -789,8 +803,8 @@ Follow-ups:
 - Known gap: CI re-run on the same commit (a failed check re-run passes) is not seen: reads stop
   once the commit is reported, and the panel keeps the first result.
 - Known gap: a stopped thread hears a PR or CI wake only when its next run ends (helper reports
-  wait for the person: Delegation), and a merged GitLab MR's worktree can be released before that
-  wake is delivered.
+  wait for the person, and a stopped helper's messages for its boss's next `continue`:
+  Delegation), and a merged GitLab MR's worktree can be released before that wake is delivered.
 - Fixtures (what the poll reads; GitHub base is the API base `CheckGitHubToken` uses, so
   `ATOLL_GITHUB_URL` with the routes appended):
   - `GET /repos/{owner}/{repo}/pulls/{n}`: `state` (`open` or `closed`), `merged` (bool), `title`,
