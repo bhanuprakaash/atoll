@@ -169,7 +169,7 @@ func dbRows(t *testing.T, m *machine, query string, args ...any) [][]string {
 	return out
 }
 
-var _threadPRColumns = []string{"base", "base_woke", "body", "changed_at", "ci", "draft", "head", "state", "thread_id", "title", "tracked_at", "url", "wake", "woke"}
+var _threadPRColumns = []string{"changed_at", "ci", "head", "state", "thread_id", "title", "tracked_at", "url", "wake", "woke"}
 
 // wantPRSchema checks thread_prs has its columns and threads has no mr_ column left.
 func wantPRSchema(t *testing.T, m *machine) {
@@ -390,16 +390,16 @@ func TestThreadPRs_UpgradeMovesEachPR(t *testing.T) {
 	s.kill()
 	m.killFakes()
 	wantPRSchema(t, m)
-	rows := dbRows(t, m, "SELECT thread_id, url, state, title, ci, woke, wake, head, base_woke, changed_at FROM thread_prs ORDER BY thread_id")
+	rows := dbRows(t, m, "SELECT thread_id, url, state, title, ci, woke, wake, head, changed_at FROM thread_prs ORDER BY thread_id")
 	wantRows := [][]string{
 		{"prthread01", "https://github.com/octo/hello/pull/7", "opened", "feat: add the widget",
 			`{"head":"1111111111111111111111111111111111111111","passed":2,"failed":1,"pending":0,"failed_names":["unit"]}`,
-			"2222222222222222222222222222222222222222", "1", "3333333333333333333333333333333333333333", "1", "1794673900123456"},
+			"2222222222222222222222222222222222222222", "1", "3333333333333333333333333333333333333333", "1794673900123456"},
 		{"prthread02", "https://gitlab.example/fixtures/seeded/-/merge_requests/3", "merged", "fix: the other thing",
-			"", "", "0", "", "0", "1794673950000001"},
+			"", "", "0", "", "1794673950000001"},
 		{"prthread03", "https://github.com/octo/hello/pull/9", "closed", "wip: nothing",
 			`{"head":"4444444444444444444444444444444444444444","passed":0,"failed":0,"pending":0,"failed_names":[]}`,
-			"4444444444444444444444444444444444444444", "0", "4444444444444444444444444444444444444444", "0", "1794674000000002"},
+			"4444444444444444444444444444444444444444", "0", "4444444444444444444444444444444444444444", "1794674000000002"},
 	}
 	if fmt.Sprint(rows) != fmt.Sprint(wantRows) {
 		t.Errorf("thread_prs after the upgrade:\n%v\nwant\n%v", rows, wantRows)
