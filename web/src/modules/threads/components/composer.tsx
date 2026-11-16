@@ -40,18 +40,16 @@ export function Composer({
   runId,
   disabled,
   onSent,
-  context,
   onFirstSend,
-  tray,
+  above,
 }: {
   threadId: string;
   botName: string;
   runId?: string;
   disabled: boolean;
   onSent: (run: Run) => void;
-  context?: ReactNode;
   onFirstSend?: (text: string, images: ImageInput[], restore: () => void) => void;
-  tray?: ReactNode;
+  above?: ReactNode;
 }) {
   const [text, setText] = useState('');
   const [images, setImages] = useState<Attachment[]>([]);
@@ -190,6 +188,7 @@ export function Composer({
 
   return (
     <div className="flex flex-col gap-2" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+      {above}
       {images.length > 0 && (
         <div className="flex flex-wrap gap-2 px-1.5">
           {images.map((img) => (
@@ -213,33 +212,10 @@ export function Composer({
       )}
       <form
         onSubmit={submit}
-        className={
-          context
-            ? 'relative flex flex-col gap-1.5 rounded-[26px] border border-composer-line bg-composer pt-1.5 pr-2.5 pb-2.5 pl-4.5'
-            : `flex items-end gap-2.5 rounded-[28px] border border-composer-line bg-composer py-2 pr-2 pl-4.5 ${onFirstSend ? 'min-h-15' : 'min-h-14'}`
-        }
+        className={`flex items-end gap-2.5 rounded-[28px] border border-composer-line bg-composer py-2 pr-2 pl-4.5 ${onFirstSend ? 'min-h-15' : 'min-h-14'}`}
       >
-        {context ? (
-          <>
-            {tray}
-            <div className="pr-2">{input}</div>
-            <div className="flex items-center gap-1.5">
-              <div
-                role="group"
-                aria-label="Thread context"
-                className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-[12.5px] text-ink/80"
-              >
-                {context}
-              </div>
-              {action}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="min-w-0 flex-1 self-center">{input}</div>
-            {action}
-          </>
-        )}
+        <div className="min-w-0 flex-1 self-center">{input}</div>
+        {action}
       </form>
       {imageError && <ErrorNotice title={imageError} next="Pick another image." />}
       {(send.isError || stop.isError) && <ErrorNotice error={send.error ?? stop.error} />}

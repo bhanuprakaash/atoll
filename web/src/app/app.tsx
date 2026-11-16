@@ -126,7 +126,6 @@ function ThreadPage() {
       bots={botInfo}
       repos={allowed}
       bot={withConnectionNames(bot, connections)}
-      repoName={repoName}
       lostRepo={lostRepo}
       signedOut={(provider) => <SignInExpired provider={provider} />}
       afterRun={(runId) => (
