@@ -23,13 +23,11 @@ export function useThreadEvents(threadId: string) {
   const queryClient = useQueryClient();
   const [runs, setRuns] = useState<Record<string, LiveRun>>({});
   const [connected, setConnected] = useState(true);
-  const [mr, setMr] = useState<{ url: string; state: string; title: string } | null>(null);
   const [worktreeRemoved, setWorktreeRemoved] = useState(false);
   const runsRef = useRef(runs);
   runsRef.current = runs;
   const closedApprovals = useRef(new Set<string>());
   useEffect(() => {
-    setMr(null);
     setWorktreeRemoved(false);
     setRuns({});
     closedApprovals.current.clear();
@@ -151,12 +149,9 @@ export function useThreadEvents(threadId: string) {
       'worktree_created',
       'helper_started',
       'told',
+      'mr_updated',
     ])
       source.addEventListener(type, refresh);
-    source.addEventListener('mr_updated', (e) => {
-      setMr(JSON.parse((e as MessageEvent<string>).data));
-      refresh();
-    });
     source.addEventListener('worktree_removed', () => {
       setWorktreeRemoved(true);
       refresh();
@@ -166,7 +161,6 @@ export function useThreadEvents(threadId: string) {
   return {
     runs,
     connected,
-    mr,
     worktreeRemoved,
     begin: (id: string) => setRuns((prev) => ({ ...prev, [id]: prev[id] ?? empty })),
   };

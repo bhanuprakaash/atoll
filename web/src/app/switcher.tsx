@@ -5,7 +5,7 @@ import { TextField } from '@/components/text-field';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { useGroups, type Group } from '@/modules/bots/api/groups';
 import { sidebarOrder } from '@/modules/bots/utils/sidebar-order';
-import { mrRef } from '@/modules/threads/utils/mr-ref';
+import { headPR, mrRef } from '@/modules/threads/utils/mr-ref';
 
 type Row = {
   key: string;
@@ -35,10 +35,13 @@ function allRows(bots: Bot[], groups: Group[]) {
       state: bot.state,
       title: t.title || 'Empty thread',
       bot: bot.name,
-      detail: [t.branch, mrRef(t.mr_url)].filter(Boolean).join(' · '),
+      detail: [t.branch, mrRef(headPR(t.prs)?.url)].filter(Boolean).join(' · '),
       needsYou: t.state === 'needs_you',
       at: time(t.last_activity),
-      fields: { title: t.title, other: `${bot.name} ${t.branch} ${mrRef(t.mr_url) || ''}` },
+      fields: {
+        title: t.title,
+        other: `${bot.name} ${t.branch} ${t.prs.map((p) => mrRef(p.url)).join(' ')}`,
+      },
     })),
   );
   const botRows = botsInOrder.map((bot): Row => ({

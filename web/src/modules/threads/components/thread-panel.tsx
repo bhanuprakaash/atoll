@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { Link, useNavigate } from 'react-router';
 import type { CreatureLook } from '@/components/creature';
 import { useStopRun } from '@/modules/threads/api/runs';
-import type { Thread } from '@/modules/threads/api/threads';
+import type { PullRequest, Thread } from '@/modules/threads/api/threads';
 import { HelperCreature } from '@/modules/threads/components/helper-creature';
 import {
   ciWord,
@@ -11,7 +11,7 @@ import {
   isLiveHelper,
   type HelperState,
 } from '@/modules/threads/utils/helper-state';
-import { mrRef } from '@/modules/threads/utils/mr-ref';
+import { headPR, mrRef } from '@/modules/threads/utils/mr-ref';
 
 type Bots = Record<string, { name: string; look: CreatureLook }>;
 
@@ -120,20 +120,20 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Pull({ thread }: { thread: Thread }) {
-  const ref = mrRef(thread.mr_url);
-  if (!ref) return null;
-  const word = thread.mr_state === 'opened' ? ciWord(thread) : thread.mr_state;
+function Pull({ pr }: { pr?: PullRequest }) {
+  const ref = mrRef(pr?.url);
+  if (!pr || !ref) return null;
+  const word = pr.state === 'opened' ? ciWord(pr) : pr.state;
   return (
     <span className="flex flex-none items-center gap-2">
       <a
-        href={thread.mr_url}
+        href={pr.url}
         target="_blank"
         rel="noreferrer"
-        title={thread.mr_title || ref}
+        title={pr.title || ref}
         className="inline-flex items-center gap-1.25 text-ink"
       >
-        <Dot state={thread.mr_state} />
+        <Dot state={pr.state} />
         {ref}
       </a>
       {word && <span className={`text-xs ${ciStyle[word] ?? 'text-muted'}`}>{word}</span>}
@@ -185,7 +185,7 @@ function Row({
           >
             {!live ? 'Done' : state === 'needs_you' ? 'Needs you' : helper.step || 'Working'}
           </span>{' '}
-          <Pull thread={helper} />{' '}
+          <Pull pr={headPR(helper.prs)} />{' '}
           {live && (
             <button
               type="button"
@@ -228,6 +228,11 @@ export function ThreadPanel({
 }) {
   const card = useRef<HTMLDivElement>(null);
   const helpers = [...(thread.helpers ?? [])].sort(newest);
+  const newestFirst = [...thread.prs].reverse();
+  const prs = [
+    ...newestFirst.filter((p) => p.state === 'opened'),
+    ...newestFirst.filter((p) => p.state !== 'opened'),
+  ];
   const running = helpers.filter(isLiveHelper);
   const done = helpers.filter((h) => !isLiveHelper(h));
   const now = useNow(running.length > 0);
@@ -301,21 +306,23 @@ export function ThreadPanel({
           )}
         </div>
       </Section>
-      {mrRef(thread.mr_url) && (
+      {prs.length > 0 && (
         <Section title="Pull requests">
           <ul>
-            <li>
-              <a href={thread.mr_url} target="_blank" rel="noreferrer" className={rowClass}>
-                <Dot state={thread.mr_state} />
-                <span className="flex-none text-ink">{mrRef(thread.mr_url)}</span>
-                <span className="min-w-0 flex-1 truncate text-muted">{thread.mr_title}</span>
-                {thread.mr_state === 'opened' && (
-                  <span className={`text-xs ${ciStyle[ciWord(thread)] ?? 'text-muted'}`}>
-                    {ciWord(thread)}
-                  </span>
-                )}
-              </a>
-            </li>
+            {prs.map((pr) => (
+              <li key={pr.url}>
+                <a href={pr.url} target="_blank" rel="noreferrer" className={rowClass}>
+                  <Dot state={pr.state} />
+                  <span className="flex-none text-ink">{mrRef(pr.url)}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted">{pr.title}</span>
+                  {pr.state === 'opened' && (
+                    <span className={`text-xs ${ciStyle[ciWord(pr)] ?? 'text-muted'}`}>
+                      {ciWord(pr)}
+                    </span>
+                  )}
+                </a>
+              </li>
+            ))}
           </ul>
         </Section>
       )}

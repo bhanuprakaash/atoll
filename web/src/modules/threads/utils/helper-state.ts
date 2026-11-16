@@ -1,4 +1,4 @@
-import type { Thread } from '@/modules/threads/api/threads';
+import type { PullRequest, Thread } from '@/modules/threads/api/threads';
 
 export type HelperState = 'working' | 'needs_you' | 'done' | 'failed' | 'stopped';
 
@@ -17,9 +17,9 @@ export const helperLabel = (name: string, state: HelperState) =>
   `${name}: ${state.replace('_', ' ')}`;
 
 // ciWord is the word for an open PR's checks as the watcher last read them; none before a read.
-export function ciWord(helper: Thread) {
-  const ci = helper.mr_ci;
-  if (helper.mr_state !== 'opened' || !ci) return '';
+export function ciWord(pr: PullRequest) {
+  const ci = pr.ci;
+  if (pr.state !== 'opened' || !ci) return '';
   if (ci.failed > 0) return 'failed';
   if (ci.pending > 0) return 'running';
   return ci.passed > 0 ? 'passed' : '';
