@@ -41,8 +41,9 @@ type prWatch struct {
 	runs     map[string][]fakeCheck
 	statuses map[string][]fakeStatus
 	reads    map[int]int
-	drafts   map[int]bool // whether the pull request was created as a draft
-	calls    []string     // what the Bots' gh did to pull requests: create, edit and ready, in order
+	checkGet map[string]int // reads of a commit's check runs
+	drafts   map[int]bool   // whether the pull request was created as a draft
+	calls    []string       // what the Bots' gh did to pull requests: create, edit and ready, in order
 	issues   map[int]*issueFixture
 	issueGet map[int]int
 	issue304 map[int]int
@@ -173,6 +174,13 @@ func (g *fakeGitHub) setChecks(sha string, runs []fakeCheck, statuses []fakeStat
 		}
 		g.watch.runs[sha], g.watch.statuses[sha] = runs, statuses
 	})
+}
+
+// checkReads is how many times the server read the check runs of the commit.
+func (g *fakeGitHub) checkReads(sha string) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.watch.checkGet[sha]
 }
 
 // pullReads is how many times the server read pull request n.
@@ -307,6 +315,10 @@ func (g *fakeGitHub) checkRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	g.mu.Lock()
 	runs := g.watch.runs[r.PathValue("sha")]
+	if g.watch.checkGet == nil {
+		g.watch.checkGet = map[string]int{}
+	}
+	g.watch.checkGet[r.PathValue("sha")]++
 	g.mu.Unlock()
 	out := []map[string]any{}
 	for _, c := range runs {
