@@ -28,6 +28,8 @@ export type Thread = {
   run_id: string;
   run_status: string;
   run_error_kind: string;
+  holds_reports: boolean;
+  reports_waiting: number;
   approval: { id: string; tool: string; input: unknown; allow_in_thread?: boolean } | null;
 };
 

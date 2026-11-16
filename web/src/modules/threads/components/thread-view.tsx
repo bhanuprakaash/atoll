@@ -892,7 +892,14 @@ export function ThreadView({
               disabled={!connected || !!thread?.closed}
               onSent={(run) => begin(run.id)}
               context={context}
-              tray={<HelpersTray boss={botName} helpers={helpers} bots={bots} />}
+              tray={
+                <HelpersTray
+                  boss={botName}
+                  helpers={helpers}
+                  bots={bots}
+                  held={thread?.holds_reports ? thread.reports_waiting : null}
+                />
+              }
             />
           )}
         </div>

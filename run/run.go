@@ -716,8 +716,13 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	}
 	quiet := a.quiet
 	res.StatusLine = a.background && (a.told || !a.guard)
-	told := a.told
+	told, stopped := a.told, a.stopped
 	m.mu.Unlock()
+	if stopped && !quiet {
+		if err := m.cfg.Store.HoldReports(context.Background(), a.threadID); err != nil {
+			m.cfg.Log.Error("hold reports", "thread_id", a.threadID, "error", err)
+		}
+	}
 	res.Provider = a.bot.Provider
 	res.Usage, res.SessionCostUSD = a.usageResult()
 	var wake func(store.Wake) string

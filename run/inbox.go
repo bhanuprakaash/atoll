@@ -56,7 +56,8 @@ func (m *Manager) drain(ctx context.Context, threadID string, wait bool) error {
 }
 
 // pick returns the held messages the thread's next run takes, none when nothing is held or the
-// wake window still holds them. A helper thread's run takes one message, or the person's. Any
+// wake window still holds them. A thread that holds helper reports leaves them held unless the
+// person's message is. A helper thread's run takes one message, or the person's. Any
 // other thread's takes everything held. inboxMu is held.
 func (m *Manager) pick(ctx context.Context, threadID string, wait bool) ([]store.InboxItem, error) {
 	t, err := m.cfg.Store.Thread(ctx, threadID)
@@ -74,6 +75,9 @@ func (m *Manager) pick(ctx context.Context, threadID string, wait bool) ([]store
 		return []store.InboxItem{it}, nil
 	}
 	items, err := m.cfg.Store.Held(ctx, threadID)
+	if err == nil && t.HoldsReports && !slices.ContainsFunc(items, func(it store.InboxItem) bool { return it.FromUser }) {
+		items = slices.DeleteFunc(items, store.IsHelperNotice)
+	}
 	if err != nil || len(items) == 0 || !wait || t.ID == "" || m.cfg.WakeWindow <= 0 {
 		return items, err
 	}

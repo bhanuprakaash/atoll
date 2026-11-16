@@ -367,6 +367,8 @@ type threadSummary struct {
 	ParentBotID string          `json:"parent_bot_id"`
 	Helpers     []threadSummary `json:"helpers"`
 	MRCI        json.RawMessage `json:"mr_ci"`
+	// ReportsWaiting counts the helper notices a Stop on the thread holds.
+	ReportsWaiting int `json:"reports_waiting"`
 }
 
 func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, error) {
@@ -396,6 +398,11 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 			return out, err
 		}
 		out.Helpers = append(out.Helpers, s)
+	}
+	if t.HoldsReports {
+		if out.ReportsWaiting, err = a.st.HeldNotices(r.Context(), t.ID); err != nil {
+			return out, err
+		}
 	}
 	out.Verb = a.liveVerb(t.ID)
 	out.Step = a.liveStep(t.ID)
