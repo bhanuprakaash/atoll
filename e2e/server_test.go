@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -21,7 +22,31 @@ type server struct {
 	m   *machine
 	cmd *exec.Cmd
 	url string
-	log *bytes.Buffer
+	log *syncLog
+}
+
+// syncLog is the server's stderr: the exec copy goroutine writes it while a test reads it.
+type syncLog struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *syncLog) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *syncLog) Bytes() []byte {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return bytes.Clone(l.buf.Bytes())
+}
+
+func (l *syncLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
 }
 
 type (
@@ -64,7 +89,7 @@ type (
 // fake provider it started.
 func (m *machine) serve(t *testing.T) *server {
 	t.Helper()
-	s := &server{m: m, log: &bytes.Buffer{}}
+	s := &server{m: m, log: &syncLog{}}
 	s.cmd = exec.Command(_atoll, "serve", "--addr", "127.0.0.1:0")
 	s.cmd.Dir = t.TempDir()
 	s.cmd.WaitDelay = 2 * time.Second // a hung provider may hold atoll's stderr open

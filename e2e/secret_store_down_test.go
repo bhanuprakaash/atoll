@@ -26,7 +26,7 @@ type secretStoreRun struct {
 }
 
 // warnLines are the WARN lines of the server log that name runID.
-func warnLines(t *testing.T, log *bytes.Buffer, runID string) []map[string]any {
+func warnLines(t *testing.T, log *syncLog, runID string) []map[string]any {
 	t.Helper()
 	var out []map[string]any
 	sc := bufio.NewScanner(bytes.NewReader(log.Bytes()))

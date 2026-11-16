@@ -94,15 +94,17 @@ func TestTitles_Generated(t *testing.T) {
 func TestTitles_UserTitleKept(t *testing.T) {
 	t.Parallel()
 	m, s := start(t, "claude")
-	th := s.newThread(t, s.newBot(t, "Ada", "claude"))
+	b := s.newBot(t, "Ada", "claude")
+	th, control := s.newThread(t, b), s.newThread(t, b)
 	s.do(t, "PATCH", "/api/threads/"+th.ID, map[string]string{"title": "My plan"}, nil, http.StatusOK)
 	s.finished(t, s.events(t, th), s.send(t, th, _titlePrompt).ID)
-	time.Sleep(2 * time.Second)
+	s.finished(t, s.events(t, control), s.send(t, control, _titlePrompt).ID)
+	titled(t, s, control.ID, _titleWant)
 	if got := s.thread(t, th.ID).Title; got != "My plan" {
 		t.Errorf("title %q after the first reply, want the user's %q", got, "My plan")
 	}
-	if n := len(m.titles(t, "claude")); n != 0 {
-		t.Errorf("%d title sessions for a thread the user titled, want 0", n)
+	if n := len(m.titles(t, "claude")); n != 1 {
+		t.Errorf("%d title sessions, want 1: the control thread's, none for the thread the user titled", n)
 	}
 }
 

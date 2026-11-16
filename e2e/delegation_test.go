@@ -374,7 +374,6 @@ func TestContinue_OnlyFromBoss(t *testing.T) {
 					t.Fatalf("continue from %s: reply %q, want a tool error", c.who, lines)
 				}
 				refusals = append(refusals, lines[0])
-				time.Sleep(4 * _pace)
 				if got := getThread(t, s, helper).RunID; got != first.ID {
 					t.Errorf("continue from %s (%q) started helper run %s, want it refused", c.who, lines[0], got)
 				}

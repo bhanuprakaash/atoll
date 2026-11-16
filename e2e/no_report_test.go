@@ -148,7 +148,14 @@ func TestNoReport_NoNudgeIsSent(t *testing.T) {
 					t.Fatalf("run %q: status %q, error %q; want done", prompt, r.Status, r.Error)
 				}
 			}
-			time.Sleep(4 * _pace)
+			eventually(t, 15*time.Second, "the provider processes exit", func() bool {
+				for _, r := range promptLog(t, m, p) {
+					if !gone(r.PID) {
+						return false
+					}
+				}
+				return true
+			})
 			perProcess := map[int][]string{}
 			for _, r := range promptLog(t, m, p) {
 				if r.Kind == "user" {

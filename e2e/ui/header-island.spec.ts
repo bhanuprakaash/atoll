@@ -56,8 +56,9 @@ test('hovering the island does not open the notification list; a click does', as
   await page.goto(m.url);
   await sidebarRow(page, 'Hover').click();
   const island = page.locator('header').getByRole('button', { name: /^Notifications/ });
+  await page.clock.install();
   await island.hover();
-  await page.waitForTimeout(600);
+  await page.clock.fastForward(1_000);
   await expect(page.getByRole('dialog', { name: 'Notifications' })).toHaveCount(0);
   await island.click();
   await expect(page.getByRole('dialog', { name: 'Notifications' })).toBeVisible();

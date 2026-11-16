@@ -46,7 +46,7 @@ func TestPRWake_RejectedTokenLogsSignInLost(t *testing.T) {
 		return one.Status == "needs_sign_in"
 	})
 	to := time.Now()
-	time.Sleep(time.Second) // ten more watcher intervals (100ms)
+	time.Sleep(time.Second) // window: ten watcher intervals (100ms); the watcher makes no more reads once signed out
 	wantSignedOutAt(t, f.s, id, from, to)
 	wantSignInLost(t, f.m, f.gh, id, f.boss.ID, f.gh.URL+"/repos/octo/hello/", false)
 }

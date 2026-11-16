@@ -105,7 +105,8 @@ func TestGitHubRepos_BotPushesAndOpensAPullRequest(t *testing.T) {
 			}
 
 			// A GitHub repo's PR is not an MR: the server never asks glab about it.
-			time.Sleep(time.Second)
+			reads := f.gh.pullReads(1)
+			eventually(t, 30*time.Second, "the watcher reads the pull request again", func() bool { return f.gh.pullReads(1) >= reads+3 })
 			for _, c := range loggedCalls(t, f.m, "glab") {
 				if len(c.argv) > 0 && c.argv[0] == "mr" {
 					t.Errorf("glab ran %v for a GitHub repo's thread", c.argv)

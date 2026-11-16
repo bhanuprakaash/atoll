@@ -229,9 +229,10 @@ func TestRequestLifecycle_NothingIsSentAfterTheRequest(t *testing.T) {
 	if r.Status != "done" || r.Reply != "Here is the answer." {
 		t.Fatalf("run: status %q, reply %q, error %q; want done, %q", r.Status, r.Reply, r.Error, "Here is the answer.")
 	}
-	// A nudge would arrive once the request has ended; give it the time the fake takes for a call.
-	time.Sleep(4 * _pace)
-	trace := claudeTrace(t, m, m.sessions(t, "claude")[0].pid)
+	// A nudge would arrive while the process lives: read the trace once it has exited.
+	pid := m.sessions(t, "claude")[0].pid
+	eventually(t, 15*time.Second, "the fake claude process exits", func() bool { return gone(pid) })
+	trace := claudeTrace(t, m, pid)
 	reads := 0
 	for _, e := range trace {
 		if e.Kind == "read" && e.Detail == "user" {
