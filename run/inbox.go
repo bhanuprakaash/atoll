@@ -23,7 +23,33 @@ func (m *Manager) post(ctx context.Context, threadID, text string) (busy bool, e
 	if busy {
 		m.cfg.Log.Info("queued", "thread_id", threadID)
 	}
+	if err := m.releaseHold(ctx, threadID); err != nil {
+		return busy, err
+	}
 	return busy, m.drain(ctx, threadID, true)
+}
+
+// releaseHold ends a stopped helper thread's hold and starts one run with everything held for it,
+// oldest first. The run waits, as any helper's does, while the boss has _maxHelpers helper runs
+// going.
+func (m *Manager) releaseHold(ctx context.Context, threadID string) error {
+	m.inboxMu.Lock()
+	defer m.inboxMu.Unlock()
+	t, err := m.cfg.Store.Thread(ctx, threadID)
+	if err != nil || t.ParentThreadID == "" || !t.HoldsReports {
+		return err
+	}
+	if err := m.cfg.Store.ReleaseReports(ctx, threadID); err != nil {
+		return err
+	}
+	items, err := m.cfg.Store.Held(ctx, threadID)
+	if err != nil || len(items) == 0 {
+		return err
+	}
+	if _, _, err := m.sendHeld(ctx, items...); err != nil && !errors.Is(err, ErrBusy) {
+		return fmt.Errorf("deliver held messages: %w", err)
+	}
+	return nil
 }
 
 // drain starts runs for the thread's held messages until a run is going or none are held. With
@@ -57,7 +83,7 @@ func (m *Manager) drain(ctx context.Context, threadID string, wait bool) error {
 
 // pick returns the held messages the thread's next run takes, none when nothing is held or the
 // wake window still holds them. A thread that holds helper reports leaves them held unless the
-// person's message is. A helper thread's run takes one message, or the person's. Any
+// person's message is. A stopped helper thread leaves everything held until its boss's next continue. A helper thread's run takes one message, or the person's. Any
 // other thread's takes everything held. inboxMu is held.
 func (m *Manager) pick(ctx context.Context, threadID string, wait bool) ([]store.InboxItem, error) {
 	t, err := m.cfg.Store.Thread(ctx, threadID)
@@ -65,6 +91,9 @@ func (m *Manager) pick(ctx context.Context, threadID string, wait bool) ([]store
 		return nil, err
 	}
 	if t.ParentThreadID != "" {
+		if t.HoldsReports {
+			return nil, nil
+		}
 		it, ok, err := m.cfg.Store.OldestInbox(ctx, threadID)
 		if err != nil || !ok {
 			return nil, err

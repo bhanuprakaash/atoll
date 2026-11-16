@@ -723,7 +723,7 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	res.StatusLine = a.background && (a.told || !a.guard)
 	told, stopped := a.told, a.stopped
 	m.mu.Unlock()
-	if stopped && !quiet {
+	if stopped {
 		// Under inboxMu: a drain that picked before the hold finishes its send while the run is still
 		// going (ErrBusy); a later pick sees the hold. mu is not held here.
 		m.inboxMu.Lock()

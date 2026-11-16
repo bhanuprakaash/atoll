@@ -230,7 +230,8 @@ type (
 		Closed          bool       `json:"closed"`
 		Pinned          bool       `json:"pinned"`
 		// HoldsReports is set by the person's Stop on the thread's run: helper notices wait for the
-		// person's next message.
+		// person's next message. A stopped helper thread holds all its messages for its boss's next
+		// continue.
 		HoldsReports bool      `json:"holds_reports"`
 		Created      time.Time `json:"created_at"`
 		LastActivity time.Time `json:"last_activity"`
@@ -1390,12 +1391,20 @@ func (s *Store) DeleteInbox(ctx context.Context, id string) error {
 	return nil
 }
 
-// HoldReports makes the thread, if it is not a helper's, hold the notices of its helpers until the
-// person writes to it: a run that takes a message of the person clears it.
+// HoldReports makes the thread hold the notices of its helpers until the person writes to it: a
+// run that takes a message of the person clears it. A helper thread holds all its messages until
+// ReleaseReports.
 func (s *Store) HoldReports(ctx context.Context, threadID string) error {
-	if _, err := s.db.ExecContext(ctx,
-		"UPDATE threads SET holds_reports = 1 WHERE id = ? AND parent_thread_id = ''", threadID); err != nil {
+	if _, err := s.db.ExecContext(ctx, "UPDATE threads SET holds_reports = 1 WHERE id = ?", threadID); err != nil {
 		return fmt.Errorf("hold reports: %w", err)
+	}
+	return nil
+}
+
+// ReleaseReports ends the thread's hold.
+func (s *Store) ReleaseReports(ctx context.Context, threadID string) error {
+	if _, err := s.db.ExecContext(ctx, "UPDATE threads SET holds_reports = 0 WHERE id = ?", threadID); err != nil {
+		return fmt.Errorf("release reports: %w", err)
 	}
 	return nil
 }

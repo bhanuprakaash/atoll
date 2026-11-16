@@ -399,7 +399,7 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 		}
 		out.Helpers = append(out.Helpers, s)
 	}
-	if t.HoldsReports {
+	if t.HoldsReports && t.ParentThreadID == "" {
 		if out.ReportsWaiting, err = a.st.HeldNotices(r.Context(), t.ID); err != nil {
 			return out, err
 		}
