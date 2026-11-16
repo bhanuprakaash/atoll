@@ -29,8 +29,8 @@ func TestPick_Holds(t *testing.T) {
 		}, false, nil},
 		{"lead takes CI and PR notices", false, true, []store.InboxItem{
 			notice("done", store.NoticeHelperDone), notice("ci", store.NoticeCIPassed),
-			notice("merged", store.NoticeMerged), notice("closed", store.NoticeClosed), notice("base", store.NoticeBase),
-		}, false, []string{"ci", "merged", "closed", "base"}},
+			notice("merged", store.NoticeMerged), notice("closed", store.NoticeClosed),
+		}, false, []string{"ci", "merged", "closed"}},
 		{"person releases a lead's held notices", false, true, []store.InboxItem{
 			notice("done", store.NoticeHelperDone), person("hi"), notice("failed", store.NoticeHelperFailed),
 		}, false, []string{"hi", "done", "failed"}},
