@@ -11,38 +11,6 @@ import (
 	"testing"
 )
 
-func TestBranch(t *testing.T) {
-	tests := []struct {
-		name    string
-		typ     string
-		slug    string
-		want    string
-		wantErr bool
-	}{
-		{name: "lowercases and dashes", typ: "fix", slug: "Seeded BUG", want: "fix/seeded-bug"},
-		{name: "punctuation runs", typ: "feat", slug: "add  login!!/oauth", want: "feat/add-login-oauth"},
-		{name: "junk at the ends", typ: "docs", slug: "  --Hello, world.--  ", want: "docs/hello-world"},
-		{
-			name: "cut to 40 without a trailing dash", typ: "chore",
-			slug: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa b cccc",
-			want: "chore/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		},
-		{name: "empty slug", typ: "fix", slug: " !? ", wantErr: true},
-		{name: "bad type", typ: "wip", slug: "x", wantErr: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Branch(tt.typ, tt.slug)
-			if (err != nil) != tt.wantErr || got != tt.want {
-				t.Fatalf("Branch(%q, %q) = %q, %v; want %q, error %v", tt.typ, tt.slug, got, err, tt.want, tt.wantErr)
-			}
-		})
-	}
-	if _, err := Branch("wip", "x"); err == nil || err.Error() != `branch type "wip": type must be feat, fix, chore, docs or test` {
-		t.Errorf("Branch with a bad type: %v", err)
-	}
-}
-
 func TestWorktrees(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
@@ -125,9 +93,20 @@ func TestWorktrees(t *testing.T) {
 	if want := (Base{Name: "HEAD " + initSHA}); base != want {
 		t.Errorf("base without origin = %+v, want %+v", base, want)
 	}
-	second, used, _, err := Create(ctx, src, root, "demo", "fix/bug", "")
+	for _, name := range []string{"fix/bug", "-x", "bad..name", ""} {
+		if _, _, _, err := Create(ctx, src, root, "demo", name, ""); err == nil || !strings.Contains(err.Error(), "branch") {
+			t.Fatalf("Create of %q = %v, want a branch refusal", name, err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(root, "demo", "feat-folder"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := Create(ctx, src, root, "demo", "feat/folder", ""); err == nil {
+		t.Fatal("Create with an existing worktree folder succeeded")
+	}
+	second, used, err := CreateFrom(ctx, src, root, "demo", "fix/bug", "main")
 	if err != nil || used != "fix/bug-2" || second != filepath.Join(root, "demo", "fix-bug-2") {
-		t.Fatalf("second Create = %q, %q, %v", second, used, err)
+		t.Fatalf("CreateFrom of a taken name = %q, %q, %v", second, used, err)
 	}
 
 	const ref = "refs/atoll/unfinished/t1"
@@ -169,7 +148,7 @@ func TestWorktrees(t *testing.T) {
 		write(src, "a.txt", noun)
 		git(src, "commit", "-q", "-am", noun)
 		tip := git(src, "rev-parse", "--short=7", "main")
-		_, _, base, err = Create(ctx, src, root, "demo", "feat/ahead", "")
+		_, _, base, err = Create(ctx, src, root, "demo", "feat/ahead-"+noun, "")
 		want := Base{
 			Name: "origin/HEAD " + initSHA,
 			Note: fmt.Sprintf("local main is %d %s ahead (%s); not included", i+1, noun, tip),

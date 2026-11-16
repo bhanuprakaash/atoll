@@ -102,11 +102,11 @@ func (m *Manager) SetWorktreeRoot(ctx context.Context, root string) error {
 	return m.cfg.Store.SetSetting(ctx, _settingWorktreeRoot, root)
 }
 
-// StartWork gives the thread of the run with token its worktree, on a new branch typ/slug, and
+// StartWork gives the thread of the run with token its worktree, on a new branch called name, and
 // returns its path, branch and base. A thread that has a worktree gets that one back with an
 // empty base: no new branch was started.
 func (m *Manager) StartWork(
-	ctx context.Context, token, typ, slug, requestedBase string,
+	ctx context.Context, token, name, requestedBase string,
 ) (path, branch string, base repo.Base, err error) {
 	a, err := m.byToken(token)
 	if err != nil {
@@ -126,10 +126,6 @@ func (m *Manager) StartWork(
 	}
 	if t.Worktree != "" {
 		return t.Worktree, t.Branch, repo.Base{}, nil
-	}
-	name, err := repo.Branch(typ, slug)
-	if err != nil {
-		return "", "", repo.Base{}, err
 	}
 	rp, err := m.cfg.Store.Repo(ctx, t.RepoID)
 	if err != nil {

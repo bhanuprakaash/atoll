@@ -19,20 +19,25 @@ const _maxSlug = 40
 
 var _nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
-// Branch normalises a branch name: ("fix", "Seeded BUG") -> "fix/seeded-bug". The slug is
-// lowercased, every run of characters outside [a-z0-9] becomes "-", the ends are trimmed of "-"
-// and the slug is cut to 40 characters.
-func Branch(typ, slug string) (string, error) {
-	switch typ {
-	case "feat", "fix", "chore", "docs", "test":
-	default:
-		return "", fmt.Errorf("branch type %q: type must be feat, fix, chore, docs or test", typ)
+// CheckBranch refuses a name git does not accept as a branch name, and a name that is already
+// taken: a local branch, origin/<name> as last fetched, or the worktree folder under root.
+func CheckBranch(ctx context.Context, repoPath, root, repoName, name string) error {
+	if name == "" {
+		return errors.New("branch is empty")
 	}
-	s := Slug(slug)
-	if s == "" {
-		return "", errors.New("branch slug is empty")
+	if got, err := git(ctx, repoPath, nil, "check-ref-format", "--branch", name); err != nil || got != name {
+		return fmt.Errorf("branch %q is not a valid git branch name", name)
 	}
-	return typ + "/" + s, nil
+	folder := filepath.Join(root, repoName, strings.ReplaceAll(name, "/", "-"))
+	for _, ref := range []string{"refs/heads/", "refs/remotes/origin/"} {
+		if _, err := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", ref+name); err == nil {
+			return fmt.Errorf("branch %q is taken; pick another name", name)
+		}
+	}
+	if _, err := os.Lstat(folder); err == nil {
+		return fmt.Errorf("branch %q is taken: its worktree folder exists; pick another name", name)
+	}
+	return nil
 }
 
 // Slug lowercases s, turns runs of characters outside [a-z0-9] into "-" and cuts it to 40.
@@ -94,13 +99,16 @@ func WithWorktree(ctx context.Context, common, id string) context.Context {
 }
 
 // Create makes a new worktree of repoPath on a new branch at <root>/<repoName>/<folder>, where
-// folder is the branch with "/" replaced by "-". When the branch or the folder exists it tries
-// <branch>-2, <branch>-3 and so on. A requested base names a branch on origin. Without one,
-// the branch starts at origin/HEAD when that resolves, else HEAD. It returns the absolute path,
-// the branch used and the base. No fetch, no network.
+// folder is the branch with "/" replaced by "-". A branch that CheckBranch refuses is refused. A
+// requested base names a branch on origin. Without one, the branch starts at origin/HEAD when that
+// resolves, else HEAD. It returns the absolute path, the branch used and the base. No fetch, no
+// network.
 func Create(
 	ctx context.Context, repoPath, root, repoName, branch, requestedBase string,
 ) (path, used string, base Base, err error) {
+	if err = CheckBranch(ctx, repoPath, root, repoName, branch); err != nil {
+		return "", "", Base{}, err
+	}
 	start := startRef(ctx, repoPath)
 	if requestedBase != "" {
 		ref := "refs/remotes/origin/" + requestedBase
@@ -136,7 +144,8 @@ func Create(
 	return path, used, base, err
 }
 
-// CreateFrom is Create for a branch that starts at the local branch from.
+// CreateFrom is Create for a branch that starts at the local branch from. When the branch or the
+// folder exists it tries <branch>-2, <branch>-3 and so on.
 func CreateFrom(
 	ctx context.Context, repoPath, root, repoName, branch, from string,
 ) (path, used string, err error) {
