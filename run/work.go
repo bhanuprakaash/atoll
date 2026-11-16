@@ -129,7 +129,7 @@ func (m *Manager) StartWork(
 		return "", "", repo.Base{}, fmt.Errorf("load repo: %w", err)
 	}
 	if RepoHost(ctx, rp.Path) == _hostGitHub {
-		_, token, err := m.githubEnv(ctx, bot, _githubRefreshAtExpiry)
+		_, token, err := m.githubEnv(ctx, bot, nil)
 		if err != nil {
 			return "", "", repo.Base{}, err
 		}
@@ -183,7 +183,7 @@ func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 		if threadErr == nil && thread.RepoID != "" {
 			rp, repoErr := m.cfg.Store.Repo(ctx, thread.RepoID)
 			if repoErr == nil && RepoHost(ctx, rp.Path) == _hostGitLab {
-				if env, _, envErr := m.runEnv(ctx, a.bot, false); envErr == nil {
+				if env, _, envErr := m.runEnv(ctx, a.bot, nil); envErr == nil {
 					_, title, _ = m.mrState(rp.Path, url, env)
 				}
 			}
@@ -606,9 +606,9 @@ type gitHelper struct {
 // runEnv empties the glab and gh config folders and the git credential helper list, so neither CLI
 // finds the user's own login, and gives git's ssh no key, agent or config; each connection then
 // adds a helper scoped to its URL and maps its host's SSH remotes to it. GitHub's connection joins
-// only when github is set, so the MR watcher never depends on GitHub. It also returns the GitHub
-// token, empty when there is none.
-func (m *Manager) runEnv(ctx context.Context, b store.Bot, github bool) ([]string, string, error) {
+// only when a run is starting, so the MR watcher (run nil) never depends on GitHub. It also returns
+// the GitHub token, empty when there is none.
+func (m *Manager) runEnv(ctx context.Context, b store.Bot, run *active) ([]string, string, error) {
 	env := []string{
 		"GIT_SSH_COMMAND=ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityFile=/dev/null -o IdentityAgent=none",
 	}
@@ -632,8 +632,8 @@ func (m *Manager) runEnv(ctx context.Context, b store.Bot, github bool) ([]strin
 		helpers = append(helpers, helper)
 	}
 	var token string
-	if github {
-		githubEnv, githubToken, err := m.githubEnv(ctx, b, _githubRefreshAhead)
+	if run != nil {
+		githubEnv, githubToken, err := m.githubEnv(ctx, b, run)
 		if err != nil {
 			return nil, "", err
 		}
@@ -720,9 +720,9 @@ const _githubHelper = `!f() { test "$1" = get && echo username=x-access-token &&
 	`echo "password=$GH_TOKEN"; }; f`
 
 // githubEnv makes gh act as the Bot's first GitHub connection. It checks the token before every run
-// and marks a rejected one needs sign-in. A token with less than minLife left is refreshed: a call
-// inside a live run passes none, since a refresh ends the token that run holds.
-func (m *Manager) githubEnv(ctx context.Context, b store.Bot, minLife time.Duration) ([]string, string, error) {
+// and marks a rejected one needs sign-in. run is the run that is starting; nil for a call inside a
+// live run, which refreshes only an expired token.
+func (m *Manager) githubEnv(ctx context.Context, b store.Bot, run *active) ([]string, string, error) {
 	for _, id := range b.Connections {
 		c, err := m.cfg.Store.Connection(ctx, id)
 		if err != nil || c.Kind != store.KindGitHub {
@@ -734,7 +734,7 @@ func (m *Manager) githubEnv(ctx context.Context, b store.Bot, minLife time.Durat
 		if c.Status != store.ConnectionConnected {
 			continue
 		}
-		token, err := m.githubToken(ctx, id, b.ID, minLife)
+		token, err := m.githubRunToken(ctx, id, b.ID, run)
 		if err != nil {
 			return nil, "", err
 		}
@@ -748,6 +748,34 @@ func (m *Manager) githubEnv(ctx context.Context, b store.Bot, minLife time.Durat
 		return []string{"GH_TOKEN=" + token}, token, nil
 	}
 	return nil, "", nil
+}
+
+// githubRunToken gives a starting run the token of connection connID and records that it holds it.
+// The run refreshes a token with under 3 hours left, unless another live run holds it: a refresh
+// ends that run's token, so the new run takes the current one. githubMu makes the check and the
+// claim one step, so of two runs starting together the second sees the first.
+func (m *Manager) githubRunToken(ctx context.Context, connID, botID string, run *active) (string, error) {
+	if run == nil {
+		return m.githubToken(ctx, connID, botID, _githubRefreshAtExpiry)
+	}
+	m.githubMu.Lock()
+	defer m.githubMu.Unlock()
+	minLife := _githubRefreshAhead
+	m.mu.Lock()
+	for _, other := range m.runs {
+		if other.githubID == connID {
+			minLife = _githubRefreshAtExpiry
+		}
+	}
+	m.mu.Unlock()
+	token, err := m.githubToken(ctx, connID, botID, minLife)
+	if err != nil {
+		return "", err
+	}
+	m.mu.Lock()
+	run.githubID = connID
+	m.mu.Unlock()
+	return token, nil
 }
 
 // githubToken is the connection's token, refreshed when less than minLife is left. A refresh token
@@ -857,7 +885,7 @@ func (m *Manager) check(w *watcher, t store.Thread) error {
 	if RepoHost(m.ctx, rp.Path) == _hostGitHub {
 		return m.checkGitHub(w, t, bot, rp)
 	}
-	env, _, err := m.runEnv(m.ctx, bot, false)
+	env, _, err := m.runEnv(m.ctx, bot, nil)
 	if err != nil {
 		return err
 	}

@@ -1140,8 +1140,10 @@ Follow-ups:
   under `github:<connection id>`: `access_token`, `refresh_token`, `expires_at` and
   `refresh_expires_at` (RFC 3339). A bare token from an older Reef, or a record with no refresh
   token, is used as it is. A run refreshes a token with under 3 hours left (`grant_type=refresh_token`
-  with the client ID only) before it starts; the MR and issue watchers, and `start_work` inside a
-  run, refresh only an expired one, since a refresh ends the token a live run holds. Reads, refreshes
+  with the client ID only) before it starts, unless another live run holds the connection's token:
+  then it gets the current token, and the refresh waits for expiry or a run start with no other run
+  live. The MR and issue watchers, and `start_work` inside a run, refresh only an expired one. A
+  refresh never ends a token a live run holds before it expires. Reads, refreshes
   and sign-in writes for one connection run one at a time (refresh tokens are single-use). A
   refreshed token logs one INFO `GitHub token refreshed` with `connection_id` and `expires_at`. A
   network error during a refresh leaves the connection and tokens as they were; the next caller
