@@ -638,14 +638,18 @@ func TestStore_ThreadDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	prs, err := st.PRs(ctx, thread.ID)
+	if err != nil || len(prs) != 1 {
+		t.Fatalf("PRs = %+v, %v, want one", prs, err)
+	}
 	tests := []struct {
 		name      string
 		got, want any
 	}{
-		{"title", got.MRTitle, "Fix the wizard"},
+		{"title", prs[0].Title, "Fix the wizard"},
 		{"session", got.Session, "claude-session"},
 		{"session provider survives settings change", got.SessionProvider, "claude"},
-		{"state", got.MRState, "merged"},
+		{"state", prs[0].State, "merged"},
 		{"removed", got.WorktreeRemoved, true},
 		{"snapshot", got.SnapshotRef, "refs/atoll/unfinished/test"},
 		{"closed", got.Closed, true},
@@ -697,8 +701,10 @@ func TestStore_SetMR(t *testing.T) {
 	if len(got) != 1 || got[0].URL != second {
 		t.Errorf("OpenedMRsSince = %+v, want only %s", got, second)
 	}
-	set(first, "merged", "merged")
-	set(first, "opened", "merged")
+	set(first, "merged", "opened")
+	const third = "https://github.com/o/r/pull/3"
+	set(third, "merged", "merged")
+	set(third, "opened", "merged")
 }
 
 func wakeFixture(t *testing.T) (*store.Store, store.Thread, store.Bot) {

@@ -18,18 +18,18 @@ import (
 // for a thread another Bot handed to this one: the user cannot close it. ParentThreadID is its
 // boss thread, Step what a helper's run does now, and Activity the live verb or the waiting ask.
 type sidebarThread struct {
-	ID             string    `json:"id"`
-	Title          string    `json:"title"`
-	State          string    `json:"state"` // "needs_you", "running", "failed", "limited", "new" or ""
-	Pinned         bool      `json:"pinned"`
-	Helper         bool      `json:"helper,omitempty"`
-	ParentThreadID string    `json:"parent_thread_id"`
-	Step           string    `json:"step,omitempty"`
-	Activity       string    `json:"activity,omitempty"`
-	Hidden         bool      `json:"hidden,omitempty"` // PR merged: open and in the popup, not in the tree
-	Branch         string    `json:"branch"`
-	MRURL          string    `json:"mr_url"`
-	LastActivity   time.Time `json:"last_activity"`
+	ID             string      `json:"id"`
+	Title          string      `json:"title"`
+	State          string      `json:"state"` // "needs_you", "running", "failed", "limited", "new" or ""
+	Pinned         bool        `json:"pinned"`
+	Helper         bool        `json:"helper,omitempty"`
+	ParentThreadID string      `json:"parent_thread_id"`
+	Step           string      `json:"step,omitempty"`
+	Activity       string      `json:"activity,omitempty"`
+	Hidden         bool        `json:"hidden,omitempty"` // PR merged: open and in the popup, not in the tree
+	Branch         string      `json:"branch"`
+	PRs            []prSummary `json:"prs"`
+	LastActivity   time.Time   `json:"last_activity"`
 	// ResetsAt is when the provider's usage limit ends, for a limited thread.
 	ResetsAt string `json:"resets_at,omitempty"`
 }
@@ -76,7 +76,7 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 		}
 		out = append(out, sidebarThread{
 			ID: t.ThreadID, ParentThreadID: t.ParentThreadID, Step: step, Activity: activity, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
-			Branch: t.Branch, MRURL: t.MRURL, LastActivity: t.LastActivity, ResetsAt: resetsAt,
+			Branch: t.Branch, PRs: prSummaries(t.PRs), LastActivity: t.LastActivity, ResetsAt: resetsAt,
 			Hidden: t.Merged && !t.Pinned && (state == "" || state == "new"),
 		})
 	}
