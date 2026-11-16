@@ -349,13 +349,12 @@ test('a closed MR is not red', async ({ page }) => {
   // What the PR watcher writes for a closed PR, set in the server's database as it would.
   const db = new DatabaseSync(join(m.data, 'atoll.db'));
   try {
-    db.prepare('UPDATE threads SET mr_state = ? WHERE id = ?').run('closed', thread.id);
+    db.prepare('UPDATE thread_prs SET state = ? WHERE thread_id = ?').run('closed', thread.id);
   } finally {
     db.close();
   }
   expect(await api(m, 'GET', `/api/threads/${thread.id}`)).toMatchObject({
-    mr_url: url,
-    mr_state: 'closed',
+    prs: [{ url, state: 'closed' }],
   });
   await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
   await expect(page.getByRole('button', { name: 'Thread details', exact: true })).toBeVisible();
