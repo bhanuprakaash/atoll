@@ -244,7 +244,7 @@ counts a Bot that is already gone as removed.
 - Nothing waits on the person as a stored item: a decision, a blocker or a ready PR is a reply,
   and the thread's label says it replied (App and UI). *Reversed (#147's "Waiting on you"): the
   missed question it answered was a dim Blocked line among status noise; background runs now add
-  no noise (Delegation), and the PR chip shows the PR's live state.*
+  no noise (Delegation), and the thread panel shows the PR's live state.*
 - Reef's own MCP tools (`approve` as Claude's permission prompt tool, memory, `start_work`,
   `track_mr`, `delegate`, `continue`, `stop_helper`, `helpers`, `tell_user`) are served over
   streamable HTTP on Reef's own server at `/mcp/<run token>`, and are allow-listed, so they never
@@ -586,12 +586,12 @@ Follow-ups:
   into your branch.` A boss thread with no worktree (still exploring, or Chief) gets none of this:
   the helper's `start_work` makes its own branch from `origin/HEAD` and it opens its own MR, with
   the GitHub connection on a GitHub repo.
-- When the boss's MR merges (GitLab), the worktrees of the helpers on the boss's branch
+- When the boss's MRs are done (GitLab; MR tracking), the worktrees of the helpers on the boss's branch
   (`<boss-branch>--…`) are removed with the boss's, each saved first as for Close, with
   `worktree_removed` reason `merged`; a helper on its own branch keeps its worktree and its own MR.
   While any of those helpers' runs is going nothing is removed, and the watcher tries again. A
   `delegate` that fails part way removes the helper worktree, branch and thread it made.
-- Helpers show in the boss's thread (App and UI), above the composer.
+- Helpers show in the boss's thread panel (App and UI).
 - The helpers line: the boss sees its free helper slots, so an idle slot is not left behind a
   queue. One line from the boss thread's helper runs going (limit 3, above):
   `Helpers: 1 of 3 running (Tester on Review #184). 2 free.`, each running helper as
@@ -658,33 +658,37 @@ Follow-ups:
   GitHub it takes the PR URL (`<github>/<owner>/<repo>/pull/<n>`); the thread shows `#<n>` where an
   MR shows `!<iid>`.
 - One watcher runs inside the server and resumes after a restart. Every minute
-  (`ATOLL_REPO_POLL_INTERVAL`, a Go duration, the poll interval below) it reads each thread with a
-  tracked MR and a worktree (`Store.Watched`; closing a thread removes its worktree, so a closed
-  thread is never read): the state (`opened`, `merged`, `closed`; GitLab's `locked` counts as
-  `opened`), the title and, on GitHub, the CI summary (calls: Fixtures).
+  (`ATOLL_REPO_POLL_INTERVAL`, a Go duration, the poll interval below) it reads every `opened` PR
+  or MR of the threads with a worktree (`Store.Watched` lists PRs, not threads; closing a thread
+  removes its worktree, so a closed thread is never read): the state (`opened`, `merged`, `closed`; GitLab's `locked` counts as
+  `opened`), the title and, on GitHub, the CI summary (calls: Fixtures). A merged or closed PR is not read again, except as the base a waiting
+  draft names (stacked fix). Waits after a failed read are per PR; pauses stay per connection.
 - A GitLab MR is read with `glab mr view` and the Bot's GitLab environment. A GitHub PR is read
   with the REST API and the token of the Bot's first GitHub connection, from
   `connection.GitHubToken` only. A Bot with no connection, or a thread whose Bot lost it, is
   not read: never unauthenticated, never with the server's own `GH_TOKEN` or `GITHUB_TOKEN`.
-- A merged GitLab MR with a worktree is cleaned up like a closed thread, only while no run is going
+- A GitLab thread's worktree, with the helper worktrees on its branch, is released when every MR
+  it tracks is merged or closed, at least one merged; it is cleaned up like a closed thread, only while no run is going
   in the thread; a woken run counts, so release comes after the wake run ends. A closed MR keeps
   its worktree. A merged GitHub PR keeps its worktree until the thread closes (Known gap); the poll
-  updates its state and chip only, and the thread is hidden (next bullet).
-- A thread the person started whose PR merged is hidden but stays open (a closed
-  thread refuses messages, which would block "the merge broke X, fix it"). Hidden while its PR's
-  merge (`mr_changed_at`) is later than the person's last message in it (no `kind`, not from a
+  updates its state and the panel only, and the thread is hidden (next bullet).
+- A thread the person started whose PRs are done is hidden but stays open (a closed
+  thread refuses messages, which would block "the merge broke X, fix it"). Hidden while every PR it
+  tracks is merged or closed, at least one merged, and the latest merge (`changed_at`) is later
+  than the person's last message in it (no `kind`, not from a
   Bot), no run is going and no approval is open. The merge wake's run does not bring it back: it
   shows while that run goes. A message from the person brings it back for good; a later merge of a
-  newly tracked PR hides it again. A pinned thread and the open thread are never hidden. A hidden
+  newly tracked PR hides it again. *A boss with a PR still open is not finished; hiding it would
+  hide the next wake.* A pinned thread and the open thread are never hidden. A hidden
   thread is a row under Recent in the thread pane and is left out of Now.
-- GitHub reads per thread: the PR; and, while it is open and its head commit has no stored CI
+- GitHub reads per PR: the PR; and, while it is open and its head commit has no stored CI
   result, that commit's check runs and combined status, with `per_page=100`, following `Link` until
   every item is read. Each read sends `If-None-Match` with the last ETag (in memory); a `304` costs
-  no rate limit. GitLab reads one `glab mr view` per thread.
-- After a failed read (offline, token rejected, MR or PR not found, rate limit) the thread waits
+  no rate limit. GitLab reads one `glab mr view` per MR.
+- After a failed read (offline, token rejected, MR or PR not found, rate limit) the PR waits
   twice its last wait: the poll interval times 1, 2, 4, 8, up to 15 times; a good read resets to
   the interval. A `403` or `429` with `X-RateLimit-Remaining: 0` or `Retry-After` pauses the reads
-  of that connection (the limit is per token) until the reset time; a thread is read when its own
+  of that connection (the limit is per token) until the reset time; a PR is read when its own
   wait and its connection's pause are both over. Waits and pauses live in memory, so a restart
   reads at once. A failed read changes nothing stored and posts nothing; it is logged. A `401`
   marks the connection `needs_sign_in` (see Connections), which pauses its threads until the user
@@ -702,24 +706,26 @@ Follow-ups:
   that two reads in a row found with no check is read again only every fifth poll, until a push
   changes the head; a check that appears later (an external CI, or a workflow that starts when a
   draft is marked ready) is then counted like any first check.
-- Three events wake the thread's Bot, each at most once (GitHub only: see the GitLab gap): the MR
+- Three events wake the thread's Bot, per PR, each at most once (GitHub only: see the GitLab gap): the MR
   or PR is merged, is closed unmerged, or CI finished on its open head commit. A push changes the
   head commit, clears the stored CI result and lets the new commit's CI wake again. Reopening wakes
   nothing; the state shown follows. Nothing wakes for a closed thread, a thread with no tracked MR,
-  or a state the thread already stored. The first good read of a thread
-  whose `mr_wake` is 0 (tracked before this shipped) stores state, title and CI, wakes nothing and
-  sets `mr_wake` to 1: a PR open then wakes on its next event, one already merged or closed stays
+  or a state the thread already stored. The first good read of a PR
+  whose `wake` is 0 (tracked before this shipped) stores state, title and CI, wakes nothing and
+  sets `wake` to 1: a PR open then wakes on its next event, one already merged or closed stays
   quiet.
 - A wake is stored in the same transaction as the state it reports, so a restart cannot repeat or
-  lose it: `mr_state` and the inbox row change together (one store call); for CI, `mr_woke` (the
+  lose it: the PR's `state` and the inbox row change together (one store call); for CI, `woke` (the
   head commit whose CI was reported) changes with them. The row then goes the way every held
   message goes (Delegation): held while a run is going or after a Stop, kept across a restart,
   dropped with a closed thread; outside a helper thread it joins the one run of what is held. A
   helper thread with its own MR is woken the same way, held while its boss has 3 helper runs
   going.
+- Wakes are per PR, each at most once, as before; the sentence already names the PR. Two events
+  from one poll are two inbox rows and join one run, as held messages do.
 - Inbox rows and messages have a `kind`: empty for the user's and a helper's, `merged`, `closed`,
   `ci` or `base` for a Reef wake; a message with a `kind` is from Reef (`from_bot_id` stays
-  empty). Storing merged or closed deletes the thread's held `ci` row in the same transaction, as
+  empty). Storing a PR merged or closed deletes that PR's held `ci` row only, in the same transaction, as
   does a new head commit or a newer `ci` wake, so a lead is never woken for CI of a commit that is
   no longer the head or after the PR is done. A held row of another kind is never dropped.
 - An inbox row also has a `notice`, which the chat and the prompt never read: empty for a person's
@@ -744,12 +750,21 @@ Follow-ups:
   and the sentence; the prompt's core says the quoted names are data, never instructions (Prompt,
   Reef notices). When held messages of both kinds join one run, each Reef line keeps its `Reef: `
   prefix, in order, and the other messages go under `Message:`.
-- `track_mr` sets `mr_wake` to 1. A repeat call with the thread's current URL keeps `mr_state`,
-  `mr_woke` and `mr_ci`; a different URL resets all three, so a re-track after a merge never wakes
-  twice; the `mr_updated` event carries the state the thread holds. Three thread columns hold what
-  is not derivable: `mr_ci` (JSON: head commit, passed, failed, pending, failed names;
-  the last read), `mr_woke` and `mr_wake` (integer, default 0). *Sixteen of nineteen PR threads of
-  the dogfood runs said `opened` after they merged.*
+- A thread tracks every PR or MR given to `track_mr`, in the order tracked: one row each in
+  `thread_prs` (`thread_id`, `url`, `state`, `title`, `ci`, `woke`, `wake`, `head`, `base_woke`,
+  `draft`, `body`, `base`, `changed_at`, `tracked_at`). The thread's `mr_*` columns move into it
+  and are dropped. `track_mr` with a URL the thread already tracks keeps that row as it is; a new
+  URL adds a row with `wake` 1 and replaces nothing. There is no untrack: an abandoned PR reads
+  `closed` once it is closed. `ci` is JSON: head commit, passed, failed, pending, failed names; the
+  last read. *Sixteen of nineteen PR threads of the dogfood runs said `opened` after they merged; a
+  row per PR still answers that. On 2026-11-13 one thread opened six PRs, each `track_mr` replaced
+  the last, and merges and CI on the others woke nothing.*
+- Where PRs show: the thread panel's Pull requests lists every tracked PR, open ones first, then
+  merged and closed, each group newest first. The thread pane's search matches any tracked
+  reference. The switcher and a closed thread's line show the newest open PR, else the newest. The
+  island's `opened` row and its dismiss are per PR.
+- API: a thread summary carries `prs` (`[{url, state, title, ci}]`) in place of `mr_url`,
+  `mr_state`, `mr_title` and `mr_ci`; `mr_updated` carries the `url` it is about.
 - Known gap: GitLab. An MR wakes nothing (merged, closed or CI) and its CI is not read: the poll
   stores state and title and releases a merged MR's worktree. Designed, not built: the head
   pipeline's `status` is final on `success`, `failed` or `canceled`, and its jobs are counted like
@@ -763,16 +778,16 @@ Follow-ups:
 - A stacked fix is one whose base is another open PR's branch. Its PR is made with `gh pr create
   --draft --base <that branch>` and a body that starts `Waits for #<n>` (n the base PR), so GitHub
   keeps its merge button off. The watcher also keeps `draft`, `body` and `base.ref` of a read. When
-  it reads PR n merged while the thread's tracked PR is a draft whose body starts `Waits for #<n>`
+  it reads PR n merged while one of the thread's tracked PRs is a draft whose body starts `Waits for #<n>`
   (that thread's poll also reads PR n until then), the Bot is woken once (a fourth event), kind
   `base`, with `PR #<n> merged; PR #<m> was waiting for it` (held and delivered like any wake;
-  once-only through the new thread column `mr_base_woke`; `mr_head` holds the last read's head). The Bot runs `gh pr edit --base <default branch>` when its PR's base is still the
+  once-only through the PR's `base_woke`; `head` holds the last read's head). The Bot runs `gh pr edit --base <default branch>` when its PR's base is still the
   merged branch, then `gh pr ready`. *#202 merged before its test #174, and test-guard flagged #174
   for carrying code.*
 - Known gap: webhooks; a wake comes within a poll interval plus a settle read, or later after
   failures. Review comments and reopening wake nothing.
 - Known gap: CI re-run on the same commit (a failed check re-run passes) is not seen: reads stop
-  once the commit is reported, and the chip keeps the first result.
+  once the commit is reported, and the panel keeps the first result.
 - Known gap: a stopped thread hears a PR or CI wake only when its next run ends (helper reports
   wait for the person: Delegation), and a merged GitLab MR's worktree can be released before that
   wake is delivered.
@@ -1583,7 +1598,7 @@ Voice
   - Needs you (a thread's marker, the sidebar's second line, the island's count and rows, a
     helper's line, the creature's pulse) is the light accent `#ECECEC`: light dot, main-ink text,
     neutral surfaces, never a red fill or border. The blue dot means Replied.
-  - An MR chip's dot is never red (merged blue, open green, closed grey). A diff's counts are
+  - A PR or MR state dot is never red (merged blue, open green, closed grey). A diff's counts are
     muted; removed lines are soft pink ink (`--color-del`) on a dark red ground. Brand and creature
     colours are identity, not state.
   *Red on every waiting item taught the user to skim past red (#146).*
@@ -1653,8 +1668,8 @@ Voice
     Rename and Close. Pinning a 4th thread asks which pin to replace.
   - While a helper runs, one line under its boss thread (not a row) shows the helper Bots'
     creatures, names and the step of the one that acted last, or the one that needs the person
-    first with `Needs you`, which shows nowhere else. Clicking it opens the boss thread at its
-    helpers panel (`Working with {Boss}`).
+    first with `Needs you`, which shows nowhere else. Clicking it opens the boss thread with its
+    thread panel open.
   - In the helper Bot's own pane a running helper thread has no row; only the boss thread's helper
     line shows it (with `Needs you`). A finished helper thread and a merged thread the watcher hides (`hidden`) are rows under Recent.
     *Every open thread has a row; the hiding existed to save the 3 slots.*
@@ -1700,7 +1715,7 @@ Voice
     thread with a run (its activity line and time), both found once per poll in a materialised set;
     one scan of `runs` finds the live ones. *Joining every thread to its newest run cost 36 ms a
     poll with every thread open.*
-  - `hidden` comes from the thread row: the state and `mr_changed_at` of its PR and a
+  - `hidden` comes from the thread's `thread_prs` rows (state and `changed_at`) and a
     `max(created)` over the person's messages, read only for a merged thread.
   - `new`, `failed` and `limited` come from the thread row, not from `runs`. `new`: `last_heard`
     is after the user last opened the thread (and after `created`) and no run is live.
@@ -1745,7 +1760,7 @@ Voice
   - The first row is selected and stays the first as the query changes. Up and Down move (they stop
     at the ends), Enter opens the selected row and closes the switcher, Esc closes it and focus
     returns to where it was. No match shows "No threads or Bots match".
-  - The Bots poll (`GET /api/bots`) gives each open thread its `branch`, `mr_url` and
+  - The Bots poll (`GET /api/bots`) gives each open thread its `branch`, `prs` and
     `last_activity`, so the switcher needs no request of its own.
 - Bot groups are only rail sections; they change nothing else about a Bot. A Bot is in one group
   or Ungrouped. A hairline separates groups; hover or keyboard focus grows the line and shows the
@@ -1803,8 +1818,8 @@ Voice
       since the thread was last opened: "Pilot messaged Review !42". The `told` event, sent when
       the message is stored, makes the same row live and the thread's own stream refreshes its
       messages. One row per thread: the run's end replaces it with the finished row.
-    - A thread whose MR is `opened` since then (`threads.mr_changed_at`, new, set when `mr_state`
-      changes or `track_mr` gives a different URL): "Pilot opened !42", the MR title as detail.
+    - A PR or MR that is `opened` since then (`thread_prs.changed_at`, set when its `state`
+      changes or `track_mr` adds it): "Pilot opened !42", the MR title as detail.
     - A platform change (`changes.created_at`): "Chief created Bot Lagoon".
   - Threads on screen are left out, as they are live. The 4 s widening and the approval drop are
     not replayed, except that an approval still open drops the island.
@@ -1814,7 +1829,7 @@ Voice
     both; a run the user stopped is only in Earlier) without a second red thing.
   - Each row has a dismiss (×) button, shown on hover and keyboard focus,
     `POST /api/island/dismiss`: a run row marks its thread read (`last_opened_at`), an MR row sets
-    `threads.island_dismissed_at` and stays hidden while `mr_changed_at` is not newer, and a
+    its PR's dismissed time and stays hidden while that PR's `changed_at` is not newer, and a
     platform change row sets `changes.dismissed_at`.
   *The island said "Nothing new" next to 60 New threads after every launch (they were labelled New
   then).*
@@ -1967,15 +1982,36 @@ Voice
   pill that turns red on hover and keyboard focus only (the island and its list too). The waiting
   state is the thread's own Needs you marker: the card adds no banner, badge or red. *An approval is
   usually one click; it should not compete with the reply.*
-- Composer: the message, then the thread's repo, branch and MR as chips on one row, and Send or
-  Stop; while an approval waits, text in the box turns Stop into Send, and sending answers the
-  approval. A long branch name ends in "…" with the full name on hover. The MR chip shows only its
-  reference (`#92`, `!12`) with a state dot (open, merged, closed); hovering shows its title. While
-  it is open, a second mark shows its CI: running (muted), passed (green), failed (red); hovering
-  adds the summary (`CI: 3 passed, 1 failed (build)`). The `mr_updated` event carries state, title,
-  the CI summary and `change` (`tracked` from `track_mr`; `state`, `title` or `ci` from the
-  watcher), sent when any changes, and `GET /api/threads/{id}` gives `mr_ci`, so the chip updates
-  live and survives a reload. Only `tracked` with state `opened` toasts. The MR is not repeated in
+- Thread panel. A list icon at the right of the Bot header, before Bot settings, named `Thread
+  details`, opens the open thread's panel: a card that drops from the icon over the chat (the chat
+  stays put; nothing shifts), 340 px wide or the thread column minus 32 px if narrower, at most the
+  column's height minus the composer, scrolling inside. Esc, a click outside, the icon again or
+  opening another thread closes it; `⌘.` (`Ctrl+.` off macOS) toggles it. The icon carries no count
+  or dot: a merged PR, a failed check or a finished helper reaches the person as the Bot's reply or
+  on the island, as before.
+  - Sections, top to bottom, separated by hairlines; a section with nothing in it is left out.
+  - Workspace: the repo; the worktree folder (cut in the middle with "…", the full path on hover,
+    Copy); the branch in mono (cut at the end, full on hover, Copy). A thread with a repo but no
+    worktree shows the repo and `No branch yet`; a thread with no repo shows `No repo`.
+  - Pull requests: a list, one row per PR or MR: the state dot, the reference (`#92`, `!7`), its
+    title, and while open its CI as a word (`running` muted, `passed` green, `failed` red). Until
+    #421 a thread holds one, so the list has one row. A row opens the PR.
+  - Helpers: every helper task this thread delegated, running ones first, then a `Done` group, each
+    newest first. A row is two lines: the creature; the Bot name, the task (the helper thread's
+    title) and the time (`42s`, `3m`, `1h 5m`); under them, while its run goes, the step (the step
+    words of Helpers) or `Needs you`, else `Done`, then its PR reference with dot and CI word when
+    it tracks one, and `Stop` on hover or focus while its run goes. Clicking a row opens the helper
+    thread. Arrow keys move between rows.
+- Above the composer is only what the next message answers or carries: an open approval (the
+  thread's own, or a helper's led by its creature and name, `Tester wants to run make check`, with
+  `1 more` for a second), the held-reports line (`{N} helpers still running · {M} reports
+  waiting`), and queued messages. Nothing else rests there.
+- Composer: the message, the attach button, and Send or Stop. No repo, branch or MR chips. *Status
+  moved to the thread panel; the composer had become a status bar.* While an approval waits, text
+  in the box turns Stop into Send, and sending answers the approval. The `mr_updated` event carries
+  state, title, the CI summary and `change` (`tracked` from `track_mr`; `state`, `title` or `ci`
+  from the watcher), sent when any changes, and `GET /api/threads/{id}` gives `prs`, so the
+  thread panel's Pull requests row updates live and survives a reload. Only `tracked` with state `opened` toasts. The MR is not repeated in
   the log. A Reef wake shows as one quiet line (Repos and worktrees). An empty new thread shows the
   creature, "What should <Bot> work on?", its setup as chips, the composer in the middle and
   starters; a starter sends its text as the first message. A send that fails, the first message of a
@@ -1992,22 +2028,15 @@ Voice
 - A quiet background run (one that called no `tell_user`) shows its final message nowhere in the
   thread: not as a message, not as a line above the composer, and it never makes the thread
   Replied. *A muted line above the composer was noise the person did not need.*
-- Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` tray (a region of
-  that name) on top of the composer, on its surface and border: one line of about 32 px that never
-  grows. It holds each helper task's creature, stacked (two helpers of one Bot are two creatures),
-  `N working` and `Show`; with no helper running, nothing shows. While the person's Stop holds
-  helper reports (Delegation), the line reads `{N} helpers still running · {M} reports waiting`
-  instead of `N working` (a part at 0 left out; `helper` and `report` for 1), and shows with no
-  helper running. Only what needs the person opens itself: a helper's open approval is one line under
-  the summary, the approval card led by the helper's creature and name (`Tester wants to run make
-  check`, with Allow and Deny); with two waiting it shows the first and `1 more`. It leaves when
-  answered, in either thread (`approval_closed`), and a message in the boss's composer answers it as
-  Replying to an approval says. Needs you is marked as the approval card marks it (#146), not with
-  an amber or red alarm of its own. `Show` opens the list as a popover over the chat (a dialog named
-  `Helper tasks`; the chat stays put); Esc, a click outside or `Show` again closes it, `⌘.`
-  (`Ctrl+.` off macOS) toggles it, arrow keys move between rows, Enter opens the helper's thread.
-  One row per helper task: creature, Bot name, the helper thread's title (the task), the step, the
-  time, its PR, `Open` and, while its run goes, `Stop` on hover or focus. Step: the live verb and a
+- Helpers (see Delegation) show in three places. In the boss thread, the thread panel's Helpers
+  section (Thread panel). While the person's Stop holds helper reports (Delegation), the line
+  `{N} helpers still running · {M} reports waiting` shows above the composer (a part at 0 left out;
+  `helper` and `report` for 1), with or without a helper running. Only what needs the person opens
+  itself: a helper's open approval shows above the composer, the approval card led by the helper's
+  creature and name (`Tester wants to run make check`, with Allow and Deny); with two waiting it
+  shows the first and `1 more`. It leaves when answered, in either thread (`approval_closed`), and a
+  message in the boss's composer answers it as Replying to an approval says. Needs you is marked as
+  the approval card marks it (#146), not with an amber or red alarm of its own. Step: the live verb and a
   short target, for a command its program and plain first argument ("Running make build"; Codex
   shows the program only), never raw shell ("Running for i"). The program is the first real one:
   past `cd`, `VAR=value` assignments, a leading `timeout <n>`, and a leading `cat > file` or other
@@ -2019,11 +2048,10 @@ Voice
   Chief's `list_*` tools, "Handing off" (no target) for `delegate` and `continue`, "Needs you" with
   an open approval, else "Working". Time: `42s`, `3m`, `1h 5m` since the helper thread was created,
   counting while its run goes. A helper thread that tracks a PR or MR shows its reference (`#7`,
-  `!7`) as a link, with the composer chip's state dot and, while open, its CI as a word: `running`
+  `!7`) as a link, with the Pull requests row's state dot and, while open, its CI as a word: `running`
   (muted), `passed` (green) or `failed` (red, a real failure), from the last read of the watcher (so
-  `mr_ci` joins `mr_state` in every thread summary, `helpers` included); no PR, no mark. The resting
-  line holds no PR text. A helper whose run ended leaves the tray at once: its reply goes to its
-  boss, never into the boss's chat (Delegation), so there is no report to wait on. A new helper reaches the boss's page at once
+  `prs` is in every thread summary, `helpers` included); no PR, no mark. A helper whose run ended moves to the panel's `Done` group: its reply goes to
+  its boss, never into the boss's chat (Delegation), so there is no report to wait on. A new helper reaches the boss's page at once
   (`helper_started` on the boss's stream, which refreshes its thread); later changes arrive with the
   thread's 2 s refresh. *A report has no verdict to read; guessing one from prose is not something
   Reef does.* The chat keeps one line where work was handed off, after the message that led to it
