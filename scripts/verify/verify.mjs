@@ -221,15 +221,15 @@ async function newBot(page) {
   await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("menuitem", { name: "New Bot" }).click();
 }
-// openThreads opens the popup from a Bot's "N more" line in the sidebar.
-async function openThreads(page) {
-  await page
-    .getByRole("navigation", { name: "Bots" })
-    .getByRole("button", { name: /^\d+ more$/ })
-    .click();
-  const panel = page.getByRole("dialog", { name: /^Threads with / });
-  await panel.waitFor();
-  return panel;
+// openThreads returns the Bot's thread pane once it lists rows under Recent.
+async function openThreads(page, name) {
+  const pane = page.getByRole("region", { name, exact: true });
+  await pane
+    .getByRole("list", { name: "Recent", exact: true })
+    .getByRole("listitem")
+    .first()
+    .waitFor();
+  return pane;
 }
 async function uiPass(base, provider) {
   const browser = await chromium.launch();
@@ -346,7 +346,6 @@ async function screensPass(base, provider) {
       .getByRole("heading", { name: `What should ${name} work on?` })
       .waitFor();
     await shot("empty-thread");
-    // The sidebar folds threads past its row limit into "N more".
     const bots = await (await fetch(base + "/api/bots")).json();
     const id = bots.find((b) => b.name === name).id;
     for (let i = 0; i < 4; i++)
@@ -355,7 +354,7 @@ async function screensPass(base, provider) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ text: keep }),
       });
-    const panel = await openThreads(page);
+    const panel = await openThreads(page, name);
     await shot("threads");
     await panel.getByRole("button", { name: "New thread" }).click();
     await page.getByRole("button", { name: "Bot settings" }).click();
@@ -375,7 +374,7 @@ async function screensPass(base, provider) {
     if (fake) {
       // The fake records write only as a thread's first message.
       await (
-        await openThreads(page)
+        await openThreads(page, name)
       )
         .getByRole("button", { name: "New thread" })
         .click();
