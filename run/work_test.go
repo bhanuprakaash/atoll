@@ -471,7 +471,7 @@ func TestReleased(t *testing.T) {
 func TestReleaseDoneThread_WaitsForTheRun(t *testing.T) {
 	e := newRepoEnv(t)
 	e.run(t, func(token string) {
-		if _, _, _, err := e.m.StartWork(t.Context(), token, "fix", "done", ""); err != nil {
+		if _, _, _, err := e.m.StartWork(t.Context(), token, "fix/done", ""); err != nil {
 			t.Error(err)
 		}
 	})
@@ -506,7 +506,7 @@ func TestReleaseDoneThread_WaitsForTheRun(t *testing.T) {
 func TestReleaseDone(t *testing.T) {
 	e := newRepoEnv(t)
 	e.run(t, func(token string) {
-		if _, _, _, err := e.m.StartWork(t.Context(), token, "fix", "done", ""); err != nil {
+		if _, _, _, err := e.m.StartWork(t.Context(), token, "fix/done", ""); err != nil {
 			t.Error(err)
 		}
 	})
