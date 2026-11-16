@@ -172,6 +172,33 @@ func TestArgv(t *testing.T) {
 	}
 }
 
+func TestIsolationArgsSandbox(t *testing.T) {
+	args, err := IsolationArgs("/repo", false, []string{"/hidden"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.Index(args, "--settings")
+	var got struct {
+		Sandbox struct {
+			WeakerNetworkIsolation bool `json:"enableWeakerNetworkIsolation"`
+			Network                struct {
+				AllowedDomains    []string `json:"allowedDomains"`
+				AllowLocalBinding bool     `json:"allowLocalBinding"`
+			} `json:"network"`
+		} `json:"sandbox"`
+	}
+	if i < 0 {
+		t.Fatalf("no --settings in %q", args)
+	}
+	if err := json.Unmarshal([]byte(args[i+1]), &got); err != nil {
+		t.Fatal(err)
+	}
+	sb := got.Sandbox
+	if !sb.WeakerNetworkIsolation || !sb.Network.AllowLocalBinding || !slices.Equal(sb.Network.AllowedDomains, []string{"*"}) {
+		t.Errorf("sandbox = %+v, want enableWeakerNetworkIsolation, allowLocalBinding and allowedDomains [*]", sb)
+	}
+}
+
 func TestStartKeepsSecretsOutOfArgvAndEnv(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "claude")
