@@ -348,48 +348,58 @@ func TestRepo_StartWorkRefusesBadBranch(t *testing.T) {
 	}
 }
 
-// TestRepo_StartWorkRefusesTakenBranch: a branch that exists locally, exists only as origin/<name>
-// (no fetch), or whose worktree folder exists is refused naming the branch; nothing is made, and no
-// "-2" branch appears.
-func TestRepo_StartWorkRefusesTakenBranch(t *testing.T) {
+// TestRepo_StartWorkSuffixesTakenBranch: a branch that exists locally, or whose worktree folder
+// exists, gets "-2" (branch and folder); a branch that exists only as origin/<name> (no fetch) is
+// not looked at and is made as asked.
+func TestRepo_StartWorkSuffixesTakenBranch(t *testing.T) {
 	const name = "fix/seeded-bug"
 	for _, tt := range []struct {
-		name  string
-		setup func(t *testing.T, f *repoFixture)
+		name       string
+		setup      func(t *testing.T, f *repoFixture)
+		wantBranch string
+		wantFolder string
 	}{
 		{"local-branch", func(t *testing.T, f *repoFixture) {
 			gitIn(t, f.repo.Path, "branch", name, "main")
-		}},
+		}, name + "-2", "fix-seeded-bug-2"},
+		{"worktree-folder", func(t *testing.T, f *repoFixture) {
+			if err := os.MkdirAll(filepath.Join(f.root, f.repo.Name, "fix-seeded-bug"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, name + "-2", "fix-seeded-bug-2"},
 		{"origin-only", func(t *testing.T, f *repoFixture) {
 			f.pushBase(t, name)
 			if hasBranch(t, f.repo.Path, name) {
 				t.Fatalf("setup: %s is local", name)
 			}
-		}},
-		{"worktree-folder", func(t *testing.T, f *repoFixture) {
-			if err := os.MkdirAll(filepath.Join(f.root, f.repo.Name, "fix-seeded-bug"), 0o755); err != nil {
-				t.Fatal(err)
-			}
-		}},
+		}, name, "fix-seeded-bug"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			c := _baseCases[0]
 			f := newRepoFixture(t, c.provider)
 			tt.setup(t, f)
+			before := hasBranch(t, f.repo.Path, name)
 			th, ev := f.baseThread(t, c)
-			unchanged := f.madeNothing(t)
 			arg, _ := json.Marshal(map[string]string{"branch": name})
 			res, bad := tryStartWork(t, f, th, ev, startWorkCall(string(arg), false))
-			if bad == "" {
-				t.Fatalf("start_work on a taken %s made %+v, want a refusal", name, res)
+			if bad != "" {
+				t.Fatalf("start_work on %s was refused: %q", name, bad)
 			}
-			if !strings.Contains(bad, name) {
-				t.Errorf("refusal %q does not name the branch %s", bad, name)
+			if res.Branch != tt.wantBranch {
+				t.Errorf("reply branch %q, want %q", res.Branch, tt.wantBranch)
 			}
-			if hasBranch(t, f.repo.Path, name+"-2") || worktreeOf(t, f.repo.Path, name+"-2") != "" {
-				t.Errorf("a suffixed %s-2 was made:\n%s", name, gitIn(t, f.repo.Path, "worktree", "list"))
+			if got := filepath.Base(res.Path); got != tt.wantFolder {
+				t.Errorf("worktree folder %q, want %q", got, tt.wantFolder)
 			}
-			unchanged()
+			if worktreeOf(t, f.repo.Path, tt.wantBranch) == "" {
+				t.Errorf("no worktree on %s:\n%s", tt.wantBranch, gitIn(t, f.repo.Path, "worktree", "list"))
+			}
+			if hasBranch(t, f.repo.Path, name) != (before || tt.wantBranch == name) {
+				t.Errorf("local %s changed: before %v", name, before)
+			}
+			if tt.name == "local-branch" && worktreeOf(t, f.repo.Path, name) != "" {
+				t.Errorf("the existing %s was checked out in a worktree", name)
+			}
 		})
 	}
 }
