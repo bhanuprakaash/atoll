@@ -440,3 +440,111 @@ func TestReleaseDone_HostLookupOncePerRepo(t *testing.T) {
 		})
 	}
 }
+
+func TestReleased(t *testing.T) {
+	tests := []struct {
+		name string
+		give []string
+		want bool
+	}{
+		{"one merged", []string{"merged"}, true},
+		{"merged and open", []string{"merged", "opened"}, false},
+		{"all closed", []string{"closed", "closed"}, false},
+		{"two merged", []string{"merged", "merged"}, true},
+		{"merged and closed", []string{"merged", "closed"}, true},
+		{"open first", []string{"opened", "merged"}, false},
+		{"none", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var prs []store.PR
+			for _, s := range tt.give {
+				prs = append(prs, store.PR{State: s})
+			}
+			if got := released(prs); got != tt.want {
+				t.Errorf("released(%v) = %v, want %v", tt.give, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReleaseDoneThread_WaitsForTheRun(t *testing.T) {
+	e := newRepoEnv(t)
+	e.run(t, func(token string) {
+		if _, _, _, err := e.m.StartWork(t.Context(), token, "fix", "done", ""); err != nil {
+			t.Error(err)
+		}
+	})
+	th, err := e.st.Thread(t.Context(), e.thread.ID)
+	if err != nil || th.Worktree == "" {
+		t.Fatalf("thread %+v, error %v; want a worktree", th, err)
+	}
+
+	slot := e.m.reserve(th.ID)
+	if slot == nil {
+		t.Fatal("no slot for an idle thread")
+	}
+	if err := e.m.releaseDoneThread(th, e.repo); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(th.Worktree); err != nil {
+		t.Fatalf("worktree released while a run was going: %v", err)
+	}
+	e.m.free(slot)
+
+	if err := e.m.releaseDoneThread(th, e.repo); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(th.Worktree); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("worktree remains after the run ended: %v", err)
+	}
+	if got, err := e.st.Thread(t.Context(), th.ID); err != nil || got.Worktree != "" {
+		t.Fatalf("stored worktree %q, error %v; want none", got.Worktree, err)
+	}
+}
+
+func TestReleaseDone(t *testing.T) {
+	e := newRepoEnv(t)
+	e.run(t, func(token string) {
+		if _, _, _, err := e.m.StartWork(t.Context(), token, "fix", "done", ""); err != nil {
+			t.Error(err)
+		}
+	})
+	th, err := e.st.Thread(t.Context(), e.thread.ID)
+	if err != nil || th.Worktree == "" {
+		t.Fatalf("thread %+v, error %v; want a worktree", th, err)
+	}
+	const merged, open = "https://gitlab.test/g/p/-/merge_requests/1", "https://gitlab.test/g/p/-/merge_requests/2"
+	if _, err := e.st.SetMR(t.Context(), th.ID, merged, "merged", "T"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.st.SetMR(t.Context(), th.ID, open, "opened", "T"); err != nil {
+		t.Fatal(err)
+	}
+	remains := func() bool {
+		t.Helper()
+		_, err := os.Lstat(th.Worktree)
+		return err == nil
+	}
+
+	e.m.releaseDone()
+	if !remains() {
+		t.Fatal("worktree released while an MR is open")
+	}
+	if _, err := e.st.StoreMR(t.Context(), th.ID, store.MRRead{URL: open, Prev: "opened", State: "closed", Title: "T"}); err != nil {
+		t.Fatal(err)
+	}
+	slot := e.m.reserve(th.ID)
+	if slot == nil {
+		t.Fatal("no slot for an idle thread")
+	}
+	e.m.releaseDone()
+	if !remains() {
+		t.Fatal("worktree released while a run was going")
+	}
+	e.m.free(slot)
+	e.m.releaseDone()
+	if remains() {
+		t.Fatal("worktree remains once every MR is done")
+	}
+}
