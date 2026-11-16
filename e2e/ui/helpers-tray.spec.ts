@@ -310,10 +310,9 @@ test('finished helpers stay under Done after running helpers, also after reopeni
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toContainText('Reviewer');
     await expect(rows.nth(1)).toContainText('Tester');
-    const done = panel.getByText('Done', { exact: true });
-    expect(await done.count()).toBeGreaterThanOrEqual(2);
     const finished = rows.nth(1);
     await expect(finished.getByText('Done', { exact: true })).toBeVisible();
+    await expect(panel.getByText('Done', { exact: true })).toHaveCount(2);
     await expect(finished.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
     const name = await box(rows.nth(0).getByText('Reviewer', { exact: true }));
     const step = await box(rows.nth(0).getByText('Running make build', { exact: true }));

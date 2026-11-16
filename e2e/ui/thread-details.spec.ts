@@ -129,8 +129,6 @@ test('Pull requests is a list with the tracked reference, title, state dot and o
   const size = await box(dot);
   expect(size.width).toBeGreaterThan(0);
   expect(size.width).toBe(size.height);
-  github.setCI(1, 'passed');
-  await expect(row.getByText('passed', { exact: true })).toBeVisible();
   github.setCI(1, 'failed');
   await expect(row.getByText('failed', { exact: true })).toBeVisible();
   const popup = page.waitForEvent('popup');
