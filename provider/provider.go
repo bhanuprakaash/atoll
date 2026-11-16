@@ -31,6 +31,7 @@ const (
 	ToolDelegate     = "delegate"
 	ToolContinue     = "continue"
 	ToolStopHelper   = "stop_helper"
+	ToolHelpers      = "helpers"
 	// ToolTellUser takes {text}: a message to the person, listed only in background runs.
 	ToolTellUser = "tell_user"
 	// Platform tools modify platform configuration.

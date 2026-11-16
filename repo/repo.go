@@ -192,6 +192,17 @@ func commits(count string) string {
 	return count + " commits"
 }
 
+// Ahead counts the commits of branch that base lacks, in the repo at repoPath. It is 0 when either
+// cannot be read.
+func Ahead(ctx context.Context, repoPath, base, branch string) int {
+	count, err := git(ctx, repoPath, nil, "rev-list", "--count", "refs/heads/"+base+"..refs/heads/"+branch)
+	n, convErr := strconv.Atoi(count)
+	if err != nil || convErr != nil {
+		return 0
+	}
+	return n
+}
+
 // aheadNote names the local default branch (the one origin/HEAD points at) and how far it is ahead
 // of origin/HEAD. It is empty when it is not ahead or cannot be read.
 func aheadNote(ctx context.Context, repoPath string) string {

@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"atoll/connection"
@@ -175,7 +176,8 @@ type (
 		open     int                      // approvals open
 		calls    map[string]chan struct{} // closed once the tool call with that id is published
 		tool     ToolCall
-		shown    []string // memory ids the run's memory tools returned
+		lastCall atomic.Int64 // unix nanoseconds of the run's last tool call
+		shown    []string     // memory ids the run's memory tools returned
 		// usage and priorCostUSD are the run goroutine's: the provider's last report, and what the
 		// session had cost before this run.
 		usage        *provider.Usage
@@ -1129,6 +1131,7 @@ func (m *Manager) stream(a *active, sess provider.Session) (string, error) {
 						}
 					}
 				}
+				a.lastCall.Store(time.Now().UnixNano())
 				if err := m.cfg.Store.CountTool(a.ctx, a.run.ID, kind); err != nil {
 					m.cfg.Log.Warn("count tool", "error", err)
 				}
@@ -1450,7 +1453,7 @@ func ToolVerb(name, kind string) string {
 			return "Remembering"
 		case provider.ToolTellUser:
 			return "Writing to you"
-		case provider.ToolDelegate, provider.ToolContinue, provider.ToolStopHelper:
+		case provider.ToolDelegate, provider.ToolContinue, provider.ToolStopHelper, provider.ToolHelpers:
 			return "Handing off"
 		}
 		if kind == "platform" && strings.HasPrefix(strings.TrimPrefix(name, _atollTools), "list_") {
@@ -1541,7 +1544,7 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 			return "memory", v.Topic
 		case provider.ToolStartWork, provider.ToolTrackMR:
 			return "work", ""
-		case provider.ToolDelegate, provider.ToolContinue, provider.ToolStopHelper:
+		case provider.ToolDelegate, provider.ToolContinue, provider.ToolStopHelper, provider.ToolHelpers:
 			return "platform", ""
 		default:
 			return "platform", v.Name
