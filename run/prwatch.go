@@ -207,8 +207,8 @@ func short(sha string) string { return sha[:min(len(sha), 7)] }
 
 // readCI reads the checks of the head commit until its CI is reported, and sets in r the stored
 // result and, when CI finished, the wake. A finished result counts once seen on two reads in a row.
-// A head with no checks is recorded as such once two reads in a row found none, and is then read
-// again only every _noCheckEvery polls, so a check that appears later is still seen.
+// A head with no checks, or whose stored result has a failed check, is read again only every
+// _noCheckEvery polls, so a check that appears or a re-run on the same commit is still seen.
 func (m *Manager) readCI(w *watcher, connID, token, api string, wp store.WatchedPR, head, label string, r *store.MRRead) error {
 	p := wp.PR
 	var prev ciResult
@@ -223,7 +223,7 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, wp store.Watched
 	}
 	recheck := false
 	if p.Woke == head {
-		if prev.Head != head || !prev.none() {
+		if prev.Head != head || !prev.none() && prev.Failed == 0 {
 			return nil
 		}
 		ws := w.of(p)
@@ -265,6 +265,9 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, wp store.Watched
 		return nil
 	}
 	if recheck {
+		if res.same(prev) {
+			return nil
+		}
 		r.Woke = ""
 	}
 	finished := res.Passed+res.Failed > 0 && res.Pending == 0
