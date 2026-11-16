@@ -493,6 +493,9 @@ func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, string, error)
 	case t.RepoID != "" && rp.ID == "":
 		dir = m.noAccessDir(t.ID)
 	case t.Worktree != "":
+		if _, err := os.Stat(t.Worktree); errors.Is(err, fs.ErrNotExist) {
+			return "", "", fmt.Errorf("this thread's folder %s is gone. Start a new thread, or restore the folder", t.Worktree)
+		}
 		_, statErr := os.Stat(rp.Path)
 		if rp.ID != "" && t.WorktreeGitDir == "" && !errors.Is(statErr, os.ErrNotExist) {
 			common, err := repo.GitCommonDir(m.ctx, rp.Path)
