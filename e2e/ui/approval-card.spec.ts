@@ -358,6 +358,7 @@ test('a closed MR is not red', async ({ page }) => {
     mr_state: 'closed',
   });
   await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
+  await expect(page.getByRole('button', { name: 'Thread details', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Thread details', exact: true }).click();
   const chip = page
     .getByRole('dialog', { name: 'Thread details' })

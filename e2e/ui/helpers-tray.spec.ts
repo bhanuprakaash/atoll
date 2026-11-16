@@ -124,6 +124,7 @@ test('Thread details overlays the chat without moving it; Esc, outside click and
   });
   const scrollBefore = await log.evaluate((el) => el.scrollTop);
 
+  await expect(show).toBeVisible();
   await show.click();
   const pop = details(page);
   await expect(pop).toBeVisible();
@@ -219,7 +220,7 @@ test('a helper approval stays above the composer within 2s; two waiting show the
   await expect(deny).toHaveCount(1);
   await expect(region).toContainText('make check');
   await expect(region).toContainText('1 more');
-  await expect(region.getByRole('img')).toBeVisible();
+  await expect(region.getByRole('img', { name: /^(Tester|Reviewer): needs you$/ }).first()).toBeVisible();
   expect((await box(allow)).y).toBeLessThan(
     (await box(page.getByRole('textbox', { name: /^Message/ }))).y,
   );
@@ -330,14 +331,15 @@ test('finished helpers stay under Done after running helpers, also after reopeni
 test('after Stop the held-reports line stays above the composer while another helper runs', async ({
   page,
 }) => {
-  const { boss, thread } = await bossHandsOff(m, page, [
-    ['Tester', reportPrompt],
-    ['Reviewer', prompts.hang],
-  ]);
-  await expect.poll(() => runStatus(m, boss)).toBe('done');
-  // Hold the boss on a real approval so the helper report cannot start a wake run.
-  await send(page, prompts.write);
+  const { bots } = await makeBoss(m, ['Tester', 'Reviewer']);
+  await page.goto(m.url);
+  const handoff = delegate([['Tester', reportPrompt], ['Reviewer', prompts.hang]]);
+  const approval = { server: 'atoll', tool: 'approve', args: { tool_name: 'Bash', input: { command: 'make check' } } };
+  const boss = await startThread(page, 'Poteto', `${handoff.slice(0, -1)},${JSON.stringify(approval)}]`);
+  const helpers = await helperThreads(m, boss, 2);
+  const thread = (name: string) => helpers.find((h) => h.bot_id === bots[name].id)!.id;
   await expect.poll(() => runStatus(m, boss)).toBe('waiting');
+  await pendingApproval(thread('Tester'));
   const bossRun = (await api(m, 'GET', `/api/threads/${boss}`)).run_id;
   await api(m, 'POST', `/api/runs/${bossRun}/stop`);
   await expect.poll(() => runStatus(m, boss)).toBe('stopped');

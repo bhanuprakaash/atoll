@@ -155,6 +155,7 @@ test('fresh install to an MR link without a terminal', async ({ page, context })
   await expect(log.getByText('go test ./...').first()).toBeVisible();
   await log.getByRole('button', { name: 'Allow', exact: true }).click();
 
+  await expect(page.getByRole('button', { name: 'Thread details', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Thread details', exact: true }).click();
   const context_ = page.getByRole('dialog', { name: 'Thread details' });
   const mr = context_.getByRole('link', { name: /!1\b/ });
