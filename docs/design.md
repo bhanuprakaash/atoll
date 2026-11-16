@@ -584,7 +584,11 @@ Follow-ups:
   way to stop the #447 helper, the person pressed Stop in the helpers tray, and a later helper
   report still woke the lead they had stopped. A Stop means stop until the person writes.*
 - A worktree folder deleted outside Reef counts as removed when its thread closes (nothing to save,
-  git's record pruned), so the thread, and its boss, still close.
+  git's record pruned), so the thread, and its boss, still close. A run in a thread whose folder is
+  gone fails before the provider starts: `this thread's folder {path} is gone. Start a new thread,
+  or restore the folder`. A CI or merge wake of a helper's PR stays with the helper, and the
+  boss's helpers line and Thread details row lead the step with its reason (`wake` in the thread
+  and sidebar JSON).
 - A helper thread is read-only for the user: `POST /api/threads/{id}/messages` and the
   queued-message routes answer 409 `{boss} is handling this thread`.
 - A child's questions go to its parent; approvals go to the user. The child's first message is one
@@ -2025,7 +2029,8 @@ Voice
   - Helpers: every helper task this thread delegated, running ones first, then a `Done` group, each
     newest first. A row is two lines: the creature; the Bot name, the task (the helper thread's
     title) and the time (`42s`, `3m`, `1h 5m`); under them, while its run goes, the step (the step
-    words of Helpers) or `Needs you`, else `Done`, then its PR reference with dot and CI word when
+    words of Helpers), led by the reason when a PR wake started the run (`CI on #1 · Running make
+    check`; `#1 merged`, `#1 closed`), or `Needs you`, else `Done`, then its PR reference with dot and CI word when
     it tracks one, and `Stop` on hover or focus while its run goes. Clicking a row opens the helper
     thread. Arrow keys move between rows. Running helpers all show; the `Done` group shows its 3
     newest, then `Show N more` / `Show less` the same way (the button is not a row; Tab reaches it).

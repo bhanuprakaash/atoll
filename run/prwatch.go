@@ -33,7 +33,10 @@ const (
 	_ciFailed = " failed ("
 )
 
-var _waitsFor = regexp.MustCompile(`^Waits for #(\d+)`)
+var (
+	_waitsFor = regexp.MustCompile(`^Waits for #(\d+)`)
+	_prNumber = regexp.MustCompile(`#\d+`)
+)
 
 type (
 	// watcher is what the poll keeps in memory: waits and ETags per PR, rate-limit pauses per

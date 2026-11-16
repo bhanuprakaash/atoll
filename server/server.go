@@ -364,6 +364,7 @@ type threadSummary struct {
 	UpdatedAt    time.Time     `json:"updated_at"`
 
 	Step        string          `json:"step"`
+	Wake        string          `json:"wake"`
 	ParentBotID string          `json:"parent_bot_id"`
 	Helpers     []threadSummary `json:"helpers"`
 	PRs         []prSummary     `json:"prs"`
@@ -428,6 +429,7 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 	}
 	out.Verb = a.liveVerb(t.ID)
 	out.Step = a.liveStep(t.ID)
+	out.Wake = a.runs.ActiveWake(t.ID)
 	out.RunID, err = a.st.LatestRun(r.Context(), t.ID)
 	if err != nil {
 		return out, err

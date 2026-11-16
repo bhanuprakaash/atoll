@@ -183,7 +183,11 @@ function Row({
           <span
             className={`min-w-0 flex-1 truncate ${state === 'needs_you' && live ? 'text-ink' : ''}`}
           >
-            {!live ? 'Done' : state === 'needs_you' ? 'Needs you' : helper.step || 'Working'}
+            {!live
+              ? 'Done'
+              : state === 'needs_you'
+                ? 'Needs you'
+                : [helper.wake, helper.step].filter(Boolean).join(' · ') || 'Working'}
           </span>{' '}
           <Pull pr={headPR(helper.prs)} />{' '}
           {live && (

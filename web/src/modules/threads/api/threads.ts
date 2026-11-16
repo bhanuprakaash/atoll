@@ -25,6 +25,7 @@ export type Thread = {
   updated_at: string;
   verb: string;
   step: string;
+  wake: string;
   closed: boolean;
   created_at: string;
   title: string;
