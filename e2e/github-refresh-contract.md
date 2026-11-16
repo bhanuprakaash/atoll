@@ -26,7 +26,8 @@ GitLab. A value that is not JSON is a bare token: used as it is, no expiry known
 - A run that starts with less than 3 h left on the token, expired or not, refreshes first and gets
   the new token in `GH_TOKEN`, the git credential helper and the `github` MCP header. With more
   than 3 h left there is no request.
-- The PR and issue watchers refresh only once the token has expired.
+- The PR and issue watchers refresh only once the token has expired. Tests allow a second of
+  slack, for a record that keeps `expires_at` to the second.
 - Concurrent callers on one connection cause one request.
 - A rejected refresh token (`bad_refresh_token`) marks the connection `needs_sign_in` with
   `signed_out_at`, stops the run before the provider starts with `GitHub needs sign-in` and writes
@@ -52,4 +53,5 @@ GitLab. A value that is not JSON is a bare token: used as it is, no expiry known
 | One refresh at a time | `TestGitHubRefresh_ConcurrentRunsRefreshOnce` |
 | Rejected refresh token signs the connection out | `TestGitHubRefresh_RejectedRefreshTokenNeedsSignIn`; the card text is `ui/github-connection.spec.ts` |
 | A network error keeps the connection | `TestGitHubRefresh_NetworkErrorKeepsTheConnection` |
+| The fake's refresh grant works | `TestGitHubFixtures_RefreshGrant` |
 | One INFO line per refresh, no token | `wantRefreshedLines` and `wantNoTokensInLog` in the refresh tests |

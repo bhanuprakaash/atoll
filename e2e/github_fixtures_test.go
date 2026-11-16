@@ -74,12 +74,12 @@ type fakeGitHub struct {
 	refreshLog   []fakeRefresh
 }
 
-// fakeRefresh is one refresh request the fake GitHub got: its form, whether the access token it
-// held had expired by then, and whether it answered with a new pair.
+// fakeRefresh is one refresh request the fake GitHub got: its form, how long the access token it
+// held still had to live by expires_in (negative: expired), and whether it answered with a new pair.
 type fakeRefresh struct {
-	Form    url.Values
-	Expired bool
-	OK      bool
+	Form url.Values
+	Left time.Duration
+	OK   bool
 }
 
 func newFakeGitHub(t *testing.T) *fakeGitHub {
@@ -208,7 +208,7 @@ func (g *fakeGitHub) issueTokens(w http.ResponseWriter, r *http.Request, ttl int
 func (g *fakeGitHub) refresh(w http.ResponseWriter, r *http.Request) {
 	g.mu.Lock()
 	delay, drop := g.refreshDelay, g.dropRefresh
-	g.refreshLog = append(g.refreshLog, fakeRefresh{Form: r.Form, Expired: !g.expiresAt.IsZero() && time.Now().After(g.expiresAt)})
+	g.refreshLog = append(g.refreshLog, fakeRefresh{Form: r.Form, Left: time.Until(g.expiresAt)})
 	n := len(g.refreshLog) - 1
 	g.mu.Unlock()
 	time.Sleep(delay)

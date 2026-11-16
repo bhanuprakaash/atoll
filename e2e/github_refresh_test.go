@@ -3,6 +3,7 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -10,6 +11,9 @@ import (
 )
 
 // Contract: github-refresh-contract.md.
+
+// _refreshSlack is how much life a watcher may still see in a token when it refreshes it.
+const _refreshSlack = time.Second
 
 type githubRecord struct {
 	AccessToken      string    `json:"access_token"`
@@ -170,8 +174,8 @@ func TestGitHubRefresh_RunRefreshesFirst(t *testing.T) {
 					t.Fatalf("fake GitHub got %d refresh requests for a run with %d s of token life at sign-in, want exactly 1 (run: %+v)", len(reqs), c.ttl, done)
 				}
 				wantRefreshRequest(t, reqs[0].Form, oldRefresh)
-				if reqs[0].Expired != c.expired || !reqs[0].OK {
-					t.Errorf("refresh request %+v, want ok, with the token expired: %v", reqs[0], c.expired)
+				if !reqs[0].OK || c.expired && reqs[0].Left > 0 || !c.expired && reqs[0].Left < time.Hour {
+					t.Errorf("refresh request %+v, want ok, with the token expired: %v (under 3 h left, still valid, otherwise)", reqs[0], c.expired)
 				}
 				token := f.gh.currentToken()
 				if token == old {
@@ -255,16 +259,18 @@ func TestGitHubRefresh_PlentyOfTimeDoesNotRefresh(t *testing.T) {
 // The PR watcher leaves a token alone while it is still valid, refreshes it once it has expired,
 // and keeps waking the Bot with the new one. The run that opens the pull request refreshes first
 // (3600 s is under 3 h) and gets a token that lives 6 s; no run is going when that one runs out.
+// "Once it has expired" allows a second of slack: a record that keeps expires_at to the second
+// can read up to a second early.
 func TestGitHubRefresh_PRWatcherRefreshesAfterExpiry(t *testing.T) {
 	f, id := newPRWakeFixtureTTL(t, 3600, 6)
 	th := f.openPR(t, 1)
-	if reqs := f.gh.refreshes(); len(reqs) != 1 || reqs[0].Expired || !reqs[0].OK {
-		t.Fatalf("refresh requests after the run that opened the pull request: %+v, want one ok, before expiry", reqs)
+	if reqs := f.gh.refreshes(); len(reqs) < 1 || reqs[0].Left < time.Hour || !reqs[0].OK {
+		t.Fatalf("refresh requests after the run that opened the pull request: %+v, want the first ok, with about 1 h left", reqs)
 	}
 
 	eventually(t, 30*time.Second, "the watcher refreshes the expired token", func() bool { return len(f.gh.refreshes()) >= 2 })
 	reqs := f.gh.refreshes()
-	if len(reqs) != 2 || !reqs[1].Expired || !reqs[1].OK {
+	if len(reqs) != 2 || reqs[1].Left > _refreshSlack || !reqs[1].OK {
 		t.Fatalf("refresh requests %+v, want a second one, ok, made only once the token had expired", reqs)
 	}
 	f.wantConnected(t, id)
@@ -296,7 +302,7 @@ func TestGitHubRefresh_IssueWatcher(t *testing.T) {
 		name      string
 		ttl       int
 		refreshes int
-	}{{"under_3h_left_is_not_expired", 3600, 0}, {"expired", 3, 1}} {
+	}{{"under_3h_left_is_not_expired", 3600, 0}, {"expired", 5, 1}} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			f, id := newPRWakeFixtureTTL(t, c.ttl)
@@ -316,7 +322,7 @@ func TestGitHubRefresh_IssueWatcher(t *testing.T) {
 			if len(reqs) != c.refreshes {
 				t.Fatalf("fake GitHub got %d refresh requests, want %d: %+v", len(reqs), c.refreshes, reqs)
 			}
-			if c.refreshes == 1 && (!reqs[0].Expired || !reqs[0].OK) {
+			if c.refreshes == 1 && (reqs[0].Left > _refreshSlack || !reqs[0].OK) {
 				t.Errorf("refresh request %+v, want ok, made once the token had expired", reqs[0])
 			}
 			f.wantConnected(t, id)
@@ -461,7 +467,7 @@ func TestGitHubRefresh_NetworkErrorKeepsTheConnection(t *testing.T) {
 }
 
 // An item an older Atoll left, a bare token, is used as it is with no refresh, however short the
-// token's life was at sign-in. It holds on this branch before the change; it stays a test.
+// token's life was at sign-in.
 func TestGitHubRefresh_BareTokenStillWorks(t *testing.T) {
 	t.Parallel()
 	f := newGitHubFixture(t, "claude")
@@ -490,4 +496,88 @@ func TestGitHubRefresh_BareTokenStillWorks(t *testing.T) {
 		t.Fatalf("claude ran %d times, want 1", len(sessions))
 	}
 	assertGitHubEnv(t, "claude", sessions[0].env, legacy)
+}
+
+// TestGitHubFixtures_RefreshGrant proves the fake GitHub's expiring tokens work without the
+// product, over plain HTTP: the refresh grant rotates both tokens and kills the old ones, a token
+// dies after its expires_in, and the fake can answer a bad refresh token or no answer at all.
+func TestGitHubFixtures_RefreshGrant(t *testing.T) {
+	t.Parallel()
+	g := newFakeGitHub(t)
+	g.set(func() { g.approved, g.refreshTTLs = true, []int{2} })
+	post := func(form url.Values) map[string]any {
+		t.Helper()
+		req, err := http.NewRequestWithContext(t.Context(), "POST", g.URL+"/login/oauth/access_token", strings.NewReader(form.Encode()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("POST access_token %v: %v", form, err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		var out map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || resp.StatusCode != 200 {
+			t.Fatalf("POST access_token %v: status %d, body not JSON: %v", form, resp.StatusCode, err)
+		}
+		return out
+	}
+	userStatus := func(token string) int {
+		t.Helper()
+		req, _ := http.NewRequestWithContext(t.Context(), "GET", g.URL+"/user", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	refresh := func(token any) url.Values {
+		return url.Values{"client_id": {_githubClientID}, "grant_type": {"refresh_token"}, "refresh_token": {fmt.Sprint(token)}}
+	}
+
+	first := post(url.Values{"client_id": {_githubClientID}, "device_code": {"fixture-device-code"}, "grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}})
+	if first["expires_in"] != float64(28800) || first["refresh_token_expires_in"] != float64(15638400) || first["refresh_token"] == nil || first["access_token"] == nil {
+		t.Fatalf("device flow reply %v, want access_token, refresh_token, expires_in 28800 and refresh_token_expires_in 15638400", first)
+	}
+	if userStatus(fmt.Sprint(first["access_token"])) != 200 {
+		t.Fatal("GET /user refused the new access token")
+	}
+
+	second := post(refresh(first["refresh_token"]))
+	if second["access_token"] == first["access_token"] || second["refresh_token"] == first["refresh_token"] || second["expires_in"] != float64(2) {
+		t.Fatalf("refresh reply %v, want a new pair with expires_in 2 (the first of refreshTTLs)", second)
+	}
+	if userStatus(fmt.Sprint(first["access_token"])) != 401 || userStatus(fmt.Sprint(second["access_token"])) != 200 {
+		t.Fatal("after a refresh the old access token must answer 401 and the new one 200")
+	}
+	if got := post(refresh(first["refresh_token"])); got["error"] != "bad_refresh_token" {
+		t.Fatalf("old refresh token: %v, want bad_refresh_token", got)
+	}
+	time.Sleep(2*time.Second + _githubExpiryGrace + 200*time.Millisecond)
+	if userStatus(fmt.Sprint(second["access_token"])) != 401 {
+		t.Fatal("GET /user took an access token after its expires_in")
+	}
+
+	third := post(refresh(second["refresh_token"]))
+	if third["expires_in"] != float64(28800) || userStatus(fmt.Sprint(third["access_token"])) != 200 {
+		t.Fatalf("refresh after refreshTTLs ran out: %v, want expires_in 28800 and a working token", third)
+	}
+	g.set(func() { g.badRefresh = true })
+	if got := post(refresh(third["refresh_token"])); got["error"] != "bad_refresh_token" {
+		t.Fatalf("refresh with badRefresh: %v, want bad_refresh_token", got)
+	}
+	g.set(func() { g.badRefresh, g.dropRefresh = false, true })
+	req, _ := http.NewRequestWithContext(t.Context(), "POST", g.URL+"/login/oauth/access_token", strings.NewReader(refresh(third["refresh_token"]).Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		_ = resp.Body.Close()
+		t.Fatalf("refresh with dropRefresh got status %d, want a transport error", resp.StatusCode)
+	}
+	if got := g.refreshed(); got != 2 || len(g.refreshes()) != 5 {
+		t.Errorf("fake counted %d ok of %d refresh requests, want 2 of 5", got, len(g.refreshes()))
+	}
 }
