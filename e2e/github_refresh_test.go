@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-// Contract: github-refresh-contract.md.
-
 // _refreshSlack is how much life a watcher may still see in a token when it refreshes it.
 const _refreshSlack = time.Second
 
