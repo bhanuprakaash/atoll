@@ -869,11 +869,21 @@ Follow-ups:
       path from every Bash command (`head`, `python`, `cat`, a symlink fail with no such file; the
       folder reads empty), not from Read, Glob or Grep.
     - The sandbox is `{"enabled": true, "failIfUnavailable": true, "allowUnsandboxedCommands": false,
-      "autoAllowBashIfSandboxed": false, "network": {"allowedDomains": ["*"]}, "filesystem":
-      {"allowWrite": ["/"], "denyRead": [...]}}`. It only hides reads:
+      "autoAllowBashIfSandboxed": false, "enableWeakerNetworkIsolation": true, "network":
+      {"allowedDomains": ["*"], "allowLocalBinding": true}, "filesystem": {"allowWrite": ["/"],
+      "denyRead": [...]}}`. It hides reads and opens the two things a Bot's tests and `gh` need:
       - `allowWrite: ["/"]` keeps writes as before; the default allows only the cwd, which would stop
         `git` writing `.git/worktrees` and every build cache.
       - `network.allowedDomains: ["*"]` keeps the network open.
+      - `enableWeakerNetworkIsolation: true` opens only the trustd service
+        (`com.apple.trustd.agent`), which Go's TLS needs on macOS, so `gh` works (it failed with
+        x509 OSStatus -26276). The domain filter it weakens is already `*`.
+      - `network.allowLocalBinding: true`: a Bot's tests can bind a port (`httptest` failed with
+        `bind: operation not permitted`). On macOS a listener binds and accepts on every interface,
+        not just loopback, and outbound connections reach every local port. An All-access Bot (which
+        runs unsandboxed) and Codex Auto already have that reach. Reef's own API still needs the
+        `ATOLL_TOKEN` cookie, which no Bot has.
+      - Still closed: Unix sockets and other Mach services, including the keychain (securityd).
       - `autoAllowBashIfSandboxed: false`: by default a sandboxed command needs no approval, ending
         Ask for Bash (`python3 -c 'print(1)'` ran with no card). Off, Ask asks; Auto and Full access
         are unchanged.

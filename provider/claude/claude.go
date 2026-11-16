@@ -517,8 +517,9 @@ func IsolationArgs(cwd string, noTools bool, hidden []string) ([]string, error) 
 		base["sandbox"] = map[string]any{
 			"enabled": true, "failIfUnavailable": true,
 			"allowUnsandboxedCommands": false, "autoAllowBashIfSandboxed": false,
-			"network":    map[string]any{"allowedDomains": []string{"*"}},
-			"filesystem": map[string]any{"allowWrite": []string{"/"}, "denyRead": hidden},
+			"enableWeakerNetworkIsolation": true,
+			"network":                      map[string]any{"allowedDomains": []string{"*"}, "allowLocalBinding": true},
+			"filesystem":                   map[string]any{"allowWrite": []string{"/"}, "denyRead": hidden},
 		}
 	}
 	settings, err := json.Marshal(base)
