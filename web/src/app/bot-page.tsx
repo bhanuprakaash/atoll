@@ -226,10 +226,14 @@ function BotFrame() {
   const [list, setList] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { data: openThread } = useThread(threadId);
-  const [detailsFor, setDetailsFor] = useState('');
-  const detailsOpen = !!openThread && detailsFor === threadId;
-  useEffect(() => setDetailsFor(''), [threadId]);
+  const { data: openThread, refetch, dataUpdatedAt } = useThread(threadId);
+  const [opened, setOpened] = useState<{ id: string; at: number } | null>(null);
+  const detailsOpen = !!openThread && opened?.id === threadId;
+  const setDetailsFor = (id: string) => {
+    setOpened(id ? { id, at: Date.now() } : null);
+    if (id) void refetch();
+  };
+  useEffect(() => setOpened(null), [threadId]);
   useEffect(() => {
     if (!(location.state as { helpers?: boolean } | null)?.helpers) return;
     setDetailsFor(threadId);
@@ -240,7 +244,7 @@ function BotFrame() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === '.') {
         e.preventDefault();
-        setDetailsFor((now) => (now === threadId || !threadId ? '' : threadId));
+        setDetailsFor(opened?.id === threadId || !threadId ? '' : threadId);
       } else if (e.key === 'Escape' && detailsOpen && !e.defaultPrevented) {
         e.preventDefault();
         setDetailsFor('');
@@ -258,7 +262,7 @@ function BotFrame() {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('pointerdown', onDown);
     };
-  }, [detailsOpen, threadId]);
+  }, [detailsOpen, threadId, opened]);
   const notifications = useOutletContext<Notifications>();
   const { drop, widened, dismiss, markSeen } = notifications;
   const expanded = list || !!drop;
@@ -335,7 +339,7 @@ function BotFrame() {
           )}
         </BotHeader>
         <Outlet />
-        {detailsOpen && (
+        {detailsOpen && dataUpdatedAt >= opened.at && (
           <ThreadPanel
             thread={openThread}
             repoName={repos.find((r) => r.id === openThread.repo_id)?.name}

@@ -1,6 +1,7 @@
-import { Creature, type CreatureLook } from '@/components/creature';
+import type { CreatureLook } from '@/components/creature';
 import type { Thread } from '@/modules/threads/api/threads';
 import { ApprovalCard } from '@/modules/threads/components/approval-card';
+import { HelperCreature } from '@/modules/threads/components/helper-creature';
 import { isLiveHelper } from '@/modules/threads/utils/helper-state';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -42,7 +43,11 @@ export function HelperNotices({
               {...asking.approval}
               by={
                 <span className="inline-flex items-center gap-1.5 align-middle text-ink">
-                  <Creature look={askingBot?.look} size={16} />
+                  <HelperCreature
+                    name={askingBot?.name ?? 'Helper'}
+                    creature={askingBot?.look}
+                    state="needs_you"
+                  />{' '}
                   {askingBot?.name ?? 'Helper'}
                 </span>
               }

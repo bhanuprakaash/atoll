@@ -131,20 +131,20 @@ function Row({
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <Link to={href} className="flex min-w-0 flex-1 items-baseline gap-1.5">
-            <span className="flex-none">{bot?.name ?? 'Helper'}</span>
+            <span className="flex-none">{bot?.name ?? 'Helper'}</span>{' '}
             <span className="truncate text-muted" title={helper.title}>
               {helper.title}
             </span>
-          </Link>
+          </Link>{' '}
           <span className="flex-none text-muted tabular-nums">
             {elapsed(helper.created_at, end)}
           </span>
-        </div>
+        </div>{' '}
         <div className="flex h-6 items-center gap-2 text-muted">
           <span className="min-w-0 truncate">
             {!live ? 'Done' : state === 'needs_you' ? 'Needs you' : helper.step || 'Working'}
-          </span>
-          <Pull thread={helper} />
+          </span>{' '}
+          <Pull thread={helper} />{' '}
           {live && (
             <button
               type="button"
