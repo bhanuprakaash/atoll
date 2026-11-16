@@ -246,10 +246,10 @@ counts a Bot that is already gone as removed.
   missed question it answered was a dim Blocked line among status noise; background runs now add
   no noise (Delegation), and the PR chip shows the PR's live state.*
 - Reef's own MCP tools (`approve` as Claude's permission prompt tool, memory, `start_work`,
-  `track_mr`, `delegate`, `continue`, `stop_helper`, `helpers`, `tell_user`) are served over streamable HTTP on Reef's own
-  server at `/mcp/<run token>`, and are allow-listed, so they never ask the user. *They need live
-  server state (open approvals, the calling run); stdio would need a child that calls back
-  anyway.*
+  `track_mr`, `delegate`, `continue`, `stop_helper`, `helpers`, `tell_user`) are served over
+  streamable HTTP on Reef's own server at `/mcp/<run token>`, and are allow-listed, so they never
+  ask the user. *They need live server state (open approvals, the calling run); stdio would need a
+  child that calls back anyway.*
 - The run starts the provider with the Bot's Mode as snapshotted at run start (table in Bots).
   Codex approvals come as app-server requests; Claude approvals through the permission prompt
   tool.
@@ -455,8 +455,7 @@ Follow-ups:
 - A delegation is a thread where the parent Bot is the asker. Reef's MCP server lists
   `delegate(bot, brief, repo?, read_only?)`, `continue(thread, message)`, `stop_helper(thread)`
   and `helpers()` only in runs of a Bot with a non-empty delegate list, in a thread that is not a
-  helper thread. Continue for the same
-  work; start a new one for different work.
+  helper thread. Continue for the same work; start a new one for different work.
 - `delegate` returns `{"thread_id"}` at once (plus `branch` and `note` when the helper gets a
   worktree, below). The boss's run ends normally; the helper works in its own thread (with
   `parent_thread_id`, a fresh provider session) in the boss thread's repo. A boss thread with no
@@ -502,9 +501,9 @@ Follow-ups:
   Reef holds one notice for the boss thread from the helper Bot (`from_bot_id` on the message; the
   boss's id on its brief in a helper thread, empty for the user's and for the boss's `continue`
   messages). That starts a boss run, or waits in the inbox while the boss's run is going (the wake
-  window, one run for all held messages and the hold after the person's Stop: below). The notice is not shown in the boss thread's
-  chat; the person reads the helper's reply in the helper thread. It starts `Reef: ` and always
-  holds the helper thread id:
+  window, one run for all held messages and the hold after the person's Stop: below). The notice
+  is not shown in the boss thread's chat; the person reads the helper's reply in the helper
+  thread. It starts `Reef: ` and always holds the helper thread id:
   - done: `{Helper} finished thread {id}:`, then the helper's reply;
   - failed: `{Helper}'s run failed: {error}`; a helper run going at a restart fails with the usual
     reason and wakes its boss on start, one message for all the boss thread's interrupted helper
@@ -600,9 +599,9 @@ Follow-ups:
   `Helpers: 0 of 3 running. 3 free.` It ends every wake message, after a blank line (the helper
   whose run just ended is not counted), follows `Sent.` (`continue`) on a new line, and is the
   `helpers` field of `delegate`'s result (the new helper counts), follows `stop_helper`'s text on a
-  new line and is the `line` field of `helpers()`; refusals keep their text. A wake
-  held while the boss's run goes keeps the line it was posted with; the results of the boss's own
-  calls are always current. A line Reef cannot read is left out (`helpers` empty): the call still
+  new line and is the `line` field of `helpers()`; refusals keep their text. A wake held while the
+  boss's run goes keeps the line it was posted with; the results of the boss's own calls are always
+  current. A line Reef cannot read is left out (`helpers` empty): the call still
   succeeds. *A message removed while held, by the person or by a newer head commit, is skipped when
   its run starts, never delivered; a run with none left is not started.*
 ## Repos and worktrees
@@ -775,8 +774,8 @@ Follow-ups:
 - Known gap: CI re-run on the same commit (a failed check re-run passes) is not seen: reads stop
   once the commit is reported, and the chip keeps the first result.
 - Known gap: a stopped thread hears a PR or CI wake only when its next run ends (helper reports
-  wait for the person: Delegation), and a merged GitLab MR's
-  worktree can be released before that wake is delivered.
+  wait for the person: Delegation), and a merged GitLab MR's worktree can be released before that
+  wake is delivered.
 - Fixtures (what the poll reads; GitHub base is the API base `CheckGitHubToken` uses, so
   `ATOLL_GITHUB_URL` with the routes appended):
   - `GET /repos/{owner}/{repo}/pulls/{n}`: `state` (`open` or `closed`), `merged` (bool), `title`,
