@@ -270,6 +270,13 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				fake.Pause(e.MS)
 			}
 			continue
+		case "hold":
+			if !skip {
+				if err := fake.HoldSkills(); err != nil {
+					return err
+				}
+			}
+			continue
 		}
 		if skip {
 			continue

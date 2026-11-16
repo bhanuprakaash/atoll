@@ -3,6 +3,7 @@ package e2e
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ const (
 	_keepPrompt  = "Remember this fact: the codeword is kestrel. Reply with just: ok"
 	_askPrompt   = "Which codeword did I give you? Reply with just the word."
 	_toolsPrompt = "How many lines does notes.txt have? List the folder first, then read the file."
+	_heldPrompt  = _toolsPrompt + " Hold after the first step until I say go."
 	_writePrompt = "Use the Write tool to create hello.txt containing the word hi."
 	_hangPrompt  = "Wait for the build to finish."
 	_claudeRunID = "e5249980-178d-4e8c-8829-3c64eb27639f"
@@ -141,15 +143,28 @@ func TestToolCalls_Stream(t *testing.T) {
 	t.Parallel()
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {
-			_, s := start(t, p)
+			m, s := start(t, p)
 			th := s.newThread(t, s.newBot(t, "Ada", p))
 			ev := s.events(t, th)
-			r := s.send(t, th, _toolsPrompt)
+			r := s.send(t, th, _heldPrompt)
 
+			// The fake holds the run after its first tool call until the test releases it, so the
+			// run cannot finish while the first tool_call is checked, however slow the machine is.
 			es := until(t, ev, r.ID, "tool_call")
-			if got := s.run(t, r.ID).Status; got != "running" {
-				t.Errorf("run status %q when its first tool call arrived, want running", got)
+			var held string
+			for end := time.Now().Add(15 * time.Second); held == "" && time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+				paths, _ := filepath.Glob(filepath.Join(m.bin, p+".ready.*"))
+				if len(paths) > 0 {
+					held = paths[0]
+				}
 			}
+			if held == "" {
+				t.Fatal("the fake provider never reached its hold after the first tool call")
+			}
+			if got := s.run(t, r.ID); got.Status != "running" || got.Reply != "" {
+				t.Errorf("run while the provider is held after its first tool call: status %q, reply %q; want running, no reply: the tool call must reach the client before the run ends", got.Status, got.Reply)
+			}
+			writeFile(t, held+".release", "")
 			es = append(es, until(t, ev, r.ID, "run_finished")...)
 
 			var calls []event
@@ -168,10 +183,6 @@ func TestToolCalls_Stream(t *testing.T) {
 			}
 			if len(calls) < 2 {
 				t.Fatalf("got %d tool_call events %q, want at least 2 (list the folder, read the file)", len(calls), names)
-			}
-			end := es[len(es)-1]
-			if lead := end.At.Sub(calls[0].At); lead < 2*_pace {
-				t.Errorf("first tool call arrived %v before the run finished, want at least %v: events must stream, not arrive at the end", lead, 2*_pace)
 			}
 			if p == "claude" && (!slices.Contains(names, "Bash") || !slices.Contains(names, "Read")) {
 				t.Errorf("tool calls %q, want Bash and Read among them", names)
