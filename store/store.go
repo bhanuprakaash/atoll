@@ -843,8 +843,9 @@ func (s *Store) HelperThreads(ctx context.Context, parentID string) ([]Thread, e
 		scanThread, parentID)
 }
 
-// Watched lists the PRs of the threads with a worktree: the ones that are polled, with their
-// thread.
+// Watched lists the opened PRs of the threads with a worktree: the ones that are polled, with
+// their thread. A merged or closed PR is final and is not read again; a waiting draft reads its
+// merged base itself.
 func (s *Store) Watched(ctx context.Context) ([]WatchedPR, error) {
 	threads, err := query(ctx, s.db,
 		"SELECT "+_threadColumns+" FROM threads WHERE worktree != '' AND id IN (SELECT thread_id FROM thread_prs) ORDER BY rowid",
@@ -859,10 +860,20 @@ func (s *Store) Watched(ctx context.Context) ([]WatchedPR, error) {
 	var out []WatchedPR
 	for _, t := range threads {
 		for _, pr := range prs[t.ID] {
-			out = append(out, WatchedPR{Thread: t, PR: pr})
+			if pr.State == "opened" {
+				out = append(out, WatchedPR{Thread: t, PR: pr})
+			}
 		}
 	}
 	return out, nil
+}
+
+// Done lists the threads with a worktree whose PRs are all merged or closed, at least one merged.
+func (s *Store) Done(ctx context.Context) ([]Thread, error) {
+	return query(ctx, s.db,
+		"SELECT "+_threadColumns+" FROM threads WHERE worktree != '' AND id IN (SELECT thread_id FROM thread_prs WHERE state = 'merged')"+
+			" AND id NOT IN (SELECT thread_id FROM thread_prs WHERE state = 'opened') ORDER BY rowid",
+		scanThread)
 }
 
 const _prColumns = "thread_id, url, state, title, ci, woke, wake, head, base_woke, draft, body, base"
