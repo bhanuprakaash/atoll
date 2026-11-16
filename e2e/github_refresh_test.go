@@ -272,9 +272,12 @@ func TestGitHubRefresh_PRWatcherRefreshesAfterExpiry(t *testing.T) {
 		t.Fatalf("refresh requests %+v, want a second one, ok, made only once the token had expired", reqs)
 	}
 	f.wantConnected(t, id)
-	if got := githubSecretToken(t, id); got != f.gh.currentToken() {
-		t.Errorf("keyring holds %q, want the token of the second refresh", got)
-	}
+	// Read without failing: the test reads outside Reef's lock, so it can catch the entry mid-rewrite.
+	eventually(t, 5*time.Second, "the keyring holds the token of the second refresh", func() bool {
+		value, ok := secretEntry("github:" + id)
+		var rec githubRecord
+		return ok && json.Unmarshal([]byte(value), &rec) == nil && rec.AccessToken == f.gh.currentToken()
+	})
 
 	f.gh.setPull(1, "closed", true)
 	w := f.waitWake(t, th, 1)
