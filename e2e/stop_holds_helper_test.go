@@ -128,8 +128,8 @@ func TestStopHoldsHelper_NextContinueSendsAll(t *testing.T) {
 			s := f.s
 
 			got := useAtoll(t, s, f.boss, f.ev, continueCall(f.a, _keepPrompt))
-			if len(got) != 1 || got[0] == "atoll/continue: unavailable" {
-				t.Fatalf("continue to the stopped helper: reply %q, want it accepted", got)
+			if len(got) != 2 || got[0] != "atoll/continue: Sent." || !strings.HasPrefix(got[1], "Helpers: ") {
+				t.Fatalf("continue to the stopped helper: reply %q, want %q, then the helpers line", got, "atoll/continue: Sent.")
 			}
 			eventually(t, 10*time.Second, "a new run of the stopped helper", func() bool {
 				return getThread(t, s, f.a).RunID != f.aRun
