@@ -776,7 +776,7 @@ Follow-ups:
 - Where PRs show: the thread panel's Pull requests lists every tracked PR, open ones first, then
   merged and closed, each group newest first. The thread pane's search matches any tracked
   reference. The switcher and a closed thread's line show the newest open PR, else the newest. The
-  island's `opened` row and its dismiss are per PR.
+  island's `opened` row is per PR; its dismiss is per thread for now (#529 makes it per PR).
 - API: a thread summary carries `prs` (`[{url, state, title, ci}]`) in place of `mr_url`,
   `mr_state`, `mr_title` and `mr_ci`; `mr_updated` carries the `url` it is about.
 - Known gap: GitLab. An MR wakes nothing (merged, closed or CI) and its CI is not read: the poll
@@ -1853,7 +1853,7 @@ Voice
     both; a run the user stopped is only in Earlier) without a second red thing.
   - Each row has a dismiss (×) button, shown on hover and keyboard focus,
     `POST /api/island/dismiss`: a run row marks its thread read (`last_opened_at`), an MR row sets
-    its PR's dismissed time and stays hidden while that PR's `changed_at` is not newer, and a
+    its thread's dismissed time (per PR once #529 lands) and stays hidden while the PR's `changed_at` is not newer, and a
     platform change row sets `changes.dismissed_at`.
   *The island said "Nothing new" next to 60 New threads after every launch (they were labelled New
   then).*
