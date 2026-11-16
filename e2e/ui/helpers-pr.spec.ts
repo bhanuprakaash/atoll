@@ -195,13 +195,13 @@ test('a helper row shows its PR and CI as the watcher read them; a helper with n
       async () => {
         const list = (await api(m, 'GET', `/api/threads/${boss}`)).helpers as {
           bot_id: string;
-          mr_url: string;
+          prs: { url: string }[];
         }[];
         for (const name of ['Tester', 'Builder'])
           prOf[name] = Number(
             list
               .find((h) => h.bot_id === bots[name].id)
-              ?.mr_url.split('/')
+              ?.prs[0]?.url.split('/')
               .pop() ?? 0,
           );
         return Object.values(prOf).every(Boolean) && prOf.Tester !== prOf.Builder;

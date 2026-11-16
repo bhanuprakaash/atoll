@@ -17,7 +17,7 @@ import {
   threadPane,
   waitStatus,
 } from './atoll';
-import { githubEnv, type GitHubFake, seedRepo, startGitHub } from './github-fixture';
+import { githubEnv, type GitHubFake, seedRepo, startGitHub, trackPR } from './github-fixture';
 
 const fix = 'Fix the seeded bug and open a PR.';
 
@@ -68,27 +68,42 @@ async function prThread(n: number, text = fix) {
     repo_id: repo.id,
   });
   await waitStatus(m, t.id, 'done', 30_000);
-  expect((await api(m, 'GET', `/api/threads/${t.id}`)).mr_url).toBe(
-    `${github.url}/octo/hello/pull/${n}`,
-  );
+  expect(
+    (await api(m, 'GET', `/api/threads/${t.id}`)).prs.map((p: { url: string }) => p.url),
+  ).toEqual([`${github.url}/octo/hello/pull/${n}`]);
   return t.id as string;
 }
 
-// merged merges pull request n on GitHub, waits until the watcher has read the merge three more
-// times, so an absence after it is not just a poll that never ran, and until the thread's run
-// from the Reef wake has ended.
-async function merged(threadID: string, n: number) {
-  const before = github.reads(n);
-  github.merge(n);
-  await expect.poll(() => github.reads(n), { timeout: 30_000 }).toBeGreaterThanOrEqual(before + 3);
-  await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${threadID}`)).mr_state, {
-      timeout: 30_000,
-    })
-    .toBe('merged');
+// prState is the state of the thread's pull request n.
+async function prState(threadID: string, n: number) {
+  const prs = (await api(m, 'GET', `/api/threads/${threadID}`)).prs as {
+    url: string;
+    state: string;
+  }[];
+  return prs.find((p) => p.url.endsWith(`/pull/${n}`))?.state;
 }
 
-async function woken(threadID: string) {
+// merged merges pull request n on GitHub and waits until the thread's state for it is merged. A
+// merged pull request is not read again: given alive, a pull request that is still open, it waits
+// until the watcher has read alive twice more, then that the server reads alive three more times
+// and n none.
+async function merged(threadID: string, n: number, alive?: number) {
+  github.merge(n);
+  await expect.poll(() => prState(threadID, n), { timeout: 30_000 }).toBe('merged');
+  if (alive === undefined) return;
+  const start = github.reads(alive);
+  await expect
+    .poll(() => github.reads(alive), { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(start + 2);
+  const settled = github.reads(n);
+  const mark = github.reads(alive);
+  await expect
+    .poll(() => github.reads(alive), { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(mark + 3);
+  expect(github.reads(n)).toBe(settled);
+}
+
+async function woken(threadID: string, count = 1, kind = 'merged') {
   await expect
     .poll(
       async () =>
@@ -96,10 +111,10 @@ async function woken(threadID: string) {
           (await api(m, 'GET', `/api/threads/${threadID}/messages`)) as {
             kind?: string;
           }[]
-        ).filter((x) => x.kind === 'merged').length,
+        ).filter((x) => x.kind === kind).length,
       { timeout: 30_000 },
     )
-    .toBe(1);
+    .toBe(count);
   await waitStatus(m, threadID, 'done', 30_000);
 }
 
@@ -148,6 +163,64 @@ test('a thread whose PR merged leaves Now, stays a row under Recent in its Bot p
   await expect(log.getByRole('article', { name: 'You' }).first()).toContainText(fix);
   await expect(log).toContainText('PR #1 merged');
   await expect(log.getByText('Merge noted.')).toHaveCount(0);
+});
+
+// hiddenInAPI is whether the server marks the thread hidden in the Bot list.
+async function hiddenInAPI(threadID: string) {
+  const bots = (await api(m, 'GET', '/api/bots')) as {
+    id: string;
+    threads: { id: string; hidden?: boolean }[];
+  }[];
+  return (
+    bots.find((b) => b.id === coder.id)?.threads.find((x) => x.id === threadID)?.hidden ?? false
+  );
+}
+
+test('a thread with one PR merged and one still open stays in Now; it leaves once the other is merged too', async ({
+  page,
+}) => {
+  const id = await prThread(1);
+  github.open('second change');
+  await trackPR(m, id, github, 2, 'second change');
+  await waitStatus(m, id, 'done', 30_000);
+  await away(page);
+  await nowPane(page);
+  await expect(inNow(page, id)).toHaveCount(1);
+
+  await merged(id, 1, 2);
+  await woken(id);
+  expect(await prState(id, 2)).toBe('opened');
+  expect(await hiddenInAPI(id)).toBe(false);
+  await expect(inNow(page, id)).toHaveCount(1);
+
+  await merged(id, 2);
+  await woken(id, 2);
+  await expect(inNow(page, id)).toHaveCount(0, { timeout: 10_000 });
+  expect(await hiddenInAPI(id)).toBe(true);
+  expect((await api(m, 'GET', `/api/threads/${id}`)).closed).toBe(false);
+  await expect(await recentOf(page, id)).toHaveCount(1);
+});
+
+test('a thread with one PR closed unmerged and one merged is done: it leaves Now', async ({
+  page,
+}) => {
+  const id = await prThread(1);
+  github.open('second change');
+  await trackPR(m, id, github, 2, 'second change');
+  await waitStatus(m, id, 'done', 30_000);
+  await away(page);
+  await nowPane(page);
+
+  await merged(id, 2, 1);
+  await woken(id);
+  expect(await hiddenInAPI(id)).toBe(false);
+  await expect(inNow(page, id)).toHaveCount(1);
+
+  github.closePull(1);
+  await expect.poll(() => prState(id, 1), { timeout: 30_000 }).toBe('closed');
+  await woken(id, 1, 'closed');
+  await expect(inNow(page, id)).toHaveCount(0, { timeout: 10_000 });
+  expect(await hiddenInAPI(id)).toBe(true);
 });
 
 test('a merged thread with an approval waiting stays in Now while it waits', async ({

@@ -638,14 +638,18 @@ func TestStore_ThreadDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	prs, err := st.PRs(ctx, thread.ID)
+	if err != nil || len(prs) != 1 {
+		t.Fatalf("PRs = %+v, %v, want one", prs, err)
+	}
 	tests := []struct {
 		name      string
 		got, want any
 	}{
-		{"title", got.MRTitle, "Fix the wizard"},
+		{"title", prs[0].Title, "Fix the wizard"},
 		{"session", got.Session, "claude-session"},
 		{"session provider survives settings change", got.SessionProvider, "claude"},
-		{"state", got.MRState, "merged"},
+		{"state", prs[0].State, "merged"},
 		{"removed", got.WorktreeRemoved, true},
 		{"snapshot", got.SnapshotRef, "refs/atoll/unfinished/test"},
 		{"closed", got.Closed, true},
@@ -697,8 +701,79 @@ func TestStore_SetMR(t *testing.T) {
 	if len(got) != 1 || got[0].URL != second {
 		t.Errorf("OpenedMRsSince = %+v, want only %s", got, second)
 	}
-	set(first, "merged", "merged")
-	set(first, "opened", "merged")
+	set(first, "merged", "opened")
+	const third = "https://github.com/o/r/pull/3"
+	set(third, "merged", "merged")
+	set(third, "opened", "merged")
+}
+
+func TestStore_Watched_OpenedOnly(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	repo, err := st.CreateRepo(ctx, "r", "/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetWorktree(ctx, thread.ID, "fix/x", "/wt"); err != nil {
+		t.Fatal(err)
+	}
+	const merged, opened = "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2"
+	for url, state := range map[string]string{merged: "merged", opened: "opened"} {
+		if _, err := st.SetMR(ctx, thread.ID, url, state, "T"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	boss, err := st.CreateThread(ctx, bot.ID, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed, err := st.CreateThread(ctx, bot.ID, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const bossPR, closedPR = "https://github.com/o/r/pull/3", "https://github.com/o/r/pull/4"
+	for _, c := range []struct{ id, url string }{{boss.ID, bossPR}, {closed.ID, closedPR}} {
+		if _, err := st.SetMR(ctx, c.id, c.url, "opened", "T"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.SetClosed(ctx, closed.ID); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []struct {
+		watched []string
+		done    int
+	}{{[]string{opened, bossPR}, 0}, {[]string{bossPR}, 1}} {
+		if i == 1 {
+			if _, err := st.StoreMR(ctx, thread.ID, store.MRRead{URL: opened, Prev: "opened", State: "closed", Title: "T"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		watched, err := st.Watched(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		done, err := st.Done(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var urls []string
+		for _, w := range watched {
+			urls = append(urls, w.PR.URL)
+		}
+		if len(done) != want.done || !slices.Equal(urls, want.watched) {
+			t.Errorf("step %d: Watched %v, Done %d threads; want %v watched, %d done", i, urls, len(done), want.watched, want.done)
+		}
+	}
 }
 
 func wakeFixture(t *testing.T) (*store.Store, store.Thread, store.Bot) {

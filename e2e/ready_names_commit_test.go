@@ -84,7 +84,7 @@ func TestReadyNamesCommit_MergeIntoAnotherBranchIsQuiet(t *testing.T) {
 			if len(w) != 1 || w[0].Kind != "merged" || w[0].Text != want || w[0].FromBotID != "" {
 				t.Errorf("messages with a kind %+v, want one merged line from Reef: %q", w, want)
 			}
-			f.quiet(t, 2, "a merge into another branch", th, 1, 0)
+			f.quiet(t, 1, "a merge into another branch", th, 1, 0, 2)
 			if got := f.s.thread(t, th.ID); got.RunID != before {
 				t.Errorf("thread's latest run is %s, was %s: the merge line must start no run", got.RunID, before)
 			}
@@ -136,7 +136,7 @@ func TestReadyNamesCommit_StackedFixWaitsAsDraft(t *testing.T) {
 				t.Error("the stacked fix is still a draft after the Bot marked it ready")
 			}
 
-			f.quiet(t, 2, "the base wake already sent", fix, 1, 2)
+			f.quiet(t, 2, "the base wake already sent", fix, 1, 2, 1)
 		})
 	}
 }

@@ -204,7 +204,7 @@ type (
 
 	// Thread is a chat with one Bot. Session is the provider session its runs resume; empty
 	// until the first run starts one. SessionCostUSD is what that session has cost in total as its
-	// last run reported it. The repo, branch, worktree and MR fields are empty until set.
+	// last run reported it. The repo, branch and worktree fields are empty until set.
 	Thread struct {
 		ID              string     `json:"id"`
 		BotID           string     `json:"bot_id"`
@@ -218,14 +218,6 @@ type (
 		Worktree        string     `json:"worktree"`
 		CheckoutGitDir  string     `json:"-"`
 		WorktreeGitDir  string     `json:"-"`
-		MRURL           string     `json:"mr_url"`
-		MRState         string     `json:"mr_state"`
-		MRTitle         string     `json:"mr_title"`
-		MRCI            string     `json:"-"`
-		MRWoke          string     `json:"-"`
-		MRWake          bool       `json:"-"`
-		MRHead          string     `json:"-"`
-		MRBaseWoke      bool       `json:"-"`
 		WorktreeRemoved bool       `json:"worktree_removed"`
 		SnapshotRef     string     `json:"snapshot_ref"`
 		ClosedAt        *time.Time `json:"closed_at"`
@@ -290,15 +282,33 @@ type (
 		Images    []Attachment
 	}
 
-	// MRRead is what one poll of a thread's MR changes: the values to store, and the wake they
-	// report. Prev is the state the poll started from.
+	// PR is one pull request or MR a thread tracks, as the last poll read it.
+	PR struct {
+		ThreadID, Woke, Head, Body, Base string
+		Wake, BaseWoke, Draft            bool
+		URL                              string `json:"url"`
+		State                            string `json:"state"`
+		Title                            string `json:"title"`
+		CI                               string `json:"ci"`
+	}
+
+	// WatchedPR is a tracked PR with the thread that tracks it.
+	WatchedPR struct {
+		Thread Thread
+		PR     PR
+	}
+
+	// MRRead is what one poll of a PR changes: the values to store, and the wake they report.
+	// Prev is the state the poll started from.
 	MRRead struct {
-		URL, Prev, State, Title, CI, Woke, Head string
-		BaseWoke                                bool
+		URL, Prev, State, Title, CI, Woke, Head, Body, Base string
+		BaseWoke, Draft                                     bool
 		// Quiet stores the wake as a message in the thread, with no inbox row and no run.
 		Quiet bool
-		// DropCI deletes the thread's held ci wake: its commit is no longer the head or the MR is done.
+		// Label names the PR as its wakes do ("PR #7"). DropCI deletes that PR's held ci wake: its
+		// commit is no longer the head or the PR is done.
 		DropCI   bool
+		Label    string
 		WakeKind string
 		WakeText string
 		Notice   string
@@ -350,7 +360,7 @@ const (
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
 	_insertBot = "INSERT INTO bots (" + _botColumns + ", position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, " +
 		"(SELECT coalesce(max(position), 0) + 1 FROM bots))"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake, mr_head, mr_base_woke, session_cost_usd, pinned_at IS NOT NULL, holds_reports"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, closed, created, last_activity, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, session_cost_usd, pinned_at IS NOT NULL, holds_reports"
 	_messagePageSize = 50
 )
 
@@ -698,12 +708,12 @@ func (s *Store) ToldSince(ctx context.Context, since time.Time) ([]ThreadEvent, 
 		}, RoleBot, StatusRunning, StatusWaiting, since.UnixMicro())
 }
 
-// OpenedMRsSince lists the threads whose MR is open, became so after since and has not been
-// dismissed from the island since.
+// OpenedMRsSince lists the PRs that are open, became so after since and have not been dismissed
+// from the island since.
 func (s *Store) OpenedMRsSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
 	return query(ctx, s.db,
-		`SELECT id, mr_changed_at, mr_url, mr_title FROM threads
-		 WHERE mr_state = 'opened' AND mr_changed_at > ? AND mr_changed_at > island_dismissed_at`,
+		`SELECT p.thread_id, p.changed_at, p.url, p.title FROM thread_prs p JOIN threads t ON t.id = p.thread_id
+		 WHERE p.state = 'opened' AND p.changed_at > ? AND p.changed_at > t.island_dismissed_at`,
 		func(r *sql.Rows) (e ThreadEvent, err error) {
 			var at int64
 			err = r.Scan(&e.ThreadID, &at, &e.URL, &e.Title)
@@ -712,14 +722,15 @@ func (s *Store) OpenedMRsSince(ctx context.Context, since time.Time) ([]ThreadEv
 		}, since.UnixMicro())
 }
 
-// DismissMR hides the thread's MR from the island until the MR changes again.
-func (s *Store) DismissMR(ctx context.Context, threadID string) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE threads SET island_dismissed_at = ? WHERE id = ?",
-		time.Now().UTC().UnixMicro(), threadID)
+// DismissMR hides the PR at url from the island until the PR changes again.
+func (s *Store) DismissMR(ctx context.Context, url string) error {
+	res, err := s.db.ExecContext(ctx,
+		"UPDATE threads SET island_dismissed_at = ? WHERE id IN (SELECT thread_id FROM thread_prs WHERE url = ?)",
+		time.Now().UTC().UnixMicro(), url)
 	if err != nil {
 		return fmt.Errorf("dismiss mr: %w", err)
 	}
-	return found(res, "thread", threadID)
+	return found(res, "PR", url)
 }
 
 // CreateConnection stores a new pending connection of kind to instanceURL.
@@ -832,11 +843,65 @@ func (s *Store) HelperThreads(ctx context.Context, parentID string) ([]Thread, e
 		scanThread, parentID)
 }
 
-// Watched lists the threads with an MR and a worktree: the ones whose MR is polled.
-func (s *Store) Watched(ctx context.Context) ([]Thread, error) {
-	return query(ctx, s.db,
-		"SELECT "+_threadColumns+" FROM threads WHERE mr_url != '' AND worktree != '' ORDER BY rowid",
+// Watched lists the opened PRs of the open threads that have a repo: the ones that are polled, with
+// their thread. A merged or closed PR is final and is not read again; a waiting draft reads its
+// merged base itself.
+func (s *Store) Watched(ctx context.Context) ([]WatchedPR, error) {
+	threads, err := query(ctx, s.db,
+		"SELECT "+_threadColumns+" FROM threads WHERE closed = 0 AND repo_id != '' AND id IN (SELECT thread_id FROM thread_prs) ORDER BY rowid",
 		scanThread)
+	if err != nil {
+		return nil, err
+	}
+	prs, err := s.AllPRs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []WatchedPR
+	for _, t := range threads {
+		for _, pr := range prs[t.ID] {
+			if pr.State == "opened" {
+				out = append(out, WatchedPR{Thread: t, PR: pr})
+			}
+		}
+	}
+	return out, nil
+}
+
+// Done lists the threads with a worktree whose PRs are all merged or closed, at least one merged.
+func (s *Store) Done(ctx context.Context) ([]Thread, error) {
+	return query(ctx, s.db,
+		"SELECT "+_threadColumns+" FROM threads WHERE worktree != '' AND id IN (SELECT thread_id FROM thread_prs WHERE state = 'merged')"+
+			" AND id NOT IN (SELECT thread_id FROM thread_prs WHERE state = 'opened') ORDER BY rowid",
+		scanThread)
+}
+
+const _prColumns = "thread_id, url, state, title, ci, woke, wake, head, base_woke, draft, body, base"
+
+func scanPR(r *sql.Rows) (pr PR, err error) {
+	err = r.Scan(&pr.ThreadID, &pr.URL, &pr.State, &pr.Title, &pr.CI, &pr.Woke, &pr.Wake, &pr.Head,
+		&pr.BaseWoke, &pr.Draft, &pr.Body, &pr.Base)
+	return pr, err
+}
+
+// PRs lists the PRs the thread tracks, in the order tracked.
+func (s *Store) PRs(ctx context.Context, threadID string) ([]PR, error) {
+	return query(ctx, s.db,
+		"SELECT "+_prColumns+" FROM thread_prs WHERE thread_id = ? ORDER BY tracked_at, rowid", scanPR, threadID)
+}
+
+// AllPRs lists every thread's PRs, in the order tracked, by thread.
+func (s *Store) AllPRs(ctx context.Context) (map[string][]PR, error) {
+	prs, err := query(ctx, s.db,
+		"SELECT "+_prColumns+" FROM thread_prs ORDER BY tracked_at, rowid", scanPR)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]PR{}
+	for _, pr := range prs {
+		out[pr.ThreadID] = append(out[pr.ThreadID], pr)
+	}
+	return out, nil
 }
 
 // SetWorktree records the thread's branch and worktree; an empty worktree clears it.
@@ -867,20 +932,15 @@ func (s *Store) RemoveWorktree(ctx context.Context, threadID, ref string) error 
 	return found(res, "thread", threadID)
 }
 
-// SetMR records the thread's MR and, for a new URL, its state, and returns the state it holds. A
-// repeat call with the URL the thread has keeps the state and what the poll stored, so a re-track
-// after a merge never wakes twice.
+// SetMR adds the PR at url to the thread's, opened, and returns the state the row holds. A URL the
+// thread already tracks keeps its row as it is, so a re-track after a merge never wakes twice.
 func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) (string, error) {
 	var kept string
-	err := s.db.QueryRowContext(ctx, `UPDATE threads SET
-		mr_changed_at = CASE WHEN mr_url = ?1 THEN mr_changed_at ELSE ?5 END,
-		mr_state = CASE WHEN mr_url = ?1 THEN mr_state ELSE ?2 END,
-		mr_ci = CASE WHEN mr_url = ?1 THEN mr_ci ELSE '' END,
-		mr_woke = CASE WHEN mr_url = ?1 THEN mr_woke ELSE '' END,
-		mr_head = CASE WHEN mr_url = ?1 THEN mr_head ELSE '' END,
-		mr_base_woke = CASE WHEN mr_url = ?1 THEN mr_base_woke ELSE 0 END,
-		mr_url = ?1, mr_title = ?3, mr_wake = 1 WHERE id = ?4 RETURNING mr_state`,
-		url, state, title, threadID, time.Now().UTC().UnixMicro()).Scan(&kept)
+	now := time.Now().UTC().UnixMicro()
+	err := s.db.QueryRowContext(ctx, `INSERT INTO thread_prs (thread_id, url, state, title, wake, changed_at, tracked_at)
+		SELECT id, ?2, ?3, ?4, 1, ?5, ?5 FROM threads WHERE id = ?1
+		ON CONFLICT (thread_id, url) DO UPDATE SET url = url RETURNING state`,
+		threadID, url, state, title, now).Scan(&kept)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("thread %s: %w", threadID, ErrNotFound)
 	}
@@ -892,14 +952,16 @@ func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) (
 
 // StoreMR stores what a poll read and, with it, the wake it reports, in one transaction: a restart
 // cannot repeat the wake or lose it. It reports false and stores nothing when the thread is
-// closed, tracks another MR or no longer has the state the poll started from.
+// closed, does not track the PR or no longer has the state the poll started from.
 func (s *Store) StoreMR(ctx context.Context, threadID string, r MRRead) (bool, error) {
 	stored := false
 	err := s.tx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE threads SET mr_state = ?, mr_title = ?, mr_ci = ?, mr_woke = ?, mr_head = ?, mr_base_woke = ?, mr_wake = 1,
-			mr_changed_at = CASE WHEN mr_state = ? THEN mr_changed_at ELSE ? END
-			WHERE id = ? AND mr_url = ? AND mr_state = ? AND closed = 0`,
-			r.State, r.Title, r.CI, r.Woke, r.Head, r.BaseWoke, r.State, time.Now().UTC().UnixMicro(), threadID, r.URL, r.Prev)
+		res, err := tx.ExecContext(ctx, `UPDATE thread_prs SET state = ?, title = ?, ci = ?, woke = ?, head = ?, base_woke = ?,
+			draft = ?, body = ?, base = ?, wake = 1,
+			changed_at = CASE WHEN state = ? THEN changed_at ELSE ? END
+			WHERE thread_id = ? AND url = ? AND state = ? AND thread_id IN (SELECT id FROM threads WHERE closed = 0)`,
+			r.State, r.Title, r.CI, r.Woke, r.Head, r.BaseWoke, r.Draft, r.Body, r.Base, r.State, time.Now().UTC().UnixMicro(),
+			threadID, r.URL, r.Prev)
 		if err != nil {
 			return fmt.Errorf("store MR: %w", err)
 		}
@@ -908,7 +970,8 @@ func (s *Store) StoreMR(ctx context.Context, threadID string, r MRRead) (bool, e
 		}
 		stored = true
 		if r.DropCI || r.WakeKind == "ci" {
-			if _, err := tx.ExecContext(ctx, "DELETE FROM inbox WHERE thread_id = ? AND kind = 'ci'", threadID); err != nil {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM inbox WHERE thread_id = ? AND kind = 'ci' AND text LIKE ?",
+				threadID, "CI finished on "+r.Label+":%"); err != nil {
 				return fmt.Errorf("drop held ci wake: %w", err)
 			}
 		}
@@ -975,7 +1038,7 @@ type ThreadRun struct {
 	ParentThreadID string
 	Title          string
 	Branch         string
-	MRURL          string
+	PRs            []PR
 	Closed         bool
 	Pinned         bool
 	LastActivity   time.Time
@@ -1033,24 +1096,32 @@ func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
 func (s *Store) threadRuns(ctx context.Context, with, where string, args ...any) ([]ThreadRun, error) {
 	return query(ctx, s.db,
 		`WITH `+with+`
-		 SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.branch, t.mr_url, t.closed, t.pinned_at IS NOT NULL,
+		 SELECT t.bot_id, t.id, t.parent_thread_id, t.title, t.branch, t.closed, t.pinned_at IS NOT NULL,
 		        t.last_activity,
 		        t.last_heard > t.last_opened_at AND t.last_heard > t.created
 		          AND coalesce(p.status, '') NOT IN ('running', 'waiting'),
 		        t.last_failed > t.last_opened_at, t.limited_until,
-		        CASE WHEN t.mr_state = 'merged' AND t.closed = 0 AND t.parent_thread_id = ''
-		          THEN t.mr_changed_at > coalesce((SELECT max(m.created) FROM messages m
+		        CASE WHEN t.closed = 0 AND t.parent_thread_id = ''
+		          AND EXISTS (SELECT 1 FROM thread_prs pr WHERE pr.thread_id = t.id AND pr.state = 'merged')
+		          AND NOT EXISTS (SELECT 1 FROM thread_prs pr WHERE pr.thread_id = t.id AND pr.state = 'opened')
+		          THEN (SELECT max(pr.changed_at) FROM thread_prs pr WHERE pr.thread_id = t.id AND pr.state = 'merged') > coalesce((SELECT max(m.created) FROM messages m
 		            WHERE m.thread_id = t.id AND m.role = 'user' AND m.from_bot_id = '' AND m.kind = ''), 0)
 		          ELSE 0 END,
-		        coalesce(p.status, ''), coalesce(p.reply, '')
+		        coalesce(p.status, ''), coalesce(p.reply, ''),
+		        (SELECT json_group_array(json_object('url', url, 'state', state, 'title', title, 'ci', ci))
+		         FROM (SELECT * FROM thread_prs WHERE thread_id = t.id ORDER BY tracked_at, rowid))
 		 FROM threads t
 		 LEFT JOIN polled p ON p.thread_id = t.id
 		 WHERE `+where+`
 		 ORDER BY t.last_activity DESC, t.rowid DESC`,
 		func(r *sql.Rows) (tr ThreadRun, err error) {
 			var active, limited int64
-			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &tr.Title, &tr.Branch, &tr.MRURL, &tr.Closed,
-				&tr.Pinned, &active, &tr.Unseen, &tr.Failed, &limited, &tr.Merged, &tr.Status, &tr.Reply)
+			var prs string
+			err = r.Scan(&tr.BotID, &tr.ThreadID, &tr.ParentThreadID, &tr.Title, &tr.Branch, &tr.Closed,
+				&tr.Pinned, &active, &tr.Unseen, &tr.Failed, &limited, &tr.Merged, &tr.Status, &tr.Reply, &prs)
+			if err == nil {
+				err = json.Unmarshal([]byte(prs), &tr.PRs)
+			}
 			tr.LastActivity = time.UnixMicro(active).UTC()
 			if limited != 0 {
 				tr.LimitedUntil = time.UnixMicro(limited).UTC()
@@ -2021,19 +2092,17 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	var t Thread
 	var closed int
 	var created, lastActivity int64
-	var removed, wake, baseWoke int
+	var removed int
 	var closedAt sql.NullInt64
-	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
-		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
-		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir, &t.MRCI, &t.MRWoke, &wake, &t.MRHead, &baseWoke,
+	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree,
+		&closed, &created, &lastActivity, &removed, &closedAt, &t.SnapshotRef,
+		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir,
 		&t.SessionCostUSD, &t.Pinned, &t.HoldsReports)
 	if err != nil {
 		return Thread{}, err
 	}
 	t.Closed = closed != 0
 	t.WorktreeRemoved = removed != 0
-	t.MRWake = wake != 0
-	t.MRBaseWoke = baseWoke != 0
 	if closedAt.Valid {
 		when := time.UnixMicro(closedAt.Int64).UTC()
 		t.ClosedAt = &when

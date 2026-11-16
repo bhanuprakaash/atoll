@@ -54,7 +54,7 @@ export function usePaneWidth() {
 }
 
 function matchesQuery(t: SidebarThread, words: string[]) {
-  const text = [t.title, t.branch, mrRef(t.mr_url)].join(' ').toLowerCase();
+  const text = [t.title, t.branch, ...t.prs.map((p) => mrRef(p.url))].join(' ').toLowerCase();
   return words.every((w) => text.includes(w));
 }
 

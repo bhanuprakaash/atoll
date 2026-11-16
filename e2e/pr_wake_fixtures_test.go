@@ -375,12 +375,9 @@ func (f *prWakeFixture) openPR(t *testing.T, n int) thread {
 		t.Fatalf("the fake GitHub has %d pull requests, want %d", got, n)
 	}
 	f.s.do(t, "POST", "/api/threads/"+th.ID+"/opened", nil, nil, http.StatusNoContent)
-	var got struct {
-		MRURL string `json:"mr_url"`
-	}
-	f.s.do(t, "GET", "/api/threads/"+th.ID, nil, &got, 200)
-	if want := fmt.Sprintf("%s/octo/hello/pull/%d", f.gh.URL, n); got.MRURL != want {
-		t.Fatalf("thread %s tracks %q, want %q", th.ID, got.MRURL, want)
+	want := fmt.Sprintf("%s/octo/hello/pull/%d", f.gh.URL, n)
+	if got := threadPRs(t, f.s, th.ID); len(got) != 1 || got[0].URL != want {
+		t.Fatalf("thread %s tracks %+v, want only %q", th.ID, got, want)
 	}
 	return th
 }
@@ -437,12 +434,30 @@ func (f *prWakeFixture) waitWake(t *testing.T, th thread, n int) wakeMessage {
 // quiet fails when the Bot is woken in any thread by the time the server has read pull request pr
 // three more times, so at least two whole reads (CI wakes on the second equal one) came after the
 // change: a wake message in th, or a `Reef: ` prompt that the provider got beyond the first want.
-func (f *prWakeFixture) quiet(t *testing.T, pr int, what string, th thread, wantWakes, wantPrompts int) {
+// pr is a pull request still open: reading it proves the watcher is alive. Each pull request in
+// done is merged or closed and its wake is stored: the server must not read it again once the
+// watcher has polled pr twice more (a read in flight has landed), across three further reads of pr.
+func (f *prWakeFixture) quiet(t *testing.T, pr int, what string, th thread, wantWakes, wantPrompts int, done ...int) {
 	t.Helper()
 	reads := f.gh.pullReads(pr)
+	settled := map[int]int{}
+	if len(done) > 0 {
+		eventually(t, 30*time.Second, fmt.Sprintf("%s: the server reads open pull request %d twice", what, pr), func() bool {
+			return f.gh.pullReads(pr) >= reads+2
+		})
+		for _, d := range done {
+			settled[d] = f.gh.pullReads(d)
+		}
+		reads = f.gh.pullReads(pr)
+	}
 	eventually(t, 30*time.Second, fmt.Sprintf("%s: the server reads pull request %d again", what, pr), func() bool {
 		return f.gh.pullReads(pr) >= reads+3
 	})
+	for _, d := range done {
+		if got := f.gh.pullReads(d); got != settled[d] {
+			t.Errorf("%s: the server read done pull request %d %d more times while it read pull request %d three times, want none", what, d, got-settled[d], pr)
+		}
+	}
 	if w := f.wakes(t, th); len(w) != wantWakes {
 		t.Errorf("%s: thread %s got wake messages %+v, want %d", what, th.ID, w, wantWakes)
 	}

@@ -366,9 +366,29 @@ type threadSummary struct {
 	Step        string          `json:"step"`
 	ParentBotID string          `json:"parent_bot_id"`
 	Helpers     []threadSummary `json:"helpers"`
-	MRCI        json.RawMessage `json:"mr_ci"`
+	PRs         []prSummary     `json:"prs"`
 	// ReportsWaiting counts the helper notices a Stop on the thread holds.
 	ReportsWaiting int `json:"reports_waiting"`
+}
+
+// prSummary is a tracked PR as the API lists it; ci is the last read, null before one.
+type prSummary struct {
+	URL   string          `json:"url"`
+	State string          `json:"state"`
+	Title string          `json:"title"`
+	CI    json.RawMessage `json:"ci"`
+}
+
+func prSummaries(prs []store.PR) []prSummary {
+	out := make([]prSummary, 0, len(prs))
+	for _, p := range prs {
+		s := prSummary{URL: p.URL, State: p.State, Title: p.Title}
+		if p.CI != "" {
+			s.CI = json.RawMessage(p.CI)
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, error) {
@@ -377,9 +397,11 @@ func (a *api) threadSummary(r *http.Request, t store.Thread) (threadSummary, err
 		return threadSummary{}, err
 	}
 	out := threadSummary{Thread: t, UpdatedAt: t.LastActivity}
-	if t.MRCI != "" {
-		out.MRCI = json.RawMessage(t.MRCI)
+	prs, err := a.st.PRs(r.Context(), t.ID)
+	if err != nil {
+		return out, err
 	}
+	out.PRs = prSummaries(prs)
 	if t.ParentThreadID != "" {
 		boss, err := a.st.Thread(r.Context(), t.ParentThreadID)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {

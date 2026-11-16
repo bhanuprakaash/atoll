@@ -308,18 +308,24 @@ func TestRun_TrackMR(t *testing.T) {
 			if (err == nil) != (tt.wantErr == "") || err != nil && !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("TrackMR(%q) = %v, want error containing %q", tt.give, err, tt.wantErr)
 			}
-			th, terr := e.st.Thread(t.Context(), e.thread.ID)
-			if terr != nil {
-				t.Fatal(terr)
+			prs, perr := e.st.PRs(t.Context(), e.thread.ID)
+			if perr != nil {
+				t.Fatal(perr)
 			}
-			if (th.MRURL == tt.give) != (tt.wantErr == "") {
-				t.Errorf("stored MR URL %q for %q", th.MRURL, tt.give)
+			var got store.PR
+			for _, p := range prs {
+				if p.URL == tt.give {
+					got = p
+				}
+			}
+			if (got.URL == tt.give) != (tt.wantErr == "") {
+				t.Errorf("stored MRs %+v for %q", prs, tt.give)
 			}
 			if tt.wantErr != "" {
 				return
 			}
-			if th.MRState != tt.wantState {
-				t.Errorf("stored MR state %q, want %q", th.MRState, tt.wantState)
+			if got.State != tt.wantState {
+				t.Errorf("stored MR state %q, want %q", got.State, tt.wantState)
 			}
 			for {
 				select {

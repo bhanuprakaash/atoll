@@ -13,6 +13,10 @@ export type GitHubFake = {
   url: string;
   // merge turns pull request n merged, as GitHub does when the person merges it.
   merge: (n: number) => void;
+  // close closes pull request n unmerged.
+  closePull: (n: number) => void;
+  // open adds a pull request no Bot opened and returns its number.
+  open: (title: string) => number;
   setCI: (n: number, state: 'running' | 'passed' | 'failed') => void;
   // reads is how many times the server asked about pull request n.
   reads: (n: number) => number;
@@ -107,6 +111,11 @@ export async function startGitHub(): Promise<GitHubFake> {
   url = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
   return {
     url,
+    open: (title) => pulls.push({ title, state: 'open', merged: false }),
+    closePull: (n) => {
+      pulls[n - 1].state = 'closed';
+      pulls[n - 1].merged = false;
+    },
     merge: (n) => {
       pulls[n - 1].state = 'closed';
       pulls[n - 1].merged = true;
@@ -170,4 +179,31 @@ export async function pollConnected(m: Machine, id: string) {
       intervals: [1_100],
     })
     .toBe('connected');
+}
+
+// trackPR has the thread's Bot call track_mr with a pull request the fake already holds, in a
+// follow-up message (a thread with a session plays the mcp-use recording), and waits until the
+// thread's prs lists it.
+export async function trackPR(
+  m: Machine,
+  threadID: string,
+  github: GitHubFake,
+  n: number,
+  title: string,
+) {
+  const url = `${github.url}/octo/hello/pull/${n}`;
+  await api(m, 'POST', `/api/threads/${threadID}/messages`, {
+    text: `Use MCP tools. [{"server":"atoll","tool":"track_mr","args":{"url":"${url}","title":"${title}"}}]`,
+  });
+  await expect
+    .poll(
+      async () =>
+        (
+          (await api(m, 'GET', `/api/threads/${threadID}`)).prs as {
+            url: string;
+          }[]
+        ).map((p) => p.url),
+      { timeout: 30_000 },
+    )
+    .toContain(url);
 }

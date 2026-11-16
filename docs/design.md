@@ -673,8 +673,9 @@ Follow-ups:
   MR shows `!<iid>`.
 - One watcher runs inside the server and resumes after a restart. Every minute
   (`ATOLL_REPO_POLL_INTERVAL`, a Go duration, the poll interval below) it reads every `opened` PR
-  or MR of the threads with a worktree (`Store.Watched` lists PRs, not threads; closing a thread
-  removes its worktree, so a closed thread is never read): the state (`opened`, `merged`, `closed`; GitLab's `locked` counts as
+  or MR of the threads that are not closed (`Store.Watched` lists PRs, not threads; a thread
+  with no worktree of its own, such as a boss that tracked a helper's PR, is read too; a thread with
+  no repo is skipped, a closed thread is never read): the state (`opened`, `merged`, `closed`; GitLab's `locked` counts as
   `opened`), the title and, on GitHub, the CI summary (calls: Fixtures). A merged or closed PR is not read again, except as the base a waiting
   draft names (stacked fix). Waits after a failed read are per PR; pauses stay per connection.
 - A GitLab MR is read with `glab mr view` and the Bot's GitLab environment. A GitHub PR is read
@@ -776,7 +777,7 @@ Follow-ups:
 - Where PRs show: the thread panel's Pull requests lists every tracked PR, open ones first, then
   merged and closed, each group newest first. The thread pane's search matches any tracked
   reference. The switcher and a closed thread's line show the newest open PR, else the newest. The
-  island's `opened` row and its dismiss are per PR.
+  island's `opened` row is per PR; its dismiss is per thread for now (#529 makes it per PR).
 - API: a thread summary carries `prs` (`[{url, state, title, ci}]`) in place of `mr_url`,
   `mr_state`, `mr_title` and `mr_ci`; `mr_updated` carries the `url` it is about.
 - Known gap: GitLab. An MR wakes nothing (merged, closed or CI) and its CI is not read: the poll
@@ -1853,7 +1854,7 @@ Voice
     both; a run the user stopped is only in Earlier) without a second red thing.
   - Each row has a dismiss (×) button, shown on hover and keyboard focus,
     `POST /api/island/dismiss`: a run row marks its thread read (`last_opened_at`), an MR row sets
-    its PR's dismissed time and stays hidden while that PR's `changed_at` is not newer, and a
+    its thread's dismissed time (per PR once #529 lands) and stays hidden while the PR's `changed_at` is not newer, and a
     platform change row sets `changes.dismissed_at`.
   *The island said "Nothing new" next to 60 New threads after every launch (they were labelled New
   then).*
@@ -2018,8 +2019,8 @@ Voice
     Copy); the branch in mono (cut at the end, full on hover, Copy). A thread with a repo but no
     worktree shows the repo and `No branch yet`; a thread with no repo shows `No repo`.
   - Pull requests: a list, one row per PR or MR: the state dot, the reference (`#92`, `!7`), its
-    title, and while open its CI as a word (`running` muted, `passed` green, `failed` red). Until
-    #421 a thread holds one, so the list has one row. A row opens the PR.
+    title, and while open its CI as a word (`running` muted, `passed` green, `failed` red). A row opens
+    the PR.
   - Helpers: every helper task this thread delegated, running ones first, then a `Done` group, each
     newest first. A row is two lines: the creature; the Bot name, the task (the helper thread's
     title) and the time (`42s`, `3m`, `1h 5m`); under them, while its run goes, the step (the step

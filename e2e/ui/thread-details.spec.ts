@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, prompts, startAtoll, waitStatus } from './atoll';
-import { githubEnv, type GitHubFake, seedRepo, startGitHub } from './github-fixture';
+import { githubEnv, type GitHubFake, seedRepo, startGitHub, trackPR } from './github-fixture';
 import { box, composerArea, details, openDetails } from './helpers-fixture';
 
 let m: Machine;
@@ -112,7 +112,9 @@ test('Pull requests is a list with the tracked reference, title, state dot and o
   page,
 }) => {
   const t = await thread('Fix the seeded bug and open a PR.');
-  expect(t.mr_url).toBe(`${github.url}/octo/hello/pull/1`);
+  const pr = t.prs[0];
+  expect(t.prs).toHaveLength(1);
+  expect(pr.url).toBe(`${github.url}/octo/hello/pull/1`);
   await page.goto(`${m.url}/bots/${bot.id}/threads/${t.id}`);
   await expect(composerArea(page).getByRole('link', { name: /#1/ })).toHaveCount(0);
   github.setCI(1, 'running');
@@ -120,11 +122,11 @@ test('Pull requests is a list with the tracked reference, title, state dot and o
   await expect(panel.getByText('Pull requests', { exact: true })).toBeVisible();
   const row = panel.getByRole('listitem').filter({ hasText: '#1' });
   await expect(row).toHaveCount(1);
-  await expect(row).toContainText(t.mr_title);
+  await expect(row).toContainText(pr.title);
   await expect(row.getByText('running', { exact: true })).toBeVisible();
-  const pr = row.getByRole('link', { name: /#1/ });
-  await expect(pr).toHaveAttribute('href', t.mr_url);
-  const dot = pr.locator('[aria-hidden="true"]').first();
+  const link = row.getByRole('link', { name: /#1/ });
+  await expect(link).toHaveAttribute('href', pr.url);
+  const dot = link.locator('[aria-hidden="true"]').first();
   await expect(dot).toBeVisible();
   const size = await box(dot);
   expect(size.width).toBeGreaterThan(0);
@@ -132,10 +134,10 @@ test('Pull requests is a list with the tracked reference, title, state dot and o
   github.setCI(1, 'failed');
   await expect(row.getByText('failed', { exact: true })).toBeVisible();
   const popup = page.waitForEvent('popup');
-  await pr.click();
+  await link.click();
   const opened = await popup;
   try {
-    await expect(opened).toHaveURL(t.mr_url);
+    await expect(opened).toHaveURL(pr.url);
   } finally {
     await opened.close();
   }
@@ -145,6 +147,48 @@ test('Pull requests is a list with the tracked reference, title, state dot and o
   await expect
     .poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor))
     .not.toBe(color);
+});
+
+test('Pull requests lists every tracked PR: open ones first, then merged and closed, each group newest first', async ({
+  page,
+}) => {
+  const t = await thread('Fix the seeded bug and open a PR.');
+  // PR 1 is the Bot's own; 2 to 5 are tracked one after the other.
+  for (const n of [2, 3, 4, 5]) {
+    github.open(`change ${n}`);
+    await trackPR(m, t.id, github, n, `change ${n}`);
+  }
+  const states = async () =>
+    Object.fromEntries(
+      (
+        (await api(m, 'GET', `/api/threads/${t.id}`)).prs as {
+          url: string;
+          state: string;
+        }[]
+      ).map((p) => [p.url.split('/').pop(), p.state]),
+    );
+  // Done in the order tracked, one read apart, so newest first is the same by track and by change.
+  github.merge(2);
+  await expect.poll(states, { timeout: 30_000 }).toMatchObject({ 2: 'merged' });
+  github.closePull(4);
+  await expect.poll(states, { timeout: 30_000 }).toMatchObject({ 4: 'closed' });
+  expect(await states()).toMatchObject({
+    1: 'opened',
+    3: 'opened',
+    5: 'opened',
+  });
+
+  await page.goto(`${m.url}/bots/${bot.id}/threads/${t.id}`);
+  const panel = await openDetails(page);
+  const rows = panel.getByRole('listitem').filter({ hasText: /#\d/ });
+  await expect(rows).toHaveCount(5);
+  const order = (await rows.allTextContents()).map((x) => /#(\d+)/.exec(x)?.[1]);
+  expect(order).toEqual(['5', '3', '1', '4', '2']);
+  for (const n of [1, 2, 3, 4, 5])
+    await expect(panel.getByRole('link', { name: new RegExp(`#${n}\\b`) })).toHaveAttribute(
+      'href',
+      `${github.url}/octo/hello/pull/${n}`,
+    );
 });
 
 test('at 420px Thread details fits the thread column minus 32px without sideways page scrolling', async ({

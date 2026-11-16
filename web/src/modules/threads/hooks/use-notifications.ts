@@ -106,7 +106,7 @@ export function useNotifications(): Notifications {
                 {
                   ...n,
                   id,
-                  target: n.thread_id,
+                  target: n.data.url,
                   text: mrText(n, n.data.url),
                   detail: n.data.title,
                 },
@@ -145,7 +145,7 @@ export function useNotifications(): Notifications {
         add(
           notice,
           'mr_updated',
-          notice.thread_id,
+          notice.data.url,
           mrText(notice, notice.data.url),
           notice.data.title,
         );

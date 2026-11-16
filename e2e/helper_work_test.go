@@ -276,13 +276,8 @@ func TestHelperWork_NoBossBranch(t *testing.T) {
 			if got := gitIn(t, f.repo.Path, "--git-dir", f.origin, "show", "refs/heads/fix/seeded-bug:answer.txt"); got != "42" {
 				t.Errorf("origin's fix/seeded-bug answer.txt %q, want the pushed 42", got)
 			}
-			var mr struct {
-				MRURL   string `json:"mr_url"`
-				MRState string `json:"mr_state"`
-			}
-			s.do(t, "GET", "/api/threads/"+h.ThreadID, nil, &mr, http.StatusOK)
-			if mr.MRURL != fake.MRURL || mr.MRState != "opened" {
-				t.Errorf("helper thread MR %+v, want %s opened", mr, fake.MRURL)
+			if mr := threadPRs(t, s, h.ThreadID); len(mr) != 1 || mr[0].URL != fake.MRURL || mr[0].State != "opened" {
+				t.Errorf("helper thread MR %+v, want only %s opened", mr, fake.MRURL)
 			}
 
 			chief := s.newThread(t, poteto)

@@ -1,6 +1,8 @@
 package e2e
 
 import (
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +22,7 @@ func TestPRWake_MergedWakesTheBot(t *testing.T) {
 			f.wantWake(t, th, w, "merged", "PR #1 merged")
 			f.wantQuietRun(t, th, first)
 			if got := f.mrState(t, th); got != "merged" {
-				t.Errorf("thread mr_state %q after the merge, want merged", got)
+				t.Errorf("thread PR state %q after the merge, want merged", got)
 			}
 		})
 	}
@@ -64,7 +66,7 @@ func TestPRWake_ClosedUnmergedWakesTheBot(t *testing.T) {
 			f.wantWake(t, th, w, "closed", "PR #1 closed")
 			f.wantQuietRun(t, th, first)
 			if got := f.mrState(t, th); got != "closed" {
-				t.Errorf("thread mr_state %q after closing unmerged, want closed", got)
+				t.Errorf("thread PR state %q after closing unmerged, want closed", got)
 			}
 		})
 	}
@@ -97,7 +99,7 @@ func TestPRWake_CIFinishedWakesOnce(t *testing.T) {
 			}
 			f.wantGuardReply(t, th, "CI noted.", first)
 			if got := f.mrState(t, th); got != "opened" {
-				t.Errorf("thread mr_state %q after CI finished, want opened", got)
+				t.Errorf("thread PR state %q after CI finished, want opened", got)
 			}
 
 			f.quiet(t, 1, "CI already reported", th, 1, 1)
@@ -137,13 +139,15 @@ func TestPRWake_CINamesAreCleanedAndCut(t *testing.T) {
 }
 
 // A closed thread is not woken. A second, open thread with its own pull request is merged in the
-// same moment, so a Bot that never watches cannot pass for one that stays quiet.
+// same moment, so a Bot that never watches cannot pass for one that stays quiet. A third thread's
+// pull request stays open: the watcher reads it while neither merged pull request is read again.
 func TestPRWake_ClosedThreadIsNotWoken(t *testing.T) {
 	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			closed := f.openPR(t, 1)
 			open := f.openPR(t, 2)
+			f.openPR(t, 3)
 			f.s.do(t, "POST", "/api/threads/"+closed.ID+"/close", nil, nil, 204)
 
 			f.gh.setPull(1, "closed", true)
@@ -153,7 +157,7 @@ func TestPRWake_ClosedThreadIsNotWoken(t *testing.T) {
 				t.Fatalf("open thread's wake: %+v, want merged PR #2", w)
 			}
 
-			f.quiet(t, 2, "closed thread", closed, 0, 1)
+			f.quiet(t, 3, "closed thread", closed, 0, 1, 1, 2)
 			if got := f.reefPrompts(t); len(got) != 1 || !strings.Contains(got[0], "PR #2 merged") {
 				t.Errorf("Reef prompts %q, want one, for PR #2", got)
 			}
@@ -161,26 +165,29 @@ func TestPRWake_ClosedThreadIsNotWoken(t *testing.T) {
 	}
 }
 
-// One event is one wake: not on the next read of the same state, not when the pull request changes
-// without a new event, and not after a restart. Each wake is one run.
+// One event is one wake: a merged pull request is not read again, so not on the next read of the same
+// state, not when it changes without a new event, and not after a restart. A second thread's pull
+// request stays open: the watcher reads it, before and after the restart, while #1 is not read.
+// Each wake is one run.
 func TestPRWake_OneWakePerEvent(t *testing.T) {
 	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			th := f.openPR(t, 1)
+			f.openPR(t, 2)
 
 			f.gh.setPull(1, "closed", true)
 			f.waitWake(t, th, 1)
 			f.gh.setTitle(1, "fix: renamed after the merge")
-			f.quiet(t, 1, "the same event read again", th, 1, 1)
+			f.quiet(t, 2, "the same event read again", th, 1, 1, 1)
 
 			f.s.kill()
 			f.m.killFakes()
 			f.s = f.m.serve(t)
-			f.quiet(t, 1, "after a restart", th, 1, 1)
+			f.quiet(t, 2, "after a restart", th, 1, 1, 1)
 
-			if got := len(f.m.sessions(t, p)); got != 2 {
-				t.Errorf("%s ran %d times, want 2: the run that opened the pull request and one for the wake", p, got)
+			if got := len(f.m.sessions(t, p)); got != 3 {
+				t.Errorf("%s ran %d times, want 3: the runs that opened the two pull requests and one for the wake", p, got)
 			}
 		})
 	}
@@ -260,9 +267,98 @@ func (f *prWakeFixture) wantGuardReply(t *testing.T, th thread, reply, firstRun 
 
 func (f *prWakeFixture) mrState(t *testing.T, th thread) string {
 	t.Helper()
-	var got struct {
-		MRState string `json:"mr_state"`
+	got := threadPRs(t, f.s, th.ID)
+	if len(got) != 1 {
+		t.Fatalf("thread %s tracks %+v, want one pull request", th.ID, got)
 	}
-	f.s.do(t, "GET", "/api/threads/"+th.ID, nil, &got, 200)
-	return got.MRState
+	return got[0].State
+}
+
+// trackWithoutWorktree starts a thread whose Bot opens a pull request from a commit it pushed without
+// start_work, as a boss pushes from a helper's worktree, and tracks it: the thread has no worktree of
+// its own. It returns the thread; n is the pull request's number.
+func (f *prWakeFixture) trackWithoutWorktree(t *testing.T, n int) thread {
+	t.Helper()
+	th := f.thread(t, f.boss, f.repo)
+	ch := f.s.events(t, th)
+	r := f.s.send(t, th, "Track a pull request without a worktree")
+	until(t, ch, r.ID, "run_finished")
+	if done := f.s.run(t, r.ID); done.Status != "done" {
+		t.Fatalf("run that tracks the pull request: %+v", done)
+	}
+	for line := range strings.Lines(gitIn(t, f.repo.Path, "worktree", "list", "--porcelain")) {
+		if b, ok := strings.CutPrefix(strings.TrimSpace(line), "branch "); ok && b != "refs/heads/main" {
+			t.Fatalf("the repo has a worktree on %s: the Bot must not have called start_work", b)
+		}
+	}
+	f.s.do(t, "POST", "/api/threads/"+th.ID+"/opened", nil, nil, http.StatusNoContent)
+	want := fmt.Sprintf("%s/octo/hello/pull/%d", f.gh.URL, n)
+	if got := threadPRs(t, f.s, th.ID); len(got) != 1 || got[0].URL != want || got[0].State != "opened" {
+		t.Fatalf("thread %s tracks %+v, want only %q, opened", th.ID, got, want)
+	}
+	return th
+}
+
+// A pull request tracked by a thread with no worktree of its own is read like any other: CI finishing
+// wakes the Bot with the checks of the head commit, and the merge wakes it again, and the thread's
+// pull request follows both.
+func TestPRWake_ThreadWithoutWorktreeIsRead(t *testing.T) {
+	for _, p := range _oneProvider {
+		t.Run(p, func(t *testing.T) {
+			f := newPRWakeFixture(t, p)
+			th := f.trackWithoutWorktree(t, 1)
+			eventually(t, 30*time.Second, "the server reads the pull request of a thread with no worktree", func() bool {
+				return f.gh.pullReads(1) > 0
+			})
+
+			f.gh.setChecks(headSHA(1), []fakeCheck{{"build", "completed", "success"}, {"unit", "completed", "failure"}}, nil)
+			w := f.waitWake(t, th, 1)
+			if want := `CI finished on PR #1: 1 passed, 1 failed ("unit")`; w.Kind != "ci" || w.Text != want {
+				t.Errorf("wake %+v, want kind ci, text %q", w, want)
+			}
+			got := threadPRs(t, f.s, th.ID)
+			if len(got) != 1 || got[0].State != "opened" || !strings.Contains(string(got[0].CI), `"names":["unit"]`) {
+				t.Errorf("thread PRs %+v after CI finished, want one opened with ci naming unit", got)
+			}
+
+			f.gh.setPull(1, "closed", true)
+			w = f.waitWake(t, th, 2)
+			if want := "PR #1 merged into main at " + headSHA(1)[:7]; w.Kind != "merged" || w.Text != want {
+				t.Errorf("wake %+v, want kind merged, text %q", w, want)
+			}
+			if got := f.mrState(t, th); got != "merged" {
+				t.Errorf("thread PR state %q after the merge, want merged", got)
+			}
+		})
+	}
+}
+
+// A closed thread with no worktree is never read, though its pull request is tracked and opened: the
+// filter is on closed, not on worktree. A second thread with no worktree, still open, has its pull
+// request read and merged, so a watcher that reads none of them cannot pass for one that skips the
+// closed thread.
+func TestPRWake_ClosedThreadWithoutWorktreeIsNotRead(t *testing.T) {
+	for _, p := range _oneProvider {
+		t.Run(p, func(t *testing.T) {
+			f := newPRWakeFixture(t, p)
+			closed := f.trackWithoutWorktree(t, 1)
+			open := f.trackWithoutWorktree(t, 2)
+			f.s.do(t, "POST", "/api/threads/"+closed.ID+"/close", nil, nil, 204)
+
+			f.gh.setPull(1, "closed", true)
+			f.quiet(t, 2, "closed thread with no worktree", closed, 0, 0, 1)
+
+			f.gh.setPull(2, "closed", true)
+			w := f.waitWake(t, open, 1)
+			if w.Kind != "merged" || !strings.Contains(w.Text, "PR #2 merged") {
+				t.Fatalf("open thread's wake: %+v, want merged PR #2", w)
+			}
+			if got := f.wakes(t, closed); len(got) != 0 {
+				t.Errorf("closed thread got wake messages %+v, want none", got)
+			}
+			if got := f.reefPrompts(t); len(got) != 1 || !strings.Contains(got[0], "PR #2 merged") {
+				t.Errorf("Reef prompts %q, want one, for PR #2", got)
+			}
+		})
+	}
 }

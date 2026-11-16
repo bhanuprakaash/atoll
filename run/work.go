@@ -169,7 +169,7 @@ func (m *Manager) StartWork(
 	return path, branch, base, nil
 }
 
-// TrackMR records url as the MR of the thread of the run with token, opened.
+// TrackMR adds url to the MRs of the thread of the run with token, opened.
 func (m *Manager) TrackMR(ctx context.Context, token, url, title string) error {
 	a, err := m.byToken(token)
 	if err != nil {
@@ -826,7 +826,7 @@ func (m *Manager) watch() {
 	defer m.wg.Done()
 	tick := time.NewTicker(m.cfg.PollInterval)
 	defer tick.Stop()
-	w := &watcher{threads: map[string]*watched{}, issues: map[string]*watchedIssue{}, paused: map[string]time.Time{}}
+	w := &watcher{prs: map[string]*watched{}, issues: map[string]*watchedIssue{}, paused: map[string]time.Time{}}
 	for {
 		m.poll(w)
 		select {
@@ -838,29 +838,30 @@ func (m *Manager) watch() {
 }
 
 func (m *Manager) poll(w *watcher) {
-	threads, err := m.cfg.Store.Watched(m.ctx)
+	prs, err := m.cfg.Store.Watched(m.ctx)
 	if err != nil {
-		m.cfg.Log.Warn("list watched threads", "error", err)
+		m.cfg.Log.Warn("list watched PRs", "error", err)
 		return
 	}
-	for _, t := range threads {
+	for _, wp := range prs {
 		if m.ctx.Err() != nil {
 			return
 		}
-		ws := w.of(t)
+		ws := w.of(wp.PR)
 		if time.Now().Before(ws.next) {
 			continue
 		}
-		if err := m.check(w, t); err != nil {
+		if err := m.check(w, wp); err != nil {
 			if m.ctx.Err() != nil {
 				return
 			}
 			ws.fails, ws.next = m.backoff(ws.fails)
-			m.cfg.Log.Warn("check MR", "thread_id", t.ID, "error", err)
+			m.cfg.Log.Warn("check MR", "thread_id", wp.Thread.ID, "url", wp.PR.URL, "error", err)
 			continue
 		}
 		ws.fails, ws.next = 0, time.Time{}
 	}
+	m.releaseDone()
 	m.pollIssues(w)
 }
 
@@ -870,10 +871,11 @@ func (m *Manager) backoff(fails int) (int, time.Time) {
 	return fails, time.Now().Add(m.cfg.PollInterval * time.Duration(min(1<<fails, _maxBackoff)))
 }
 
-// check reads the state of the thread's MR. A change is stored and sent, with the wake it
-// reports; a merged GitLab MR also has its worktree saved and removed, once no run is going in the
-// thread. A failure is retried after a back-off.
-func (m *Manager) check(w *watcher, t store.Thread) error {
+// check reads the state of one of the thread's MRs. A change is stored and sent, with the wake it
+// reports; a GitLab thread whose MRs are all done, one merged, also has its worktree saved and
+// removed, once no run is going in the thread. A failure is retried after a back-off.
+func (m *Manager) check(w *watcher, wp store.WatchedPR) error {
+	t, p := wp.Thread, wp.PR
 	bot, err := m.cfg.Store.Bot(m.ctx, t.BotID)
 	if err != nil {
 		return err
@@ -883,33 +885,58 @@ func (m *Manager) check(w *watcher, t store.Thread) error {
 		return err
 	}
 	if RepoHost(m.ctx, rp.Path) == _hostGitHub {
-		return m.checkGitHub(w, t, bot, rp)
+		return m.checkGitHub(w, wp, bot, rp)
 	}
 	env, _, err := m.runEnv(m.ctx, bot, nil)
 	if err != nil {
 		return err
 	}
-	state, title, err := m.mrState(rp.Path, t.MRURL, env)
+	state, title, err := m.mrState(rp.Path, p.URL, env)
 	if err != nil {
 		return err
 	}
 	if state == "locked" {
 		state = _mrOpened
 	}
-	if t.MRTitle != "" {
-		title = t.MRTitle
+	if p.Title != "" {
+		title = p.Title
 	}
-	if err := m.update(t, "", store.MRRead{State: state, Title: title, CI: t.MRCI, Woke: t.MRWoke, Head: t.MRHead, BaseWoke: t.MRBaseWoke}, ""); err != nil {
+	if err := m.update(wp, "", store.MRRead{State: state, Title: title, CI: p.CI, Woke: p.Woke, Head: p.Head, BaseWoke: p.BaseWoke}, ""); err != nil {
 		return err
 	}
-	if state != _mrMerged {
-		return nil
+	prs, err := m.cfg.Store.PRs(m.ctx, t.ID)
+	if err != nil || !released(prs) {
+		return err
 	}
+	return m.releaseDoneThread(t, rp)
+}
+
+// releaseDone retries, from the stored state, the release of each GitLab thread whose MRs are all
+// done; a thread with a run going is left for the next poll.
+func (m *Manager) releaseDone() {
+	threads, err := m.cfg.Store.Done(m.ctx)
+	if err != nil {
+		m.cfg.Log.Warn("list done threads", "error", err)
+		return
+	}
+	for _, t := range threads {
+		rp, err := m.cfg.Store.Repo(m.ctx, t.RepoID)
+		if err == nil && RepoHost(m.ctx, rp.Path) != _hostGitHub {
+			err = m.releaseDoneThread(t, rp)
+		}
+		if err != nil && m.ctx.Err() == nil {
+			m.cfg.Log.Warn("release worktree", "thread_id", t.ID, "error", err)
+		}
+	}
+}
+
+func (m *Manager) releaseDoneThread(t store.Thread, rp store.Repo) error {
 	slot := m.reserve(t.ID)
 	if slot == nil {
 		return nil
 	}
 	defer m.free(slot)
+	var err error
 	if t, err = m.cfg.Store.Thread(m.ctx, t.ID); err != nil || t.Worktree == "" {
 		return err
 	}
@@ -917,6 +944,18 @@ func (m *Manager) check(w *watcher, t store.Thread) error {
 		return err
 	}
 	return m.release(m.ctx, t, rp, "merged")
+}
+
+// released is whether every PR is merged or closed and at least one merged.
+func released(prs []store.PR) bool {
+	merged := false
+	for _, p := range prs {
+		if p.State == _mrOpened {
+			return false
+		}
+		merged = merged || p.State == _mrMerged
+	}
+	return merged
 }
 
 func (m *Manager) releaseHelpers(boss store.Thread, rp store.Repo) (bool, error) {

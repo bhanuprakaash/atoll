@@ -36,16 +36,15 @@ const (
 var _waitsFor = regexp.MustCompile(`^Waits for #(\d+)`)
 
 type (
-	// watcher is what the poll keeps in memory: waits and ETags per thread, rate-limit pauses per
+	// watcher is what the poll keeps in memory: waits and ETags per PR, rate-limit pauses per
 	// connection.
 	watcher struct {
-		threads map[string]*watched
-		issues  map[string]*watchedIssue
-		paused  map[string]time.Time
+		prs    map[string]*watched
+		issues map[string]*watchedIssue
+		paused map[string]time.Time
 	}
 
 	watched struct {
-		url  string
 		etag string
 		pull ghPull
 		// base is the PR this draft waits for, read until it is merged.
@@ -71,7 +70,7 @@ type (
 		} `json:"head"`
 	}
 
-	// ciResult is the last read of a head commit's checks, as stored in the thread's mr_ci.
+	// ciResult is the last read of a head commit's checks, as stored in the PR's ci.
 	ciResult struct {
 		Head    string   `json:"head"`
 		Passed  int      `json:"passed"`
@@ -93,17 +92,19 @@ type (
 	}
 )
 
-// of returns the thread's entry; a new URL starts a new one.
-func (w *watcher) of(t store.Thread) *watched {
-	ws := w.threads[t.ID]
-	if ws == nil || ws.url != t.MRURL {
-		ws = &watched{url: t.MRURL}
-		w.threads[t.ID] = ws
+// of returns the PR's entry.
+func (w *watcher) of(p store.PR) *watched {
+	key := p.ThreadID + " " + p.URL
+	ws := w.prs[key]
+	if ws == nil {
+		ws = &watched{}
+		w.prs[key] = ws
 	}
 	return ws
 }
 
-func (m *Manager) checkGitHub(w *watcher, t store.Thread, bot store.Bot, rp store.Repo) error {
+func (m *Manager) checkGitHub(w *watcher, wp store.WatchedPR, bot store.Bot, rp store.Repo) error {
+	t, p := wp.Thread, wp.PR
 	connID, token, err := m.watchToken(bot)
 	if err != nil || token == "" {
 		return err
@@ -111,12 +112,12 @@ func (m *Manager) checkGitHub(w *watcher, t store.Thread, bot store.Bot, rp stor
 	if time.Now().Before(w.paused[connID]) {
 		return nil
 	}
-	owner, name, n, err := parsePullURL(t.MRURL)
+	owner, name, n, err := parsePullURL(p.URL)
 	if err != nil {
 		return err
 	}
 	api := fmt.Sprintf("%s/repos/%s/%s", connection.GitHubAPI(), owner, name)
-	ws := w.of(t)
+	ws := w.of(p)
 	body, hdr, err := m.githubGet(w, t.BotID, connID, token, fmt.Sprintf("%s/pulls/%d", api, n), ws.etag)
 	if err != nil {
 		return err
@@ -135,33 +136,34 @@ func (m *Manager) checkGitHub(w *watcher, t store.Thread, bot store.Bot, rp stor
 	case ws.pull.State == "closed":
 		state = _mrClosed
 	}
-	title := t.MRTitle
+	title := p.Title
 	if title == "" {
 		title = ws.pull.Title
 	}
-	r := store.MRRead{State: state, Title: title, CI: t.MRCI, Woke: t.MRWoke, Head: t.MRHead, BaseWoke: t.MRBaseWoke}
+	r := store.MRRead{State: state, Title: title, CI: p.CI, Woke: p.Woke, Head: p.Head, BaseWoke: p.BaseWoke,
+		Draft: ws.pull.Draft, Body: ws.pull.Body, Base: ws.pull.Base.Ref}
 	if ws.pull.Head.SHA != "" {
 		r.Head = ws.pull.Head.SHA
 	}
-	label := prLabel(t.MRURL)
+	label := prLabel(p.URL)
 	switch {
 	case state == _mrOpened:
-		if err := m.readCI(w, connID, token, api, t, ws.pull.Head.SHA, label, &r); err != nil {
+		if err := m.readCI(w, connID, token, api, wp, ws.pull.Head.SHA, label, &r); err != nil {
 			return err
 		}
-		if err := m.readBase(w, connID, token, api, t, label, &r); err != nil {
+		if err := m.readBase(w, connID, token, api, wp, label, &r); err != nil {
 			return err
 		}
-	case state == _mrMerged && t.MRState != _mrMerged:
+	case state == _mrMerged && p.State != _mrMerged:
 		m.mergedText(rp, label, ws.pull, &r)
 	}
 	note := ""
-	if state == _mrMerged && t.MRState != _mrMerged {
+	if state == _mrMerged && p.State != _mrMerged {
 		if note, err = m.memoryNote(t.RepoID, ws.pull.Body); err != nil {
 			return err
 		}
 	}
-	return m.update(t, label, r, note)
+	return m.update(wp, label, r, note)
 }
 
 // mergedText sets the wake of a merge: where it went and at which commit. A merge into a branch
@@ -176,13 +178,14 @@ func (m *Manager) mergedText(rp store.Repo, label string, pull ghPull, r *store.
 
 // readBase reads the PR that a draft waits for ("Waits for #n" starts its body) and, when that PR
 // is merged, sets the one wake of the draft's Bot.
-func (m *Manager) readBase(w *watcher, connID, token, api string, t store.Thread, label string, r *store.MRRead) error {
-	ws := w.of(t)
+func (m *Manager) readBase(w *watcher, connID, token, api string, wp store.WatchedPR, label string, r *store.MRRead) error {
+	p := wp.PR
+	ws := w.of(p)
 	match := _waitsFor.FindStringSubmatch(ws.pull.Body)
-	if !ws.pull.Draft || match == nil || t.MRBaseWoke || !t.MRWake {
+	if !ws.pull.Draft || match == nil || p.BaseWoke || !p.Wake {
 		return nil
 	}
-	body, hdr, err := m.githubGet(w, t.BotID, connID, token, api+"/pulls/"+match[1], ws.baseETag)
+	body, hdr, err := m.githubGet(w, wp.Thread.BotID, connID, token, api+"/pulls/"+match[1], ws.baseETag)
 	if err != nil {
 		return err
 	}
@@ -206,10 +209,11 @@ func short(sha string) string { return sha[:min(len(sha), 7)] }
 // result and, when CI finished, the wake. A finished result counts once seen on two reads in a row.
 // A head with no checks is recorded as such once two reads in a row found none, and is then read
 // again only every _noCheckEvery polls, so a check that appears later is still seen.
-func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, head, label string, r *store.MRRead) error {
+func (m *Manager) readCI(w *watcher, connID, token, api string, wp store.WatchedPR, head, label string, r *store.MRRead) error {
+	p := wp.PR
 	var prev ciResult
-	if t.MRCI != "" {
-		_ = json.Unmarshal([]byte(t.MRCI), &prev)
+	if p.CI != "" {
+		_ = json.Unmarshal([]byte(p.CI), &prev)
 	}
 	if prev.Head != "" && prev.Head != head {
 		r.DropCI = true
@@ -218,11 +222,11 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, 
 		return nil
 	}
 	recheck := false
-	if t.MRWoke == head {
+	if p.Woke == head {
 		if prev.Head != head || !prev.none() {
 			return nil
 		}
-		ws := w.of(t)
+		ws := w.of(p)
 		if ws.noCheckPolls++; ws.noCheckPolls%_noCheckEvery != 0 {
 			return nil
 		}
@@ -232,7 +236,7 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, 
 	for _, route := range []string{"check-runs", "status"} {
 		next := fmt.Sprintf("%s/commits/%s/%s?per_page=100", api, head, route)
 		for next != "" {
-			body, hdr, err := m.githubGet(w, t.BotID, connID, token, next, "")
+			body, hdr, err := m.githubGet(w, wp.Thread.BotID, connID, token, next, "")
 			if err != nil {
 				return err
 			}
@@ -264,11 +268,11 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, t store.Thread, 
 		r.Woke = ""
 	}
 	finished := res.Passed+res.Failed > 0 && res.Pending == 0
-	if !finished || t.MRWake && (prev.Head != head || !res.same(prev)) {
+	if !finished || p.Wake && (prev.Head != head || !res.same(prev)) {
 		return nil
 	}
 	r.Woke = head
-	if t.MRWake {
+	if p.Wake {
 		r.WakeKind, r.WakeText, r.Notice = "ci", ciText(label, res), ciNotice(res)
 	}
 	return nil
@@ -317,29 +321,30 @@ func statusOutcome(state string) string {
 
 // update stores what a poll read, with the wake for a new merged or closed state (note ends its
 // text), then sends the change and delivers the wake. A GitLab MR has no label: it wakes nothing yet.
-func (m *Manager) update(t store.Thread, label string, r store.MRRead, note string) error {
-	r.URL, r.Prev = t.MRURL, t.MRState
-	if label != "" && t.MRWake && r.State != t.MRState && (r.State == _mrMerged || r.State == _mrClosed) {
+func (m *Manager) update(wp store.WatchedPR, label string, r store.MRRead, note string) error {
+	t, p := wp.Thread, wp.PR
+	r.URL, r.Prev, r.Label = p.URL, p.State, label
+	if label != "" && p.Wake && r.State != p.State && (r.State == _mrMerged || r.State == _mrClosed) {
 		r.WakeKind, r.DropCI, r.Notice = r.State, true, r.State
 		if r.WakeText == "" || r.State == _mrClosed {
 			r.WakeText = label + " " + r.State
 		}
 		r.WakeText += note
 	}
-	if t.MRWake && r.WakeKind == "" && r.State == t.MRState && r.Title == t.MRTitle && r.CI == t.MRCI &&
-		r.Woke == t.MRWoke && r.Head == t.MRHead && !r.DropCI {
+	if p.Wake && r.WakeKind == "" && r.State == p.State && r.Title == p.Title && r.CI == p.CI &&
+		r.Woke == p.Woke && r.Head == p.Head && r.Draft == p.Draft && r.Body == p.Body && r.Base == p.Base && !r.DropCI {
 		return nil
 	}
 	stored, err := m.cfg.Store.StoreMR(m.ctx, t.ID, r)
 	if err != nil || !stored {
 		return err
 	}
-	if r.State != t.MRState || r.Title != t.MRTitle {
+	if r.State != p.State || r.Title != p.Title {
 		runID, err := m.cfg.Store.LatestRun(m.ctx, t.ID)
 		if err != nil {
 			return err
 		}
-		m.announce(t.ID, runID, EventMRUpdated, MRUpdated{RunID: runID, URL: t.MRURL, State: r.State, Title: r.Title})
+		m.announce(t.ID, runID, EventMRUpdated, MRUpdated{RunID: runID, URL: p.URL, State: r.State, Title: r.Title})
 	}
 	if r.WakeKind != "" && !r.Quiet {
 		m.cfg.Log.Info("wake bot", "thread_id", t.ID, "kind", r.WakeKind, "text", r.WakeText)
