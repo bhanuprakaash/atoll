@@ -83,14 +83,24 @@ async function prState(threadID: string, n: number) {
   return prs.find((p) => p.url.endsWith(`/pull/${n}`))?.state;
 }
 
-// merged merges pull request n on GitHub, waits until the watcher has read the merge three more
-// times, so an absence after it is not just a poll that never ran, and until the thread's run
-// from the Reef wake has ended.
-async function merged(threadID: string, n: number) {
-  const before = github.reads(n);
+// merged merges pull request n on GitHub and waits until the thread's state for it is merged. A
+// merged pull request is not read again: given alive, a pull request that is still open, it waits
+// until the watcher has read alive twice more, then that the server reads alive three more times
+// and n none.
+async function merged(threadID: string, n: number, alive?: number) {
   github.merge(n);
-  await expect.poll(() => github.reads(n), { timeout: 30_000 }).toBeGreaterThanOrEqual(before + 3);
   await expect.poll(() => prState(threadID, n), { timeout: 30_000 }).toBe('merged');
+  if (alive === undefined) return;
+  const start = github.reads(alive);
+  await expect
+    .poll(() => github.reads(alive), { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(start + 2);
+  const settled = github.reads(n);
+  const mark = github.reads(alive);
+  await expect
+    .poll(() => github.reads(alive), { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(mark + 3);
+  expect(github.reads(n)).toBe(settled);
 }
 
 async function woken(threadID: string, count = 1, kind = 'merged') {
@@ -177,7 +187,7 @@ test('a thread with one PR merged and one still open stays in Now; it leaves onc
   await nowPane(page);
   await expect(inNow(page, id)).toHaveCount(1);
 
-  await merged(id, 1);
+  await merged(id, 1, 2);
   await woken(id);
   expect(await prState(id, 2)).toBe('opened');
   expect(await hiddenInAPI(id)).toBe(false);
@@ -201,7 +211,7 @@ test('a thread with one PR closed unmerged and one merged is done: it leaves Now
   await away(page);
   await nowPane(page);
 
-  await merged(id, 2);
+  await merged(id, 2, 1);
   await woken(id);
   expect(await hiddenInAPI(id)).toBe(false);
   await expect(inNow(page, id)).toHaveCount(1);

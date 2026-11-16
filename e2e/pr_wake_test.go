@@ -137,13 +137,15 @@ func TestPRWake_CINamesAreCleanedAndCut(t *testing.T) {
 }
 
 // A closed thread is not woken. A second, open thread with its own pull request is merged in the
-// same moment, so a Bot that never watches cannot pass for one that stays quiet.
+// same moment, so a Bot that never watches cannot pass for one that stays quiet. A third thread's
+// pull request stays open: the watcher reads it while neither merged pull request is read again.
 func TestPRWake_ClosedThreadIsNotWoken(t *testing.T) {
 	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			closed := f.openPR(t, 1)
 			open := f.openPR(t, 2)
+			f.openPR(t, 3)
 			f.s.do(t, "POST", "/api/threads/"+closed.ID+"/close", nil, nil, 204)
 
 			f.gh.setPull(1, "closed", true)
@@ -153,7 +155,7 @@ func TestPRWake_ClosedThreadIsNotWoken(t *testing.T) {
 				t.Fatalf("open thread's wake: %+v, want merged PR #2", w)
 			}
 
-			f.quiet(t, 2, "closed thread", closed, 0, 1)
+			f.quiet(t, 3, "closed thread", closed, 0, 1, 1, 2)
 			if got := f.reefPrompts(t); len(got) != 1 || !strings.Contains(got[0], "PR #2 merged") {
 				t.Errorf("Reef prompts %q, want one, for PR #2", got)
 			}
@@ -161,26 +163,29 @@ func TestPRWake_ClosedThreadIsNotWoken(t *testing.T) {
 	}
 }
 
-// One event is one wake: not on the next read of the same state, not when the pull request changes
-// without a new event, and not after a restart. Each wake is one run.
+// One event is one wake: a merged pull request is not read again, so not on the next read of the same
+// state, not when it changes without a new event, and not after a restart. A second thread's pull
+// request stays open: the watcher reads it, before and after the restart, while #1 is not read.
+// Each wake is one run.
 func TestPRWake_OneWakePerEvent(t *testing.T) {
 	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			th := f.openPR(t, 1)
+			f.openPR(t, 2)
 
 			f.gh.setPull(1, "closed", true)
 			f.waitWake(t, th, 1)
 			f.gh.setTitle(1, "fix: renamed after the merge")
-			f.quiet(t, 1, "the same event read again", th, 1, 1)
+			f.quiet(t, 2, "the same event read again", th, 1, 1, 1)
 
 			f.s.kill()
 			f.m.killFakes()
 			f.s = f.m.serve(t)
-			f.quiet(t, 1, "after a restart", th, 1, 1)
+			f.quiet(t, 2, "after a restart", th, 1, 1, 1)
 
-			if got := len(f.m.sessions(t, p)); got != 2 {
-				t.Errorf("%s ran %d times, want 2: the run that opened the pull request and one for the wake", p, got)
+			if got := len(f.m.sessions(t, p)); got != 3 {
+				t.Errorf("%s ran %d times, want 3: the runs that opened the two pull requests and one for the wake", p, got)
 			}
 		})
 	}

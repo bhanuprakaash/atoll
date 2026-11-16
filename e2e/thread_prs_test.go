@@ -260,7 +260,8 @@ func TestThreadPRs_TrackMRKeepsEveryPR(t *testing.T) {
 }
 
 // A thread with two tracked PRs is woken once for each PR's CI result and once for each PR's
-// merge: four wakes, each naming its PR, none repeated, one run each.
+// merge: four wakes, each naming its PR, none repeated, one run each. Once merged a PR is not read
+// again; another thread's PR #3 stays open, so reads of it show the watcher is alive.
 func TestThreadPRs_WakePerPR(t *testing.T) {
 	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
@@ -269,6 +270,7 @@ func TestThreadPRs_WakePerPR(t *testing.T) {
 			if second != 2 {
 				t.Fatalf("second PR is #%d, want #2", second)
 			}
+			f.openPR(t, 3)
 			passed := []fakeCheck{{"build", "completed", "success"}}
 
 			f.gh.setChecks(headSHA(1), passed, nil)
@@ -281,7 +283,7 @@ func TestThreadPRs_WakePerPR(t *testing.T) {
 			f.wantWakeAt(t, th, 3, "merged", "PR #1 merged")
 			f.gh.setPull(2, "closed", true)
 			f.wantWakeAt(t, th, 4, "merged", "PR #2 merged")
-			f.quiet(t, 2, "both merges reported", th, 4, 4)
+			f.quiet(t, 3, "both merges reported", th, 4, 4, 1, 2)
 
 			seen := map[string]bool{}
 			for _, w := range f.wakes(t, th) {
@@ -290,9 +292,9 @@ func TestThreadPRs_WakePerPR(t *testing.T) {
 				}
 				seen[w.Text] = true
 			}
-			// the run that opened PR 1, the run that tracked PR 2, and one run per wake.
-			if got := len(f.m.sessions(t, p)); got != 6 {
-				t.Errorf("%s ran %d times, want 6: the two runs that opened and tracked, and one per wake", p, got)
+			// the run that opened PR 1, the run that tracked PR 2, the run that opened PR 3, and one run per wake.
+			if got := len(f.m.sessions(t, p)); got != 7 {
+				t.Errorf("%s ran %d times, want 7: the two runs that opened and tracked, one for PR #3, and one per wake", p, got)
 			}
 		})
 	}
