@@ -14,6 +14,7 @@ import {
   reportReply,
   runStatus,
   send,
+  settledHelpers,
   startThread,
   composerArea,
 } from './helpers-fixture';
@@ -220,7 +221,9 @@ test('a helper approval stays above the composer within 2s; two waiting show the
   await expect(deny).toHaveCount(1);
   await expect(region).toContainText('make check');
   await expect(region).toContainText('1 more');
-  await expect(region.getByRole('img', { name: /^(Tester|Reviewer): needs you$/ }).first()).toBeVisible();
+  await expect(
+    region.getByRole('img', { name: /^(Tester|Reviewer): needs you$/ }).first(),
+  ).toBeVisible();
   expect((await box(allow)).y).toBeLessThan(
     (await box(page.getByRole('textbox', { name: /^Message/ }))).y,
   );
@@ -325,4 +328,76 @@ test('finished helpers stay under Done after running helpers, also after reopeni
   await expect(page.getByRole('log', { name: 'Messages' })).toContainText(reportReply);
   await page.goto(`${m.url}/bots/${poteto.id}/threads/${boss}`);
   await expect(page.getByText(/Working with/)).toHaveCount(0);
+});
+
+// A boss with `running` helpers that never finish and `done` that answer at once (the helper
+// plays testdata/claude/plain.jsonl). The boss thread is open.
+async function helpersOf(page: Page, done: number, running: number) {
+  await makeBoss(m, ['Tester', 'Reviewer']);
+  await page.goto(m.url);
+  const handoffs: Handoff[] = [
+    ...Array.from({ length: running }, (_, i): Handoff => ['Reviewer', hang(`Sidebar rail ${i}`)]),
+    ...Array.from({ length: done }, (): Handoff => ['Tester', prompts.pong]),
+  ];
+  const boss = await startThread(page, 'Poteto', delegate(handoffs));
+  await settledHelpers(m, boss, done, running);
+  return boss;
+}
+
+const doneRows = (panel: ReturnType<typeof details>) =>
+  panel.getByRole('listitem').filter({ has: panel.getByText('Done', { exact: true }) });
+
+test('Done helpers show their 3 newest and Show 7 more; Show less folds them again; running helpers always show', async ({
+  page,
+}) => {
+  await helpersOf(page, 10, 2);
+  const panel = await openDetails(page);
+  const rows = panel.getByRole('listitem');
+  const more = panel.getByRole('button', { name: 'Show 7 more', exact: true });
+  const less = panel.getByRole('button', { name: 'Show less', exact: true });
+  await expect(panel.getByText('Done', { exact: true }).first()).toBeVisible();
+  await expect(rows).toHaveCount(5);
+  await expect(doneRows(panel)).toHaveCount(3);
+  await expect(panel.getByLabel('Reviewer: working', { exact: true })).toHaveCount(2);
+  await expect(more).toBeVisible();
+  await expect(less).toHaveCount(0);
+
+  await more.click();
+  await expect(rows).toHaveCount(12);
+  await expect(doneRows(panel)).toHaveCount(10);
+  await expect(panel.getByLabel('Reviewer: working', { exact: true })).toHaveCount(2);
+  await expect(less).toBeVisible();
+  await expect(panel.getByRole('button', { name: /^Show \d+ more$/ })).toHaveCount(0);
+
+  await less.click();
+  await expect(rows).toHaveCount(5);
+  await expect(doneRows(panel)).toHaveCount(3);
+  await expect(more).toBeVisible();
+  await expect(less).toHaveCount(0);
+});
+
+test('with 3 done helpers there is no Show button', async ({ page }) => {
+  await helpersOf(page, 3, 1);
+  const panel = await openDetails(page);
+  await expect(panel.getByRole('listitem')).toHaveCount(4);
+  await expect(doneRows(panel)).toHaveCount(3);
+  await expect(panel.getByRole('button', { name: /^Show/ })).toHaveCount(0);
+});
+
+test('closing and reopening Thread details folds the Done helpers again', async ({ page }) => {
+  await helpersOf(page, 5, 1);
+  const icon = page.getByRole('button', { name: 'Thread details', exact: true });
+  let panel = await openDetails(page);
+  await expect(panel.getByRole('listitem')).toHaveCount(4);
+  await panel.getByRole('button', { name: 'Show 2 more', exact: true }).click();
+  await expect(panel.getByRole('listitem')).toHaveCount(6);
+  await expect(panel.getByRole('button', { name: 'Show less', exact: true })).toBeVisible();
+
+  await icon.click();
+  await expect(details(page)).toHaveCount(0);
+  panel = await openDetails(page);
+  await expect(panel.getByRole('listitem')).toHaveCount(4);
+  await expect(doneRows(panel)).toHaveCount(3);
+  await expect(panel.getByRole('button', { name: 'Show 2 more', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Show less', exact: true })).toHaveCount(0);
 });

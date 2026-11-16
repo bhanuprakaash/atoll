@@ -5,13 +5,23 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, prompts, startAtoll, waitStatus } from './atoll';
 import { githubEnv, type GitHubFake, seedRepo, startGitHub, trackPR } from './github-fixture';
-import { box, composerArea, details, openDetails } from './helpers-fixture';
+import {
+  box,
+  composerArea,
+  delegate,
+  details,
+  type Handoff,
+  openDetails,
+  runStatus,
+  settledHelpers,
+} from './helpers-fixture';
 
 let m: Machine;
 let github: GitHubFake;
 let root = '';
 let bot: { id: string };
 let repo: { id: string };
+let connection: { id: string };
 test.beforeEach(async () => {
   github = await startGitHub();
   root = mkdtempSync(join(tmpdir(), 'atoll-thread-details-'));
@@ -22,6 +32,7 @@ test.beforeEach(async () => {
   });
   const seeded = await seedRepo(m, github, root);
   repo = seeded.repo;
+  connection = seeded.connection;
   bot = await newBotAPI(m, 'Coder', 'claude', {
     repo_access: [repo.id],
     connections: [seeded.connection.id],
@@ -207,4 +218,188 @@ test('at 420px Thread details fits the thread column minus 32px without sideways
   const p = await box(panel);
   expect(p.x).toBeGreaterThanOrEqual(0);
   expect(p.x + p.width).toBeLessThanOrEqual(420);
+});
+
+const prStates = async (threadID: string) =>
+  Object.fromEntries(
+    ((await api(m, 'GET', `/api/threads/${threadID}`)).prs as { url: string; state: string }[]).map(
+      (p) => [p.url.split('/').pop(), p.state],
+    ),
+  );
+
+// numbers lists the PR numbers of the rows in the panel's order.
+const numbers = async (panel: ReturnType<typeof details>) =>
+  (await panel.getByRole('listitem').filter({ hasText: /#\d/ }).allTextContents()).map(
+    (x) => /#(\d+)/.exec(x)?.[1],
+  );
+
+const section = (panel: ReturnType<typeof details>, title: string) =>
+  panel
+    .locator('section')
+    .filter({ has: panel.page().getByRole('heading', { name: title, exact: true }) });
+
+test('Pull requests shows every open PR and the 3 newest merged or closed, then Show 2 more', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const t = await thread('Fix the seeded bug and open a PR.');
+  for (const n of [2, 3, 4, 5, 6, 7]) {
+    github.open(`change ${n}`);
+    await trackPR(m, t.id, github, n, `change ${n}`);
+  }
+  for (const n of [3, 4, 5]) github.merge(n);
+  for (const n of [6, 7]) github.closePull(n);
+  await expect
+    .poll(() => prStates(t.id), { timeout: 30_000 })
+    .toEqual({
+      1: 'opened',
+      2: 'opened',
+      3: 'merged',
+      4: 'merged',
+      5: 'merged',
+      6: 'closed',
+      7: 'closed',
+    });
+
+  await page.goto(`${m.url}/bots/${bot.id}/threads/${t.id}`);
+  const panel = await openDetails(page);
+  const prs = section(panel, 'Pull requests');
+  const more = prs.getByRole('button', { name: 'Show 2 more', exact: true });
+  const less = prs.getByRole('button', { name: 'Show less', exact: true });
+  expect(await numbers(panel)).toEqual(['2', '1', '7', '6', '5']);
+  await expect(more).toBeVisible();
+  await expect(less).toHaveCount(0);
+
+  await more.click();
+  expect(await numbers(panel)).toEqual(['2', '1', '7', '6', '5', '4', '3']);
+  await expect(less).toBeVisible();
+  await expect(prs.getByRole('button', { name: /^Show \d+ more$/ })).toHaveCount(0);
+
+  await less.click();
+  expect(await numbers(panel)).toEqual(['2', '1', '7', '6', '5']);
+  await expect(more).toBeVisible();
+});
+
+test('3 merged or closed PRs have no Show button; a fourth adds Show 1 more', async ({ page }) => {
+  test.setTimeout(180_000);
+  const t = await thread('Fix the seeded bug and open a PR.');
+  for (const n of [2, 3, 4]) {
+    github.open(`change ${n}`);
+    await trackPR(m, t.id, github, n, `change ${n}`);
+  }
+  github.merge(2);
+  github.closePull(3);
+  github.merge(4);
+  await expect
+    .poll(() => prStates(t.id), { timeout: 30_000 })
+    .toEqual({ 1: 'opened', 2: 'merged', 3: 'closed', 4: 'merged' });
+  await page.goto(`${m.url}/bots/${bot.id}/threads/${t.id}`);
+  let panel = await openDetails(page);
+  expect(await numbers(panel)).toEqual(['1', '4', '3', '2']);
+  await expect(panel.getByRole('button', { name: /^Show/ })).toHaveCount(0);
+
+  github.open('change 5');
+  await trackPR(m, t.id, github, 5, 'change 5');
+  github.merge(5);
+  await expect.poll(() => prStates(t.id), { timeout: 30_000 }).toMatchObject({ 5: 'merged' });
+  await page.reload();
+  panel = await openDetails(page);
+  expect(await numbers(panel)).toEqual(['1', '5', '4', '3']);
+  await expect(panel.getByRole('button', { name: 'Show 1 more', exact: true })).toBeVisible();
+});
+
+test('closing and reopening Thread details folds the merged and closed PRs again', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const t = await thread('Fix the seeded bug and open a PR.');
+  for (const n of [2, 3, 4, 5]) {
+    github.open(`change ${n}`);
+    await trackPR(m, t.id, github, n, `change ${n}`);
+  }
+  for (const n of [2, 3, 4, 5]) github.merge(n);
+  await expect
+    .poll(() => prStates(t.id), { timeout: 30_000 })
+    .toEqual({ 1: 'opened', 2: 'merged', 3: 'merged', 4: 'merged', 5: 'merged' });
+  await page.goto(`${m.url}/bots/${bot.id}/threads/${t.id}`);
+  let panel = await openDetails(page);
+  await section(panel, 'Pull requests')
+    .getByRole('button', { name: 'Show 1 more', exact: true })
+    .click();
+  expect(await numbers(panel)).toEqual(['1', '5', '4', '3', '2']);
+
+  await page.getByRole('button', { name: 'Thread details', exact: true }).click();
+  await expect(details(page)).toHaveCount(0);
+  panel = await openDetails(page);
+  expect(await numbers(panel)).toEqual(['1', '5', '4', '3']);
+  await expect(panel.getByRole('button', { name: 'Show 1 more', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Show less', exact: true })).toHaveCount(0);
+});
+
+test('at 1280x800 the card stops at 480px, scrolls inside and leaves the chat log where it was', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const connections = [connection.id];
+  const tester = await newBotAPI(m, 'Tester', 'claude', {
+    look: 'shark',
+    repo_access: [repo.id],
+    connections,
+  });
+  const boss = await newBotAPI(m, 'Poteto', 'claude', {
+    look: 'whale',
+    repo_access: [repo.id],
+    connections,
+  });
+  await api(m, 'PUT', `/api/bots/${boss.id}`, { delegates: [tester.id] });
+  const track = (n: number) =>
+    `{"server":"atoll","tool":"track_mr","args":{"url":"${github.url}/octo/hello/pull/${n}","title":"change ${n}"}}`;
+  for (const n of [1, 2, 3, 4, 5, 6, 7]) github.open(`change ${n}`);
+  const t = await api(m, 'POST', `/api/bots/${boss.id}/threads`, {
+    text: `Use MCP tools. [${track(1)}]`,
+    repo_id: repo.id,
+  });
+  await waitStatus(m, t.id, 'done', 30_000);
+  for (const n of [2, 3, 4, 5, 6, 7]) await trackPR(m, t.id, github, n, `change ${n}`);
+  for (const n of [3, 4, 5]) github.merge(n);
+  for (const n of [6, 7]) github.closePull(n);
+  await expect
+    .poll(async () => Object.values(await prStates(t.id)).filter((s) => s !== 'opened').length, {
+      timeout: 30_000,
+    })
+    .toBe(5);
+  // Helpers last: each one that finishes wakes the boss, which does not matter to the card.
+  const handoffs: Handoff[] = [
+    ['Tester', `Wait for the build to finish. ${prompts.hang}`],
+    ...Array.from({ length: 10 }, (): Handoff => ['Tester', prompts.pong]),
+  ];
+  await api(m, 'POST', `/api/threads/${t.id}/messages`, { text: delegate(handoffs) });
+  await settledHelpers(m, t.id, 10, 1);
+  await expect
+    .poll(() => runStatus(m, t.id), { timeout: 60_000 })
+    .not.toMatch(/^(running|waiting|queued)$/);
+
+  await page.goto(`${m.url}/bots/${boss.id}/threads/${t.id}`);
+  const log = page.getByRole('log', { name: 'Messages' });
+  await expect(log).toBeVisible();
+  const before = await box(log);
+  const panel = await openDetails(page);
+  const composer = await box(composerArea(page));
+  const fits = async () => {
+    const card = await box(panel);
+    expect(card.height).toBeLessThanOrEqual(480);
+    expect(card.y + card.height).toBeLessThanOrEqual(composer.y);
+    expect(await box(log)).toEqual(before);
+  };
+  await fits();
+  for (const button of await panel.getByRole('button', { name: /^Show \d+ more$/ }).all())
+    await button.click();
+  await expect(panel.getByRole('button', { name: 'Show less', exact: true })).toHaveCount(2);
+  await fits();
+  expect(await panel.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  expect(await panel.evaluate((el) => getComputedStyle(el).overflowY)).toMatch(/auto|scroll/);
+  await panel.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  expect(await panel.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await box(log)).toEqual(before);
 });
