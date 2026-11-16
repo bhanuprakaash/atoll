@@ -680,8 +680,7 @@ Follow-ups:
   or MR of the threads that are not closed (`Store.Watched` lists PRs, not threads; a thread
   with no worktree of its own, such as a boss that tracked a helper's PR, is read too; a thread with
   no repo is skipped, a closed thread is never read): the state (`opened`, `merged`, `closed`; GitLab's `locked` counts as
-  `opened`), the title and, on GitHub, the CI summary (calls: Fixtures). A merged or closed PR is not read again, except as the base a waiting
-  draft names (stacked fix). Waits after a failed read are per PR; pauses stay per connection.
+  `opened`), the title and, on GitHub, the CI summary (calls: Fixtures). A merged or closed PR is not read again. Waits after a failed read are per PR; pauses stay per connection.
 - A GitLab MR is read with `glab mr view` and the Bot's GitLab environment. A GitHub PR is read
   with the REST API and the token of the Bot's first GitHub connection, from
   `connection.GitHubToken` only. A Bot with no connection, or a thread whose Bot lost it, is
@@ -770,8 +769,8 @@ Follow-ups:
   Reef notices). When held messages of both kinds join one run, each Reef line keeps its `Reef: `
   prefix, in order, and the other messages go under `Message:`.
 - A thread tracks every PR or MR given to `track_mr`, in the order tracked: one row each in
-  `thread_prs` (`thread_id`, `url`, `state`, `title`, `ci`, `woke`, `wake`, `head`, `base_woke`,
-  `draft`, `body`, `base`, `changed_at`, `tracked_at`). The thread's `mr_*` columns move into it
+  `thread_prs` (`thread_id`, `url`, `state`, `title`, `ci`, `woke`, `wake`, `head`,
+  `changed_at`, `tracked_at`). The thread's `mr_*` columns move into it
   and are dropped. `track_mr` with a URL the thread already tracks keeps that row as it is; a new
   URL adds a row with `wake` 1 and replaces nothing. There is no untrack: an abandoned PR reads
   `closed` once it is closed. `ci` is JSON: head commit, passed, failed, pending, failed names; the
@@ -794,15 +793,9 @@ Follow-ups:
   branch (what `origin/HEAD` names, else the branch the repo has checked out) the merge is a quiet
   line only: the message is stored (kind `merged`) and shown; no run starts, no inbox row is held.
   *A fix merged into its test's branch is no news for the lead.*
-- A stacked fix is one whose base is another open PR's branch. Its PR is made with `gh pr create
-  --draft --base <that branch>` and a body that starts `Waits for #<n>` (n the base PR), so GitHub
-  keeps its merge button off. The watcher also keeps `draft`, `body` and `base.ref` of a read. When
-  it reads PR n merged while one of the thread's tracked PRs is a draft whose body starts `Waits for #<n>`
-  (that thread's poll also reads PR n until then), the Bot is woken once (a fourth event), kind
-  `base`, with `PR #<n> merged; PR #<m> was waiting for it` (held and delivered like any wake;
-  once-only through the PR's `base_woke`; `head` holds the last read's head). The Bot runs `gh pr edit --base <default branch>` when its PR's base is still the
-  merged branch, then `gh pr ready`. *#202 merged before its test #174, and test-guard flagged #174
-  for carrying code.*
+- There is no "waits for" wake. A draft PR whose body starts `Waits for #<n>` once woke the Bot when PR n
+  merged; it was dropped (#439) because atoll is one PR per ticket, test commits first, so nothing
+  stacks a fix on a test PR. Old `base` messages still load and show.
 - Known gap: webhooks; a wake comes within a poll interval plus a settle read, or later after
   failures. Review comments and reopening wake nothing.
 - A head whose stored CI has a failed check is read again every few polls while the PR is open, so a
@@ -815,7 +808,7 @@ Follow-ups:
 - Fixtures (what the poll reads; GitHub base is the API base `CheckGitHubToken` uses, so
   `ATOLL_GITHUB_URL` with the routes appended):
   - `GET /repos/{owner}/{repo}/pulls/{n}`: `state` (`open` or `closed`), `merged` (bool), `title`,
-    `draft` (bool), `body`, `base.ref`, `head.sha`. Maps to `opened`, `closed` (`state` closed,
+    `body`, `base.ref`, `head.sha`. Maps to `opened`, `closed` (`state` closed,
     `merged` false) and `merged`. Header `ETag`; a request with `If-None-Match` equal to it
     answers `304`, no body.
   - `GET /repos/{owner}/{repo}/commits/{sha}/check-runs?per_page=100`: `total_count`,
@@ -1485,9 +1478,8 @@ Follow-ups:
   {user}; the platform block to a Bot with "Can manage the platform". Then the persona. The rule
   for background runs is in the line Reef puts first in a background run (Delegation), not in the
   system prompt: *with that line, removing the system-prompt rule changed nothing in a spike.*
-- Moved out of Reef's prompt: "prove it by running the real thing", "smallest change", stacked PRs
-  as drafts with `Waits for #<n>`, and "once a PR is called ready it is frozen" (also dropped from
-  `delegate`'s description) go to atoll's `AGENTS.md`. "Never merge" goes to each Bot's persona: on
+- Moved out of Reef's prompt: "prove it by running the real thing", "smallest change", and "once a PR is called ready it is frozen" (also dropped from
+  `delegate`'s description) go to atoll's `AGENTS.md`, except stacked PRs as drafts with `Waits for #<n>`, which were dropped (#439). "Never merge" goes to each Bot's persona: on
   upgrade, every existing Bot with repo access gets `Never merge: {user} merges.` appended once,
   visible and editable; a new Bot's persona is the person's to write. *Nothing in code stops a
   merge; a Bot that may merge (a release Bot) drops the line.* `track_mr`'s description does not

@@ -106,7 +106,6 @@ const (
 	NoticeCIFailed      = "ci_failed"
 	NoticeMerged        = "merged"
 	NoticeClosed        = "closed"
-	NoticeBase          = "base"
 	// NoticeRelease marks a boss's continue: it ends the hold of a stopped helper thread.
 	NoticeRelease = "release"
 )
@@ -291,12 +290,12 @@ type (
 
 	// PR is one pull request or MR a thread tracks, as the last poll read it.
 	PR struct {
-		ThreadID, Woke, Head, Body, Base string
-		Wake, BaseWoke, Draft            bool
-		URL                              string `json:"url"`
-		State                            string `json:"state"`
-		Title                            string `json:"title"`
-		CI                               string `json:"ci"`
+		ThreadID, Woke, Head string
+		Wake                 bool
+		URL                  string `json:"url"`
+		State                string `json:"state"`
+		Title                string `json:"title"`
+		CI                   string `json:"ci"`
 	}
 
 	// WatchedPR is a tracked PR with the thread that tracks it.
@@ -308,8 +307,7 @@ type (
 	// MRRead is what one poll of a PR changes: the values to store, and the wake they report.
 	// Prev is the state the poll started from.
 	MRRead struct {
-		URL, Prev, State, Title, CI, Woke, Head, Body, Base string
-		BaseWoke, Draft                                     bool
+		URL, Prev, State, Title, CI, Woke, Head string
 		// Quiet stores the wake as a message in the thread, with no inbox row and no run.
 		Quiet bool
 		// Label names the PR as its wakes do ("PR #7"). DropCI deletes that PR's held ci wake: its
@@ -851,8 +849,7 @@ func (s *Store) HelperThreads(ctx context.Context, parentID string) ([]Thread, e
 }
 
 // Watched lists the opened PRs of the open threads that have a repo: the ones that are polled, with
-// their thread. A merged or closed PR is final and is not read again; a waiting draft reads its
-// merged base itself.
+// their thread. A merged or closed PR is final and is not read again.
 func (s *Store) Watched(ctx context.Context) ([]WatchedPR, error) {
 	threads, err := query(ctx, s.db,
 		"SELECT "+_threadColumns+" FROM threads WHERE closed = 0 AND repo_id != '' AND id IN (SELECT thread_id FROM thread_prs) ORDER BY rowid",
@@ -883,11 +880,10 @@ func (s *Store) Done(ctx context.Context) ([]Thread, error) {
 		scanThread)
 }
 
-const _prColumns = "thread_id, url, state, title, ci, woke, wake, head, base_woke, draft, body, base"
+const _prColumns = "thread_id, url, state, title, ci, woke, wake, head"
 
 func scanPR(r *sql.Rows) (pr PR, err error) {
-	err = r.Scan(&pr.ThreadID, &pr.URL, &pr.State, &pr.Title, &pr.CI, &pr.Woke, &pr.Wake, &pr.Head,
-		&pr.BaseWoke, &pr.Draft, &pr.Body, &pr.Base)
+	err = r.Scan(&pr.ThreadID, &pr.URL, &pr.State, &pr.Title, &pr.CI, &pr.Woke, &pr.Wake, &pr.Head)
 	return pr, err
 }
 
@@ -963,11 +959,10 @@ func (s *Store) SetMR(ctx context.Context, threadID, url, state, title string) (
 func (s *Store) StoreMR(ctx context.Context, threadID string, r MRRead) (bool, error) {
 	stored := false
 	err := s.tx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE thread_prs SET state = ?, title = ?, ci = ?, woke = ?, head = ?, base_woke = ?,
-			draft = ?, body = ?, base = ?, wake = 1,
+		res, err := tx.ExecContext(ctx, `UPDATE thread_prs SET state = ?, title = ?, ci = ?, woke = ?, head = ?, wake = 1,
 			changed_at = CASE WHEN state = ? THEN changed_at ELSE ? END
 			WHERE thread_id = ? AND url = ? AND state = ? AND thread_id IN (SELECT id FROM threads WHERE closed = 0)`,
-			r.State, r.Title, r.CI, r.Woke, r.Head, r.BaseWoke, r.Draft, r.Body, r.Base, r.State, time.Now().UTC().UnixMicro(),
+			r.State, r.Title, r.CI, r.Woke, r.Head, r.State, time.Now().UTC().UnixMicro(),
 			threadID, r.URL, r.Prev)
 		if err != nil {
 			return fmt.Errorf("store MR: %w", err)

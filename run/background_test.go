@@ -29,7 +29,6 @@ func TestFailure(t *testing.T) {
 		{"CI failed", ciNotice(ciResult{Passed: 2, Failed: 1}), true},
 		{"merged", store.NoticeMerged, false},
 		{"closed", store.NoticeClosed, false},
-		{"base merged", store.NoticeBase, false},
 		{"person's message", "", false},
 	}
 	for _, tt := range tests {
