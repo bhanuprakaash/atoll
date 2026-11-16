@@ -20,7 +20,9 @@ import {
 
 let m: Machine;
 test.beforeEach(async () => {
-  m = await startAtoll();
+  m = await startAtoll({
+    env: test.info().title.includes('after Stop') ? { ATOLL_WAKE_WINDOW: '300s' } : {},
+  });
 });
 test.afterEach(() => m?.stop());
 
@@ -341,10 +343,11 @@ test('after Stop the held-reports line stays above the composer while another he
   await expect.poll(() => runStatus(m, boss)).toBe('waiting');
   await pendingApproval(thread('Tester'));
   const bossRun = (await api(m, 'GET', `/api/threads/${boss}`)).run_id;
-  await api(m, 'POST', `/api/runs/${bossRun}/stop`);
-  await expect.poll(() => runStatus(m, boss)).toBe('stopped');
   await composerArea(page).getByRole('button', { name: 'Allow', exact: true }).click();
   await expect.poll(() => runStatus(m, thread('Tester')), { timeout: 30_000 }).toBe('done');
+  // Stop after the report is held by the busy boss, as in boss_quiet_test.go.
+  await api(m, 'POST', `/api/runs/${bossRun}/stop`);
+  await expect.poll(() => runStatus(m, boss)).toBe('stopped');
   await expect(
     composerArea(page).getByText('1 helpers still running · 1 reports waiting', { exact: true }),
   ).toBeVisible();
