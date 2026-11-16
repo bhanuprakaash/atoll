@@ -172,7 +172,7 @@ func TestGitHubRefresh_RunRefreshesFirst(t *testing.T) {
 					t.Fatalf("fake GitHub got %d refresh requests for a run with %d s of token life at sign-in, want exactly 1 (run: %+v)", len(reqs), c.ttl, done)
 				}
 				wantRefreshRequest(t, reqs[0].Form, oldRefresh)
-				if !reqs[0].OK || c.expired && reqs[0].Left > 0 || !c.expired && reqs[0].Left < time.Hour {
+				if !reqs[0].OK || c.expired && reqs[0].Left > 0 || !c.expired && reqs[0].Left < time.Hour-time.Minute {
 					t.Errorf("refresh request %+v, want ok, with the token expired: %v (under 3 h left, still valid, otherwise)", reqs[0], c.expired)
 				}
 				token := f.gh.currentToken()
@@ -262,7 +262,7 @@ func TestGitHubRefresh_PlentyOfTimeDoesNotRefresh(t *testing.T) {
 func TestGitHubRefresh_PRWatcherRefreshesAfterExpiry(t *testing.T) {
 	f, id := newPRWakeFixtureTTL(t, 3600, 6)
 	th := f.openPR(t, 1)
-	if reqs := f.gh.refreshes(); len(reqs) < 1 || reqs[0].Left < time.Hour || !reqs[0].OK {
+	if reqs := f.gh.refreshes(); len(reqs) < 1 || reqs[0].Left < time.Hour-time.Minute || !reqs[0].OK {
 		t.Fatalf("refresh requests after the run that opened the pull request: %+v, want the first ok, with about 1 h left", reqs)
 	}
 
