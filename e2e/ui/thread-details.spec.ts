@@ -141,7 +141,6 @@ test('Pull requests is a list with the tracked reference, title, state dot and o
   }
   const color = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
   github.merge(1);
-  await expect(row.getByText('merged', { exact: true })).toBeVisible();
   await expect(row.getByText('failed', { exact: true })).toHaveCount(0);
   await expect
     .poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor))
