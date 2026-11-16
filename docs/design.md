@@ -2018,8 +2018,8 @@ Voice
     Copy); the branch in mono (cut at the end, full on hover, Copy). A thread with a repo but no
     worktree shows the repo and `No branch yet`; a thread with no repo shows `No repo`.
   - Pull requests: a list, one row per PR or MR: the state dot, the reference (`#92`, `!7`), its
-    title, and while open its CI as a word (`running` muted, `passed` green, `failed` red). Until
-    #421 a thread holds one, so the list has one row. A row opens the PR.
+    title, and while open its CI as a word (`running` muted, `passed` green, `failed` red). A row opens
+    the PR.
   - Helpers: every helper task this thread delegated, running ones first, then a `Done` group, each
     newest first. A row is two lines: the creature; the Bot name, the task (the helper thread's
     title) and the time (`42s`, `3m`, `1h 5m`); under them, while its run goes, the step (the step
