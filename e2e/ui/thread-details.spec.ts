@@ -100,7 +100,7 @@ test('Workspace copies repo, full worktree path and branch; the composer has no 
 }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const t = await thread(
-    'Use MCP tools. [{"server":"atoll","tool":"start_work","args":{"type":"fix","slug":"panel-copy"}}]',
+    'Use MCP tools. [{"server":"atoll","tool":"start_work","args":{"branch":"fix/panel-copy"}}]',
   );
   expect(t.worktree).toBeTruthy();
   expect(t.branch).toBe('fix/panel-copy');

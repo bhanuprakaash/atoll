@@ -24,7 +24,7 @@ func StackStep(c *MCP, prompt string) (string, error) {
 		return "", fmt.Errorf("stack step needs `Stack a fix on <branch>` and the atoll MCP server")
 	}
 	base := m[1]
-	out, bad, err := c.Call("start_work", json.RawMessage(`{"type":"fix","slug":"Stacked fix"}`))
+	out, bad, err := c.Call("start_work", json.RawMessage(`{"branch":"fix/stacked-fix"}`))
 	if err != nil || bad {
 		return "", fmt.Errorf("start_work: %v %v: %s", err, bad, out)
 	}

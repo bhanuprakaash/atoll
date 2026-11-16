@@ -46,7 +46,7 @@ func RepoStep(c *MCP, mode, cwd string) (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("atoll MCP server absent")
 	}
-	out, bad, err := c.Call("start_work", json.RawMessage(`{"type":"fix","slug":"Seeded BUG"}`))
+	out, bad, err := c.Call("start_work", json.RawMessage(`{"branch":"fix/seeded-bug"}`))
 	if err != nil {
 		return "", err
 	}

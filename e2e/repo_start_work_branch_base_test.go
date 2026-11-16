@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -80,7 +81,7 @@ func TestRepo_StartWorkBranchesFromBase(t *testing.T) {
 			f := newRepoFixture(t, c.provider)
 			short := f.pushBase(t, "test/x")
 			th, ev := f.baseThread(t, c)
-			got, bad := startWorkResult(t, useAtoll(t, f.s, th, ev, startWorkCall(`{"type":"fix","slug":"Seeded BUG","base":"test/x"}`, false))[0])
+			got, bad := startWorkResult(t, useAtoll(t, f.s, th, ev, startWorkCall(`{"branch":"fix/seeded-bug","base":"test/x"}`, false))[0])
 			if bad != "" {
 				t.Fatalf("start_work with base test/x failed: %s", bad)
 			}
@@ -168,7 +169,7 @@ func tryStartWork(t *testing.T, f *repoFixture, th thread, ev <-chan event, call
 // worktree, branch or folder.
 func refuses(t *testing.T, c baseCase, f *repoFixture, base string) {
 	t.Helper()
-	arg, _ := json.Marshal(map[string]string{"type": "fix", "slug": "Seeded BUG", "base": base})
+	arg, _ := json.Marshal(map[string]string{"branch": "fix/seeded-bug", "base": base})
 	th, ev := f.baseThread(t, c)
 	unchanged := f.madeNothing(t)
 	res, bad := tryStartWork(t, f, th, ev, startWorkCall(string(arg), false))
@@ -242,7 +243,7 @@ func TestRepo_StartWorkEmptyBaseIsNoBase(t *testing.T) {
 			f.pushBase(t, "test/x")
 			short := gitIn(t, f.repo.Path, "rev-parse", "--short=7", "origin/HEAD")
 			th, ev := f.baseThread(t, c)
-			got, bad := startWorkResult(t, useAtoll(t, f.s, th, ev, startWorkCall(`{"type":"fix","slug":"Seeded BUG","base":""}`, false))[0])
+			got, bad := startWorkResult(t, useAtoll(t, f.s, th, ev, startWorkCall(`{"branch":"fix/seeded-bug","base":""}`, false))[0])
 			if bad != "" {
 				t.Fatalf("start_work with an empty base failed: %s", bad)
 			}
@@ -262,7 +263,7 @@ func TestRepo_StartWorkBaseBeatsTag(t *testing.T) {
 	short := f.pushBase(t, "test/x")
 	gitIn(t, f.repo.Path, "tag", "test/x", "main")
 	th, ev := f.baseThread(t, baseCase{provider: "claude"})
-	got, bad := startWorkResult(t, useAtoll(t, f.s, th, ev, startWorkCall(`{"type":"fix","slug":"Seeded BUG","base":"test/x"}`, false))[0])
+	got, bad := startWorkResult(t, useAtoll(t, f.s, th, ev, startWorkCall(`{"branch":"fix/seeded-bug","base":"test/x"}`, false))[0])
 	if bad != "" {
 		t.Fatalf("start_work with base test/x failed: %s", bad)
 	}
@@ -280,7 +281,7 @@ func TestRepo_StartWorkDeclaresBase(t *testing.T) {
 			f := newRepoFixture(t, c.provider)
 			f.pushBase(t, "test/x")
 			th, ev := f.baseThread(t, c)
-			line := useAtoll(t, f.s, th, ev, startWorkCall(`{"type":"fix","slug":"Seeded BUG","base":"test/x"}`, true))[0]
+			line := useAtoll(t, f.s, th, ev, startWorkCall(`{"branch":"fix/seeded-bug","base":"test/x"}`, true))[0]
 			if _, bad := startWorkResult(t, line); bad != "" {
 				t.Errorf("start_work with base: %s", bad)
 			}
@@ -288,35 +289,138 @@ func TestRepo_StartWorkDeclaresBase(t *testing.T) {
 	}
 }
 
-// TestRepo_StartWorkTypes: type test makes test/<slug>, the branch of a test PR; any other type is
-// refused naming the valid ones and makes nothing.
-func TestRepo_StartWorkTypes(t *testing.T) {
-	for _, c := range _baseCases[:1] {
-		t.Run(c.name()+"/test", func(t *testing.T) {
+// TestRepo_StartWorkFreeBranch: branch is the whole branch name, used as given: no case change, no
+// character rewriting. The worktree folder is the branch with "/" replaced by "-".
+func TestRepo_StartWorkFreeBranch(t *testing.T) {
+	for _, tt := range []struct{ branch, folder string }{
+		{"PROJ-123/Login_fix", "PROJ-123-Login_fix"},
+		{"fix/seeded-bug", "fix-seeded-bug"},
+		{"plain", "plain"},
+	} {
+		t.Run(tt.branch, func(t *testing.T) {
+			c := _baseCases[0]
 			f := newRepoFixture(t, c.provider)
 			th, ev := f.baseThread(t, c)
-			got, bad := tryStartWork(t, f, th, ev, startWorkCall(`{"type":"test","slug":"x"}`, false))
+			arg, _ := json.Marshal(map[string]string{"branch": tt.branch})
+			got, bad := tryStartWork(t, f, th, ev, startWorkCall(string(arg), false))
 			if bad != "" {
-				t.Fatalf("start_work with type test failed: %s", bad)
+				t.Fatalf("start_work with branch %q failed: %s", tt.branch, bad)
 			}
-			if got.Branch != "test/x" || worktreeOf(t, f.repo.Path, "test/x") == "" {
-				t.Errorf("got branch %q, worktree %q; want branch test/x with a worktree", got.Branch, worktreeOf(t, f.repo.Path, "test/x"))
+			if got.Branch != tt.branch {
+				t.Errorf("reply branch %q, want %q", got.Branch, tt.branch)
 			}
+			if !hasBranch(t, f.repo.Path, tt.branch) {
+				t.Errorf("repo has no branch %q:\n%s", tt.branch, gitIn(t, f.repo.Path, "branch", "--list"))
+			}
+			if wt := worktreeOf(t, f.repo.Path, tt.branch); wt == "" || filepath.Base(wt) != tt.folder || filepath.Base(got.Path) != tt.folder {
+				t.Errorf("worktree of %q is %q, reply path %q; want folder %q", tt.branch, wt, got.Path, tt.folder)
+			}
+			underRoot(t, resolved(t, f.root)[0], resolved(t, got.Path)[0])
 		})
-		t.Run(c.name()+"/unknown", func(t *testing.T) {
+	}
+}
+
+// TestRepo_StartWorkRefusesBadBranch: a branch that is not a valid git branch name, or is missing
+// or empty, is a tool error that names branch and makes no worktree, no branch and no folder.
+func TestRepo_StartWorkRefusesBadBranch(t *testing.T) {
+	for _, tt := range []struct{ name, args, want string }{
+		{"dotdot", `{"branch":"bad..name"}`, "bad..name"},
+		{"empty", `{"branch":""}`, "branch"},
+		{"missing", `{}`, "branch"},
+		{"space", `{"branch":"bad name"}`, "bad name"},
+		{"leading-dash", `{"branch":"-x"}`, "-x"},
+		{"lock-suffix", `{"branch":"fix/x.lock"}`, "fix/x.lock"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := _baseCases[0]
 			f := newRepoFixture(t, c.provider)
 			th, ev := f.baseThread(t, c)
 			unchanged := f.madeNothing(t)
-			res, bad := tryStartWork(t, f, th, ev, startWorkCall(`{"type":"bogus","slug":"x"}`, false))
+			res, bad := tryStartWork(t, f, th, ev, startWorkCall(tt.args, false))
 			if bad == "" {
-				t.Fatalf("start_work with type bogus made %+v, want a refusal", res)
+				t.Fatalf("start_work %s made %+v, want a refusal", tt.args, res)
 			}
-			for _, typ := range []string{"feat", "fix", "chore", "docs", "test"} {
-				if !strings.Contains(bad, typ) {
-					t.Errorf("refusal %q does not name the valid type %q", bad, typ)
-				}
+			if !strings.Contains(bad, tt.want) || !strings.Contains(strings.ToLower(bad), "branch") {
+				t.Errorf("refusal of %s is %q, want it to say branch and contain %q", tt.args, bad, tt.want)
 			}
 			unchanged()
 		})
+	}
+}
+
+// TestRepo_StartWorkSuffixesTakenBranch: a branch that exists locally, or whose worktree folder
+// exists, gets "-2" (branch and folder); a branch that exists only as origin/<name> (no fetch) is
+// not looked at and is made as asked.
+func TestRepo_StartWorkSuffixesTakenBranch(t *testing.T) {
+	const name = "fix/seeded-bug"
+	for _, tt := range []struct {
+		name       string
+		setup      func(t *testing.T, f *repoFixture)
+		wantBranch string
+		wantFolder string
+	}{
+		{"local-branch", func(t *testing.T, f *repoFixture) {
+			gitIn(t, f.repo.Path, "branch", name, "main")
+		}, name + "-2", "fix-seeded-bug-2"},
+		{"worktree-folder", func(t *testing.T, f *repoFixture) {
+			if err := os.MkdirAll(filepath.Join(f.root, f.repo.Name, "fix-seeded-bug"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, name + "-2", "fix-seeded-bug-2"},
+		{"origin-only", func(t *testing.T, f *repoFixture) {
+			f.pushBase(t, name)
+			if hasBranch(t, f.repo.Path, name) {
+				t.Fatalf("setup: %s is local", name)
+			}
+		}, name, "fix-seeded-bug"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := _baseCases[0]
+			f := newRepoFixture(t, c.provider)
+			tt.setup(t, f)
+			before := hasBranch(t, f.repo.Path, name)
+			th, ev := f.baseThread(t, c)
+			arg, _ := json.Marshal(map[string]string{"branch": name})
+			res, bad := tryStartWork(t, f, th, ev, startWorkCall(string(arg), false))
+			if bad != "" {
+				t.Fatalf("start_work on %s was refused: %q", name, bad)
+			}
+			if res.Branch != tt.wantBranch {
+				t.Errorf("reply branch %q, want %q", res.Branch, tt.wantBranch)
+			}
+			if got := filepath.Base(res.Path); got != tt.wantFolder {
+				t.Errorf("worktree folder %q, want %q", got, tt.wantFolder)
+			}
+			if worktreeOf(t, f.repo.Path, tt.wantBranch) == "" {
+				t.Errorf("no worktree on %s:\n%s", tt.wantBranch, gitIn(t, f.repo.Path, "worktree", "list"))
+			}
+			if hasBranch(t, f.repo.Path, name) != (before || tt.wantBranch == name) {
+				t.Errorf("local %s changed: before %v", name, before)
+			}
+			if tt.name == "local-branch" && worktreeOf(t, f.repo.Path, name) != "" {
+				t.Errorf("the existing %s was checked out in a worktree", name)
+			}
+		})
+	}
+}
+
+// TestRepo_StartWorkSchema: tools/list declares start_work with a required branch and base, no type
+// and no slug, and the description points at the repo's instructions with the <type>/<slug> fallback.
+func TestRepo_StartWorkSchema(t *testing.T) {
+	tool, ok := listedToolSpecs(t, "claude")["start_work"]
+	if !ok {
+		t.Fatal("tools/list has no start_work")
+	}
+	props := slices.Sorted(maps.Keys(tool.InputSchema.Properties))
+	if !slices.Equal(props, []string{"base", "branch"}) {
+		t.Errorf("start_work properties %v, want [base branch]", props)
+	}
+	if !slices.Equal(tool.InputSchema.Required, []string{"branch"}) {
+		t.Errorf("start_work required %v, want [branch]", tool.InputSchema.Required)
+	}
+	for _, want := range []string{"instructions", "<type>/<slug>", "feat", "fix", "chore", "docs", "test"} {
+		if !strings.Contains(tool.Description, want) {
+			t.Errorf("start_work description %q lacks %q", tool.Description, want)
+		}
 	}
 }

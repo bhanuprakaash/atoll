@@ -122,7 +122,7 @@ func TestCloseThread_WorktreeRootChange(t *testing.T) {
 	var path string
 	e.run(t, func(token string) {
 		var err error
-		path, _, _, err = e.m.StartWork(t.Context(), token, "fix", "root", "")
+		path, _, _, err = e.m.StartWork(t.Context(), token, "fix/root", "")
 		if err != nil {
 			t.Error(err)
 		}
@@ -143,7 +143,7 @@ func TestCloseThread_WorktreeDeletedOutsideReef(t *testing.T) {
 	var path string
 	e.run(t, func(token string) {
 		var err error
-		path, _, _, err = e.m.StartWork(t.Context(), token, "feat", "images", "")
+		path, _, _, err = e.m.StartWork(t.Context(), token, "feat/images", "")
 		if err != nil {
 			t.Error(err)
 		}
@@ -176,7 +176,7 @@ func TestRun_RepoAccessRevoked(t *testing.T) {
 	var worktree string
 	e.run(t, func(token string) {
 		var err error
-		if worktree, _, _, err = e.m.StartWork(t.Context(), token, "feat", "x", ""); err != nil {
+		if worktree, _, _, err = e.m.StartWork(t.Context(), token, "feat/x", ""); err != nil {
 			t.Error(err)
 		}
 	})
@@ -194,7 +194,7 @@ func TestRun_RepoAccessRevoked(t *testing.T) {
 	var startErr error
 	var shelf string
 	second := e.run(t, func(token string) {
-		_, _, _, startErr = e.m.StartWork(t.Context(), token, "feat", "y", "")
+		_, _, _, startErr = e.m.StartWork(t.Context(), token, "feat/y", "")
 		sh, err := e.m.shelf(t.Context(), token)
 		if err != nil {
 			t.Error(err)
@@ -260,7 +260,7 @@ func TestRun_StartWorkConcurrent(t *testing.T) {
 		for i := range paths {
 			wg.Go(func() {
 				var err error
-				if paths[i], _, _, err = e.m.StartWork(t.Context(), token, "feat", "x", ""); err != nil {
+				if paths[i], _, _, err = e.m.StartWork(t.Context(), token, "feat/x", ""); err != nil {
 					t.Error(err)
 				}
 			})
@@ -402,7 +402,7 @@ func TestReleaseDone_HostLookupOncePerRepo(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			e := newRepoEnv(t)
 			e.run(t, func(token string) {
-				if _, _, _, err := e.m.StartWork(t.Context(), token, "fix", "done", ""); err != nil {
+				if _, _, _, err := e.m.StartWork(t.Context(), token, "fix/done", ""); err != nil {
 					t.Error(err)
 				}
 			})
@@ -471,7 +471,7 @@ func TestReleased(t *testing.T) {
 func TestReleaseDoneThread_WaitsForTheRun(t *testing.T) {
 	e := newRepoEnv(t)
 	e.run(t, func(token string) {
-		if _, _, _, err := e.m.StartWork(t.Context(), token, "fix", "done", ""); err != nil {
+		if _, _, _, err := e.m.StartWork(t.Context(), token, "fix/done", ""); err != nil {
 			t.Error(err)
 		}
 	})
@@ -506,7 +506,7 @@ func TestReleaseDoneThread_WaitsForTheRun(t *testing.T) {
 func TestReleaseDone(t *testing.T) {
 	e := newRepoEnv(t)
 	e.run(t, func(token string) {
-		if _, _, _, err := e.m.StartWork(t.Context(), token, "fix", "done", ""); err != nil {
+		if _, _, _, err := e.m.StartWork(t.Context(), token, "fix/done", ""); err != nil {
 			t.Error(err)
 		}
 	})

@@ -56,7 +56,7 @@ func startedWork(t *testing.T, reply string) worktree {
 // worktree.
 func bossWorktree(t *testing.T, s *server, th thread, ev <-chan event, more ...fake.MCPCall) worktree {
 	t.Helper()
-	start := fake.MCPCall{Server: "atoll", Tool: "start_work", Args: json.RawMessage(`{"type":"fix","slug":"Seeded BUG"}`)}
+	start := fake.MCPCall{Server: "atoll", Tool: "start_work", Args: json.RawMessage(`{"branch":"fix/seeded-bug"}`)}
 	return startedWork(t, useAtoll(t, s, th, ev, append([]fake.MCPCall{start}, more...)...)[0])
 }
 
@@ -242,7 +242,7 @@ func TestHelperWork_GitHubConnectionOnlyOwnBranch(t *testing.T) {
 
 // TestHelperWork_NoBossBranch: a boss thread on a repo that never called start_work, and a boss
 // thread with no repo that names one (as Chief does), hand off with no branch: the helper's
-// start_work makes its own <type>/<slug> branch from origin/HEAD, and it pushes and tracks its MR.
+// start_work makes its own branch from origin/HEAD, and it pushes and tracks its MR.
 func TestHelperWork_NoBossBranch(t *testing.T) {
 	t.Parallel()
 	for _, p := range _oneProvider {

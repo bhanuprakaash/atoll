@@ -23,10 +23,10 @@ const (
 
 const _tools = `{"tools":[
 {"name":"start_work",
-"description":"Repo threads start in a clean read-only checkout. Call before your first edit in a repo thread. Makes this thread's worktree on a new branch type/slug and returns its path and branch as JSON. Change into that path for your edits. Calling it again returns the same worktree.",
+"description":"Repo threads start in a clean read-only checkout. Call before your first edit in a repo thread. Makes this thread's worktree on a new branch and returns its path and branch as JSON. Name the branch as this repo's instructions say; if they say nothing, use <type>/<slug> with type feat, fix, chore, docs or test. Change into that path for your edits. Calling it again returns the same worktree.",
 "inputSchema":{"type":"object",
-"properties":{"type":{"type":"string","enum":["feat","fix","chore","docs","test"]},"slug":{"type":"string"},"base":{"type":"string","description":"Optional plain branch name on origin, e.g. test/x"}},
-"required":["type","slug"]}},
+"properties":{"branch":{"type":"string","description":"The full branch name"},"base":{"type":"string","description":"Optional plain branch name on origin, e.g. test/x"}},
+"required":["branch"]}},
 {"name":"track_mr",
 "description":"When the change is ready, commit, push, open a merge request, call this tool with its URL and title, and include the URL in your reply.",
 "inputSchema":{"type":"object","properties":{"url":{"type":"string"},"title":{"type":"string"}},"required":["url","title"]}},
@@ -182,14 +182,13 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 		return text("Sent."), nil
 	case provider.ToolStartWork:
 		var in struct {
-			Type string `json:"type"`
-			Slug string `json:"slug"`
-			Base string `json:"base"`
+			Branch string `json:"branch"`
+			Base   string `json:"base"`
 		}
 		if err := json.Unmarshal(call.Arguments, &in); err != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
 		}
-		path, branch, base, err := a.runs.StartWork(r.Context(), token, in.Type, in.Slug, in.Base)
+		path, branch, base, err := a.runs.StartWork(r.Context(), token, in.Branch, in.Base)
 		if errors.Is(err, run.ErrNoGitHubConnection) {
 			return failure(err.Error()), nil
 		}

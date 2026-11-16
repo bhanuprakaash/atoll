@@ -19,7 +19,7 @@ const (
 	GitHubMCPServer = "github"
 	// ToolApprove is Claude's permission prompt tool: it answers once the user does.
 	ToolApprove = "approve"
-	// ToolStartWork takes {type, slug} and returns the worktree {path, branch, base, note} of the thread.
+	// ToolStartWork takes {branch, base} and returns the worktree {path, branch, base, note} of the thread.
 	ToolStartWork = "start_work"
 	// ToolTrackMR takes {url}: the merge request the thread opened.
 	ToolTrackMR = "track_mr"
