@@ -1504,3 +1504,32 @@ func TestStore_SignedOutAt(t *testing.T) {
 		}
 	}
 }
+
+func TestStore_HoldReports(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	th, _ := st.CreateThread(ctx, bot.ID, "")
+	held := func() bool {
+		t.Helper()
+		got, err := st.Thread(ctx, th.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.HoldsReports
+	}
+	if err := st.HoldReports(ctx, th.ID); err != nil || !held() {
+		t.Fatalf("after HoldReports: held %v, err %v; want true", held(), err)
+	}
+	notice := store.InboxItem{ThreadID: th.ID, Kind: "ci", Text: "ci"}
+	if _, _, err := st.StartRunFrom(ctx, notice); err != nil || !held() {
+		t.Fatalf("a run for a notice from Reef: held %v, err %v; want the hold kept", held(), err)
+	}
+	if _, _, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"}); err != nil || held() {
+		t.Fatalf("a run for the person's message: held %v, err %v; want the hold cleared", held(), err)
+	}
+}

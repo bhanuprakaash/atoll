@@ -106,6 +106,19 @@ function Row({
   );
 }
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+// summary is the tray's count: while a Stop holds reports, the helpers still running and the
+// reports waiting, a part at 0 left out.
+function summary(running: number, waiting: number | null) {
+  if (waiting === null) return `${running} working`;
+  const parts = [
+    running && `${plural(running, 'helper')} still running`,
+    waiting && `${plural(waiting, 'report')} waiting`,
+  ];
+  return parts.filter(Boolean).join(' · ');
+}
+
 // HelpersTray is the one line attached to the top of the composer: what the helpers of this boss
 // thread are doing, the approval that needs the person, and a popover with one row per helper.
 // It sits in the composer's form, which must be positioned.
@@ -113,10 +126,13 @@ export function HelpersTray({
   boss,
   helpers,
   bots,
+  held,
 }: {
   boss: string;
   helpers: Thread[];
   bots: Bots;
+  // held is the reports a Stop holds, null when none is held.
+  held: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const [lit, setLit] = useState(false);
@@ -125,7 +141,7 @@ export function HelpersTray({
   const show = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const rows = helpers.filter(isLiveHelper);
-  const shown = rows.length > 0;
+  const shown = rows.length > 0 || !!held;
   const fromSidebar = shown && (location.state as { helpers?: boolean } | null)?.helpers === true;
   useEffect(() => {
     if (!fromSidebar) return;
@@ -198,7 +214,7 @@ export function HelpersTray({
             ))}
           </span>
           <span className="text-ink">Working with {boss}</span>
-          <span className="text-muted">{rows.length} working</span>
+          <span className="text-muted">{summary(rows.length, held)}</span>
           <button
             ref={show}
             type="button"

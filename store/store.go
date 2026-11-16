@@ -229,8 +229,11 @@ type (
 		ClosedAt        *time.Time `json:"closed_at"`
 		Closed          bool       `json:"closed"`
 		Pinned          bool       `json:"pinned"`
-		Created         time.Time  `json:"created_at"`
-		LastActivity    time.Time  `json:"last_activity"`
+		// HoldsReports is set by the person's Stop on the thread's run: helper notices wait for the
+		// person's next message.
+		HoldsReports bool      `json:"holds_reports"`
+		Created      time.Time `json:"created_at"`
+		LastActivity time.Time `json:"last_activity"`
 	}
 
 	// Message is one chat line. A bot message holds a run's reply.
@@ -344,7 +347,7 @@ const (
 		"can_manage_platform, look, model, mcp_servers, mode, delegates"
 	_insertBot = "INSERT INTO bots (" + _botColumns + ", position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, " +
 		"(SELECT coalesce(max(position), 0) + 1 FROM bots))"
-	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake, mr_head, mr_base_woke, session_cost_usd, pinned_at IS NOT NULL"
+	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, mr_url, mr_state, closed, created, last_activity, mr_title, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, mr_ci, mr_woke, mr_wake, mr_head, mr_base_woke, session_cost_usd, pinned_at IS NOT NULL, holds_reports"
 	_messagePageSize = 50
 )
 
@@ -1311,7 +1314,8 @@ func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) ([]Message
 		notices := !slices.ContainsFunc(stored, func(m Message) bool { return m.Kind == "" && m.FromBotID == "" })
 		_, err = tx.ExecContext(ctx,
 			`UPDATE threads SET last_activity = CASE WHEN ?1 AND parent_thread_id = '' THEN last_activity ELSE ?2 END,
-			   title = CASE WHEN title = '' THEN ?3 ELSE title END WHERE id = ?4`,
+			   title = CASE WHEN title = '' THEN ?3 ELSE title END,
+			   holds_reports = CASE WHEN ?1 THEN holds_reports ELSE 0 END WHERE id = ?4`,
 			notices, time.Now().UTC().UnixMicro(), FirstWords(stored[0].Text), threadID)
 		return err
 	})
@@ -1384,6 +1388,38 @@ func (s *Store) DeleteInbox(ctx context.Context, id string) error {
 		return fmt.Errorf("delete inbox item: %w", err)
 	}
 	return nil
+}
+
+// HoldReports makes the thread, if it is not a helper's, hold the notices of its helpers until the
+// person writes to it: a run that takes a message of the person clears it.
+func (s *Store) HoldReports(ctx context.Context, threadID string) error {
+	if _, err := s.db.ExecContext(ctx,
+		"UPDATE threads SET holds_reports = 1 WHERE id = ? AND parent_thread_id = ''", threadID); err != nil {
+		return fmt.Errorf("hold reports: %w", err)
+	}
+	return nil
+}
+
+// HeldNotices counts the helper notices held for the thread.
+func (s *Store) HeldNotices(ctx context.Context, threadID string) (n int, err error) {
+	items, err := s.inbox(ctx, "NULL", "WHERE thread_id = ?", threadID)
+	for _, it := range items {
+		if IsHelperNotice(it) {
+			n++
+		}
+	}
+	return n, err
+}
+
+// IsHelperNotice reports whether the held message tells a boss about its helper: the notices a
+// Stop on the boss holds.
+func IsHelperNotice(it InboxItem) bool {
+	switch it.Notice {
+	case NoticeHelperDone, NoticeHelperFailed, NoticeHelperStopped, NoticeHelperLimited,
+		NoticeHelperDeleted, NoticeRestart:
+		return true
+	}
+	return false
 }
 
 // InboxThreads lists the threads that have a held message.
@@ -1978,7 +2014,7 @@ func scanThread(r *sql.Rows) (Thread, error) {
 	err := r.Scan(&t.ID, &t.BotID, &t.Session, &t.RepoID, &t.Branch, &t.Worktree, &t.MRURL,
 		&t.MRState, &closed, &created, &lastActivity, &t.MRTitle, &removed, &closedAt, &t.SnapshotRef,
 		&t.Title, &t.ParentThreadID, &t.SessionProvider, &t.CheckoutGitDir, &t.WorktreeGitDir, &t.MRCI, &t.MRWoke, &wake, &t.MRHead, &baseWoke,
-		&t.SessionCostUSD, &t.Pinned)
+		&t.SessionCostUSD, &t.Pinned, &t.HoldsReports)
 	if err != nil {
 		return Thread{}, err
 	}

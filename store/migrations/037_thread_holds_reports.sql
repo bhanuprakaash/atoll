@@ -1,0 +1,1 @@
+ALTER TABLE threads ADD COLUMN holds_reports INTEGER NOT NULL DEFAULT 0;
