@@ -861,6 +861,7 @@ func (m *Manager) poll(w *watcher) {
 		}
 		ws.fails, ws.next = 0, time.Time{}
 	}
+	m.releaseDone()
 	m.pollIssues(w)
 }
 
@@ -907,11 +908,35 @@ func (m *Manager) check(w *watcher, wp store.WatchedPR) error {
 	if err != nil || !released(prs) {
 		return err
 	}
+	return m.releaseDoneThread(t, rp)
+}
+
+// releaseDone retries, from the stored state, the release of each GitLab thread whose MRs are all
+// done; a thread with a run going is left for the next poll.
+func (m *Manager) releaseDone() {
+	threads, err := m.cfg.Store.Done(m.ctx)
+	if err != nil {
+		m.cfg.Log.Warn("list done threads", "error", err)
+		return
+	}
+	for _, t := range threads {
+		rp, err := m.cfg.Store.Repo(m.ctx, t.RepoID)
+		if err == nil && RepoHost(m.ctx, rp.Path) != _hostGitHub {
+			err = m.releaseDoneThread(t, rp)
+		}
+		if err != nil && m.ctx.Err() == nil {
+			m.cfg.Log.Warn("release worktree", "thread_id", t.ID, "error", err)
+		}
+	}
+}
+
+func (m *Manager) releaseDoneThread(t store.Thread, rp store.Repo) error {
 	slot := m.reserve(t.ID)
 	if slot == nil {
 		return nil
 	}
 	defer m.free(slot)
+	var err error
 	if t, err = m.cfg.Store.Thread(m.ctx, t.ID); err != nil || t.Worktree == "" {
 		return err
 	}

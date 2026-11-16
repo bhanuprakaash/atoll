@@ -707,6 +707,50 @@ func TestStore_SetMR(t *testing.T) {
 	set(third, "opened", "merged")
 }
 
+func TestStore_Watched_OpenedOnly(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetWorktree(ctx, thread.ID, "fix/x", "/wt"); err != nil {
+		t.Fatal(err)
+	}
+	const merged, opened = "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2"
+	for url, state := range map[string]string{merged: "merged", opened: "opened"} {
+		if _, err := st.SetMR(ctx, thread.ID, url, state, "T"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, want := range []struct {
+		watched string
+		done    int
+	}{{opened, 0}, {"", 1}} {
+		if i == 1 {
+			if _, err := st.StoreMR(ctx, thread.ID, store.MRRead{URL: opened, Prev: "opened", State: "closed", Title: "T"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		watched, err := st.Watched(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		done, err := st.Done(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(done) != want.done || (want.watched == "") != (len(watched) == 0) || len(watched) > 0 && watched[0].PR.URL != want.watched {
+			t.Errorf("step %d: Watched %+v, Done %d threads; want %q watched, %d done", i, watched, len(done), want.watched, want.done)
+		}
+	}
+}
+
 func wakeFixture(t *testing.T) (*store.Store, store.Thread, store.Bot) {
 	t.Helper()
 	ctx := context.Background()
