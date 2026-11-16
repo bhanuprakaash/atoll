@@ -1445,7 +1445,7 @@ func ToolVerb(name, kind string) string {
 			return "Remembering"
 		case provider.ToolTellUser:
 			return "Writing to you"
-		case provider.ToolDelegate, provider.ToolContinue:
+		case provider.ToolDelegate, provider.ToolContinue, provider.ToolStopHelper:
 			return "Handing off"
 		}
 		if kind == "platform" && strings.HasPrefix(strings.TrimPrefix(name, _atollTools), "list_") {
@@ -1536,7 +1536,7 @@ func ToolKind(name string, input json.RawMessage) (kind, target string) {
 			return "memory", v.Topic
 		case provider.ToolStartWork, provider.ToolTrackMR:
 			return "work", ""
-		case provider.ToolDelegate, provider.ToolContinue:
+		case provider.ToolDelegate, provider.ToolContinue, provider.ToolStopHelper:
 			return "platform", ""
 		default:
 			return "platform", v.Name

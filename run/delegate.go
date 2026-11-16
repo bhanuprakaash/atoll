@@ -210,6 +210,29 @@ func (m *Manager) Continue(ctx context.Context, token, threadID, message string)
 	return helper.Name, nil
 }
 
+// StopHelper stops the run of threadID, a helper thread of the calling boss thread, as the user's
+// Stop does but without waking the boss. It returns the helper Bot's name and whether a run was
+// stopped.
+func (m *Manager) StopHelper(ctx context.Context, token, threadID string) (name string, stopped bool, err error) {
+	a, err := m.byToken(token)
+	if err != nil {
+		return "", false, err
+	}
+	t, err := m.cfg.Store.Thread(ctx, threadID)
+	if errors.Is(err, store.ErrNotFound) || err == nil && t.ParentThreadID != a.threadID {
+		return "", false, RefusedError(threadID + " is not one of your helper threads.")
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("load thread: %w", err)
+	}
+	helper, err := m.cfg.Store.Bot(ctx, t.BotID)
+	if err != nil {
+		return "", false, fmt.Errorf("load helper: %w", err)
+	}
+	stopped, err = m.stopQuietly(ctx, threadID)
+	return helper.Name, stopped, err
+}
+
 // hasGitHub reports whether b has a connected GitHub connection.
 func (m *Manager) hasGitHub(ctx context.Context, b store.Bot) bool {
 	for _, id := range b.Connections {

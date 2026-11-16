@@ -283,6 +283,21 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			return res, rpcErr
 		}
 		return a.jsonText(h)
+	case provider.ToolStopHelper:
+		var in struct {
+			Thread string `json:"thread"`
+		}
+		if err := json.Unmarshal(call.Arguments, &in); err != nil || in.Thread == "" {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid arguments"}
+		}
+		name, stopped, err := a.runs.StopHelper(r.Context(), token, in.Thread)
+		if res, rpcErr := a.refusal(err); res != nil || rpcErr != nil {
+			return res, rpcErr
+		}
+		if !stopped {
+			return a.withHelpers(r, token, name+" is not running.")
+		}
+		return a.withHelpers(r, token, "Stopped "+name+".")
 	case provider.ToolContinue:
 		var in struct {
 			Thread  string `json:"thread"`
@@ -367,6 +382,15 @@ func (a *api) delegateTools(ctx context.Context, bot store.Bot) ([]json.RawMessa
 			"type":       "object",
 			"properties": map[string]any{"thread": str, "message": str},
 			"required":   []string{"thread", "message"},
+		},
+	}, {
+		"name": provider.ToolStopHelper,
+		"description": "Stop the run of a helper thread you started with delegate. Work the helper " +
+			"has not committed stays in its worktree.",
+		"inputSchema": map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"thread": str},
+			"required":   []string{"thread"},
 		},
 	}}
 	out := make([]json.RawMessage, 0, len(tools))
