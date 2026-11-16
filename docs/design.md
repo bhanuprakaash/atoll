@@ -2262,6 +2262,9 @@ Agents edit, skip or delete tests to make them pass, and per-bug unit tests bloa
 - One PR per ticket. The tests come from the ticket's acceptance lines, in `test:` commits that
   touch only `e2e/`, first in the PR, written by the user or a separate session. The implementing
   agent never edits the locked files. CI is the referee.
+- A test fix after the PR is pushed is a new `test:` commit on top; a pushed branch is never
+  rewritten. *Bots don't force-push (#506): a permission rule cannot keep a push off a repo's
+  default branch, and most repos Reef works in have no branch protection.*
 - Locked: `e2e/*_test.go`, `e2e/ui/*.ts` (specs and harness), `e2e/with-secret-store`,
   `e2e/fakes/`. Free: `e2e/testdata/` and unit tests outside `e2e/`.
 - Unit tests are for fiddly logic, as table cases. They run shuffled with a 60s timeout.
