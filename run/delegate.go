@@ -230,6 +230,9 @@ func (m *Manager) StopHelper(ctx context.Context, token, threadID string) (name 
 		return "", false, fmt.Errorf("load helper: %w", err)
 	}
 	stopped, err = m.stopQuietly(ctx, threadID)
+	if stopped {
+		m.flushHelpers(t.ParentThreadID, threadID)
+	}
 	return helper.Name, stopped, err
 }
 
