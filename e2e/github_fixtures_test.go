@@ -31,7 +31,9 @@ type githubMCPRequest struct{ Auth, Method, Tool string }
 // the MCP server at /mcp/, and a git remote at /octo/hello.git behind basic auth. Like the real
 // one it answers form-encoded unless the request has Accept: application/json, and answers an
 // unapproved device code with 200 and authorization_pending. Only the token it issued last is
-// valid, so signing in again revokes the old one.
+// valid, so signing in again revokes the old one. Like an OAuth App with expiring user tokens, it
+// issues a refresh token with every access token, the access token stops working after expires_in
+// seconds, and the refresh grant rotates both tokens: the old access and refresh tokens are dead.
 type fakeGitHub struct {
 	*httptest.Server
 	tag  string
@@ -57,6 +59,27 @@ type fakeGitHub struct {
 	interval     time.Duration
 	polls        []time.Time
 	slowDowns    int
+
+	// Expiring tokens. tokenTTL is the expires_in in seconds of a token from the device flow
+	// (0: 28800, GitHub's). refreshTTLs are the expires_in of the refreshes in order, then
+	// 28800. refreshDelay holds every refresh request that long before it answers. badRefresh
+	// answers every refresh bad_refresh_token; dropRefresh closes the connection with no reply.
+	tokenTTL     int
+	refreshTTLs  []int
+	refreshDelay time.Duration
+	badRefresh   bool
+	dropRefresh  bool
+	refreshToken string
+	expiresAt    time.Time // of token, by expires_in; zero: never
+	refreshLog   []fakeRefresh
+}
+
+// fakeRefresh is one refresh request the fake GitHub got: its form, whether the access token it
+// held had expired by then, and whether it answered with a new pair.
+type fakeRefresh struct {
+	Form    url.Values
+	Expired bool
+	OK      bool
 }
 
 func newFakeGitHub(t *testing.T) *fakeGitHub {
@@ -129,6 +152,10 @@ func (g *fakeGitHub) deviceCode(w http.ResponseWriter, r *http.Request) {
 
 func (g *fakeGitHub) accessToken(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
+	if r.Form.Get("grant_type") == "refresh_token" {
+		g.refresh(w, r)
+		return
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.tokenForms = append(g.tokenForms, r.Form)
@@ -151,9 +178,83 @@ func (g *fakeGitHub) accessToken(w http.ResponseWriter, r *http.Request) {
 		githubReply(w, r, map[string]any{"error": "authorization_pending", "error_description": "The authorization request is still pending."})
 		return
 	}
+	ttl := g.tokenTTL
+	if ttl == 0 {
+		ttl = _githubTokenTTL
+	}
+	g.issueTokens(w, r, ttl)
+}
+
+const (
+	_githubTokenTTL = 28800
+	// _githubExpiryGrace is how long past expires_in the fake still takes an access token: the
+	// server counts expires_in from when the reply reached it, a few ms after the fake sent it, and
+	// a read in that gap must not sign the connection out.
+	_githubExpiryGrace = 500 * time.Millisecond
+)
+
+// issueTokens answers with a new access and refresh token that replace the old ones; the caller
+// holds g.mu.
+func (g *fakeGitHub) issueTokens(w http.ResponseWriter, r *http.Request, ttl int) {
 	g.issued++
 	g.token = fmt.Sprintf("fake-gho-%s-%d", g.tag, g.issued)
-	githubReply(w, r, map[string]any{"access_token": g.token, "token_type": "bearer", "scope": "repo,read:org,workflow"})
+	g.refreshToken = fmt.Sprintf("fake-ghr-%s-%d", g.tag, g.issued)
+	g.expiresAt = time.Now().Add(time.Duration(ttl) * time.Second)
+	githubReply(w, r, map[string]any{"access_token": g.token, "token_type": "bearer", "scope": "repo,read:org,workflow",
+		"refresh_token": g.refreshToken, "expires_in": ttl, "refresh_token_expires_in": 15638400})
+}
+
+// refresh is the refresh grant of POST /login/oauth/access_token.
+func (g *fakeGitHub) refresh(w http.ResponseWriter, r *http.Request) {
+	g.mu.Lock()
+	delay, drop := g.refreshDelay, g.dropRefresh
+	g.refreshLog = append(g.refreshLog, fakeRefresh{Form: r.Form, Expired: !g.expiresAt.IsZero() && time.Now().After(g.expiresAt)})
+	n := len(g.refreshLog) - 1
+	g.mu.Unlock()
+	time.Sleep(delay)
+	if drop {
+		if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+			_ = conn.Close()
+		}
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.badRefresh || g.refreshToken == "" || r.Form.Get("refresh_token") != g.refreshToken {
+		githubReply(w, r, map[string]any{"error": "bad_refresh_token", "error_description": "The refresh token passed is incorrect or expired."})
+		return
+	}
+	ttl := _githubTokenTTL
+	if used := g.refreshedCount(); used < len(g.refreshTTLs) {
+		ttl = g.refreshTTLs[used]
+	}
+	g.refreshLog[n].OK = true
+	g.issueTokens(w, r, ttl)
+}
+
+// refreshedCount is how many refreshes got a new pair; the caller holds g.mu.
+func (g *fakeGitHub) refreshedCount() int {
+	n := 0
+	for _, x := range g.refreshLog {
+		if x.OK {
+			n++
+		}
+	}
+	return n
+}
+
+// refreshes is every refresh request the fake got, in order.
+func (g *fakeGitHub) refreshes() []fakeRefresh {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return slices.Clone(g.refreshLog)
+}
+
+// refreshed is how many refresh requests got a new pair.
+func (g *fakeGitHub) refreshed() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.refreshedCount()
 }
 
 // authorised reports whether the Authorization header carries the valid token.
@@ -161,7 +262,7 @@ func (g *fakeGitHub) authorised(header string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	for _, scheme := range []string{"Bearer ", "token "} {
-		if t, ok := strings.CutPrefix(header, scheme); ok && g.token != "" && t == g.token && !g.rejectUser {
+		if t, ok := strings.CutPrefix(header, scheme); ok && g.token != "" && t == g.token && !g.rejectUser && (g.expiresAt.IsZero() || time.Now().Before(g.expiresAt.Add(_githubExpiryGrace))) {
 			return true
 		}
 	}
@@ -273,6 +374,33 @@ func githubSecret(t *testing.T, id string) string {
 		t.Fatalf("connection %s has no entry in the OS secret store", id)
 	}
 	return value
+}
+
+// githubSecretToken is the access token in the connection's keyring entry, whether the entry is a
+// JSON record or a bare token.
+func githubSecretToken(t *testing.T, id string) string {
+	t.Helper()
+	var rec struct {
+		AccessToken string `json:"access_token"`
+	}
+	value := githubSecret(t, id)
+	if json.Unmarshal([]byte(value), &rec) == nil && rec.AccessToken != "" {
+		return rec.AccessToken
+	}
+	return value
+}
+
+// setGitHubSecret replaces the connection's keyring entry, as an older Atoll would have left it.
+func setGitHubSecret(t *testing.T, id, value string) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "secret-tool", "store", "--label=atoll-e2e", "service", "atoll", "username", "github:"+id)
+	cmd.Stdin = strings.NewReader(value)
+	if runtime.GOOS == "darwin" {
+		cmd = exec.CommandContext(t.Context(), "security", "add-generic-password", "-U", "-s", "atoll", "-a", "github:"+id, "-w", value)
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("write keyring: %v: %s", err, out)
+	}
 }
 
 // githubFixture is a user's machine with its own glab, gh and git logins, gh tokens in the env and

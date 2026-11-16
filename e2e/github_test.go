@@ -79,7 +79,7 @@ func TestGitHub_ConnectKeepsTheTokenInTheSecretStore(t *testing.T) {
 	}
 
 	token := f.gh.currentToken()
-	if got := githubSecret(t, start.ID); got != token {
+	if got := githubSecretToken(t, start.ID); got != token {
 		t.Fatalf("OS secret store github:%s holds %q, want the access token", start.ID, got)
 	}
 	assertNoSecret(t, token, f.m.data)
@@ -117,7 +117,7 @@ func TestGitHub_SignInConnectsAfterSlowDown(t *testing.T) {
 	if status.Status != "connected" || slowDowns != 1 {
 		t.Fatalf("after a slow_down: status %+v, %d slow_down answers to polls at %v; want connected after one", status, slowDowns, polls)
 	}
-	if got := githubSecret(t, start.ID); got != f.gh.currentToken() {
+	if got := githubSecretToken(t, start.ID); got != f.gh.currentToken() {
 		t.Fatalf("OS secret store github:%s holds %q, want the access token", start.ID, got)
 	}
 }
@@ -321,7 +321,7 @@ func TestGitHub_RejectedTokenNeedsSignIn(t *testing.T) {
 	if !reflect.DeepEqual(got.Connections, []string{id}) {
 		t.Fatalf("Bot connections %v, want [%s]", got.Connections, id)
 	}
-	if v := githubSecret(t, id); v != second {
+	if v := githubSecretToken(t, id); v != second {
 		t.Fatalf("OS secret store holds %q, want the new token", v)
 	}
 
