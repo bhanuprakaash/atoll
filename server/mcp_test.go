@@ -53,7 +53,7 @@ func TestMCP(t *testing.T) {
 		},
 		{
 			name: "start_work with an unknown token", method: "POST",
-			give:       `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"start_work","arguments":{"type":"feat","slug":"x"}}}`,
+			give:       `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"start_work","arguments":{"branch":"feat/x"}}}`,
 			wantStatus: 200,
 			wantBody:   `"error":{"code":-32603`,
 		},
