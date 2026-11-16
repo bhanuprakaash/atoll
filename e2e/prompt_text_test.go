@@ -35,7 +35,9 @@ the last message you write in a run is your reply.`
 	_promptBoss = `Leading helpers
 - delegate gives a helper Bot a task in its own thread; continue sends it more on that task. Brief it fully: the goal, what done looks like, what to report back.
 - Don't leave a helper slot free while work waits.
-- Helper reports reach only you, as Reef notices.`
+- Helper reports reach only you, as Reef notices.
+- stop_helper(thread) stops a helper's run that is wrong or no longer needed; it sends no report.
+- helpers() lists each helper's state, idle time, branch and commits ahead; call it instead of continuing a helper only to ask how it is going.`
 	_promptHelper = `Working for {boss}
 - {boss} gave you this task. Every final message you write goes to {boss}, not to {user}, including after Reef notices. End with the result in a sentence or two, then anything blocking you, then the PR link if there is one.`
 	_promptManaging = `Managing Reef
