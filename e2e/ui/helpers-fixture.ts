@@ -114,3 +114,20 @@ export async function openDetails(page: Page) {
   await expect(details(page)).toBeVisible();
   return details(page);
 }
+
+// settledHelpers waits until the boss thread has `done` helpers with a finished run and `running`
+// with a live one.
+export async function settledHelpers(m: Machine, boss: string, done: number, running: number) {
+  await expect
+    .poll(
+      async () => {
+        const helpers: HelperThread[] = (await api(m, 'GET', `/api/threads/${boss}`)).helpers;
+        return [
+          helpers.filter((h) => h.run_status === 'done').length,
+          helpers.filter((h) => h.run_status === 'running' || h.run_status === 'waiting').length,
+        ];
+      },
+      { timeout: 60_000 },
+    )
+    .toEqual([done, running]);
+}
