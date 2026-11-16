@@ -17,8 +17,8 @@ import (
 	"time"
 )
 
-// Run with a signed-in claude on PATH:
-// go test -tags realclaude -run TestClaudeIsolation_Real ./e2e
+// Run with claude on PATH and a signed-in test home (see realClaude):
+// go test -tags realclaude -run 'TestClaudeIsolation_Real|TestNoRepoShell_Real' ./e2e
 
 const _realBearer = "reef-e2e-bearer-0"
 
@@ -72,17 +72,44 @@ func probeMCP(t *testing.T, tools ...string) (url string, auth func() []string) 
 	}
 }
 
-func realClaude(t *testing.T) string {
+// realClaude returns claude on PATH and the environment to run it in: the caller's, without its
+// ANTHROPIC_* and CLAUDE* entries, and CLAUDE_CONFIG_DIR pointing at a test home of its own, so
+// no setting, hook or CLAUDE.md of the developer's Claude Code reaches the test and nothing of
+// their login is copied. On macOS the login is in the keychain, keyed by that folder, so the test
+// home needs its own one-time sign-in.
+func realClaude(t *testing.T) (string, []string) {
 	t.Helper()
 	claude, err := exec.LookPath("claude")
 	if err != nil {
-		t.Fatal("no claude on PATH: run this test only on a machine with a signed-in Claude Code")
+		t.Fatal("no claude on PATH: run this test only on a machine with Claude Code installed")
 	}
-	return claude
+	cfg, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(cfg, "atoll-e2e", "claude")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "ANTHROPIC_") && !strings.HasPrefix(kv, "CLAUDE") {
+			env = append(env, kv)
+		}
+	}
+	env = append(env, "CLAUDE_CONFIG_DIR="+dir)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	status := exec.CommandContext(ctx, claude, "auth", "status")
+	status.Env = env
+	if err := status.Run(); err != nil {
+		t.Fatalf("the test's Claude home %s is not signed in (%v).\nSign it in once, then run the test again:\n  CLAUDE_CONFIG_DIR=%q claude auth login", dir, err, dir)
+	}
+	return claude, env
 }
 
 func TestClaudeIsolation_RealClaudeReachesMCPServers(t *testing.T) {
-	claude := realClaude(t)
+	claude, env := realClaude(t)
 	m := ownerSetupMachine(t)
 	m.serve(t)
 	prefix := filepath.Join(m.data, "bin", "claude-shell-prefix")
@@ -97,7 +124,7 @@ func TestClaudeIsolation_RealClaudeReachesMCPServers(t *testing.T) {
 		"--strict-mcp-config", "--mcp-config", string(config), "--setting-sources", "project", "--allowedTools", "Bash")
 	cmd.Stdin = strings.NewReader("Run this exact Bash command and reply with its output only: env | grep -c -E '^(CLAUDE|ATOLL_MCP)'")
 	cmd.Dir = t.TempDir()
-	cmd.Env = append(os.Environ(), "ATOLL_MCP_0="+_realBearer, "CLAUDE_CODE_SHELL_PREFIX="+prefix)
+	cmd.Env = append(env, "ATOLL_MCP_0="+_realBearer, "CLAUDE_CODE_SHELL_PREFIX="+prefix)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("claude: %v\n%s", err, out)
@@ -130,7 +157,7 @@ func TestClaudeIsolation_RealClaudeReachesMCPServers(t *testing.T) {
 // tools. A Claude Code that adds a built-in tool does not change the list, because the allowlist
 // closes it; one that stops listing a tool, or a flag that stops working, fails here.
 func TestClaudeIsolation_RealClaudeToolList(t *testing.T) {
-	claude := realClaude(t)
+	claude, env := realClaude(t)
 	m := ownerSetupMachine(t)
 	s := m.serve(t)
 	for _, mode := range _modes {
@@ -177,7 +204,7 @@ func TestClaudeIsolation_RealClaudeToolList(t *testing.T) {
 			cmd := exec.CommandContext(ctx, claude, argv...)
 			cmd.Stdin = strings.NewReader(`{"type":"user","message":{"role":"user","content":"Reply with just: ok"}}` + "\n")
 			cmd.Dir = t.TempDir()
-			cmd.Env = os.Environ()
+			cmd.Env = slices.Clone(env)
 			for k, v := range c.env {
 				if k == "CLAUDE_CODE_SHELL_PREFIX" || k == "ENABLE_CLAUDEAI_MCP_SERVERS" || strings.HasPrefix(k, "ATOLL_MCP_") {
 					cmd.Env = append(cmd.Env, k+"="+v)
@@ -211,7 +238,7 @@ func TestClaudeIsolation_RealClaudeToolList(t *testing.T) {
 // permission rule covers) and Read. Ask is left out: the
 // stand-in MCP server answers no approval, so every call would be refused for that reason.
 func TestNoRepoShell_RealClaudeCannotReadRegisteredRepo(t *testing.T) {
-	claude := realClaude(t)
+	claude, env := realClaude(t)
 	m := ownerSetupMachine(t)
 	s := m.serve(t)
 	w := newRepoWorld(t, m, s)
@@ -230,11 +257,14 @@ func TestNoRepoShell_RealClaudeCannotReadRegisteredRepo(t *testing.T) {
 			url, _ := probeMCP(t, _standInTools...)
 			argv := slices.Clone(c.argv)
 			j := slices.Index(argv, "--mcp-config")
+			if j < 0 {
+				t.Fatalf("argv has no --mcp-config: %q", argv)
+			}
 			var config struct {
 				McpServers map[string]map[string]any `json:"mcpServers"`
 			}
-			if err := json.Unmarshal([]byte(argv[j+1]), &config); err != nil || config.McpServers["atoll"] == nil {
-				t.Fatalf("--mcp-config %s has no atoll server (%v)", argv[j+1], err)
+			if err := json.Unmarshal(c.mcp, &config); err != nil || config.McpServers["atoll"] == nil {
+				t.Fatalf("MCP config %s has no atoll server (%v)", c.mcp, err)
 			}
 			config.McpServers["atoll"]["url"] = url
 			delete(config.McpServers["atoll"], "headers")
@@ -253,17 +283,7 @@ func TestNoRepoShell_RealClaudeCannotReadRegisteredRepo(t *testing.T) {
 				"5. Bash: cat control.txt"
 			cmd.Stdin = strings.NewReader(`{"type":"user","message":{"role":"user","content":` + string(mustJSON(ask)) + `}}` + "\n")
 			cmd.Dir = c.cwd
-			// The machine's scratch HOME (with its keychain on macOS) and only the sign-in, so no
-			// setting, hook or CLAUDE.md of the developer's own Claude Code can make the refusals pass.
-			if b, err := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".claude", ".credentials.json")); err == nil {
-				writeFile(t, filepath.Join(m.home, ".claude", ".credentials.json"), string(b))
-			}
-			for _, kv := range os.Environ() {
-				if k, _, _ := strings.Cut(kv, "="); k != "HOME" && k != "CLAUDE_CONFIG_DIR" && k != "XDG_CONFIG_HOME" {
-					cmd.Env = append(cmd.Env, kv)
-				}
-			}
-			cmd.Env = append(cmd.Env, "HOME="+m.home)
+			cmd.Env = slices.Clone(env)
 			for k, v := range c.env {
 				if k == "CLAUDE_CODE_SHELL_PREFIX" || k == "ENABLE_CLAUDEAI_MCP_SERVERS" || strings.HasPrefix(k, "ATOLL_MCP_") {
 					cmd.Env = append(cmd.Env, k+"="+v)
