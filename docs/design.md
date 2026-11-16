@@ -114,6 +114,18 @@ dependency.
   *Claude's auto mode classifier runs safe steps and blocks risky ones (Claude reports the block);
   explicit ask rules still come to the thread as cards.* Full access never asks, even to delete
   files or push, so Bot settings says so when it is picked; it is for Bots that run in a VM.
+  - A Claude Bot with tools may force-push with a lease (#506). Reef's `--settings` carries the
+    allow rule `Bash(git push --force-with-lease*)`, and a matching allow rule resolves before the
+    auto mode classifier. Why: `test:` commits come first in a PR, so a test fix after review
+    reorders a pushed branch, and each reorder used to reach the owner as a command to paste
+    (#502). The lease makes git refuse the push if the branch moved since the Bot last saw it.
+    - The rule matches only a command that starts with `git push --force-with-lease`: run it on
+      its own from the worktree, not after `&&` or as `git -C <path> push` (those go to the
+      classifier, which refused them on #502). A plain `--force` is unchanged.
+    - A pattern cannot exclude a branch. `main` relies on GitHub: its ruleset blocks non-fast-forward
+      pushes, and admins bypass it only through a pull request. Reef does not check which branch a
+      push targets, and `--force` or a `+` refspec next to `--force-with-lease` still matches the
+      rule and drops the lease.
 - Delegate list (`delegates`, Bot ids; `[]` by default): the Bots this one may hand work to, picked
   in Bot settings under "Can hand work to" (Add Bot, listing the other Bots) with the line "<Bot>
   can start up to 3 helper threads at once with these Bots". A list naming the Bot itself or an id
@@ -858,7 +870,8 @@ Follow-ups:
     `--setting-sources project` (user and local settings off; on 2.1.319 it hides the skills synced
     from the user's claude.ai account), `disableAllHooks`, `disableBundledSkills` and
     `skillOverrides` turning off `design`, `doctor`, `plugin-authoring` (the bundled skills that
-    survive `disableBundledSkills`).
+    survive `disableBundledSkills`), and, with tools, the allow rule
+    `Bash(git push --force-with-lease*)` (see Mode).
   - Claude Code hides the repos a Bot lacks from its tools (#169; Claude Code 2.1.322, Linux with
     bubblewrap; same `--settings` object as below). A run of a Bot lacking at least one registered
     repo (All lacks none; Chief and the title runs have no built-in tools) gets, per hidden path, a
