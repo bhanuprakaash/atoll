@@ -345,7 +345,7 @@ async function helpersOf(page: Page, done: number, running: number) {
 }
 
 const doneRows = (panel: ReturnType<typeof details>) =>
-  panel.getByRole('listitem').filter({ has: panel.getByText('Done', { exact: true }) });
+  panel.getByRole('listitem').filter({ has: panel.page().getByText('Done', { exact: true }) });
 
 test('Done helpers show their 3 newest and Show 7 more; Show less folds them again; running helpers always show', async ({
   page,

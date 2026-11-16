@@ -393,8 +393,8 @@ test('at 1280x800 the card stops at 480px, scrolls inside and leaves the chat lo
     expect(await box(log)).toEqual(before);
   };
   await fits();
-  for (const button of await panel.getByRole('button', { name: /^Show \d+ more$/ }).all())
-    await button.click();
+  const more = panel.getByRole('button', { name: /^Show \d+ more$/ });
+  while (await more.count()) await more.first().click();
   await expect(panel.getByRole('button', { name: 'Show less', exact: true })).toHaveCount(2);
   await fits();
   expect(await panel.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
