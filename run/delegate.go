@@ -351,7 +351,7 @@ func (m *Manager) Helpers(ctx context.Context, token string) ([]HelperRow, strin
 			}
 		}
 		switch {
-		case going, id == "":
+		case going, id == "", last.Status == store.StatusRunning, last.Status == store.StatusWaiting:
 			// A helper whose run has not started yet counts as running, as in the helpers line.
 			row.State = store.StatusRunning
 			idle := 0
