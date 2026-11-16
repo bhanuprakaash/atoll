@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"time"
 
 	"atoll/repo"
 	"atoll/store"
@@ -296,6 +297,74 @@ func (m *Manager) helpersLine(ctx context.Context, bossID, skip string) (string,
 		names[i] = b.Name + " on " + h.Title
 	}
 	return HelpersLine(names), nil
+}
+
+// HelperRow is one helper thread in the result of helpers(): no text from the thread.
+type HelperRow struct {
+	Bot      string `json:"bot"`
+	ThreadID string `json:"thread_id"`
+	Title    string `json:"title"`
+	State    string `json:"state"`
+	IdleS    *int   `json:"idle_s,omitempty"`
+	Branch   string `json:"branch"`
+	Ahead    int    `json:"ahead"`
+}
+
+// Helpers lists the open helper threads of the run with token's thread, oldest first, with the
+// helpers line. It changes nothing.
+func (m *Manager) Helpers(ctx context.Context, token string) ([]HelperRow, string, error) {
+	_, boss, _, err := m.Source(token)
+	if err != nil {
+		return nil, "", err
+	}
+	threads, err := m.cfg.Store.HelperThreads(ctx, boss.ID)
+	if err != nil {
+		return nil, "", fmt.Errorf("list helper threads: %w", err)
+	}
+	rows := []HelperRow{}
+	for _, h := range threads {
+		if h.Closed {
+			continue
+		}
+		bot, err := m.cfg.Store.Bot(ctx, h.BotID)
+		if err != nil {
+			return nil, "", fmt.Errorf("load helper: %w", err)
+		}
+		id, err := m.cfg.Store.LatestRun(ctx, h.ID)
+		if err != nil {
+			return nil, "", err
+		}
+		last, err := m.cfg.Store.Run(ctx, id)
+		if err != nil {
+			return nil, "", fmt.Errorf("load helper run: %w", err)
+		}
+		row := HelperRow{Bot: bot.Name, ThreadID: h.ID, Title: h.Title, State: last.Status, Branch: h.Branch}
+		m.mu.Lock()
+		a, going := m.runs[h.ID]
+		m.mu.Unlock()
+		switch {
+		case going:
+			row.State = store.StatusRunning
+			since := a.run.StartedAt
+			if n := a.lastCall.Load(); n != 0 {
+				since = time.Unix(0, n)
+			}
+			idle := int(time.Since(since).Seconds())
+			row.IdleS = &idle
+		case last.ErrorKind == store.ErrorRateLimited:
+			row.State = "limited"
+		}
+		if boss.Worktree != "" && h.Worktree != "" && h.RepoID != "" {
+			rp, err := m.cfg.Store.Repo(ctx, h.RepoID)
+			if err != nil {
+				return nil, "", fmt.Errorf("load repo: %w", err)
+			}
+			row.Ahead = repo.Ahead(ctx, rp.Path, boss.Branch, h.Branch)
+		}
+		rows = append(rows, row)
+	}
+	line, err := m.helpersLine(ctx, boss.ID, "")
+	return rows, line, err
 }
 
 // BossHelpers is the helpers line for the run with token, or "" unless the run lists delegate:

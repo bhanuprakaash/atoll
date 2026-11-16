@@ -298,6 +298,15 @@ func (a *api) callTool(r *http.Request, params json.RawMessage) (any, *rpcError)
 			return a.withHelpers(r, token, name+" is not running.")
 		}
 		return a.withHelpers(r, token, "Stopped "+name+".")
+	case provider.ToolHelpers:
+		rows, line, err := a.runs.Helpers(r.Context(), token)
+		if err != nil {
+			return nil, a.toolError(err)
+		}
+		return a.jsonText(struct {
+			Helpers []run.HelperRow `json:"helpers"`
+			Line    string          `json:"line"`
+		}{rows, line})
 	case provider.ToolContinue:
 		var in struct {
 			Thread  string `json:"thread"`
@@ -392,6 +401,11 @@ func (a *api) delegateTools(ctx context.Context, bot store.Bot) ([]json.RawMessa
 			"properties": map[string]any{"thread": str},
 			"required":   []string{"thread"},
 		},
+	}, {
+		"name": provider.ToolHelpers,
+		"description": "List your helper threads: Bot, thread, state, idle time, branch and commits " +
+			"ahead of yours. Use it instead of continue to ask how a helper is going.",
+		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 	}}
 	out := make([]json.RawMessage, 0, len(tools))
 	for _, t := range tools {
