@@ -12,7 +12,7 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-var _updateGolden = flag.Bool("update", false, "rewrite prompt goldens from observed provider input; human use only")
+var _updateGolden = flag.Bool("update", false, "rewrite prompt goldens from observed provider input; the implementer regenerates with go test ./e2e -run TestMemory_PromptGoldenAndBudget -update")
 
 const (
 	_saveMemory   = "Save the SQLite journal decision in repo memory."

@@ -24,9 +24,28 @@ git diff -M --name-status "$base" HEAD | while IFS=$tab read -r status path new;
 done >"$files"
 
 grep -E '^(\.github/workflows/|scripts/check-tests$|scripts/docs-only$)' "$files" | sed 's/$/: changes the test guard or CI config/' >>"$found" || true
-if grep -q '^e2e/' "$files" && grep -qv '^e2e/' "$files"; then
-	sed 's|$|: e2e/ and other files change in one PR|' "$files" >>"$found"
-fi
+
+is_locked() {
+	case $1 in
+	e2e/testdata/*) return 1 ;;
+	e2e/*_test.go | e2e/ui/*.ts | e2e/with-secret-store | e2e/fakes/*) return 0 ;;
+	esac
+	return 1
+}
+
+for sha in $(git rev-list --no-merges "$base..HEAD"); do
+	paths=$(git diff-tree -r --no-commit-id --no-renames --name-only "$sha")
+	locked=
+	other=
+	for path in $paths; do
+		if is_locked "$path"; then locked=1; fi
+		case $path in e2e/*) ;; *) other=1 ;; esac
+	done
+	[ -n "$locked" ] || continue
+	label="$(git rev-parse --short "$sha") $(git log -1 --format=%s "$sha")"
+	case $(git log -1 --format=%s "$sha") in test:*) ;; *) echo "$label: changes locked e2e files without a test: subject" >>"$found" ;; esac
+	[ -z "$other" ] || echo "$label: changes locked e2e files and files outside e2e/" >>"$found"
+done
 
 git diff -U0 --no-color --no-ext-diff "$base" HEAD | awk '
 /^\+\+\+ / { f = substr($0, 7); next }
