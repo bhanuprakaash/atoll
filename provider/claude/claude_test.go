@@ -3,6 +3,7 @@ package claude
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -109,11 +110,13 @@ func TestSession(t *testing.T) {
 }
 
 func TestArgv(t *testing.T) {
+	settings := `{"autoMemoryEnabled":false,"claudeMdExcludes":["*.md",".claude/**"],"disableAllHooks":true,"disableBundledSkills":true,%s"skillOverrides":{"design":"off","doctor":"off","plugin-authoring":"off"}}`
 	base := []string{
 		"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-		"--include-partial-messages", "--strict-mcp-config", "--setting-sources", "project", "--settings", `{"autoMemoryEnabled":false,"claudeMdExcludes":["*.md",".claude/**"],"disableAllHooks":true,"disableBundledSkills":true,"skillOverrides":{"design":"off","doctor":"off","plugin-authoring":"off"}}`, "--tools", "Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write",
+		"--include-partial-messages", "--strict-mcp-config", "--setting-sources", "project", "--settings", fmt.Sprintf(settings, `"permissions":{"allow":["Bash(git push --force-with-lease*)"]},`), "--tools", "Bash,Edit,Glob,Grep,NotebookEdit,Read,Skill,WebFetch,WebSearch,Write",
 	}
 	noTools := slices.Clone(base)
+	noTools[len(noTools)-3] = fmt.Sprintf(settings, "")
 	noTools[len(noTools)-1] = ""
 	atoll := []string{
 		"--mcp-config", "/dev/fd/3",
@@ -172,30 +175,59 @@ func TestArgv(t *testing.T) {
 	}
 }
 
-func TestIsolationArgsSandbox(t *testing.T) {
-	args, err := IsolationArgs("/repo", false, []string{"/hidden"})
-	if err != nil {
-		t.Fatal(err)
+func TestIsolationArgs(t *testing.T) {
+	lease := []string{"Bash(git push --force-with-lease*)"}
+	tests := []struct {
+		name        string
+		noTools     bool
+		hidden      []string
+		wantPerms   bool
+		allow, deny []string
+		wantSandbox bool
+	}{
+		{"tools, nothing hidden", false, nil, true, lease, nil, false},
+		{"tools, hidden path", false, []string{"/hidden"}, true, lease, []string{"Read(//hidden/**)", "Edit(//hidden/**)"}, true},
+		{"no tools", true, []string{"/hidden"}, false, nil, nil, false},
 	}
-	i := slices.Index(args, "--settings")
-	var got struct {
-		Sandbox struct {
-			WeakerNetworkIsolation bool `json:"enableWeakerNetworkIsolation"`
-			Network                struct {
-				AllowedDomains    []string `json:"allowedDomains"`
-				AllowLocalBinding bool     `json:"allowLocalBinding"`
-			} `json:"network"`
-		} `json:"sandbox"`
-	}
-	if i < 0 {
-		t.Fatalf("no --settings in %q", args)
-	}
-	if err := json.Unmarshal([]byte(args[i+1]), &got); err != nil {
-		t.Fatal(err)
-	}
-	sb := got.Sandbox
-	if !sb.WeakerNetworkIsolation || !sb.Network.AllowLocalBinding || !slices.Equal(sb.Network.AllowedDomains, []string{"*"}) {
-		t.Errorf("sandbox = %+v, want enableWeakerNetworkIsolation, allowLocalBinding and allowedDomains [*]", sb)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args, err := IsolationArgs("/repo", tt.noTools, tt.hidden)
+			if err != nil {
+				t.Fatal(err)
+			}
+			i := slices.Index(args, "--settings")
+			if i < 0 {
+				t.Fatalf("no --settings in %q", args)
+			}
+			var got struct {
+				Permissions *struct {
+					Allow []string `json:"allow"`
+					Deny  []string `json:"deny"`
+				} `json:"permissions"`
+				Sandbox *struct {
+					WeakerNetworkIsolation bool `json:"enableWeakerNetworkIsolation"`
+					Network                struct {
+						AllowedDomains    []string `json:"allowedDomains"`
+						AllowLocalBinding bool     `json:"allowLocalBinding"`
+					} `json:"network"`
+				} `json:"sandbox"`
+			}
+			if err := json.Unmarshal([]byte(args[i+1]), &got); err != nil {
+				t.Fatal(err)
+			}
+			if (got.Permissions != nil) != tt.wantPerms {
+				t.Fatalf("permissions = %+v, want present %v", got.Permissions, tt.wantPerms)
+			}
+			if got.Permissions != nil && (!slices.Equal(got.Permissions.Allow, tt.allow) || !slices.Equal(got.Permissions.Deny, tt.deny)) {
+				t.Errorf("permissions = %+v, want allow %q deny %q", *got.Permissions, tt.allow, tt.deny)
+			}
+			if (got.Sandbox != nil) != tt.wantSandbox {
+				t.Fatalf("sandbox = %+v, want present %v", got.Sandbox, tt.wantSandbox)
+			}
+			if sb := got.Sandbox; sb != nil && (!sb.WeakerNetworkIsolation || !sb.Network.AllowLocalBinding || !slices.Equal(sb.Network.AllowedDomains, []string{"*"})) {
+				t.Errorf("sandbox = %+v, want enableWeakerNetworkIsolation, allowLocalBinding and allowedDomains [*]", *sb)
+			}
+		})
 	}
 }
 

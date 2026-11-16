@@ -507,13 +507,17 @@ func IsolationArgs(cwd string, noTools bool, hidden []string) ([]string, error) 
 		"skillOverrides":    map[string]string{"design": "off", "doctor": "off", "plugin-authoring": "off"},
 		"autoMemoryEnabled": false, "claudeMdExcludes": excludes,
 	}
+	permissions := map[string]any{"allow": []string{"Bash(git push --force-with-lease*)"}}
+	if !noTools {
+		base["permissions"] = permissions
+	}
 	if len(hidden) > 0 && !noTools {
 		var deny []string
 		for _, path := range hidden {
 			rule := "(/" + _globChars.Replace(path) + "/**)"
 			deny = append(deny, "Read"+rule, "Edit"+rule)
 		}
-		base["permissions"] = map[string]any{"deny": deny}
+		permissions["deny"] = deny
 		base["sandbox"] = map[string]any{
 			"enabled": true, "failIfUnavailable": true,
 			"allowUnsandboxedCommands": false, "autoAllowBashIfSandboxed": false,
