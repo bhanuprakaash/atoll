@@ -17,39 +17,13 @@ func (m *Manager) post(ctx context.Context, threadID, text string) (busy bool, e
 	m.mu.Lock()
 	_, busy = m.runs[threadID]
 	m.mu.Unlock()
-	if _, err := m.cfg.Store.Enqueue(ctx, store.InboxItem{ThreadID: threadID, Text: text, Queued: true}); err != nil {
+	if _, err := m.cfg.Store.Enqueue(ctx, store.InboxItem{ThreadID: threadID, Text: text, Queued: true, Notice: store.NoticeRelease}); err != nil {
 		return false, err
 	}
 	if busy {
 		m.cfg.Log.Info("queued", "thread_id", threadID)
 	}
-	if err := m.releaseHold(ctx, threadID); err != nil {
-		return busy, err
-	}
 	return busy, m.drain(ctx, threadID, true)
-}
-
-// releaseHold ends a stopped helper thread's hold and starts one run with everything held for it,
-// oldest first. The run waits, as any helper's does, while the boss has _maxHelpers helper runs
-// going.
-func (m *Manager) releaseHold(ctx context.Context, threadID string) error {
-	m.inboxMu.Lock()
-	defer m.inboxMu.Unlock()
-	t, err := m.cfg.Store.Thread(ctx, threadID)
-	if err != nil || t.ParentThreadID == "" || !t.HoldsReports {
-		return err
-	}
-	if err := m.cfg.Store.ReleaseReports(ctx, threadID); err != nil {
-		return err
-	}
-	items, err := m.cfg.Store.Held(ctx, threadID)
-	if err != nil || len(items) == 0 {
-		return err
-	}
-	if _, _, err := m.sendHeld(ctx, items...); err != nil && !errors.Is(err, ErrBusy) {
-		return fmt.Errorf("deliver held messages: %w", err)
-	}
-	return nil
 }
 
 // drain starts runs for the thread's held messages until a run is going or none are held. With
@@ -83,7 +57,8 @@ func (m *Manager) drain(ctx context.Context, threadID string, wait bool) error {
 
 // pick returns the held messages the thread's next run takes, none when nothing is held or the
 // wake window still holds them. A thread that holds helper reports leaves them held unless the
-// person's message is. A stopped helper thread leaves everything held until its boss's next continue. A helper thread's run takes one message, or the person's. Any
+// person's message is. A stopped helper thread leaves everything held until its boss's next continue, which
+// takes it all. A helper thread's run takes one message, or the person's. Any
 // other thread's takes everything held. inboxMu is held.
 func (m *Manager) pick(ctx context.Context, threadID string, wait bool) ([]store.InboxItem, error) {
 	t, err := m.cfg.Store.Thread(ctx, threadID)
@@ -92,7 +67,13 @@ func (m *Manager) pick(ctx context.Context, threadID string, wait bool) ([]store
 	}
 	if t.ParentThreadID != "" {
 		if t.HoldsReports {
-			return nil, nil
+			held, err := m.cfg.Store.Held(ctx, threadID)
+			if err != nil || slices.ContainsFunc(held, func(it store.InboxItem) bool { return it.Notice == store.NoticeRelease }) {
+				return held, err
+			}
+			if !slices.ContainsFunc(held, func(it store.InboxItem) bool { return it.FromUser }) {
+				return nil, nil
+			}
 		}
 		it, ok, err := m.cfg.Store.OldestInbox(ctx, threadID)
 		if err != nil || !ok {
@@ -185,6 +166,15 @@ func (m *Manager) sendHeld(ctx context.Context, items ...store.InboxItem) (store
 func (m *Manager) flushLog(threadID string) {
 	if err := m.drain(context.Background(), threadID, true); err != nil {
 		m.cfg.Log.Error("deliver held message", "thread_id", threadID, "error", err)
+	}
+}
+
+// flushStopped delivers what a boss's continue queued for a helper thread while its Stop was
+// still ending the run.
+func (m *Manager) flushStopped(threadID string) {
+	t, err := m.cfg.Store.Thread(context.Background(), threadID)
+	if err == nil && t.ParentThreadID != "" {
+		m.flushLog(threadID)
 	}
 }
 

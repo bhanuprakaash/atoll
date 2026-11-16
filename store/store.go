@@ -103,6 +103,8 @@ const (
 	NoticeMerged        = "merged"
 	NoticeClosed        = "closed"
 	NoticeBase          = "base"
+	// NoticeRelease marks a boss's continue: it ends the hold of a stopped helper thread.
+	NoticeRelease = "release"
 )
 
 // KindGitLab is the kind of a GitLab connection.
@@ -1312,12 +1314,13 @@ func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) ([]Message
 		}
 		// Notices from Reef alone start a background run, which keeps the thread's place unless it
 		// posts.
+		released := slices.ContainsFunc(items, func(it InboxItem) bool { return it.Notice == NoticeRelease })
 		notices := !slices.ContainsFunc(stored, func(m Message) bool { return m.Kind == "" && m.FromBotID == "" })
 		_, err = tx.ExecContext(ctx,
 			`UPDATE threads SET last_activity = CASE WHEN ?1 AND parent_thread_id = '' THEN last_activity ELSE ?2 END,
 			   title = CASE WHEN title = '' THEN ?3 ELSE title END,
-			   holds_reports = CASE WHEN ?1 THEN holds_reports ELSE 0 END WHERE id = ?4`,
-			notices, time.Now().UTC().UnixMicro(), FirstWords(stored[0].Text), threadID)
+			   holds_reports = CASE WHEN ?1 AND NOT ?5 THEN holds_reports ELSE 0 END WHERE id = ?4`,
+			notices, time.Now().UTC().UnixMicro(), FirstWords(stored[0].Text), threadID, released)
 		return err
 	})
 	if err != nil {
@@ -1393,18 +1396,10 @@ func (s *Store) DeleteInbox(ctx context.Context, id string) error {
 
 // HoldReports makes the thread hold the notices of its helpers until the person writes to it: a
 // run that takes a message of the person clears it. A helper thread holds all its messages until
-// ReleaseReports.
+// a continue of its boss starts a run.
 func (s *Store) HoldReports(ctx context.Context, threadID string) error {
 	if _, err := s.db.ExecContext(ctx, "UPDATE threads SET holds_reports = 1 WHERE id = ?", threadID); err != nil {
 		return fmt.Errorf("hold reports: %w", err)
-	}
-	return nil
-}
-
-// ReleaseReports ends the thread's hold.
-func (s *Store) ReleaseReports(ctx context.Context, threadID string) error {
-	if _, err := s.db.ExecContext(ctx, "UPDATE threads SET holds_reports = 0 WHERE id = ?", threadID); err != nil {
-		return fmt.Errorf("release reports: %w", err)
 	}
 	return nil
 }

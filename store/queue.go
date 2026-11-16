@@ -17,9 +17,9 @@ func (s *Store) Enqueue(ctx context.Context, it InboxItem) (InboxItem, error) {
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		now := it.CreatedAt.UnixMicro()
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO inbox (id, thread_id, from_bot_id, text, kind, created, queued, from_user)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			it.ID, it.ThreadID, it.FromBotID, it.Text, it.Kind, now, it.Queued, it.FromUser); err != nil {
+			`INSERT INTO inbox (id, thread_id, from_bot_id, text, kind, notice, created, queued, from_user)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			it.ID, it.ThreadID, it.FromBotID, it.Text, it.Kind, it.Notice, now, it.Queued, it.FromUser); err != nil {
 			return fmt.Errorf("enqueue message: %w", err)
 		}
 		for _, img := range images {
