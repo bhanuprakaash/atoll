@@ -280,8 +280,9 @@ func TestStopHelper_HeldContinueStaysHeld(t *testing.T) {
 			run := helperRunning(t, s, helper)
 			held := "Then check the changelog. " + _askPrompt
 			got := useAtoll(t, s, boss, ev, continueCall(helper, held), stopHelperCall(helper))
-			if len(got) < 3 || got[0] != "atoll/continue: Queued: Tester is working; it gets this when its run ends." || got[2] != "atoll/stop_helper: Stopped Tester." {
-				t.Fatalf("continue then stop_helper: reply %q, want Queued, the helpers line, then Stopped Tester.", got)
+			want := []string{"atoll/continue: Queued: Tester is working; it gets this when its run ends.", "atoll/stop_helper: Stopped Tester.", helpersLine()}
+			if !slices.Equal(got, want) {
+				t.Fatalf("continue then stop_helper: reply %q, want %q", got, want)
 			}
 			stopped(t, s, helper, run)
 
