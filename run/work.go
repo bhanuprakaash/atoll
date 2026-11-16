@@ -59,6 +59,13 @@ type (
 	}
 )
 
+// folderGoneError is a run that cannot start because the thread's worktree folder was deleted.
+type folderGoneError struct{ path string }
+
+func (e folderGoneError) Error() string {
+	return fmt.Sprintf("this thread's folder %s is gone. Start a new thread, or restore the folder", e.path)
+}
+
 // RepoHost is github or gitlab.
 func RepoHost(ctx context.Context, path string) string {
 	if connection.OnGitHub(repo.Origin(ctx, path)) {
@@ -494,7 +501,7 @@ func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, string, error)
 		dir = m.noAccessDir(t.ID)
 	case t.Worktree != "":
 		if _, err := os.Stat(t.Worktree); errors.Is(err, fs.ErrNotExist) {
-			return "", "", fmt.Errorf("this thread's folder %s is gone. Start a new thread, or restore the folder", t.Worktree)
+			return "", "", folderGoneError{t.Worktree}
 		}
 		_, statErr := os.Stat(rp.Path)
 		if rp.ID != "" && t.WorktreeGitDir == "" && !errors.Is(statErr, os.ErrNotExist) {

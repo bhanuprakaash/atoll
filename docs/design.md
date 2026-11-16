@@ -1923,7 +1923,9 @@ Voice
   reply), Retry or Resend is the action and replaces the next-step line, and `Details` holds the
   provider's raw error (`error_detail` of a `provider_off` run, whose `error` is the plain sentence;
   else the run's `error`). The reason comes from `error_kind` alone, never from the error's words:
-  the plain `error` of a `provider_off` or `needs_sign_in` run, `the provider isn't signed in` for
+  the plain `error` of a `provider_off`, `needs_sign_in` or `folder_gone` run (the thread's worktree
+  folder was deleted: `this thread's folder {path} is gone. Start a new thread, or restore the folder`,
+  with no Retry, since it fails the same way), `the provider isn't signed in` for
   `signed_out`, and `something went wrong` for any other failure (a usage limit, `secret_store` and
   an expired sign-in keep their own lines); `Run failed` is for a run that had replied, `Didn't run`
   for one that had not. The callback pages (`/oauth/callback`) take the same shape as static HTML:

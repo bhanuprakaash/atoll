@@ -37,7 +37,13 @@ export type Run = {
   error: string;
   error_detail: string;
   error_kind:
-    '' | 'signed_out' | 'secret_store' | 'rate_limited' | 'provider_off' | 'needs_sign_in';
+    | ''
+    | 'signed_out'
+    | 'secret_store'
+    | 'rate_limited'
+    | 'provider_off'
+    | 'needs_sign_in'
+    | 'folder_gone';
   resets_at: string;
   provider: 'claude' | 'codex';
   usage?: RunUsage | null;
