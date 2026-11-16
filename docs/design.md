@@ -801,8 +801,10 @@ Follow-ups:
   for carrying code.*
 - Known gap: webhooks; a wake comes within a poll interval plus a settle read, or later after
   failures. Review comments and reopening wake nothing.
-- Known gap: CI re-run on the same commit (a failed check re-run passes) is not seen: reads stop
-  once the commit is reported, and the panel keeps the first result.
+- A head whose stored CI has a failed check is read again every few polls while the PR is open, so a
+  re-run on the same commit shows: pending while it runs, then its result. A result that finished
+  differently wakes the Bot once, on the same two equal reads as the first; a pending re-run wakes
+  nothing. A head reported green is not read again.
 - Known gap: a stopped thread hears a PR or CI wake only when its next run ends (helper reports
   wait for the person, and a stopped helper's messages for its boss's next `continue`:
   Delegation), and a merged GitLab MR's worktree can be released before that wake is delivered.
