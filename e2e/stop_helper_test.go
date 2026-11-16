@@ -295,3 +295,59 @@ func TestStopHelper_HeldContinueStaysHeld(t *testing.T) {
 		})
 	}
 }
+
+// TestStopHelper_FreesSlotForHeldMessage: a continue to a helper that is idle is held while the
+// boss has 3 helper runs going; stop_helper on one of them ends its run, so the held message goes
+// out within seconds as a new run of that helper, while the other two helpers go on.
+func TestStopHelper_FreesSlotForHeldMessage(t *testing.T) {
+	t.Parallel()
+	for _, p := range _oneProvider {
+		t.Run(p, func(t *testing.T) {
+			m, s := start(t, p)
+			poteto, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
+			setDelegates(t, s, poteto, tester)
+			boss := s.newThread(t, poteto)
+			ev := s.events(t, boss)
+
+			idle := delegated(t, useAtoll(t, s, boss, ev, delegateCall("Tester", _keepPrompt, ""))[0])
+			first := settled(t, s, idle)
+			if first.Status != "done" {
+				t.Fatalf("idle helper's run: status %q, error %q; want done", first.Status, first.Error)
+			}
+			quietBoss(t, s, boss.ID, tester.ID, 1)
+
+			lines := useAtoll(t, s, boss, ev, delegateCall("Tester", _reviews[0], ""), delegateCall("Tester", _reviews[1], ""), delegateCall("Tester", _reviews[2], ""))
+			if len(lines) != 3 {
+				t.Fatalf("three delegates: reply %q, want three lines", lines)
+			}
+			ids, runs := []string{}, []string{}
+			for _, l := range lines {
+				id := delegated(t, l)
+				ids, runs = append(ids, id), append(runs, helperRunning(t, s, id))
+			}
+
+			got := useAtoll(t, s, boss, ev, continueCall(idle, _askPrompt))
+			if len(got) == 0 || got[0] == "atoll/continue: unavailable" {
+				t.Fatalf("continue to the idle helper: reply %q, want it accepted", got)
+			}
+			stays(t, s, idle, first.ID, "done")
+			if sessionWith(t, m, p, _askPrompt) != nil {
+				t.Fatalf("the continue reached the provider while 3 helper runs go, want it held")
+			}
+
+			useAtoll(t, s, boss, ev, stopHelperCall(ids[0]))
+			stopped(t, s, ids[0], runs[0])
+			eventually(t, 10*time.Second, "a new run of the idle helper for the held message", func() bool {
+				return getThread(t, s, idle).RunID != first.ID
+			})
+			eventually(t, 10*time.Second, "the held message reaches the provider", func() bool {
+				return sessionWith(t, m, p, _askPrompt) != nil
+			})
+			for i := 1; i < 3; i++ {
+				if th := getThread(t, s, ids[i]); th.RunID != runs[i] || th.RunStatus != "running" {
+					t.Errorf("helper %s: latest run %s is %q, want %s still running", ids[i], th.RunID, th.RunStatus, runs[i])
+				}
+			}
+		})
+	}
+}
