@@ -214,6 +214,12 @@ func (t *turn) play(entries []entry, in *bufio.Scanner, log *fake.Log) error {
 				return err
 			}
 			continue
+		case "repo-github-track":
+			var err error
+			if repoReply, err = fake.TrackStep(t.servers["atoll"], t.cwd); err != nil {
+				return err
+			}
+			continue
 		case "github-base-merged":
 			if err := fake.BaseMergedStep(t.userMessage, t.cwd); err != nil {
 				return err
