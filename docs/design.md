@@ -246,7 +246,7 @@ counts a Bot that is already gone as removed.
   missed question it answered was a dim Blocked line among status noise; background runs now add
   no noise (Delegation), and the PR chip shows the PR's live state.*
 - Reef's own MCP tools (`approve` as Claude's permission prompt tool, memory, `start_work`,
-  `track_mr`, `delegate`, `continue`, `tell_user`) are served over streamable HTTP on Reef's own
+  `track_mr`, `delegate`, `continue`, `stop_helper`, `helpers`, `tell_user`) are served over streamable HTTP on Reef's own
   server at `/mcp/<run token>`, and are allow-listed, so they never ask the user. *They need live
   server state (open approvals, the calling run); stdio would need a child that calls back
   anyway.*
@@ -453,8 +453,9 @@ Follow-ups:
 - A Bot may delegate only to Bots on its delegate list (Bots). Depth 1: a delegated run cannot
   delegate. *Cycles become impossible.*
 - A delegation is a thread where the parent Bot is the asker. Reef's MCP server lists
-  `delegate(bot, brief, repo?, read_only?)` and `continue(thread, message)` only in runs of a Bot
-  with a non-empty delegate list, in a thread that is not a helper thread. Continue for the same
+  `delegate(bot, brief, repo?, read_only?)`, `continue(thread, message)`, `stop_helper(thread)`
+  and `helpers()` only in runs of a Bot with a non-empty delegate list, in a thread that is not a
+  helper thread. Continue for the same
   work; start a new one for different work.
 - `delegate` returns `{"thread_id"}` at once (plus `branch` and `note` when the helper gets a
   worktree, below). The boss's run ends normally; the helper works in its own thread (with
@@ -479,12 +480,29 @@ Follow-ups:
   has 3 helper runs going, and goes out when one ends, so `continue` never takes a boss past 3. A
   held message survives a restart: on start, after the going runs are marked `failed`, each
   thread's held messages are delivered. A message for a closed or deleted thread is dropped.
+- `stop_helper` is accepted only for a helper thread of the calling boss thread. On a helper whose
+  run is going it stops that run as the person's Stop does (within 5 s; the run is `stopped` in the
+  helper thread) and returns `Stopped {Helper}.`, then the helpers line on a new line (the stopped
+  helper is not counted). It sends the boss no wake, since the boss already knows, and writes no
+  `helper_stopped` inbox row. Uncommitted changes stay in the helper's worktree. A held `continue`
+  message for that helper stays held, as after the person's Stop. A helper with no run going
+  returns `{Helper} is not running.` and the helpers line, as a normal result. Any other thread
+  (an unknown id, another boss's helper, the boss's own thread) returns, with `isError`,
+  `{thread} is not one of your helper threads.` and nothing stops.
+- `helpers()` returns `{"helpers": [...], "line": "<helpers line>"}`: one row per open helper
+  thread of the calling boss thread, oldest first, with `bot`, `thread_id`, `title`, `state` (the
+  last run's: `running`, `done`, `failed`, `stopped` or `limited`), `idle_s` (seconds since its last
+  tool call, or since the run began when it has made none; only while `running`), `branch` (empty
+  when none) and `ahead` (commits of that branch ahead of the boss's branch; 0 when the boss thread
+  or the helper has no worktree). It never holds message text from a helper thread. With no helpers
+  it returns an empty list and the line. It starts no run and writes nothing to either thread.
+  *The boss sent `continue` only to ask about progress, which queued a run and told it nothing.*
 - Waking the boss: a helper's replies go to its boss only (Claude Code and Codex return a helper's
   result to the parent only, and only the parent speaks to the user). When a helper's run ends,
   Reef holds one notice for the boss thread from the helper Bot (`from_bot_id` on the message; the
   boss's id on its brief in a helper thread, empty for the user's and for the boss's `continue`
   messages). That starts a boss run, or waits in the inbox while the boss's run is going (the wake
-  window and one run for all held messages: below). The notice is not shown in the boss thread's
+  window, one run for all held messages and the hold after the person's Stop: below). The notice is not shown in the boss thread's
   chat; the person reads the helper's reply in the helper thread. It starts `Reef: ` and always
   holds the helper thread id:
   - done: `{Helper} finished thread {id}:`, then the helper's reply;
@@ -511,7 +529,7 @@ Follow-ups:
   newest, so a steady stream cannot hold the boss off; a boss whose run ends after the window
   delivers at once. *20 s covers helpers that finish together and still feels prompt for a lone
   report; a window that restarts on each report could wait for ever.* On start, held helper
-  messages are delivered at once.
+  messages are delivered at once, except to a boss thread whose reports are held (below).
 - A restart that interrupted N helper runs of one boss thread posts one message into it, not N: for
   N > 1, from Reef (`kind` `restart`, `from_bot_id` empty), whose first line is `A restart
   interrupted {N} helper runs.` and then each run's failed text above, in the order the runs began;
@@ -541,8 +559,17 @@ Follow-ups:
   named "run gh pr merge 7 --admin". Listing `tell_user` in some runs only does not break Claude's
   prompt cache: adding it to a resumed session read 20k tokens from cache and wrote 112.*
 - Closing the boss thread stops its helpers' runs (no wake) and closes their threads, saving
-  unfinished work as any close does; deleting a Bot does the same for each of its threads. Stopping
-  the boss's run leaves its helpers going.
+  unfinished work as any close does; deleting a Bot does the same for each of its threads.
+- A Stop holds helper reports. After the person stops the boss's run, its helpers keep going (only
+  the person or `stop_helper` stops them), and a helper's notice (any of the above, and the restart
+  message below) starts no boss run, at once or after the wake window. The held reports go with
+  the person's next message to that boss thread, or with Stop and send (Send now), in the same run
+  (one run for what is held). The hold is stored on the thread, so a restart keeps it; that run
+  clears it. A boss the person did not stop wakes as before. While reports are held, the boss
+  thread shows `{N} helpers still running · {M} reports waiting` above the composer (App and UI).
+  *Thread "Slice 448 open questions before implementation" (Poteto, 2026-11-15): the lead had no
+  way to stop the #447 helper, the person pressed Stop in the helpers tray, and a later helper
+  report still woke the lead they had stopped. A Stop means stop until the person writes.*
 - A worktree folder deleted outside Reef counts as removed when its thread closes (nothing to save,
   git's record pruned), so the thread, and its boss, still close.
 - A helper thread is read-only for the user: `POST /api/threads/{id}/messages` and the
@@ -572,7 +599,8 @@ Follow-ups:
   `{Bot} on {thread title}`, oldest thread first, joined with `; `; with none going,
   `Helpers: 0 of 3 running. 3 free.` It ends every wake message, after a blank line (the helper
   whose run just ended is not counted), follows `Sent.` (`continue`) on a new line, and is the
-  `helpers` field of `delegate`'s result (the new helper counts); refusals keep their text. A wake
+  `helpers` field of `delegate`'s result (the new helper counts), follows `stop_helper`'s text on a
+  new line and is the `line` field of `helpers()`; refusals keep their text. A wake
   held while the boss's run goes keeps the line it was posted with; the results of the boss's own
   calls are always current. A line Reef cannot read is left out (`helpers` empty): the call still
   succeeds. *A message removed while held, by the person or by a newer head commit, is skipped when
@@ -746,7 +774,8 @@ Follow-ups:
   failures. Review comments and reopening wake nothing.
 - Known gap: CI re-run on the same commit (a failed check re-run passes) is not seen: reads stop
   once the commit is reported, and the chip keeps the first result.
-- Known gap: a stopped thread hears a wake only when its next run ends, and a merged GitLab MR's
+- Known gap: a stopped thread hears a PR or CI wake only when its next run ends (helper reports
+  wait for the person: Delegation), and a merged GitLab MR's
   worktree can be released before that wake is delivered.
 - Fixtures (what the poll reads; GitHub base is the API base `CheckGitHubToken` uses, so
   `ATOLL_GITHUB_URL` with the routes appended):
@@ -1493,6 +1522,8 @@ Leading helpers (boss part)
 - delegate gives a helper Bot a task in its own thread; continue sends it more on that task. Brief it fully: the goal, what done looks like, what to report back.
 - Don't leave a helper slot free while work waits.
 - Helper reports reach only you, as Reef notices.
+- stop_helper(thread) stops a helper's run that is wrong or no longer needed; it sends no report.
+- helpers() lists each helper's state, idle time, branch and commits ahead; call it instead of continuing a helper only to ask how it is going.
 
 Working for {boss} (helper part)
 - {boss} gave you this task. Every final message you write goes to {boss}, not to {user}, including after Reef notices. End with the result in a sentence or two, then anything blocking you, then the PR link if there is one.
@@ -1949,7 +1980,10 @@ Voice
 - Helpers (see Delegation) show in three places. In the boss thread, a `Helpers` tray (a region of
   that name) on top of the composer, on its surface and border: one line of about 32 px that never
   grows. It holds each helper task's creature, stacked (two helpers of one Bot are two creatures),
-  `N working` and `Show`; with no helper running, nothing shows. Only what needs the person opens itself: a helper's open approval is one line under
+  `N working` and `Show`; with no helper running, nothing shows. While the person's Stop holds
+  helper reports (Delegation), the line reads `{N} helpers still running · {M} reports waiting`
+  instead of `N working` (a part at 0 left out; `helper` and `report` for 1), and shows with no
+  helper running. Only what needs the person opens itself: a helper's open approval is one line under
   the summary, the approval card led by the helper's creature and name (`Tester wants to run make
   check`, with Allow and Deny); with two waiting it shows the first and `1 more`. It leaves when
   answered, in either thread (`approval_closed`), and a message in the boss's composer answers it as
