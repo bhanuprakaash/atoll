@@ -4,6 +4,7 @@ import {
   Link,
   Outlet,
   useLocation,
+  useNavigate,
   useOutletContext,
   useParams,
   useSearchParams,
@@ -20,8 +21,9 @@ import { useProviders } from '@/modules/providers/api/providers';
 import { ModelSelect } from '@/modules/providers/components/model-select';
 import { useRepos } from '@/modules/repos/api/repos';
 import { useSkills } from '@/modules/skills/api/skills';
-import { useThreads, type Thread } from '@/modules/threads/api/threads';
+import { useThread, useThreads, type Thread } from '@/modules/threads/api/threads';
 import { HelperCreature } from '@/modules/threads/components/helper-creature';
+import { ThreadPanel } from '@/modules/threads/components/thread-panel';
 import {
   ApprovalDrop,
   FinishedNotice,
@@ -39,6 +41,7 @@ export function BotHeader({
   open = false,
   onNotifications,
   onSettings,
+  details,
   children,
 }: {
   bot?: Bot;
@@ -49,6 +52,7 @@ export function BotHeader({
   open?: boolean;
   onNotifications?: () => void;
   onSettings?: () => void;
+  details?: { open: boolean; toggle: () => void };
   children?: ReactNode;
 }) {
   const title = thread?.title;
@@ -144,26 +148,52 @@ export function BotHeader({
         </div>
         {children}
       </div>
-      <button
-        type="button"
-        aria-label="Bot settings"
-        onClick={onSettings}
-        className="col-start-3 mr-4 flex size-10 items-center justify-center justify-self-end rounded-full text-muted"
-      >
-        <svg
-          aria-hidden="true"
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
+      <div className="col-start-3 mr-4 flex items-center justify-self-end">
+        {details && (
+          <button
+            type="button"
+            aria-label="Thread details"
+            aria-haspopup="dialog"
+            aria-expanded={details.open}
+            data-thread-details
+            onClick={details.toggle}
+            className="flex size-10 items-center justify-center rounded-full text-muted"
+          >
+            <svg
+              aria-hidden="true"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            >
+              <path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" />
+            </svg>
+          </button>
+        )}
+        <button
+          type="button"
+          aria-label="Bot settings"
+          onClick={onSettings}
+          className="flex size-10 items-center justify-center rounded-full text-muted"
         >
-          <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
-          <circle cx="16" cy="7" r="2" />
-          <circle cx="10" cy="17" r="2" />
-        </svg>
-      </button>
+          <svg
+            aria-hidden="true"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
+            <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+            <circle cx="16" cy="7" r="2" />
+            <circle cx="10" cy="17" r="2" />
+          </svg>
+        </button>
+      </div>
       <span
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-full h-6 bg-linear-to-b from-bg to-transparent"
@@ -194,6 +224,41 @@ function BotFrame() {
       { replace: true },
     );
   const [list, setList] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { data: openThread } = useThread(threadId);
+  const [detailsFor, setDetailsFor] = useState('');
+  const detailsOpen = !!openThread && detailsFor === threadId;
+  useEffect(() => setDetailsFor(''), [threadId]);
+  useEffect(() => {
+    if (!(location.state as { helpers?: boolean } | null)?.helpers) return;
+    setDetailsFor(threadId);
+    navigate(location.pathname + location.search, { replace: true, state: null });
+  }, [location, threadId, navigate]);
+  useEffect(() => {
+    const icon = () => document.querySelector<HTMLElement>('[data-thread-details]');
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === '.') {
+        e.preventDefault();
+        setDetailsFor((now) => (now === threadId || !threadId ? '' : threadId));
+      } else if (e.key === 'Escape' && detailsOpen && !e.defaultPrevented) {
+        e.preventDefault();
+        setDetailsFor('');
+        icon()?.focus();
+      }
+    };
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Element;
+      if (detailsOpen && !target.closest('[data-thread-panel], [data-thread-details]'))
+        setDetailsFor('');
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onDown);
+    };
+  }, [detailsOpen, threadId]);
   const notifications = useOutletContext<Notifications>();
   const { drop, widened, dismiss, markSeen } = notifications;
   const expanded = list || !!drop;
@@ -234,11 +299,17 @@ function BotFrame() {
     });
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
-      <div className="flex min-h-0 min-w-0 flex-[999_1_400px] flex-col">
+      <div className="relative flex min-h-0 min-w-0 flex-[999_1_400px] flex-col">
         <BotHeader
           bot={bot}
           onSettings={() => setSettingsOpen(true)}
           onNotifications={() => setList(!list)}
+          details={
+            openThread && {
+              open: detailsOpen,
+              toggle: () => setDetailsFor(detailsOpen ? '' : threadId),
+            }
+          }
           open={expanded || !!widened}
           thread={threads.find((thread) => thread.id === threadId)}
           boss={
@@ -264,6 +335,13 @@ function BotFrame() {
           )}
         </BotHeader>
         <Outlet />
+        {detailsOpen && (
+          <ThreadPanel
+            thread={openThread}
+            repoName={repos.find((r) => r.id === openThread.repo_id)?.name}
+            bots={Object.fromEntries(bots.map((b) => [b.id, { name: b.name, look: b.look }]))}
+          />
+        )}
       </div>
       {settingsOpen && bot && (
         <BotSettings
