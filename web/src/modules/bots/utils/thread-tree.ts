@@ -44,7 +44,7 @@ export function nowSections(all: SidebarThread[], openId: string | undefined) {
     .filter((section) => section.threads.length > 0);
 }
 
-export type Worker = { id: string; bot: Bot; needsYou: boolean; step: string };
+export type Worker = { id: string; bot: Bot; needsYou: boolean; step: string; wake: string };
 
 // workersByBoss lists the helpers running for each boss thread: the one that needs the person
 // first, then the one that acted last.
@@ -61,7 +61,7 @@ export function workersByBoss(bots: Bot[]): Map<string, Worker[]> {
   for (const { bot, t } of live)
     out.set(t.parent_thread_id, [
       ...(out.get(t.parent_thread_id) ?? []),
-      { id: t.id, bot, needsYou: t.state === 'needs_you', step: t.step ?? '' },
+      { id: t.id, bot, needsYou: t.state === 'needs_you', step: t.step ?? '', wake: t.wake ?? '' },
     ]);
   return out;
 }

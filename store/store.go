@@ -70,6 +70,10 @@ const ErrorNeedsSignIn = "needs_sign_in"
 // ErrorProviderOff is the error kind of a run whose provider is not installed or is turned off.
 const ErrorProviderOff = "provider_off"
 
+// ErrorFolderGone is the error kind of a run whose thread's worktree folder was deleted; its error
+// is Reef's own plain sentence with the folder and the next step.
+const ErrorFolderGone = "folder_gone"
+
 // ErrorSecretStore is the error kind of a run that failed because a secret could not be read.
 const ErrorSecretStore = "secret_store"
 

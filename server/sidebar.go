@@ -16,7 +16,7 @@ import (
 
 // sidebarThread is an open thread of a Bot with the one marker the sidebar shows. Helper is set
 // for a thread another Bot handed to this one: the user cannot close it. ParentThreadID is its
-// boss thread, Step what a helper's run does now, and Activity the live verb or the waiting ask.
+// boss thread, Step what a helper's run does now, Wake why a PR wake started it, and Activity the live verb or the waiting ask.
 type sidebarThread struct {
 	ID             string      `json:"id"`
 	Title          string      `json:"title"`
@@ -25,6 +25,7 @@ type sidebarThread struct {
 	Helper         bool        `json:"helper,omitempty"`
 	ParentThreadID string      `json:"parent_thread_id"`
 	Step           string      `json:"step,omitempty"`
+	Wake           string      `json:"wake,omitempty"`
 	Activity       string      `json:"activity,omitempty"`
 	Hidden         bool        `json:"hidden,omitempty"` // PR merged: open and in the popup, not in the tree
 	Branch         string      `json:"branch"`
@@ -63,7 +64,7 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 		if state == "limited" {
 			resetsAt = t.LimitedUntil.Format(time.RFC3339)
 		}
-		step := ""
+		step, wake := "", ""
 		activity := ""
 		if state == "running" || state == "needs_you" {
 			activity = a.liveVerb(t.ThreadID)
@@ -71,11 +72,11 @@ func (a *api) sidebarThreads(threads, helpers []store.ThreadRun) []sidebarThread
 				activity = needsYou(approvals[0])
 			}
 			if t.ParentThreadID != "" {
-				step = a.liveStep(t.ThreadID)
+				step, wake = a.liveStep(t.ThreadID), a.runs.ActiveWake(t.ThreadID)
 			}
 		}
 		out = append(out, sidebarThread{
-			ID: t.ThreadID, ParentThreadID: t.ParentThreadID, Step: step, Activity: activity, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
+			ID: t.ThreadID, ParentThreadID: t.ParentThreadID, Step: step, Wake: wake, Activity: activity, Title: t.Title, State: state, Pinned: t.Pinned, Helper: t.ParentThreadID != "",
 			Branch: t.Branch, PRs: prSummaries(t.PRs), LastActivity: t.LastActivity, ResetsAt: resetsAt,
 			Hidden: t.Merged && !t.Pinned && (state == "" || state == "new"),
 		})

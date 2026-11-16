@@ -59,7 +59,7 @@ function Line({ run, botName, replied, retryable, retry, signedOut }: LineProps)
     );
   }
   const kind = run.error_kind;
-  const plain = kind === 'provider_off' || kind === 'needs_sign_in';
+  const plain = kind === 'provider_off' || kind === 'needs_sign_in' || kind === 'folder_gone';
   const settings =
     kind === 'provider_off' || kind === 'signed_out'
       ? '/settings/providers'
@@ -77,7 +77,9 @@ function Line({ run, botName, replied, retryable, retry, signedOut }: LineProps)
       details={run.error_detail || (plain ? '' : run.error)}
       actions={[
         ...(settings ? [{ label: 'Open settings', to: settings }] : []),
-        ...(retryable ? [{ label: 'Retry', onClick: () => retry(run.id) }] : []),
+        ...(retryable && kind !== 'folder_gone'
+          ? [{ label: 'Retry', onClick: () => retry(run.id) }]
+          : []),
       ]}
     />
   );

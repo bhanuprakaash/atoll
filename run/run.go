@@ -561,6 +561,27 @@ func (m *Manager) ActiveTool(threadID string) ToolCall {
 	return ToolCall{}
 }
 
+// ActiveWake says why the thread's active run started when a PR wake did it, as "CI on #1",
+// "#1 merged" or "#1 closed"; empty for any other run.
+func (m *Manager) ActiveWake(threadID string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a := m.runs[threadID]
+	if a == nil || len(a.msgs) == 0 {
+		return ""
+	}
+	pr := _prNumber.FindString(a.msgs[0].Text)
+	switch {
+	case pr == "":
+		return ""
+	case a.kind == "ci":
+		return "CI on " + pr
+	case a.kind == _mrMerged || a.kind == _mrClosed:
+		return pr + " " + a.kind
+	}
+	return ""
+}
+
 // Answer gives the user's answer to the open approval id. It wraps ErrNotFound when none is open.
 func (m *Manager) Answer(_ context.Context, id string, allow bool) error {
 	m.mu.Lock()
@@ -710,6 +731,8 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 			res.ErrorKind = store.ErrorProviderOff
 		} else if errors.Is(err, connection.ErrNeedsSignIn) || errors.Is(err, connection.ErrGitHubNeedsSignIn) {
 			res.ErrorKind = store.ErrorNeedsSignIn
+		} else if errors.As(err, new(folderGoneError)) {
+			res.ErrorKind = store.ErrorFolderGone
 		} else if errors.Is(err, provider.ErrSignedOut) {
 			res.ErrorKind = store.ErrorSignedOut
 			if m.cfg.SignedOut != nil {

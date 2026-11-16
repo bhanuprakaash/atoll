@@ -133,7 +133,7 @@ function HelpersLine({
         </span>
         <span className="flex-none text-ink">
           {needsYou ? workers[0].bot.name : workerNames(workers)}
-        </span>
+        </span>{' '}
         {needsYou ? (
           <>
             <span className="flex-none text-ink">Needs you</span>
@@ -142,7 +142,9 @@ function HelpersLine({
           </>
         ) : (
           <>
-            <span className="min-w-0 flex-1 truncate">{workers[0].step || 'Working'}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {[workers[0].wake, workers[0].step].filter(Boolean).join(' · ') || 'Working'}
+            </span>
             <Wave />
           </>
         )}
