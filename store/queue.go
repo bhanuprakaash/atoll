@@ -139,10 +139,10 @@ func (s *Store) missingQueued(ctx context.Context, db dbConn, threadID, id strin
 // gives an image's Data: its column, or NULL for a caller that does not need the bytes.
 func (s *Store) inbox(ctx context.Context, imageData, where string, args ...any) ([]InboxItem, error) {
 	items, err := query(ctx, s.db,
-		"SELECT id, thread_id, from_bot_id, text, kind, notice, queued, from_user, created FROM inbox "+where,
+		"SELECT id, thread_id, from_bot_id, text, kind, notice, queued, from_user, created, helper_thread_id FROM inbox "+where,
 		func(r *sql.Rows) (it InboxItem, err error) {
 			var created int64
-			err = r.Scan(&it.ID, &it.ThreadID, &it.FromBotID, &it.Text, &it.Kind, &it.Notice, &it.Queued, &it.FromUser, &created)
+			err = r.Scan(&it.ID, &it.ThreadID, &it.FromBotID, &it.Text, &it.Kind, &it.Notice, &it.Queued, &it.FromUser, &created, &it.HelperThread)
 			it.CreatedAt = time.UnixMicro(created).UTC()
 			return it, err
 		}, args...)

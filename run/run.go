@@ -374,6 +374,7 @@ func (m *Manager) send(ctx context.Context, items ...store.InboxItem) (store.Mes
 	m.wg.Add(1)
 	m.mu.Unlock()
 
+	items = m.withHelpersLine(ctx, items)
 	msgs, run, err := m.start(ctx, items)
 	if err != nil {
 		m.drop(a)
@@ -737,7 +738,7 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	res.Usage, res.SessionCostUSD = a.usageResult()
 	var wake func(store.Wake) string
 	if !quiet {
-		wake = m.wakeText(a.threadID)
+		wake = func(w store.Wake) string { return WakeText(w, "") }
 	}
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
@@ -791,21 +792,6 @@ func (a *active) usageResult() (*store.Usage, *float64) {
 	cost := math.Round((*u.SessionCostUSD-a.priorCostUSD)*1e6) / 1e6
 	used.CostUSD = &cost
 	return used, u.SessionCostUSD
-}
-
-// wakeText makes the wake text of a helper run on threadID, with the helpers line of its boss: the
-// helper whose run ended is not counted.
-func (m *Manager) wakeText(threadID string) func(store.Wake) string {
-	ctx := context.Background()
-	line := ""
-	t, err := m.cfg.Store.Thread(ctx, threadID)
-	if err == nil && t.ParentThreadID != "" {
-		line, err = m.helpersLine(ctx, t.ParentThreadID, threadID)
-	}
-	if err != nil {
-		m.cfg.Log.Error("count helpers", "thread_id", threadID, "error", err)
-	}
-	return func(w store.Wake) string { return WakeText(w, line) }
 }
 
 func (m *Manager) codexAutoCache(botID string) (string, []string, error) {

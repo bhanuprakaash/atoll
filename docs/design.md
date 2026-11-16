@@ -614,8 +614,8 @@ Follow-ups:
   whose run just ended is not counted), follows `Sent.` (`continue`) on a new line, and is the
   `helpers` field of `delegate`'s result (the new helper counts), follows `stop_helper`'s text on a
   new line and is the `line` field of `helpers()`; refusals keep their text. A wake held while the
-  boss's run goes keeps the line it was posted with; the results of the boss's own calls are always
-  current. A line Reef cannot read is left out (`helpers` empty): the call still
+  boss's run goes gets its line when it is delivered, so it counts helpers started meanwhile; the
+  results of the boss's own calls are always current. A line Reef cannot read is left out (`helpers` empty): the call still
   succeeds. *A message removed while held, by the person or by a newer head commit, is skipped when
   its run starts, never delivered; a run with none left is not started.*
 ## Repos and worktrees
