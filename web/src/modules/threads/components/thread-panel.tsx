@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { quiet } from '@/components/button';
 import type { CreatureLook } from '@/components/creature';
 import { useStopRun } from '@/modules/threads/api/runs';
 import type { Thread } from '@/modules/threads/api/threads';
@@ -29,8 +28,42 @@ const Dot = ({ state }: { state: string }) => (
   />
 );
 
-const middle = (path: string) =>
-  path.length > 34 ? `${path.slice(0, 14)}…${path.slice(-18)}` : path;
+const icons = {
+  repo: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+  worktree: <path d="M4 6h16M4 12h16M4 18h10" />,
+  branch: (
+    <>
+      <circle cx="6" cy="5" r="2" />
+      <circle cx="6" cy="19" r="2" />
+      <circle cx="18" cy="7" r="2" />
+      <path d="M6 7v10M18 9c0 5-6 4-12 8" />
+    </>
+  ),
+};
+const Icon = ({ name }: { name: keyof typeof icons }) => (
+  <svg
+    aria-hidden="true"
+    width="15"
+    height="15"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="flex-none text-muted"
+  >
+    {icons[name]}
+  </svg>
+);
+
+const rowClass =
+  'group flex min-h-8 items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-selected focus-within:bg-selected';
+
+const middle = (path: string) => {
+  const home = path.replace(/^\/(?:Users|home)\/[^/]+/, '~');
+  return home.length > 34 ? `${home.slice(0, 14)}…${home.slice(-18)}` : home;
+};
 
 function Copy({ value, what }: { value: string; what: string }) {
   const [copied, setCopied] = useState(false);
@@ -44,7 +77,7 @@ function Copy({ value, what }: { value: string; what: string }) {
       type="button"
       aria-label={`Copy ${what}`}
       onClick={() => void navigator.clipboard.writeText(value).then(() => setCopied(true))}
-      className={`flex-none ${quiet}`}
+      className={`flex-none text-xs text-muted opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:text-ink focus-visible:opacity-100`}
     >
       {copied ? 'Copied' : 'Copy'}
     </button>
@@ -52,19 +85,25 @@ function Copy({ value, what }: { value: string; what: string }) {
 }
 
 function Line({
+  icon,
   value,
   shown = value,
   what,
   mono,
 }: {
+  icon: keyof typeof icons;
   value: string;
   shown?: string;
   what: string;
   mono?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span title={value} className={`min-w-0 flex-1 truncate ${mono ? 'font-mono' : ''}`}>
+    <div className={rowClass}>
+      <Icon name={icon} />
+      <span
+        title={value}
+        className={`min-w-0 flex-1 truncate ${mono ? 'font-mono text-[12.5px]' : ''}`}
+      >
         {shown}
       </span>
       <Copy value={value} what={what} />
@@ -74,8 +113,8 @@ function Line({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="border-b border-line px-4 py-3 last:border-b-0">
-      <h3 className="mb-1.5 text-xs text-label">{title}</h3>
+    <section className="border-t border-line px-1.5 py-2 first:border-t-0">
+      <h3 className="px-2.5 pt-1.5 pb-1 text-xs font-normal text-label">{title}</h3>
       {children}
     </section>
   );
@@ -86,18 +125,18 @@ function Pull({ thread }: { thread: Thread }) {
   if (!ref) return null;
   const word = thread.mr_state === 'opened' ? ciWord(thread) : thread.mr_state;
   return (
-    <span className="flex flex-none items-center gap-1.5">
+    <span className="flex flex-none items-center gap-2">
       <a
         href={thread.mr_url}
         target="_blank"
         rel="noreferrer"
         title={thread.mr_title || ref}
-        className="flex items-center gap-1.5 text-ink/80 hover:text-ink"
+        className="inline-flex items-center gap-1.25 text-ink"
       >
         <Dot state={thread.mr_state} />
         {ref}
       </a>
-      {word && <span className={ciStyle[word] ?? 'text-muted'}>{word}</span>}
+      {word && <span className={`text-xs ${ciStyle[word] ?? 'text-muted'}`}>{word}</span>}
     </span>
   );
 }
@@ -123,9 +162,9 @@ function Row({
       tabIndex={-1}
       onClick={(e) => !(e.target as Element).closest('a, button') && navigate(href)}
       onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && navigate(href)}
-      className="group flex cursor-pointer gap-3 rounded-xl px-2 py-1.5 outline-none focus-visible:bg-selected hover:bg-selected"
+      className={`${rowClass} cursor-pointer items-start outline-none focus-visible:bg-selected`}
     >
-      <span className="pt-0.5">
+      <span className="pt-px">
         <HelperCreature name={bot?.name ?? 'Helper'} creature={bot?.look} state={state} />
       </span>
       <div className="min-w-0 flex-1">
@@ -136,12 +175,14 @@ function Row({
               {helper.title}
             </span>
           </Link>{' '}
-          <span className="flex-none text-muted tabular-nums">
+          <span className="flex-none text-xs text-muted tabular-nums">
             {elapsed(helper.created_at, end)}
           </span>
         </div>{' '}
-        <div className="flex h-6 items-center gap-2 text-muted">
-          <span className="min-w-0 truncate">
+        <div className="mt-px flex items-center gap-2 text-[12.5px] text-muted">
+          <span
+            className={`min-w-0 flex-1 truncate ${state === 'needs_you' && live ? 'text-ink' : ''}`}
+          >
             {!live ? 'Done' : state === 'needs_you' ? 'Needs you' : helper.step || 'Working'}
           </span>{' '}
           <Pull thread={helper} />{' '}
@@ -150,7 +191,7 @@ function Row({
               type="button"
               disabled={stop.isPending}
               onClick={() => stop.mutate(helper.run_id)}
-              className={`ml-auto ${quiet} opacity-0 group-focus-within:opacity-100 group-hover:opacity-100`}
+              className="flex-none rounded-full border border-outline px-2.25 py-px text-xs text-ink opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 disabled:opacity-50"
             >
               Stop
             </button>
@@ -235,18 +276,28 @@ export function ThreadPanel({
       data-thread-panel
       tabIndex={-1}
       onKeyDown={move}
-      className="absolute top-19 right-4 z-20 w-[min(340px,calc(100%-2rem))] overflow-y-auto rounded-2xl border border-outline bg-popover text-[13px] shadow-[0_12px_32px_rgba(0,0,0,.5)] outline-none"
+      className="absolute top-14.5 right-4 z-20 w-[min(340px,calc(100%-2rem))] overflow-y-auto rounded-card border border-outline bg-popover text-[13.5px] shadow-[0_12px_32px_rgba(0,0,0,.45)] outline-none"
     >
       <Section title="Workspace">
-        <div className="flex flex-col gap-1">
-          {repo ? <Line value={repo} what="repo" /> : <span className="text-muted">No repo</span>}
+        <div>
+          {repo ? (
+            <Line icon="repo" value={repo} what="repo" />
+          ) : (
+            <span className="px-2.5 text-muted">No repo</span>
+          )}
           {thread.worktree && (
-            <Line value={thread.worktree} shown={middle(thread.worktree)} what="worktree path" />
+            <Line
+              icon="worktree"
+              value={thread.worktree}
+              shown={middle(thread.worktree)}
+              what="worktree path"
+              mono
+            />
           )}
           {thread.branch ? (
-            <Line value={thread.branch} what="branch" mono />
+            <Line icon="branch" value={thread.branch} what="branch" mono />
           ) : (
-            repo && <span className="text-muted">No branch yet</span>
+            repo && <span className="px-2.5 text-muted">No branch yet</span>
           )}
         </div>
       </Section>
@@ -254,17 +305,14 @@ export function ThreadPanel({
         <Section title="Pull requests">
           <ul>
             <li>
-              <a
-                href={thread.mr_url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-selected"
-              >
+              <a href={thread.mr_url} target="_blank" rel="noreferrer" className={rowClass}>
                 <Dot state={thread.mr_state} />
                 <span className="flex-none text-ink">{mrRef(thread.mr_url)}</span>
                 <span className="min-w-0 flex-1 truncate text-muted">{thread.mr_title}</span>
                 {thread.mr_state === 'opened' && (
-                  <span className={ciStyle[ciWord(thread)] ?? 'text-muted'}>{ciWord(thread)}</span>
+                  <span className={`text-xs ${ciStyle[ciWord(thread)] ?? 'text-muted'}`}>
+                    {ciWord(thread)}
+                  </span>
                 )}
               </a>
             </li>
@@ -276,7 +324,7 @@ export function ThreadPanel({
           {group(running)}
           {done.length > 0 && (
             <>
-              <h4 className="mt-1.5 mb-0.5 px-2 text-xs text-label">Done</h4>
+              <h4 className="px-2.5 pt-2 pb-0.5 text-[11.5px] font-normal text-label">Done</h4>
               {group(done)}
             </>
           )}
