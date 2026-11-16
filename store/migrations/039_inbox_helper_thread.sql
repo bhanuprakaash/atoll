@@ -1,0 +1,1 @@
+ALTER TABLE inbox ADD COLUMN helper_thread_id TEXT NOT NULL DEFAULT '';

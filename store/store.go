@@ -280,6 +280,9 @@ type (
 		Kind      string
 		Notice    string
 		Images    []Attachment
+		// HelperThread is the thread of the helper whose run a held wake reports; its text ends
+		// where the helpers line goes.
+		HelperThread string
 	}
 
 	// PR is one pull request or MR a thread tracks, as the last poll read it.
@@ -1760,7 +1763,11 @@ func enqueueWake(ctx context.Context, tx *sql.Tx, runID string, wake func(Wake) 
 	if err != nil || !ok {
 		return err
 	}
-	return insertInbox(ctx, tx, w.bossID, w.botID, wake(w.Wake), "", w.Notice())
+	if err := insertInbox(ctx, tx, w.bossID, w.botID, wake(w.Wake), "", w.Notice()); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, "UPDATE inbox SET helper_thread_id = ? WHERE rowid = last_insert_rowid()", w.ThreadID)
+	return err
 }
 
 // readWake reads the wake of a helper run; ok is false for a run that is not a helper's.

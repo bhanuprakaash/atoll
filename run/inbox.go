@@ -210,6 +210,23 @@ func (m *Manager) recoverInbox() {
 	}
 }
 
+// withHelpersLine ends each held helper wake in items with the boss's helpers line as it is now,
+// which counts a helper the boss continued again.
+func (m *Manager) withHelpersLine(ctx context.Context, items []store.InboxItem) []store.InboxItem {
+	out := slices.Clone(items)
+	for i, it := range out {
+		if it.HelperThread == "" {
+			continue
+		}
+		line, err := m.helpersLine(ctx, it.ThreadID, "")
+		if err != nil {
+			m.cfg.Log.Error("count helpers", "thread_id", it.HelperThread, "error", err)
+		}
+		out[i].Text += line
+	}
+	return out
+}
+
 // _helperNotice is the kind the prompt gives a helper's wake, which the store keeps with none.
 const _helperNotice = "helper"
 
