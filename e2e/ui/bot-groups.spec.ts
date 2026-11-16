@@ -1,5 +1,5 @@
 // Bot groups: rail sections the user creates, fills, renames, drags into order (#246) and deletes;
-// groups do not fold on the rail. Contracts: e2e/sidebar-tree-contract.md, e2e/sidebar-rail-contract.md.
+// groups do not fold on the rail.
 import { expect, type Page, test } from '@playwright/test';
 import { type Machine, newBotAPI, sidebarRow, startAtoll } from './atoll';
 

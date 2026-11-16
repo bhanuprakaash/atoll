@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// Contract: mcp-servers-contract.md, "From connections".
-
 const _userGitHubAuth = "Bearer fake-user-gh-token"
 
 func catalogOnly() []mcpServer {

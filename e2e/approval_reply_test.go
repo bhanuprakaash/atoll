@@ -1,7 +1,5 @@
 package e2e
 
-// Contract: approval-card-contract.md.
-
 import (
 	"net/http"
 	"os"

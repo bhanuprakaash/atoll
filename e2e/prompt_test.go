@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// Contract: prompt-contract.md. The text of each part is pinned in prompt_text_test.go.
+// The text of each part is pinned in prompt_text_test.go.
 
 const _hey = "hey"
 

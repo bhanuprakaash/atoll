@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-// Contract: github-connection-contract.md.
-
 func TestGitHub_ConnectKeepsTheTokenInTheSecretStore(t *testing.T) {
 	t.Parallel()
 	f := newGitHubFixture(t, "claude")

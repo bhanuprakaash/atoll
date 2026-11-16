@@ -1,5 +1,5 @@
 // What a run shows of its usage: model and calls in the run footer, and no dollars in the footer
-// or the sidebar. Contract: e2e/run-cost-contract.md.
+// or the sidebar.
 import { expect, test } from '@playwright/test';
 import {
   type Machine,

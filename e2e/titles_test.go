@@ -10,8 +10,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: titles-contract.md.
-
 const (
 	_titlePrompt = "Name this thread: " + fake.TitleTrigger + ". Reply with just: ok"
 	_titleWant   = "Login redirect loop on settings"

@@ -1,4 +1,4 @@
-// Rich output, later set: diff, checklist, metrics and kv. Contract: e2e/rich-output-contract.md.
+// Rich output, later set: diff, checklist, metrics and kv.
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, openThreadAPI, startAtoll } from './atoll';
 

@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-// Slice 6 API contract: mac-app-contract.md.
-
 type (
 	providerInfo struct {
 		Name     string       `json:"name"`

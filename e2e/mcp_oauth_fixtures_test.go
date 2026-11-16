@@ -18,8 +18,6 @@ import (
 	"time"
 )
 
-// Contract: mcp-oauth-contract.md.
-
 const _oauthAnswer = "oauth-answer-42"
 
 // _hostedCatalog is the catalog after Context7: hosted servers that need sign-in.

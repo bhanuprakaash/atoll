@@ -1,5 +1,5 @@
 // Settings > Skills edits every file of a skill, not only SKILL.md, and re-imports it from its
-// source folder. Contract: e2e/skill-editor-contract.md. Each test runs its own machine (temporary
+// source folder. Each test runs its own machine (temporary
 // HOME and data), seeds poteto-mode through Chief's import, and checks what the UI did through the
 // API and through the folder a Bot run was given.
 import { expect, type Locator, type Page, test } from '@playwright/test';

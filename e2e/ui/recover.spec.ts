@@ -1,6 +1,5 @@
 // Slice 6: when the server dies the app says it is reconnecting; served again on the same
-// address, the open thread recovers and takes the next message. (The Tauri shell restarting a
-// killed sidecar is in mac-app-contract.md, "Only you can check".)
+// address, the open thread recovers and takes the next message.
 import { expect, test } from '@playwright/test';
 import {
   type Machine,

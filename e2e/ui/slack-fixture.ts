@@ -1,7 +1,6 @@
 // Slack's MCP server and authorization server on one origin, as e2e/slack_fixtures_test.go has
 // them: no registration_endpoint, a token endpoint that answers HTTP 200 {"ok": ...}, single-use
-// refresh tokens. Authorize redirects at once, as a user clicking Allow would. Contract:
-// e2e/slack-mcp-contract.md.
+// refresh tokens. Authorize redirects at once, as a user clicking Allow would.
 import { createHash } from "node:crypto";
 import {
   createServer,

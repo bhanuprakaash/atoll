@@ -10,8 +10,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: skill-import-contract.md.
-
 const (
 	_importHeading = "Import a local skill"
 	_importAgent   = "Make a Bot from ~/.claude/agents/lagoon.md"

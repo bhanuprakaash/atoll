@@ -1,5 +1,4 @@
 // A run that cannot read a secret fails in plain words and keeps the person's message.
-// Contract: secret-store-down-contract.md.
 import { expect, test } from '@playwright/test';
 import { api, newBotAPI, prompts, sendMessageAPI, sidebarRow, startAtoll } from './atoll';
 

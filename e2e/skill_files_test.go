@@ -13,8 +13,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: skill-files-contract.md.
-
 type (
 	// importResult is import_skill's result.
 	importResult struct {

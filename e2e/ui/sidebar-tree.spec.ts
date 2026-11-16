@@ -1,6 +1,5 @@
 // A Bot's threads in its thread pane: one marker each, new threads from the face's menu or ⌘N,
-// closing or renaming from the thread row. Contracts: e2e/sidebar-tree-contract.md,
-// e2e/sidebar-rail-contract.md.
+// closing or renaming from the thread row.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -12,8 +12,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: start-work-base-contract.md.
-
 type baseCase struct{ provider, mode string }
 
 var _baseCases = []baseCase{{"claude", ""}, {"codex", ""}, {"codex", "auto"}}

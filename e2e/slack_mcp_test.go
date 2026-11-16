@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-// Contract: slack-mcp-contract.md.
 //
 // These tests stay serial: they share the fixed secret store entries mcp:slack:*.
 

@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-// Contract: github-repos-contract.md.
-
 func TestGitHubRepos_RepoShowsItsHost(t *testing.T) {
 	t.Parallel()
 	f := newGitHubRepoFixture(t, "claude")

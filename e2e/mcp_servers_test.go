@@ -17,8 +17,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: mcp-servers-contract.md.
-
 var _context7 = mcpServer{ID: "context7", Name: "Context7", Kind: "catalog", URL: "https://mcp.context7.com/mcp"}
 
 // norm makes a field a kind does not use compare equal whether the server leaves it out or sends it empty.

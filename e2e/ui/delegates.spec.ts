@@ -1,4 +1,4 @@
-// Bot settings pick who a Bot may hand work to. Contract: delegates-contract.md.
+// Bot settings pick who a Bot may hand work to.
 import { expect, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, sidebarRow, startAtoll } from './atoll';
 

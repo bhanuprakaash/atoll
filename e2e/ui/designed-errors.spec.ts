@@ -2,7 +2,7 @@
 // the action when there is one, the raw text behind Details; never a Go chain, JSON or a gateway's
 // HTML. Failures are real ones: an unreachable GitLab, a failing folder picker, a taken name,
 // a Bot deleted elsewhere, a failed run, a server that goes away. Design: docs/design.md, App and
-// UI (Errors). Contract: designed-errors-contract.md.
+// UI (Errors).
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';

@@ -1,5 +1,4 @@
 // Allow in this thread: a quiet third choice on a command that may repeat.
-// Contract: e2e/allow-in-thread-contract.md.
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { api, type Machine, newBotAPI, sidebarRow, startAtoll } from "./atoll";
 

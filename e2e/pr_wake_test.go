@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-// Contract: pr-wake-contract.md.
-
 func TestPRWake_MergedWakesTheBot(t *testing.T) {
 	for _, p := range _providers {
 		t.Run(p, func(t *testing.T) {

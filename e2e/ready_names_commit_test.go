@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-// Contract: ready-names-commit-contract.md.
-
 const _freezeText = "Once a PR is called ready it is frozen: new work goes in a follow-up PR."
 
 // The merge wake says where the PR went and at which commit: the head the watcher read at the

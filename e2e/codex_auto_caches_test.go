@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// Contract: bot-mode-contract.md, "Tool caches".
-
 // _cacheVars are the env vars a Codex Auto run points at its Bot's cache root. pnpm_config_store_dir
 // is pnpm's store-dir setting (pnpm 12 reads pnpm_config_<setting>, not npm_config_<setting>); PNPM_HOME and the XDG data and
 // state folders hold the rest of pnpm's state.

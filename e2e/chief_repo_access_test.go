@@ -10,8 +10,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Contract: prompt-contract.md → Chief and API.
-
 // dbExec runs stmts on the data dir's database while no server runs, as an older Reef would
 // have left it, and returns the rows the last one affected.
 func dbExec(t *testing.T, m *machine, stmts ...string) int64 {

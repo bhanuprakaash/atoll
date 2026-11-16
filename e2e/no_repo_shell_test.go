@@ -14,8 +14,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: no-repo-shell-contract.md.
-
 const _readmeMarker = "REEF-README-MARKER"
 
 // repoWorld is a machine with Claude, a worktree root and two registered repos.

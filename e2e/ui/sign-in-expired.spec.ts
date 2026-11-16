@@ -1,7 +1,7 @@
 // A run that fails because its provider's sign-in was revoked says "<Provider> sign-in expired"
 // with Sign in again, never the provider's raw error. Sign in again runs the provider's own
 // sign-in; after it, Retry sends the same message and the run completes. The Providers page
-// shows the provider signed out after the failed run. Contract: sign-in-expired-contract.md.
+// shows the provider signed out after the failed run.
 import { expect, type Page, test } from '@playwright/test';
 import {
   api,

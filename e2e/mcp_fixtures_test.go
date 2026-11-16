@@ -19,8 +19,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: mcp-servers-contract.md.
-
 const (
 	_mcpEnvName      = "FAKE_MCP_TOKEN"
 	_mcpEnvSecret    = "fake-mcp-env-1"

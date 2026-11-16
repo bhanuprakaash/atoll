@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// Contract: rich-output-contract.md, "Prompt".
-
 const _catalogStart = "- Tables, task lists, ```diff and code render in Reef and on GitHub."
 
 func TestPrompt_RichOutputCatalog(t *testing.T) {

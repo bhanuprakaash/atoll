@@ -1,7 +1,6 @@
 // Thread labels and quiet background runs: a thread shows one label (Needs you, Working, Failed,
 // Out until <time>, Replied), a run only Reef's notices started adds no chat message and shows its
 // final message nowhere in the thread, and nothing waits on the person as a card.
-// Contract: e2e/no-report-contract.md.
 import { expect, type Page, test } from '@playwright/test';
 import {
   api,

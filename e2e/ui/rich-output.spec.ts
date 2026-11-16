@@ -1,5 +1,4 @@
-// Rich output, first set: ordinary code, tables and the fallback to a code block. Contract:
-// e2e/rich-output-contract.md.
+// Rich output, first set: ordinary code, tables and the fallback to a code block.
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, openThreadAPI, startAtoll } from './atoll';
 import { helperThreads } from './helpers-fixture';

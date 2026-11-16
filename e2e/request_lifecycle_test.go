@@ -15,8 +15,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: request-lifecycle-contract.md.
-
 // Prompts of testdata/claude/lifecycle-*.jsonl and testdata/codex/lifecycle-*.jsonl, and what the
 // recordings answer. _lifeOther and _lifeOtherTool are in what the provider did on its own.
 const (

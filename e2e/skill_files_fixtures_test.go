@@ -19,8 +19,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: skill-files-contract.md.
-
 const (
 	_potetoDir  = "~/.claude/skills/poteto-mode"
 	_potetoHome = "~/.claude/skills/poteto-mode"

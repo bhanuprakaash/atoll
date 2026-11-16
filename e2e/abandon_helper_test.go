@@ -12,8 +12,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: helper-work-contract.md → Failed delegate.
-
 // TestHelperWork_FailedDelegateRemovesItsWorktree: a delegate that fails right after the helper's
 // worktree is made (the helper's title update fails on a database trigger) removes that worktree
 // and its branch. A git on the server's PATH notes that `git worktree add` made the helper's.

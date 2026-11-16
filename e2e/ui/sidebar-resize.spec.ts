@@ -1,7 +1,7 @@
 // Resizable thread pane (#469): 284px by default, 240–420px, double-click resets, the width
 // survives a reload, the handle is a focusable separator that arrows move by 16px, and the 76px
 // rail never resizes. Each test opens a fresh browser context, so its storage starts empty, as on
-// first launch. Contract: e2e/sidebar-rail-contract.md.
+// first launch.
 import { expect, type Page, test } from '@playwright/test';
 
 // Chief's New thread screen: the pane shows Chief's threads.

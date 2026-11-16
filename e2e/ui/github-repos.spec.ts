@@ -1,7 +1,7 @@
 // GitHub repos in the browser: Settings → Repos shows a repo whose origin is on GitHub as GitHub,
 // and a thread shows the pull request a Bot opened with gh as it shows an MR: link and number.
 // GitHub is a local server and the repo's origin is a URL on it, as in the Go tests; the push
-// itself goes to a local bare repo through the origin's pushurl. Contract: github-repos-contract.md.
+// itself goes to a local bare repo through the origin's pushurl.
 import { execFileSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";

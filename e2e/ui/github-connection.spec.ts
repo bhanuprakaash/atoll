@@ -1,7 +1,6 @@
 // The GitHub connection in the browser: Settings → Connections signs in with the device flow, the
 // card says what Bots get, a Bot takes the connection from its settings, and a token GitHub
 // rejects shows Needs sign-in until Sign in again. GitHub is a local server, as in the Go tests.
-// Contract: github-connection-contract.md.
 import { createServer, type Server } from 'node:http';
 import { expect, test, type Page } from '@playwright/test';
 import { api, type Machine, newBotAPI, openThreadAPI, prompts, sidebarRow, startAtoll } from './atoll';

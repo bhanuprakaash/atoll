@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// Contract: skill-editor-contract.md.
-
 // reimport calls POST /api/skills/{id}/reimport and returns the decoded result.
 func reimport(t *testing.T, s *server, id string, replace bool) importResult {
 	t.Helper()

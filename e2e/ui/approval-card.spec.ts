@@ -1,5 +1,4 @@
 // The approval card: compact and quiet, answered by writing in the chat; red only for real danger.
-// Contract: e2e/approval-card-contract.md.
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { expect, type Locator, type Page, test } from '@playwright/test';

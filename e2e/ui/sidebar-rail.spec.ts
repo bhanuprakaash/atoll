@@ -1,5 +1,5 @@
 // The sidebar as a rail of Bot faces and a thread pane for the selected Bot or Now: issues
-// #469–#472. Selectors: e2e/sidebar-rail-contract.md. The pane's resize is in sidebar-resize.spec.ts.
+// #469–#472. The pane's resize is in sidebar-resize.spec.ts.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

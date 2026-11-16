@@ -1,5 +1,5 @@
 // Settings > MCP servers: hosted servers connect with one click. Connect opens the service's Allow
-// page in a popup; the page then shows Connected. Contract: e2e/mcp-oauth-contract.md. The remote
+// page in a popup; the page then shows Connected. The remote
 // server is a local fake (oauth-mcp-fixture.ts): no network, so Connect is never clicked on the
 // catalog's Notion, Figma or Cloudflare. The Go tests prove tokens, runs and refresh.
 import { expect, type Page, test } from "@playwright/test";

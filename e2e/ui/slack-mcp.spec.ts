@@ -1,6 +1,6 @@
 // Settings > MCP servers: Slack needs one internal Slack app per workspace. The row shows Set up
 // with the steps and a Client ID field; once the Client ID is saved it connects like the other
-// hosted servers. Contract: e2e/slack-mcp-contract.md. Slack is a local fake (slack-fixture.ts,
+// hosted servers. Slack is a local fake (slack-fixture.ts,
 // reached through ATOLL_SLACK_MCP_URL): no network. The Go tests prove tokens, runs and refresh.
 import { expect, type Page, test } from "@playwright/test";
 import { api, type Machine, newBotAPI, openThreadAPI, prompts, startAtoll } from "./atoll";

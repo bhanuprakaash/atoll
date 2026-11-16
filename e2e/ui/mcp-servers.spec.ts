@@ -1,5 +1,5 @@
 // Settings > MCP servers: the user adds local and remote servers, each Bot picks its own, and a
-// call to a user-added server asks first. Contract: e2e/mcp-servers-contract.md. Each test runs
+// call to a user-added server asks first. Each test runs
 // its own machine (temporary HOME and data, a private Secret Service) and checks what the UI did
 // through the API. The Go tests prove the secrets reach the OS secret store and the providers.
 import { expect, type Page, test } from "@playwright/test";

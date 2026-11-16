@@ -1,7 +1,7 @@
 // The helpers tray carries each helper's PR and its CI. GitHub is a local server the watcher
 // reads (ATOLL_GITHUB_URL); the helpers play testdata/claude/helper-pr-hang.jsonl (opens and
 // tracks a PR with the fake gh, then waits) and run-hang. Needs the PR watcher of #163 (CI) and
-// the tray of #175. Contract: e2e/helpers-ui-contract.md.
+// the tray of #175.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer, type Server } from 'node:http';

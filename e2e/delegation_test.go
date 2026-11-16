@@ -13,8 +13,6 @@ import (
 	"atoll/e2e/fakes/fake"
 )
 
-// Contract: delegation-contract.md.
-
 const _helpersFull = "3 helpers running. Tell the user, and hand this off when one of them reports back."
 
 type threadState struct {

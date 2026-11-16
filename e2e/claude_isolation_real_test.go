@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-// Contract: claude-isolation-contract.md. Run with a signed-in claude on PATH:
+// Run with a signed-in claude on PATH:
 // go test -tags realclaude -run TestClaudeIsolation_Real ./e2e
 
 const _realBearer = "reef-e2e-bearer-0"
@@ -208,7 +208,7 @@ func TestClaudeIsolation_RealClaudeToolList(t *testing.T) {
 // TestNoRepoShell_RealClaudeCannotReadRegisteredRepo starts the real claude with the argv and env
 // atoll builds for a Bot with no repo access (captured from the fake) and asks it to read a
 // registered repo's README by its absolute path through Bash (`head`, and python, which no
-// permission rule covers) and Read. Contract: no-repo-shell-contract.md. Ask is left out: the
+// permission rule covers) and Read. Ask is left out: the
 // stand-in MCP server answers no approval, so every call would be refused for that reason.
 func TestNoRepoShell_RealClaudeCannotReadRegisteredRepo(t *testing.T) {
 	claude := realClaude(t)

@@ -1,6 +1,5 @@
 // The header island as a notification surface for work in other threads: approvals drop it open,
 // finished runs widen it for a moment, a click opens the notification list.
-// Contract: e2e/sidebar-tree-contract.md.
 import { expect, type Page, test } from '@playwright/test';
 import {
   api,
