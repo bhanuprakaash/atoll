@@ -717,8 +717,9 @@ func (s *Store) ToldSince(ctx context.Context, since time.Time) ([]ThreadEvent, 
 // from the island since.
 func (s *Store) OpenedMRsSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
 	return query(ctx, s.db,
-		`SELECT p.thread_id, p.changed_at, p.url, p.title FROM thread_prs p JOIN threads t ON t.id = p.thread_id
-		 WHERE p.state = 'opened' AND p.changed_at > ? AND p.changed_at > t.island_dismissed_at`,
+		`SELECT p.thread_id, p.changed_at, p.url, p.title FROM thread_prs p
+		 LEFT JOIN pr_dismissals d ON d.thread_id = p.thread_id AND d.url = p.url
+		 WHERE p.state = 'opened' AND p.changed_at > ? AND p.changed_at > coalesce(d.dismissed_at, 0)`,
 		func(r *sql.Rows) (e ThreadEvent, err error) {
 			var at int64
 			err = r.Scan(&e.ThreadID, &at, &e.URL, &e.Title)
@@ -730,7 +731,8 @@ func (s *Store) OpenedMRsSince(ctx context.Context, since time.Time) ([]ThreadEv
 // DismissMR hides the PR at url from the island until the PR changes again.
 func (s *Store) DismissMR(ctx context.Context, url string) error {
 	res, err := s.db.ExecContext(ctx,
-		"UPDATE threads SET island_dismissed_at = ? WHERE id IN (SELECT thread_id FROM thread_prs WHERE url = ?)",
+		`INSERT INTO pr_dismissals (thread_id, url, dismissed_at) SELECT thread_id, url, ? FROM thread_prs WHERE url = ?
+		 ON CONFLICT (thread_id, url) DO UPDATE SET dismissed_at = excluded.dismissed_at`,
 		time.Now().UTC().UnixMicro(), url)
 	if err != nil {
 		return fmt.Errorf("dismiss mr: %w", err)
