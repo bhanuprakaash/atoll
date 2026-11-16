@@ -680,7 +680,8 @@ Follow-ups:
   or MR of the threads that are not closed (`Store.Watched` lists PRs, not threads; a thread
   with no worktree of its own, such as a boss that tracked a helper's PR, is read too; a thread with
   no repo is skipped, a closed thread is never read): the state (`opened`, `merged`, `closed`; GitLab's `locked` counts as
-  `opened`), the title and, on GitHub, the CI summary (calls: Fixtures). A merged or closed PR is not read again. Waits after a failed read are per PR; pauses stay per connection.
+  `opened`), the title and, on GitHub, the CI summary (calls: Fixtures). A merged or closed PR is not read again. Waits after a failed read
+  are per PR; pauses stay per connection.
 - A GitLab MR is read with `glab mr view` and the Bot's GitLab environment. A GitHub PR is read
   with the REST API and the token of the Bot's first GitHub connection, from
   `connection.GitHubToken` only. A Bot with no connection, or a thread whose Bot lost it, is
@@ -793,9 +794,9 @@ Follow-ups:
   branch (what `origin/HEAD` names, else the branch the repo has checked out) the merge is a quiet
   line only: the message is stored (kind `merged`) and shown; no run starts, no inbox row is held.
   *A fix merged into its test's branch is no news for the lead.*
-- There is no "waits for" wake. A draft PR whose body starts `Waits for #<n>` once woke the Bot when PR n
-  merged; it was dropped (#439) because atoll is one PR per ticket, test commits first, so nothing
-  stacks a fix on a test PR. Old `base` messages still load and show.
+- There is no "waits for" wake. A draft PR whose body starts `Waits for #<n>` once woke the Bot
+  when PR n merged. It was dropped (#439): atoll is one PR per ticket, test commits first, so
+  nothing stacks a fix on a test PR. Old messages of kind `base` still load and show.
 - Known gap: webhooks; a wake comes within a poll interval plus a settle read, or later after
   failures. Review comments and reopening wake nothing.
 - A head whose stored CI has a failed check is read again every few polls while the PR is open, so a
@@ -1478,10 +1479,11 @@ Follow-ups:
   {user}; the platform block to a Bot with "Can manage the platform". Then the persona. The rule
   for background runs is in the line Reef puts first in a background run (Delegation), not in the
   system prompt: *with that line, removing the system-prompt rule changed nothing in a spike.*
-- Moved out of Reef's prompt: "prove it by running the real thing", "smallest change", and "once a PR is called ready it is frozen" (also dropped from
-  `delegate`'s description) go to atoll's `AGENTS.md`, except stacked PRs as drafts with `Waits for #<n>`, which were dropped (#439). "Never merge" goes to each Bot's persona: on
-  upgrade, every existing Bot with repo access gets `Never merge: {user} merges.` appended once,
-  visible and editable; a new Bot's persona is the person's to write. *Nothing in code stops a
+- Moved out of Reef's prompt: "prove it by running the real thing", "smallest change", and "once
+  a PR is called ready it is frozen" (also dropped from `delegate`'s description) go to atoll's
+  `AGENTS.md`. Stacked PRs as drafts with `Waits for #<n>` were dropped, not moved (#439). "Never
+  merge" goes to each Bot's persona: on upgrade, every existing Bot with repo access gets `Never
+  merge: {user} merges.` appended once, visible and editable; a new Bot's persona is the person's to write. *Nothing in code stops a
   merge; a Bot that may merge (a release Bot) drops the line.* `track_mr`'s description does not
   say "Never merge" either, so the persona is the one place that carries it.
 - The platform block holds the Reef guide (so Chief answers without reading a file), the ask-first
