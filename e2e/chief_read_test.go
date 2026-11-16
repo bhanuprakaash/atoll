@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	"atoll/e2e/fakes/fake"
 )
@@ -167,7 +168,24 @@ func TestChiefRead_ListModelsStartsNoProcess(t *testing.T) {
 		t.Errorf("list_models %s, want both providers with the models GET /api/providers lists", c.reply)
 	}
 
-	// The run itself starts its session and its launch's status check; nothing else may start.
+	// The first reply also starts a title session, which logs after run_finished. Its launch checks
+	// sign-in before it starts, so once it is in the log both of its processes are.
+	var titles int
+	deadline := time.Now().Add(15 * time.Second)
+	for titles == 0 {
+		for _, p := range _providers {
+			titles += len(m.titles(t, p))
+		}
+		if titles == 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("no title session started within 15s of the run")
+			}
+			time.Sleep(_pace)
+		}
+	}
+
+	// The run starts its session and its launch's status check, the title session the same; nothing
+	// else may start.
 	sessions, statuses := 0, 0
 	for _, p := range _providers {
 		mode := map[string]string{"claude": "-p", "codex": "app-server"}[p]
@@ -182,8 +200,8 @@ func TestChiefRead_ListModelsStartsNoProcess(t *testing.T) {
 			}
 		}
 	}
-	if sessions != 1 || statuses > sessions {
-		t.Errorf("Chief run started %d sessions and %d status checks, want 1 and at most 1", sessions, statuses)
+	if sessions != 1 || titles != 1 || statuses != sessions+titles {
+		t.Errorf("Chief run started %d sessions, %d title sessions and %d status checks, want 1, 1 and 2", sessions, titles, statuses)
 	}
 }
 
