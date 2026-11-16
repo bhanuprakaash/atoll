@@ -317,7 +317,7 @@ func TestPRWake_ThreadWithoutWorktreeIsRead(t *testing.T) {
 				t.Errorf("wake %+v, want kind ci, text %q", w, want)
 			}
 			got := threadPRs(t, f.s, th.ID)
-			if len(got) != 1 || got[0].State != "opened" || !strings.Contains(string(got[0].CI), `"failed_names":["unit"]`) {
+			if len(got) != 1 || got[0].State != "opened" || !strings.Contains(string(got[0].CI), `"names":["unit"]`) {
 				t.Errorf("thread PRs %+v after CI finished, want one opened with ci naming unit", got)
 			}
 
