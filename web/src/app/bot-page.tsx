@@ -148,7 +148,7 @@ export function BotHeader({
         </div>
         {children}
       </div>
-      <div className="col-start-3 mr-4 flex items-center justify-self-end">
+      <div className="col-start-3 mt-1.5 mr-4 flex items-center gap-1 justify-self-end">
         {details && (
           <button
             type="button"
@@ -157,7 +157,7 @@ export function BotHeader({
             aria-expanded={details.open}
             data-thread-details
             onClick={details.toggle}
-            className="flex size-10 items-center justify-center rounded-full text-muted"
+            className={`flex size-8 items-center justify-center rounded-lg ${details.open ? 'bg-selected text-ink' : 'text-muted'}`}
           >
             <svg
               aria-hidden="true"
@@ -169,7 +169,8 @@ export function BotHeader({
               strokeWidth="1.8"
               strokeLinecap="round"
             >
-              <path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" />
+              <rect x="4" y="4" width="16" height="16" rx="3" />
+              <path d="M8 9h8M8 12.5h8M8 16h5" />
             </svg>
           </button>
         )}
@@ -177,7 +178,7 @@ export function BotHeader({
           type="button"
           aria-label="Bot settings"
           onClick={onSettings}
-          className="flex size-10 items-center justify-center rounded-full text-muted"
+          className="flex size-8 items-center justify-center rounded-lg text-muted"
         >
           <svg
             aria-hidden="true"
