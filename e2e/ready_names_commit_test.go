@@ -3,7 +3,6 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -45,17 +44,12 @@ func TestReadyNamesCommit_MergeWakeNamesTheCommit(t *testing.T) {
 	}
 }
 
-// stack has a new thread's Bot stack a fix on branch and returns the thread; waits is the number of
-// the PR it waits for, 0 for none.
-func (f *prWakeFixture) stack(t *testing.T, branch string, waits int) thread {
+// stack has a new thread's Bot stack a fix on branch and returns the thread.
+func (f *prWakeFixture) stack(t *testing.T, branch string) thread {
 	t.Helper()
 	th := f.thread(t, f.boss, f.repo)
 	ch := f.s.events(t, th)
-	prompt := "Stack a fix on " + branch
-	if waits > 0 {
-		prompt += fmt.Sprintf(" waiting for PR %d", waits)
-	}
-	r := f.s.send(t, th, prompt)
+	r := f.s.send(t, th, "Stack a fix on "+branch)
 	until(t, ch, r.ID, "run_finished")
 	if done := f.s.run(t, r.ID); done.Status != "done" {
 		t.Fatalf("run that stacks the fix: %+v", done)
@@ -71,7 +65,7 @@ func TestReadyNamesCommit_MergeIntoAnotherBranchIsQuiet(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			f.openPR(t, 1)
 			branch := f.gh.pullRequests()[0].Head
-			th := f.stack(t, branch, 0)
+			th := f.stack(t, branch)
 			before := f.s.thread(t, th.ID).RunID
 
 			f.gh.setPull(2, "closed", true)
@@ -91,57 +85,6 @@ func TestReadyNamesCommit_MergeIntoAnotherBranchIsQuiet(t *testing.T) {
 		})
 	}
 }
-
-// The scripted flow test PR then stacked fix: the fix is opened as a draft against the test's branch
-// with "Waits for #1", stays one while the test is open and wakes nothing, and when the test merges
-// its Bot is woken once, retargets it to main and marks it ready.
-func TestReadyNamesCommit_StackedFixWaitsAsDraft(t *testing.T) {
-	for _, p := range _providers {
-		t.Run(p, func(t *testing.T) {
-			f := newPRWakeFixture(t, p)
-			test := f.openPR(t, 1)
-			branch := f.gh.pullRequests()[0].Head
-			fix := f.stack(t, branch, 1)
-
-			prs := f.gh.pullRequests()
-			if len(prs) != 2 || prs[1].Base != branch || !strings.HasPrefix(prs[1].Body, "Waits for #1") {
-				t.Fatalf("pull requests %+v, want #2 against %q with a body starting %q", prs, branch, "Waits for #1")
-			}
-			if got, want := f.gh.prCalls(), []string{"create #1 base=main draft=false", "create #2 base=" + branch + " draft=true"}; !equalStrings(got, want) {
-				t.Fatalf("gh calls %q, want %q", got, want)
-			}
-			if !f.gh.isDraft(2) {
-				t.Error("the stacked fix is not a draft while its base is open")
-			}
-			f.quiet(t, 2, "a draft whose base is open", fix, 0, 0)
-
-			f.gh.setPull(1, "closed", true)
-			merged := f.waitWake(t, test, 1)
-			w := f.waitWake(t, fix, 1)
-
-			if want := "PR #1 merged into main at " + headSHA(1)[:7]; merged.Text != want {
-				t.Errorf("test PR's wake %q, want %q", merged.Text, want)
-			}
-			if w.Kind != "base" || w.Text != "PR #1 merged; PR #2 was waiting for it" || w.FromBotID != "" {
-				t.Errorf("stacked fix's wake %+v, want kind base, text %q, no from_bot_id", w, "PR #1 merged; PR #2 was waiting for it")
-			}
-			if run := f.s.run(t, f.s.thread(t, fix.ID).RunID); run.Status != "done" {
-				t.Errorf("run of the base wake %+v, want done", run)
-			}
-			want := []string{"create #1 base=main draft=false", "create #2 base=" + branch + " draft=true", "edit #2 base=main", "ready #2"}
-			if got := f.gh.prCalls(); !equalStrings(got, want) {
-				t.Errorf("gh calls %q, want %q", got, want)
-			}
-			if f.gh.isDraft(2) {
-				t.Error("the stacked fix is still a draft after the Bot marked it ready")
-			}
-
-			f.quiet(t, 2, "the base wake already sent", fix, 1, 2, 1)
-		})
-	}
-}
-
-func equalStrings(a, b []string) bool { return strings.Join(a, "\n") == strings.Join(b, "\n") }
 
 // The freeze sentence and the draft rule moved out of Reef's prompt into the repo's own
 // instructions: no Bot's system prompt carries either.

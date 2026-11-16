@@ -1,6 +1,6 @@
 ## What changed
 
-<!-- Short list of what this PR changes and why. The ticket's `test:` commits come first. -->
+<!-- Short list of what this PR changes and why. The ticket's `test:` commits come first; later test fixes go on top. -->
 
 ## Proof
 

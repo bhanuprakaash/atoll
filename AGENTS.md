@@ -100,6 +100,8 @@ every PR. New issues and PRs start from the templates in `.github/`.
   touch only `e2e/`, first in the PR, written by the user or a separate session. The implementing
   agent never edits the locked files: `e2e/*_test.go`, `e2e/ui/*.ts`, `e2e/with-secret-store`,
   `e2e/fakes/`. `e2e/testdata/` and unit tests are free.
+- A test fix after the PR is pushed (a review, a wrong spec) is a new `test:` commit on top, by the
+  same rules. Never rewrite a pushed branch: no amend, rebase or force-push.
 - If a test looks wrong, stop and report it. Never edit, skip or weaken a test to make code pass.
 - A test cleans up even when it fails (`t.Cleanup`, `finally`).
 - Unit tests are for fiddly logic. Add a case to an existing table-driven test, not a test per bug.
@@ -113,7 +115,7 @@ A ticket is done when:
 
 - Docs-only: `make format` check and `scripts/check-tests`; CI runs the rest
 - `make check` passes locally and in the PR checks.
-- The ticket's tests and code are in one PR, `test:` commits first.
+- The ticket's tests and code are in one PR, `test:` commits first (later test fixes on top).
 - Every acceptance line is proven by running it, and the PR's Proof section shows the command and
   its output.
 - Each proven line is ticked in the issue (`gh issue edit <n> --body`). A line you

@@ -28,13 +28,11 @@ const (
 	_namesListed  = 5
 	_readTimeout  = 30 * time.Second
 	_pauseDefault = time.Minute
-	_wakeBase     = "base"
 	// _ciFailed follows the failed count in the wake of a CI run with a failed check.
 	_ciFailed = " failed ("
 )
 
 var (
-	_waitsFor = regexp.MustCompile(`^Waits for #(\d+)`)
 	_prNumber = regexp.MustCompile(`#\d+`)
 )
 
@@ -48,13 +46,10 @@ type (
 	}
 
 	watched struct {
-		etag string
-		pull ghPull
-		// base is the PR this draft waits for, read until it is merged.
-		base     ghPull
-		baseETag string
-		fails    int
-		next     time.Time
+		etag  string
+		pull  ghPull
+		fails int
+		next  time.Time
 
 		noCheckPolls int
 	}
@@ -63,7 +58,6 @@ type (
 		State  string `json:"state"`
 		Merged bool   `json:"merged"`
 		Title  string `json:"title"`
-		Draft  bool   `json:"draft"`
 		Body   string `json:"body"`
 		Base   struct {
 			Ref string `json:"ref"`
@@ -143,8 +137,7 @@ func (m *Manager) checkGitHub(w *watcher, wp store.WatchedPR, bot store.Bot, rp 
 	if title == "" {
 		title = ws.pull.Title
 	}
-	r := store.MRRead{State: state, Title: title, CI: p.CI, Woke: p.Woke, Head: p.Head, BaseWoke: p.BaseWoke,
-		Draft: ws.pull.Draft, Body: ws.pull.Body, Base: ws.pull.Base.Ref}
+	r := store.MRRead{State: state, Title: title, CI: p.CI, Woke: p.Woke, Head: p.Head}
 	if ws.pull.Head.SHA != "" {
 		r.Head = ws.pull.Head.SHA
 	}
@@ -152,9 +145,6 @@ func (m *Manager) checkGitHub(w *watcher, wp store.WatchedPR, bot store.Bot, rp 
 	switch {
 	case state == _mrOpened:
 		if err := m.readCI(w, connID, token, api, wp, ws.pull.Head.SHA, label, &r); err != nil {
-			return err
-		}
-		if err := m.readBase(w, connID, token, api, wp, label, &r); err != nil {
 			return err
 		}
 	case state == _mrMerged && p.State != _mrMerged:
@@ -177,33 +167,6 @@ func (m *Manager) mergedText(rp store.Repo, label string, pull ghPull, r *store.
 	if def := repo.DefaultBranch(m.ctx, rp.Path); def != "" && pull.Base.Ref != def {
 		r.Quiet = true
 	}
-}
-
-// readBase reads the PR that a draft waits for ("Waits for #n" starts its body) and, when that PR
-// is merged, sets the one wake of the draft's Bot.
-func (m *Manager) readBase(w *watcher, connID, token, api string, wp store.WatchedPR, label string, r *store.MRRead) error {
-	p := wp.PR
-	ws := w.of(p)
-	match := _waitsFor.FindStringSubmatch(ws.pull.Body)
-	if !ws.pull.Draft || match == nil || p.BaseWoke || !p.Wake {
-		return nil
-	}
-	body, hdr, err := m.githubGet(w, wp.Thread.BotID, connID, token, api+"/pulls/"+match[1], ws.baseETag)
-	if err != nil {
-		return err
-	}
-	if body != nil {
-		var base ghPull
-		if err := json.Unmarshal(body, &base); err != nil {
-			return fmt.Errorf("decode pull request %s: %w", match[1], err)
-		}
-		ws.base, ws.baseETag = base, hdr.Get("ETag")
-	}
-	if ws.base.State == "closed" && ws.base.Merged {
-		r.BaseWoke, r.WakeKind, r.Notice = true, _wakeBase, store.NoticeBase
-		r.WakeText = fmt.Sprintf("PR #%s merged; %s was waiting for it", match[1], label)
-	}
-	return nil
 }
 
 func short(sha string) string { return sha[:min(len(sha), 7)] }
@@ -338,7 +301,7 @@ func (m *Manager) update(wp store.WatchedPR, label string, r store.MRRead, note 
 		r.WakeText += note
 	}
 	if p.Wake && r.WakeKind == "" && r.State == p.State && r.Title == p.Title && r.CI == p.CI &&
-		r.Woke == p.Woke && r.Head == p.Head && r.Draft == p.Draft && r.Body == p.Body && r.Base == p.Base && !r.DropCI {
+		r.Woke == p.Woke && r.Head == p.Head && !r.DropCI {
 		return nil
 	}
 	stored, err := m.cfg.Store.StoreMR(m.ctx, t.ID, r)

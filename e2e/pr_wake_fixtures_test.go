@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -74,21 +73,6 @@ func (g *fakeGitHub) setPull(n int, state string, merged bool) {
 // setHead pushes a new head commit to pull request n.
 func (g *fakeGitHub) setHead(n int, sha string) {
 	g.set(func() { g.pr(n).head = sha })
-}
-
-// prCalls is what the Bots' gh did to pull requests so far, in order: `create #2 base=<b> draft=<bool>`,
-// `edit #2 base=<b>` and `ready #2`.
-func (g *fakeGitHub) prCalls() []string {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return slices.Clone(g.watch.calls)
-}
-
-// isDraft is whether pull request n is a draft now.
-func (g *fakeGitHub) isDraft(n int) bool {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.pr(n).draft
 }
 
 // setTitle changes the title of pull request n, so the next read is a new reply with a new ETag.

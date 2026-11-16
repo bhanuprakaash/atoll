@@ -133,3 +133,92 @@ func TestReadCI_NoChecksReadAgainLater(t *testing.T) {
 			reads.Load(), r.Woke, r.WakeKind, r.Notice)
 	}
 }
+
+func TestUpdate_Wake(t *testing.T) {
+	tests := []struct {
+		name  string
+		prev  string
+		next  string
+		label string
+		want  string
+	}{
+		{"merged", "opened", "merged", "PR #7", "merged"},
+		{"closed", "opened", "closed", "PR #7", "closed"},
+		{"already merged", "merged", "merged", "PR #7", ""},
+		{"already closed", "closed", "closed", "PR #7", ""},
+		{"GitLab merged", "opened", "merged", "", ""},
+		{"GitLab closed", "opened", "closed", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newRepoEnv(t)
+			const url = "https://github.test/o/r/pull/7"
+			if _, err := e.st.SetMR(t.Context(), e.thread.ID, url, tt.prev, "T"); err != nil {
+				t.Fatal(err)
+			}
+			prs, err := e.st.PRs(t.Context(), e.thread.ID)
+			if err != nil || len(prs) != 1 {
+				t.Fatalf("PRs %v, error %v", prs, err)
+			}
+			wp := store.WatchedPR{Thread: e.thread, PR: prs[0]}
+			// A held slot keeps a run from taking the wake.
+			slot := e.m.reserve(e.thread.ID)
+			if slot == nil {
+				t.Fatal("no slot for an idle thread")
+			}
+			defer e.m.free(slot)
+			if err := e.m.update(wp, tt.label, store.MRRead{State: tt.next, Title: "T"}, ""); err != nil {
+				t.Fatal(err)
+			}
+			held, err := e.st.Held(t.Context(), e.thread.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got string
+			if len(held) > 0 {
+				got = held[0].Kind
+			}
+			if got != tt.want || len(held) > 1 || tt.want != "" && held[0].Text != tt.label+" "+tt.want {
+				t.Errorf("wakes %+v, want one %q", held, tt.want)
+			}
+			if stored, _ := e.st.PRs(t.Context(), e.thread.ID); stored[0].State != tt.next {
+				t.Errorf("stored state %q, want %q", stored[0].State, tt.next)
+			}
+		})
+	}
+}
+
+func TestUpdate_CIWake(t *testing.T) {
+	e := newRepoEnv(t)
+	const url = "https://github.test/o/r/pull/7"
+	if _, err := e.st.SetMR(t.Context(), e.thread.ID, url, "opened", "T"); err != nil {
+		t.Fatal(err)
+	}
+	// A held slot keeps a run from taking the wake.
+	slot := e.m.reserve(e.thread.ID)
+	if slot == nil {
+		t.Fatal("no slot for an idle thread")
+	}
+	defer e.m.free(slot)
+	read := store.MRRead{State: "opened", Title: "T", Head: "abc", CI: `{"passed":2}`, Woke: "abc"}
+	for i, wantHeld := range []int{1, 1} {
+		prs, err := e.st.PRs(t.Context(), e.thread.ID)
+		if err != nil || len(prs) != 1 {
+			t.Fatalf("PRs %v, error %v", prs, err)
+		}
+		r := read
+		if i == 0 {
+			r.WakeKind, r.WakeText, r.Notice = "ci", ciText("PR #7", ciResult{Passed: 2}), store.NoticeCIPassed
+		}
+		if err := e.m.update(store.WatchedPR{Thread: e.thread, PR: prs[0]}, "PR #7", r, ""); err != nil {
+			t.Fatal(err)
+		}
+		held, err := e.st.Held(t.Context(), e.thread.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(held) != wantHeld || held[0].Kind != "ci" || !strings.HasPrefix(held[0].Text, "CI finished on PR #") {
+			t.Fatalf("read %d: wakes %+v, want %d of kind ci starting %q", i+1, held, wantHeld, "CI finished on PR #")
+		}
+	}
+}
