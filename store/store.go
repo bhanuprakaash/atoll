@@ -843,12 +843,12 @@ func (s *Store) HelperThreads(ctx context.Context, parentID string) ([]Thread, e
 		scanThread, parentID)
 }
 
-// Watched lists the opened PRs of the threads with a worktree: the ones that are polled, with
+// Watched lists the opened PRs of the open threads that have a repo: the ones that are polled, with
 // their thread. A merged or closed PR is final and is not read again; a waiting draft reads its
 // merged base itself.
 func (s *Store) Watched(ctx context.Context) ([]WatchedPR, error) {
 	threads, err := query(ctx, s.db,
-		"SELECT "+_threadColumns+" FROM threads WHERE worktree != '' AND id IN (SELECT thread_id FROM thread_prs) ORDER BY rowid",
+		"SELECT "+_threadColumns+" FROM threads WHERE closed = 0 AND repo_id != '' AND id IN (SELECT thread_id FROM thread_prs) ORDER BY rowid",
 		scanThread)
 	if err != nil {
 		return nil, err

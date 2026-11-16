@@ -673,8 +673,9 @@ Follow-ups:
   MR shows `!<iid>`.
 - One watcher runs inside the server and resumes after a restart. Every minute
   (`ATOLL_REPO_POLL_INTERVAL`, a Go duration, the poll interval below) it reads every `opened` PR
-  or MR of the threads with a worktree (`Store.Watched` lists PRs, not threads; closing a thread
-  removes its worktree, so a closed thread is never read): the state (`opened`, `merged`, `closed`; GitLab's `locked` counts as
+  or MR of the threads that are not closed (`Store.Watched` lists PRs, not threads; a thread
+  with no worktree of its own, such as a boss that tracked a helper's PR, is read too; a thread with
+  no repo is skipped, a closed thread is never read): the state (`opened`, `merged`, `closed`; GitLab's `locked` counts as
   `opened`), the title and, on GitHub, the CI summary (calls: Fixtures). A merged or closed PR is not read again, except as the base a waiting
   draft names (stacked fix). Waits after a failed read are per PR; pauses stay per connection.
 - A GitLab MR is read with `glab mr view` and the Bot's GitLab environment. A GitHub PR is read
