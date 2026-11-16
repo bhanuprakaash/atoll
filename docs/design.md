@@ -664,7 +664,7 @@ Follow-ups:
   `opened`), the title and, on GitHub, the CI summary (calls: Fixtures).
 - A GitLab MR is read with `glab mr view` and the Bot's GitLab environment. A GitHub PR is read
   with the REST API and the token of the Bot's first GitHub connection, from
-  `connection.GitHubToken(id)` only. A Bot with no connection, or a thread whose Bot lost it, is
+  `connection.GitHubToken` only. A Bot with no connection, or a thread whose Bot lost it, is
   not read: never unauthenticated, never with the server's own `GH_TOKEN` or `GITHUB_TOKEN`.
 - A merged GitLab MR with a worktree is cleaned up like a closed thread, only while no run is going
   in the thread; a woken run counts, so release comes after the wake run ends. A closed MR keeps
@@ -1136,15 +1136,27 @@ Follow-ups:
   connection that needs sign-in says when it lost it: `Signed out <time>` in the card's detail line.
   The API carries that time as `signed_out_at` (RFC 3339, UTC), set when the connection goes
   `needs_sign_in` and kept while it stays there; any other status drops it.
-- A GitHub token has no refresh and no expiry. Before a run uses one, `GET /user` must accept it; a
-  401 marks the connection `needs_sign_in`, the run stops before the provider starts with "GitHub
-  needs sign-in", and signing in again keeps the connection and its Bots. The OS secret store holds
-  the bare token under `github:<connection id>`. The MR watcher does not check first: it uses the
-  token on its own reads and treats a `401` the same way. A thread's reads use the host's connection
-  only, so a GitHub failure never stops GitLab polling. Each 401 that marks the connection writes
-  one WARN line `GitHub sign-in lost` to `logs/server.log` with `connection_id`, `bot_id` (empty for
-  the issue watcher, which acts for no Bot), `endpoint`, `github_message` (the reply's `message`)
-  and `github_request_id` (`X-GitHub-Request-Id`); never the token.
+- A GitHub token lives 8 hours and has a refresh token (181 days). The OS secret store holds JSON
+  under `github:<connection id>`: `access_token`, `refresh_token`, `expires_at` and
+  `refresh_expires_at` (RFC 3339). A bare token from an older Reef, or a record with no refresh
+  token, is used as it is. A run refreshes a token with under 3 hours left (`grant_type=refresh_token`
+  with the client ID only) before it starts, unless another live run holds the connection's token:
+  then it gets the current token, and the refresh waits for expiry or a run start with no other run
+  live. The MR and issue watchers, and `start_work` inside a run, refresh only an expired one. A
+  refresh never ends a token a live run holds before it expires. Reads, refreshes
+  and sign-in writes for one connection run one at a time (refresh tokens are single-use). A
+  refreshed token logs one INFO `GitHub token refreshed` with `connection_id` and `expires_at`. A
+  network error during a refresh leaves the connection and tokens as they were; the next caller
+  tries again. A run lasting over about 3 hours can lose GitHub near its end (accepted).
+- GitHub rejecting the refresh token (`bad_refresh_token`), or a `401` on a token, marks the
+  connection `needs_sign_in`: the run stops before the provider starts with "GitHub needs sign-in",
+  and signing in again keeps the connection and its Bots. Before a run uses a token, `GET /user` must
+  accept it. The MR watcher does not check first: it uses the token on its own reads. A thread's
+  reads use the host's connection only, so a GitHub failure never stops GitLab polling. Each loss
+  writes one WARN line `GitHub sign-in lost` to `logs/server.log` with `connection_id`, `bot_id`
+  (empty for the issue watcher, which acts for no Bot), `cause` (`access token rejected` or
+  `refresh token rejected`), `endpoint`, `github_message` (the reply's `message`) and
+  `github_request_id` (`X-GitHub-Request-Id`); never a token.
 - GitLab OAuth records (refresh token and expiry too) are in the secret store. Before a run uses
   one, a token expiring within ten minutes is refreshed. Reads, refreshes and sign-in writes for one
   connection run one at a time (refresh tokens are single-use). A rejected refresh marks the

@@ -33,7 +33,7 @@ func githubBot(t *testing.T) (*Manager, store.Bot, *atomic.Int32) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := connection.SaveGitHubToken(c.ID, "fake-gho"); err != nil {
+	if err := connection.SaveGitHubToken(c.ID, connection.GitHubTokens{AccessToken: "fake-gho"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.st.SetConnectionStatus(t.Context(), c.ID, store.ConnectionConnected); err != nil {
@@ -48,7 +48,7 @@ func githubBot(t *testing.T) (*Manager, store.Bot, *atomic.Int32) {
 
 func TestRunEnv_GitHubSSHRemotes(t *testing.T) {
 	m, bot, _ := githubBot(t)
-	env, _, err := m.runEnv(t.Context(), bot, true)
+	env, _, err := m.runEnv(t.Context(), bot, &active{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,11 +78,11 @@ func TestRunEnv_GitHubCheck(t *testing.T) {
 	m, bot, users := githubBot(t)
 	tests := []struct {
 		name   string
-		github bool
+		github *active
 		want   int32
 	}{
-		{"run", true, 1},
-		{"MR watcher", false, 0},
+		{"run", &active{}, 1},
+		{"MR watcher", nil, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -139,9 +139,9 @@ func (m *Manager) firstGitHub() (id, token string, err error) {
 		if c.Kind != store.KindGitHub || c.Status != store.ConnectionConnected {
 			continue
 		}
-		token, err := connection.GitHubToken(c.ID)
+		token, err := m.githubToken(m.ctx, c.ID, "", _githubRefreshAtExpiry)
 		if err != nil {
-			return "", "", fmt.Errorf("read GitHub connection token: %w", err)
+			return "", "", err
 		}
 		return c.ID, token, nil
 	}

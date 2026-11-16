@@ -6,16 +6,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zalando/go-keyring"
 
 	"atoll/store"
 )
+
+const _badRefreshToken _oauthError = "bad_refresh_token"
 
 const (
 	// GitHubInstance is the instance_url of GitHub connections.
@@ -35,6 +39,22 @@ type GitHubRejection struct {
 	Endpoint  string
 	Message   string // the message of GitHub's reply
 	RequestID string // X-GitHub-Request-Id
+	Cause     string // what GitHub rejected
+}
+
+// GitHubTokens is the OAuth token record saved for a GitHub connection.
+type GitHubTokens struct {
+	AccessToken      string    `json:"access_token"`
+	RefreshToken     string    `json:"refresh_token"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	RefreshExpiresAt time.Time `json:"refresh_expires_at"`
+}
+
+type githubTokenReply struct {
+	AccessToken      string `json:"access_token"`
+	RefreshToken     string `json:"refresh_token"`
+	ExpiresIn        int    `json:"expires_in"`
+	RefreshExpiresIn int    `json:"refresh_token_expires_in"`
 }
 
 // RejectedBy reads the 401 resp from endpoint.
@@ -43,7 +63,8 @@ func RejectedBy(endpoint string, resp *http.Response) *GitHubRejection {
 		Message string `json:"message"`
 	}
 	_ = json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&reply)
-	return &GitHubRejection{Endpoint: endpoint, Message: reply.Message, RequestID: resp.Header.Get("X-GitHub-Request-Id")}
+	return &GitHubRejection{Endpoint: endpoint, Message: reply.Message,
+		RequestID: resp.Header.Get("X-GitHub-Request-Id"), Cause: "access token rejected"}
 }
 
 func (e *GitHubRejection) Error() string { return ErrGitHubNeedsSignIn.Error() }
@@ -135,21 +156,17 @@ func StartGitHubDevice(ctx context.Context, c *http.Client) (Device, error) {
 }
 
 // PollGitHubToken returns ErrPending until the user approves.
-func PollGitHubToken(ctx context.Context, c *http.Client, deviceCode string) (string, error) {
-	var reply struct {
-		AccessToken string `json:"access_token"`
-	}
+func PollGitHubToken(ctx context.Context, c *http.Client, deviceCode string) (GitHubTokens, error) {
+	start := time.Now().UTC()
+	var reply githubTokenReply
 	err := githubPost(ctx, c, "/login/oauth/access_token", url.Values{
 		"client_id": {GitHubClientID}, "device_code": {deviceCode},
 		"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"},
 	}, &reply)
 	if err != nil {
-		return "", err
+		return GitHubTokens{}, err
 	}
-	if reply.AccessToken == "" {
-		return "", errors.New("OAuth reply has no access token")
-	}
-	return reply.AccessToken, nil
+	return reply.tokens(start)
 }
 
 // CheckGitHubToken returns ErrGitHubNeedsSignIn when GitHub rejects the token.
@@ -174,15 +191,79 @@ func CheckGitHubToken(ctx context.Context, c *http.Client, token string) error {
 	return fmt.Errorf("GitHub HTTP status: %d", resp.StatusCode)
 }
 
-// SaveGitHubToken stores the token in the OS secret store.
-func SaveGitHubToken(id, token string) error {
-	return keyring.Set("atoll", "github:"+id, token)
+// SaveGitHubToken stores the tokens of connection id in the OS secret store.
+func SaveGitHubToken(id string, tokens GitHubTokens) error {
+	lock, _ := _tokenLocks.LoadOrStore(id, &sync.Mutex{})
+	mu, _ := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+	return saveGitHubTokens(id, tokens)
 }
 
-// GitHubToken loads the token from the OS secret store.
-func GitHubToken(id string) (string, error) {
-	token, err := keyring.Get("atoll", "github:"+id)
-	return token, store.SecretReadError(err)
+// GitHubToken loads the token of connection id from the OS secret store and refreshes it when
+// less than minLife is left. A bare token, or one with no refresh token, is used as it is.
+// GitHub rejecting the refresh token returns a *GitHubRejection; a refresh that gets no answer
+// leaves the stored tokens alone.
+func GitHubToken(ctx context.Context, c *http.Client, log *slog.Logger, id string, minLife time.Duration) (string, error) {
+	lock, _ := _tokenLocks.LoadOrStore(id, &sync.Mutex{})
+	mu, _ := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+	value, err := keyring.Get("atoll", "github:"+id)
+	if err != nil {
+		return "", store.SecretReadError(err)
+	}
+	var tokens GitHubTokens
+	if json.Unmarshal([]byte(value), &tokens) != nil {
+		return value, nil
+	}
+	if tokens.RefreshToken == "" || time.Until(tokens.ExpiresAt) > minLife {
+		return tokens.AccessToken, nil
+	}
+	start := time.Now().UTC()
+	var reply githubTokenReply
+	err = githubPost(ctx, c, "/login/oauth/access_token", url.Values{
+		"client_id": {GitHubClientID}, "grant_type": {"refresh_token"}, "refresh_token": {tokens.RefreshToken},
+	}, &reply)
+	if errors.Is(err, _badRefreshToken) {
+		return "", &GitHubRejection{Endpoint: GitHubURL() + "/login/oauth/access_token",
+			Message: string(_badRefreshToken), Cause: "refresh token rejected"}
+	}
+	if err != nil {
+		return "", err
+	}
+	refreshed, err := reply.tokens(start)
+	if err != nil {
+		return "", err
+	}
+	if err := saveGitHubTokens(id, refreshed); err != nil {
+		return "", err
+	}
+	log.Info("GitHub token refreshed", "connection_id", id, "expires_at", refreshed.ExpiresAt)
+	return refreshed.AccessToken, nil
+}
+
+func saveGitHubTokens(id string, tokens GitHubTokens) error {
+	b, err := json.Marshal(tokens)
+	if err != nil {
+		return fmt.Errorf("encode OAuth tokens: %w", err)
+	}
+	return keyring.Set("atoll", "github:"+id, string(b))
+}
+
+// tokens counts the lifetimes from start, before the request: the token never outlives them.
+func (r githubTokenReply) tokens(start time.Time) (GitHubTokens, error) {
+	if r.AccessToken == "" {
+		return GitHubTokens{}, errors.New("OAuth reply has no access token")
+	}
+	tokens := GitHubTokens{AccessToken: r.AccessToken, RefreshToken: r.RefreshToken}
+	if r.ExpiresIn > 0 {
+		tokens.ExpiresAt = start.Add(time.Duration(r.ExpiresIn) * time.Second)
+	}
+	if r.RefreshExpiresIn > 0 {
+		tokens.RefreshExpiresAt = start.Add(time.Duration(r.RefreshExpiresIn) * time.Second)
+	}
+	return tokens, nil
 }
 
 // GitHub answers 200 with an error field, and form-encoded unless asked for JSON.
@@ -214,6 +295,8 @@ func githubPost(ctx context.Context, c *http.Client, path string, form url.Value
 			return ErrPending
 		case "slow_down":
 			return ErrSlowDown
+		case string(_badRefreshToken):
+			return _badRefreshToken
 		case "expired_token", "access_denied":
 			return fmt.Errorf("%w: %s", ErrSignInEnded, failure.Error)
 		}

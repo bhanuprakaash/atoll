@@ -359,9 +359,9 @@ func (m *Manager) watchToken(bot store.Bot) (id, token string, err error) {
 		if c.Status != store.ConnectionConnected {
 			return "", "", nil
 		}
-		token, err := connection.GitHubToken(id)
+		token, err := m.githubToken(m.ctx, id, bot.ID, _githubRefreshAtExpiry)
 		if err != nil {
-			return "", "", fmt.Errorf("read GitHub connection token: %w", err)
+			return "", "", err
 		}
 		return id, token, nil
 	}

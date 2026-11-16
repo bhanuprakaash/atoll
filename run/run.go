@@ -129,6 +129,10 @@ type (
 		delegateMu sync.Mutex
 		windows    map[string]*time.Timer // wake windows open, by thread id; inboxMu guards it
 
+		// githubMu makes a starting run's look for a live token holder and its claim one step. It
+		// is taken before mu.
+		githubMu sync.Mutex
+
 		mu        sync.Mutex
 		runs      map[string]*active                 // by thread id
 		tokens    map[string]*active                 // by run token
@@ -164,6 +168,7 @@ type (
 		quiet    bool // stopped by Reef, not by the user: no wake, no held message
 		ending   bool
 		token    string
+		githubID string // the GitHub connection whose token the run holds; the Manager's mu guards it
 		run      store.Run
 		bot      store.Bot // settings as the run started
 		log      *os.File
@@ -1007,7 +1012,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		prompt = backgroundLine(user) + "\n\n" + prompt
 	}
 	var githubToken string
-	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, true)
+	cfg.Env, githubToken, err = m.runEnv(a.ctx, bot, a)
 	if err != nil {
 		return "", err
 	}
