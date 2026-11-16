@@ -772,9 +772,6 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 			m.flushLog(a.threadID)
 		}
 	}
-	if stopped {
-		m.flushStopped(a.threadID)
-	}
 }
 
 // usageResult is what the run used, and what the session has cost in total. A session's cost

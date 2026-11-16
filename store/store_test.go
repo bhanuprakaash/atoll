@@ -1577,3 +1577,33 @@ func TestStore_StartRunFrom_ReleaseEndsHold(t *testing.T) {
 		})
 	}
 }
+
+func TestStore_HoldReports_StripsHeldRelease(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	boss, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper, err := st.CreateHelperThread(ctx, boss.ID, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Enqueue(ctx, store.InboxItem{ThreadID: helper.ID, FromBotID: "boss", Text: "go", Queued: true, Notice: store.NoticeRelease}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.HoldReports(ctx, helper.ID); err != nil {
+		t.Fatal(err)
+	}
+	held, err := st.Held(ctx, helper.ID)
+	if err != nil || len(held) != 1 {
+		t.Fatalf("Held = %v, %v; want one message", held, err)
+	}
+	if held[0].Notice != "" {
+		t.Errorf("held message notice %q after the hold, want none", held[0].Notice)
+	}
+}

@@ -169,15 +169,6 @@ func (m *Manager) flushLog(threadID string) {
 	}
 }
 
-// flushStopped delivers what a boss's continue queued for a helper thread while its Stop was
-// still ending the run.
-func (m *Manager) flushStopped(threadID string) {
-	t, err := m.cfg.Store.Thread(context.Background(), threadID)
-	if err == nil && t.ParentThreadID != "" {
-		m.flushLog(threadID)
-	}
-}
-
 func (m *Manager) flushBoss(threadID string) {
 	t, err := m.cfg.Store.Thread(context.Background(), threadID)
 	switch {

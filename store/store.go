@@ -1396,9 +1396,17 @@ func (s *Store) DeleteInbox(ctx context.Context, id string) error {
 
 // HoldReports makes the thread hold the notices of its helpers until the person writes to it: a
 // run that takes a message of the person clears it. A helper thread holds all its messages until
-// a continue of its boss starts a run.
+// a continue of its boss starts a run. Holding makes what is already held plain: only a later
+// continue releases it.
 func (s *Store) HoldReports(ctx context.Context, threadID string) error {
-	if _, err := s.db.ExecContext(ctx, "UPDATE threads SET holds_reports = 1 WHERE id = ?", threadID); err != nil {
+	err := s.tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, "UPDATE threads SET holds_reports = 1 WHERE id = ?", threadID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, "UPDATE inbox SET notice = '' WHERE thread_id = ? AND notice = ?", threadID, NoticeRelease)
+		return err
+	})
+	if err != nil {
 		return fmt.Errorf("hold reports: %w", err)
 	}
 	return nil
