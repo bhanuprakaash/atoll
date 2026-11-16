@@ -719,7 +719,12 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	told, stopped := a.told, a.stopped
 	m.mu.Unlock()
 	if stopped && !quiet {
-		if err := m.cfg.Store.HoldReports(context.Background(), a.threadID); err != nil {
+		// Under inboxMu: a drain that picked before the hold finishes its send while the run is still
+		// going (ErrBusy); a later pick sees the hold. mu is not held here.
+		m.inboxMu.Lock()
+		err := m.cfg.Store.HoldReports(context.Background(), a.threadID)
+		m.inboxMu.Unlock()
+		if err != nil {
 			m.cfg.Log.Error("hold reports", "thread_id", a.threadID, "error", err)
 		}
 	}
