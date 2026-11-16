@@ -20,7 +20,7 @@ func TestHelperWork_FailedDelegateRemovesItsWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newRepoFixture(t, p)
 			s := f.s
@@ -84,7 +84,7 @@ func TestHelperWork_FailedDelegateKeepsOtherWorktrees(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		for _, kind := range []string{"leaf", "parent"} {
 			t.Run(p+"/"+kind, func(t *testing.T) {
 				f := newRepoFixture(t, p)

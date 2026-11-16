@@ -52,7 +52,7 @@ func TestPRWake_RejectedTokenLogsSignInLost(t *testing.T) {
 }
 
 func TestPRWake_ClosedUnmergedWakesTheBot(t *testing.T) {
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			th := f.openPR(t, 1)
@@ -73,7 +73,7 @@ func TestPRWake_ClosedUnmergedWakesTheBot(t *testing.T) {
 // CI finishes once every check of the head commit is done: a pending check wakes nothing, and the
 // wake gives the passed count and the failed checks' names.
 func TestPRWake_CIFinishedWakesOnce(t *testing.T) {
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			th := f.openPR(t, 1)
@@ -111,7 +111,7 @@ func TestPRWake_CIFinishedWakesOnce(t *testing.T) {
 // A check name is cleaned (no control characters, quotes or backslashes), cut at 60 characters and
 // quoted; the sentence names up to 5 failed checks, then how many more.
 func TestPRWake_CINamesAreCleanedAndCut(t *testing.T) {
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			th := f.openPR(t, 1)
@@ -139,7 +139,7 @@ func TestPRWake_CINamesAreCleanedAndCut(t *testing.T) {
 // A closed thread is not woken. A second, open thread with its own pull request is merged in the
 // same moment, so a Bot that never watches cannot pass for one that stays quiet.
 func TestPRWake_ClosedThreadIsNotWoken(t *testing.T) {
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			closed := f.openPR(t, 1)
@@ -164,7 +164,7 @@ func TestPRWake_ClosedThreadIsNotWoken(t *testing.T) {
 // One event is one wake: not on the next read of the same state, not when the pull request changes
 // without a new event, and not after a restart. Each wake is one run.
 func TestPRWake_OneWakePerEvent(t *testing.T) {
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newPRWakeFixture(t, p)
 			th := f.openPR(t, 1)

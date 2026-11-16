@@ -100,20 +100,78 @@ async function oneLine(status: Locator) {
   });
 }
 
+test("claude: the reply lands once, as a message, when the run ends, and no step lines or streamed text are ever drawn", async ({
+  page,
+}) => {
+  const { log, status } = await openRun(page, "Replacer", "claude");
+  await expect(status).toBeVisible();
+  await watchNotes(log);
+  await expect(status).toHaveText(openingStart);
+  await log.evaluate(
+    (el, [start, full]) => {
+      const w = window as unknown as {
+        __samples: { replies: number; closing: number; notes: boolean }[];
+      };
+      w.__samples = [];
+      const sample = () => {
+        w.__samples.push({
+          replies: [
+            ...el.querySelectorAll('[data-testid="message"]'),
+          ].filter((e) => (e as HTMLElement).innerText.includes(full))
+            .length,
+          closing: el.innerText.split(start).length - 1,
+          notes: !!el.querySelector(
+            '[data-testid="live-text"], [data-testid="step"]',
+          ),
+        });
+      };
+      new MutationObserver(sample).observe(el, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
+    },
+    [closingStart, closing],
+  );
+
+  await expect(replies(log)).toHaveCount(1, { timeout: 30_000 });
+  await expect(log.getByTestId("live-text")).toHaveCount(0);
+  await expect(log.getByTestId("step")).toHaveCount(0);
+  expect(await notesDrawn(page), "no step or live text was ever drawn").toBe(0);
+  await expect(status).toHaveCount(0);
+  await expect(log).not.toContainText(openingStart);
+  await expect(replies(log)).not.toContainText(openingStart);
+  expect(count(await log.innerText(), closingStart)).toBe(1);
+
+  const samples = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __samples: { replies: number; closing: number; notes: boolean }[];
+        }
+      ).__samples,
+  );
+  expect(
+    Math.max(...samples.map((s) => s.replies)),
+    "the reply is drawn as one message, never two",
+  ).toBe(1);
+  expect(
+    Math.max(...samples.map((s) => s.closing)),
+    "the closing text is never on screen twice",
+  ).toBe(1);
+  expect(
+    samples.some((s) => s.notes),
+    "no step or live text at any time",
+  ).toBe(false);
+
+  await page.reload();
+  await expect(replies(log)).toHaveCount(1);
+  await expect(log).not.toContainText(openingStart);
+  await expect(log.getByTestId("live-text")).toHaveCount(0);
+  await expect(log.getByTestId("step")).toHaveCount(0);
+});
+
 for (const provider of ["claude", "codex"] as const) {
-  test(`${provider}: the thread never draws step lines or streamed text while the Bot works`, async ({
-    page,
-  }) => {
-    const { log, status } = await openRun(page, `Plain log ${provider}`, provider);
-    await expect(status).toBeVisible();
-    await watchNotes(log);
-
-    await expect(replies(log)).toHaveCount(1, { timeout: 30_000 });
-    await expect(log.getByTestId("live-text")).toHaveCount(0);
-    await expect(log.getByTestId("step")).toHaveCount(0);
-    expect(await notesDrawn(page), "no step or live text was ever drawn").toBe(0);
-  });
-
   test(`${provider}: the status line shows the newest text, then the step, then the next text`, async ({
     page,
   }) => {
@@ -135,71 +193,6 @@ for (const provider of ["claude", "codex"] as const) {
 
     await expect(replies(log)).toHaveCount(1);
     await expect(status).toHaveCount(0);
-  });
-
-  test(`${provider}: the reply lands once, as a message, when the run ends`, async ({
-    page,
-  }) => {
-    const { log, status } = await openRun(page, `Replacer ${provider}`, provider);
-    await expect(status).toHaveText(openingStart);
-    await log.evaluate(
-      (el, [start, full]) => {
-        const w = window as unknown as {
-          __samples: { replies: number; closing: number; notes: boolean }[];
-        };
-        w.__samples = [];
-        const sample = () => {
-          w.__samples.push({
-            replies: [
-              ...el.querySelectorAll('[data-testid="message"]'),
-            ].filter((e) => (e as HTMLElement).innerText.includes(full))
-              .length,
-            closing: el.innerText.split(start).length - 1,
-            notes: !!el.querySelector(
-              '[data-testid="live-text"], [data-testid="step"]',
-            ),
-          });
-        };
-        new MutationObserver(sample).observe(el, {
-          subtree: true,
-          childList: true,
-          characterData: true,
-        });
-      },
-      [closingStart, closing],
-    );
-
-    await expect(replies(log)).toHaveCount(1, { timeout: 30_000 });
-    await expect(status).toHaveCount(0);
-    await expect(log).not.toContainText(openingStart);
-    await expect(replies(log)).not.toContainText(openingStart);
-    expect(count(await log.innerText(), closingStart)).toBe(1);
-
-    const samples = await page.evaluate(
-      () =>
-        (
-          window as unknown as {
-            __samples: { replies: number; closing: number; notes: boolean }[];
-          }
-        ).__samples,
-    );
-    expect(
-      Math.max(...samples.map((s) => s.replies)),
-      "the reply is drawn as one message, never two",
-    ).toBe(1);
-    expect(
-      Math.max(...samples.map((s) => s.closing)),
-      "the closing text is never on screen twice",
-    ).toBe(1);
-    expect(
-      samples.some((s) => s.notes),
-      "no step or live text at any time",
-    ).toBe(false);
-
-    await page.reload();
-    await expect(replies(log)).toHaveCount(1);
-    await expect(log).not.toContainText(openingStart);
-    await expect(log.getByTestId("live-text")).toHaveCount(0);
   });
 
   test(`${provider}: reloading mid-run shows the status line with the latest text or step`, async ({

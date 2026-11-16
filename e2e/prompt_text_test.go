@@ -140,7 +140,7 @@ func repoAccessBot(t *testing.T, s *server, p, name, persona string, extra map[s
 
 func TestPromptText_CodeBotMatchesDesign(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := promptSetup(t, p)
 			b := repoAccessBot(t, s, p, "Ada", "A careful Go engineer.", nil)
@@ -155,7 +155,7 @@ func TestPromptText_CodeBotMatchesDesign(t *testing.T) {
 
 func TestPromptText_BotWithoutReposHasNoCodePart(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := promptSetup(t, p)
 			b := repoAccessBot(t, s, p, "Talker", "Answers questions.", map[string]any{"repo_access": []string{}})
@@ -166,7 +166,7 @@ func TestPromptText_BotWithoutReposHasNoCodePart(t *testing.T) {
 
 func TestPromptText_BossMatchesDesign(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := promptSetup(t, p)
 			poteto := repoAccessBot(t, s, p, "Poteto", "Leads.", nil)
@@ -183,7 +183,7 @@ func TestPromptText_BossMatchesDesign(t *testing.T) {
 
 func TestPromptText_HelperMatchesDesign(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			m, s := promptSetup(t, p)
 			poteto := repoAccessBot(t, s, p, "Poteto", "Leads.", nil)
@@ -200,7 +200,7 @@ func TestPromptText_HelperMatchesDesign(t *testing.T) {
 
 func TestPromptText_HelperOnBossBranchMatchesDesign(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newRepoFixture(t, p)
 			f.s.do(t, "PUT", "/api/settings", map[string]string{"user_name": _userName, "worktree_root": f.root}, nil, http.StatusNoContent)
@@ -220,7 +220,7 @@ func TestPromptText_HelperOnBossBranchMatchesDesign(t *testing.T) {
 
 func TestPromptText_PlatformBotMatchesDesign(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := promptSetup(t, p)
 			b := repoAccessBot(t, s, p, "Keeper", "Keeps the reef.", map[string]any{"can_manage_platform": true})

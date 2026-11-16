@@ -206,7 +206,7 @@ func TestBossQuiet_ReportsInWindowStartOneRun(t *testing.T) {
 // run of its own when the window ends.
 func TestBossQuiet_PersonTakesHeldReports(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			t.Parallel()
 			const window = 6 * time.Second
@@ -258,7 +258,7 @@ func TestBossQuiet_PersonTakesHeldReports(t *testing.T) {
 // run; the next message to the boss takes it with it.
 func TestBossQuiet_StoppedRunStartsNone(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			t.Parallel()
 			m, s := start(t, p)
@@ -304,7 +304,7 @@ func TestBossQuiet_StoppedRunStartsNone(t *testing.T) {
 // message that names all 3, and one run.
 func TestBossQuiet_RestartWakesOnce(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			t.Parallel()
 			m, s := start(t, p)

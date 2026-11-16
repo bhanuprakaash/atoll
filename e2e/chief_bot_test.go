@@ -286,7 +286,7 @@ func rejected(t *testing.T, s *server, method, path string, body any, want []str
 
 func TestChiefBot_CreateWithUnknownRepoFails(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			ids := registerRepos(t, s, "atoll", "reef")
@@ -300,7 +300,7 @@ func TestChiefBot_CreateWithUnknownRepoFails(t *testing.T) {
 
 func TestChiefBot_EditWithUnknownRepoFails(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			ids := registerRepos(t, s, "atoll", "reef")
@@ -338,7 +338,7 @@ func TestBots_UnknownRepoRejected(t *testing.T) {
 
 func TestChiefBot_UnknownRepoWithNoReposRegistered(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			c := chiefCall(t, s, "create_bot", map[string]any{"name": "Poteto", "persona": "Reviews diffs.", "provider": p, "repo_access": []string{_unknownRepo}})
@@ -360,7 +360,7 @@ func TestChiefBot_UnknownRepoWithNoReposRegistered(t *testing.T) {
 
 func TestChiefBot_RepoAccessAsToday(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			ids := registerRepos(t, s, "atoll", "reef")

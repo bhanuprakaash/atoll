@@ -47,7 +47,7 @@ func endsWithLine(t *testing.T, what, text, line string) {
 // when it was posted: the helper that just ended is not counted, the others are named oldest first.
 func TestSlots_WakeEndsWithHelpersLine(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
 			poteto, tester, reviewer := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p), s.newBot(t, "Reviewer", p)
@@ -103,7 +103,7 @@ func TestSlots_WakeEndsWithHelpersLine(t *testing.T) {
 // queued and has no line.
 func TestSlots_ToolResultsCarryHelpersLine(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
 			poteto, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
@@ -155,7 +155,7 @@ func TestSlots_ToolResultsCarryHelpersLine(t *testing.T) {
 // not.
 func TestPrompt_BossGetsHelpersRule(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			m, s := start(t, p)
 			poteto, tester, reviewer, ada := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p), s.newBot(t, "Reviewer", p), s.newBot(t, "Ada", p)

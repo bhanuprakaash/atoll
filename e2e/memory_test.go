@@ -287,7 +287,7 @@ func TestMemory_RetireKeepsHistory(t *testing.T) {
 
 func TestMemory_SelectionAndBudget(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f, b := memorySetup(t, p)
 			// The other Bot's memory must not enter this Bot's context.

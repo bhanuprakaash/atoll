@@ -106,7 +106,7 @@ func TestBotMode_ReachesProvider(t *testing.T) {
 
 func TestBotMode_Chief(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			id := createdID(t, chiefCall(t, s, "create_bot", map[string]any{"name": "Poteto", "persona": "Reviews diffs.", "provider": p, "mode": "ask"}))

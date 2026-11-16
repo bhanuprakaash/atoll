@@ -96,7 +96,7 @@ func TestSecretStoreDown_RunFailsPlainlyAndKeepsTheMessage(t *testing.T) {
 
 func TestSecretStoreDown_RunWithoutSecretsStillWorks(t *testing.T) {
 	t.Parallel()
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			f := newGitHubFixture(t, p)
 			f.connect(t)

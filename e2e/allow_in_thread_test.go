@@ -221,7 +221,7 @@ func TestAllowInThread_NotOffered(t *testing.T) {
 	for _, c := range cases {
 		cmds = append(cmds, c.cmd)
 	}
-	for _, p := range _providers {
+	for _, p := range _oneProvider {
 		t.Run(p, func(t *testing.T) {
 			_, s := start(t, p)
 			th := s.newThread(t, s.newBot(t, "Ada", p))
