@@ -214,7 +214,7 @@ export function ThreadPanel({
     const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
     if (!step) return;
     e.preventDefault();
-    const items = [...card.current!.querySelectorAll<HTMLElement>('li')];
+    const items = [...card.current!.querySelectorAll<HTMLElement>('li[tabindex]')];
     const at = items.indexOf(document.activeElement as HTMLElement);
     const next =
       at < 0 ? (step > 0 ? 0 : items.length - 1) : (at + step + items.length) % items.length;
