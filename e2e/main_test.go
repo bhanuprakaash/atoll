@@ -12,8 +12,9 @@ import (
 
 // _atoll is the path to the binary TestMain builds once for every test; _fakes is the folder
 // with the fake claude and codex it builds next to it. _keychains, on macOS, is the folder of the
-// run's throwaway keychain.
-var _atoll, _fakes, _keychains string
+// run's throwaway keychain. _userHome is the user's own home, read before the run's HOME replaces
+// it; only the realclaude tests use it, to reach Reef's sign-in in the user's login keychain.
+var _atoll, _fakes, _keychains, _userHome string
 
 func TestMain(m *testing.M) {
 	os.Exit(run(m))
@@ -59,6 +60,7 @@ func run(m *testing.M) int {
 			return 1
 		}
 	}
+	_userHome, _ = os.UserHomeDir()
 	if runtime.GOOS == "darwin" {
 		// atoll and the tests' security calls use the keychains under $HOME. A temp HOME without
 		// one makes macOS ask the user; the user's own login keychain must stay out of the run.
