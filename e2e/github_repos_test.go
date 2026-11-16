@@ -73,13 +73,11 @@ func TestGitHubRepos_BotPushesAndOpensAPullRequest(t *testing.T) {
 			}
 
 			var got struct {
-				Branch  string `json:"branch"`
-				MRURL   string `json:"mr_url"`
-				MRState string `json:"mr_state"`
-				MRTitle string `json:"mr_title"`
+				Branch string     `json:"branch"`
+				PRs    []threadPR `json:"prs"`
 			}
 			f.s.do(t, "GET", "/api/threads/"+th.ID, nil, &got, 200)
-			if got.Branch != "fix/seeded-bug" || got.MRURL != url || got.MRState != "opened" || got.MRTitle != _githubPRTitle {
+			if len(got.PRs) != 1 || got.Branch != "fix/seeded-bug" || got.PRs[0].URL != url || got.PRs[0].State != "opened" || got.PRs[0].Title != _githubPRTitle {
 				t.Errorf("GET /api/threads/%s: %+v, want the branch and the pull request %s opened", th.ID, got, url)
 			}
 			var messages []message

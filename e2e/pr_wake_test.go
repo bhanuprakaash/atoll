@@ -20,7 +20,7 @@ func TestPRWake_MergedWakesTheBot(t *testing.T) {
 			f.wantWake(t, th, w, "merged", "PR #1 merged")
 			f.wantQuietRun(t, th, first)
 			if got := f.mrState(t, th); got != "merged" {
-				t.Errorf("thread mr_state %q after the merge, want merged", got)
+				t.Errorf("thread PR state %q after the merge, want merged", got)
 			}
 		})
 	}
@@ -64,7 +64,7 @@ func TestPRWake_ClosedUnmergedWakesTheBot(t *testing.T) {
 			f.wantWake(t, th, w, "closed", "PR #1 closed")
 			f.wantQuietRun(t, th, first)
 			if got := f.mrState(t, th); got != "closed" {
-				t.Errorf("thread mr_state %q after closing unmerged, want closed", got)
+				t.Errorf("thread PR state %q after closing unmerged, want closed", got)
 			}
 		})
 	}
@@ -97,7 +97,7 @@ func TestPRWake_CIFinishedWakesOnce(t *testing.T) {
 			}
 			f.wantGuardReply(t, th, "CI noted.", first)
 			if got := f.mrState(t, th); got != "opened" {
-				t.Errorf("thread mr_state %q after CI finished, want opened", got)
+				t.Errorf("thread PR state %q after CI finished, want opened", got)
 			}
 
 			f.quiet(t, 1, "CI already reported", th, 1, 1)
@@ -260,9 +260,9 @@ func (f *prWakeFixture) wantGuardReply(t *testing.T, th thread, reply, firstRun 
 
 func (f *prWakeFixture) mrState(t *testing.T, th thread) string {
 	t.Helper()
-	var got struct {
-		MRState string `json:"mr_state"`
+	got := threadPRs(t, f.s, th.ID)
+	if len(got) != 1 {
+		t.Fatalf("thread %s tracks %+v, want one pull request", th.ID, got)
 	}
-	f.s.do(t, "GET", "/api/threads/"+th.ID, nil, &got, 200)
-	return got.MRState
+	return got[0].State
 }
