@@ -134,6 +134,8 @@ type (
 		// is taken before mu.
 		githubMu sync.Mutex
 
+		hosts sync.Map // repo id -> host, read once: releaseDone asks every poll
+
 		mu        sync.Mutex
 		runs      map[string]*active                 // by thread id
 		tokens    map[string]*active                 // by run token

@@ -390,3 +390,53 @@ func TestHiddenPaths_ClosedThreads(t *testing.T) {
 		t.Errorf("hidden paths %q hold the closed thread's folder %s, want none", paths, m.threadDir(closed.ID))
 	}
 }
+
+func TestReleaseDone_HostLookupOncePerRepo(t *testing.T) {
+	for _, c := range []struct {
+		name, origin, pr string
+		wantReleased     bool
+	}{
+		{"github thread stays", "https://github.com/o/r.git", "https://github.com/o/r/pull/1", false},
+		{"gitlab thread is released", "https://gitlab.example/g/p.git", "https://gitlab.example/g/p/-/merge_requests/1", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newRepoEnv(t)
+			e.run(t, func(token string) {
+				if _, _, _, err := e.m.StartWork(t.Context(), token, "fix", "done", ""); err != nil {
+					t.Error(err)
+				}
+			})
+			if out, err := exec.Command("git", "-C", e.repo.Path, "remote", "add", "origin", c.origin).CombinedOutput(); err != nil {
+				t.Fatalf("%v: %s", err, out)
+			}
+			if _, err := e.st.SetMR(t.Context(), e.thread.ID, c.pr, "merged", "T"); err != nil {
+				t.Fatal(err)
+			}
+			bin, logPath := t.TempDir(), filepath.Join(t.TempDir(), "git.log")
+			realGit, err := exec.LookPath("git")
+			if err != nil {
+				t.Fatal(err)
+			}
+			shim := "#!/bin/sh\necho \"$@\" >> '" + logPath + "'\nexec '" + realGit + "' \"$@\"\n"
+			if err := os.WriteFile(filepath.Join(bin, "git"), []byte(shim), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+			for range 3 {
+				e.m.releaseDone()
+			}
+			logged, _ := os.ReadFile(logPath)
+			if n := strings.Count(string(logged), "remote get-url"); n != 1 {
+				t.Errorf("3 polls ran %d host lookups, want 1:\n%s", n, logged)
+			}
+			got, err := e.st.Thread(t.Context(), e.thread.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if released := got.Worktree == ""; released != c.wantReleased {
+				t.Errorf("worktree %q, released %v; want released %v", got.Worktree, released, c.wantReleased)
+			}
+		})
+	}
+}
