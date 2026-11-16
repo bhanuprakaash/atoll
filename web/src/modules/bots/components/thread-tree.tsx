@@ -197,7 +197,7 @@ export function ThreadSection({
                   event.preventDefault();
                   setMenu({ x: event.clientX, y: event.clientY, thread });
                 }}
-                className={`group relative flex items-center gap-2 rounded-lg ${selected ? 'bg-selected' : 'hover:bg-field'}`}
+                className={`group relative flex items-center rounded-lg ${owner ? 'gap-2.5 py-2' : 'gap-2'} ${selected ? 'bg-selected' : 'hover:bg-field'}`}
               >
                 {renaming === thread.id ? (
                   <RenameField
@@ -210,7 +210,7 @@ export function ThreadSection({
                 ) : (
                   <>
                     {owner && (
-                      <span className="flex-none pl-2">
+                      <span className="flex-none pl-2.5">
                         <Creature look={owner.bot.look} state={owner.bot.state} size={22} />
                       </span>
                     )}

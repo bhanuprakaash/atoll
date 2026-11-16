@@ -68,6 +68,9 @@ export function Shell() {
   const botMatch = useMatch('/bots/:botId/*')?.params.botId;
   const botId = botMatch === 'new' ? undefined : botMatch;
   const threadId = useMatch('/bots/:botId/threads/:threadId')?.params.threadId;
+  const inSettings = useMatch('/settings/*') !== null;
+  const [settingsHidesPane, setSettingsHidesPane] = useState(inSettings);
+  useEffect(() => setSettingsHidesPane(inSettings), [inSettings]);
   const [view, setView] = useState(botId);
   const [seenBotId, setSeenBotId] = useState(botId);
   if (seenBotId !== botId) {
@@ -134,6 +137,7 @@ export function Shell() {
               openBotId={botId}
               onView={(next, from) => {
                 setView(next);
+                setSettingsHidesPane(false);
                 openPane(from);
               }}
               creatingGroup={creatingGroup}
@@ -187,7 +191,7 @@ export function Shell() {
             </NavLink>
           </div>
         </nav>
-        {view && (narrow ? paneOpen : !paneHidden) && (
+        {view && !settingsHidesPane && (narrow ? paneOpen : !paneHidden) && (
           <ThreadPane
             view={view}
             openThreadId={threadId}
