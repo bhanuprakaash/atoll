@@ -25,7 +25,7 @@ import { FailedLine, FailedRun } from '@/modules/threads/components/failed-run-l
 import { chatText, LiveRun } from '@/modules/threads/components/live-run';
 import { HelperNotices } from '@/modules/threads/components/helper-notices';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
-import { mrRef } from '@/modules/threads/utils/mr-ref';
+import { headPR, mrRef } from '@/modules/threads/utils/mr-ref';
 import { clockTime, messageTime } from '@/utils/time';
 import { usageLine } from '@/utils/usage';
 
@@ -448,7 +448,7 @@ export function ThreadView({
   const create = useCreateThreadWithMessage(botId);
   const send = useSendMessage(threadId);
   const stop = useStopRun();
-  const { runs, connected, mr, worktreeRemoved, begin } = useThreadEvents(threadId);
+  const { runs, connected, worktreeRemoved, begin } = useThreadEvents(threadId);
   const activeId =
     Object.entries(runs).find(([, run]) => !run.finished)?.[0] ??
     (['running', 'waiting'].includes(thread?.run_status ?? '') ? thread?.run_id : undefined);
@@ -538,9 +538,9 @@ export function ThreadView({
         { onSuccess: ({ run }) => run && begin(run.id), onError: restore },
       );
   };
-  const mrUrl = mr?.url ?? thread?.mr_url;
-  const mrState = mr?.state ?? thread?.mr_state;
-  const ref = mrRef(mrUrl);
+  const head = headPR(thread?.prs ?? []);
+  const ref = mrRef(head?.url);
+  const mrState = head?.state;
   const helpers = thread?.helpers ?? [];
   const handoffs = new Map<string, { name: string; href: string }[]>();
   for (const h of helpers) {

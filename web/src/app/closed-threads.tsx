@@ -21,7 +21,7 @@ export function ClosedThreads({
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const rows = words.length
     ? threads.filter((t) => {
-        const text = [t.title, t.branch, mrRef(t.mr_url)].join(' ').toLowerCase();
+        const text = [t.title, t.branch, ...t.prs.map((p) => mrRef(p.url))].join(' ').toLowerCase();
         return words.every((w) => text.includes(w));
       })
     : threads.slice(0, LATEST);

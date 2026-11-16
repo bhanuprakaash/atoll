@@ -16,7 +16,7 @@ export type SidebarThread = {
   activity?: string;
   resets_at?: string;
   branch: string;
-  mr_url: string;
+  prs: { url: string; state: string }[];
   last_activity: string;
 };
 

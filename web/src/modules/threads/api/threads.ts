@@ -2,6 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api-client';
 import type { ImageInput, Message, Run } from '@/modules/threads/api/messages';
 
+export type PullRequest = {
+  url: string;
+  state: string;
+  title: string;
+  ci: { passed: number; failed: number; pending: number } | null;
+};
+
 export type Thread = {
   id: string;
   bot_id: string;
@@ -11,10 +18,7 @@ export type Thread = {
   repo_id: string;
   branch: string;
   worktree: string;
-  mr_url: string;
-  mr_state: string;
-  mr_title: string;
-  mr_ci: { passed: number; failed: number; pending: number } | null;
+  prs: PullRequest[];
   worktree_removed: boolean;
   snapshot_ref: string;
   closed_at: string | null;

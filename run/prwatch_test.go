@@ -60,15 +60,15 @@ func TestReadCI_NoChecksStopsBeingRead(t *testing.T) {
 	t.Cleanup(srv.Close)
 	m := New(Config{Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	t.Cleanup(func() { _ = m.Close() })
-	w := &watcher{threads: map[string]*watched{}, paused: map[string]time.Time{}}
+	w := &watcher{prs: map[string]*watched{}, paused: map[string]time.Time{}}
 
-	var th store.Thread
+	var th store.WatchedPR
 	for i, want := range []struct {
 		reads int64
 		woke  string
 	}{{2, ""}, {2, "abc"}, {0, "abc"}} {
 		reads.Store(0)
-		r := store.MRRead{CI: th.MRCI, Woke: th.MRWoke}
+		r := store.MRRead{CI: th.PR.CI, Woke: th.PR.Woke}
 		if err := m.readCI(w, "c", "token", srv.URL, th, "abc", "PR #1", &r); err != nil {
 			t.Fatal(err)
 		}
@@ -76,11 +76,11 @@ func TestReadCI_NoChecksStopsBeingRead(t *testing.T) {
 			t.Errorf("read %d: %d GitHub reads, woke %q, wake %q; want %d reads, woke %q, no wake",
 				i+1, reads.Load(), r.Woke, r.WakeKind, want.reads, want.woke)
 		}
-		th.MRCI, th.MRWoke = r.CI, r.Woke
+		th.PR.CI, th.PR.Woke = r.CI, r.Woke
 	}
 
 	reads.Store(0)
-	r := store.MRRead{CI: th.MRCI, Woke: th.MRWoke}
+	r := store.MRRead{CI: th.PR.CI, Woke: th.PR.Woke}
 	if err := m.readCI(w, "c", "token", srv.URL, th, "def", "PR #1", &r); err != nil {
 		t.Fatal(err)
 	}
@@ -100,23 +100,23 @@ func TestReadCI_NoChecksReadAgainLater(t *testing.T) {
 	t.Cleanup(srv.Close)
 	m := New(Config{Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	t.Cleanup(func() { _ = m.Close() })
-	w := &watcher{threads: map[string]*watched{}, paused: map[string]time.Time{}}
-	th := store.Thread{ID: "t", MRURL: "https://github.test/o/r/pull/1", MRWake: true}
+	w := &watcher{prs: map[string]*watched{}, paused: map[string]time.Time{}}
+	th := store.WatchedPR{Thread: store.Thread{ID: "t"}, PR: store.PR{ThreadID: "t", URL: "https://github.test/o/r/pull/1", Wake: true}}
 	poll := func() store.MRRead {
 		t.Helper()
 		reads.Store(0)
-		r := store.MRRead{CI: th.MRCI, Woke: th.MRWoke}
+		r := store.MRRead{CI: th.PR.CI, Woke: th.PR.Woke}
 		if err := m.readCI(w, "c", "token", srv.URL, th, "abc", "PR #1", &r); err != nil {
 			t.Fatal(err)
 		}
-		th.MRCI, th.MRWoke = r.CI, r.Woke
+		th.PR.CI, th.PR.Woke = r.CI, r.Woke
 		return r
 	}
 	for range 2 {
 		poll()
 	}
-	if th.MRWoke != "abc" {
-		t.Fatalf("woke %q after two empty reads, want abc", th.MRWoke)
+	if th.PR.Woke != "abc" {
+		t.Fatalf("woke %q after two empty reads, want abc", th.PR.Woke)
 	}
 	for i := 1; i < _noCheckEvery; i++ {
 		if poll(); reads.Load() != 0 {
