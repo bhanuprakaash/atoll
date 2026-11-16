@@ -19,23 +19,13 @@ const _maxSlug = 40
 
 var _nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
-// CheckBranch refuses a name git does not accept as a branch name, and a name that is already
-// taken: a local branch, origin/<name> as last fetched, or the worktree folder under root.
-func CheckBranch(ctx context.Context, repoPath, root, repoName, name string) error {
+// CheckBranch refuses an empty name and a name git does not accept as a branch name.
+func CheckBranch(ctx context.Context, repoPath, name string) error {
 	if name == "" {
 		return errors.New("branch is empty")
 	}
 	if got, err := git(ctx, repoPath, nil, "check-ref-format", "--branch", name); err != nil || got != name {
 		return fmt.Errorf("branch %q is not a valid git branch name", name)
-	}
-	folder := filepath.Join(root, repoName, strings.ReplaceAll(name, "/", "-"))
-	for _, ref := range []string{"refs/heads/", "refs/remotes/origin/"} {
-		if _, err := git(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", ref+name); err == nil {
-			return fmt.Errorf("branch %q is taken; pick another name", name)
-		}
-	}
-	if _, err := os.Lstat(folder); err == nil {
-		return fmt.Errorf("branch %q is taken: its worktree folder exists; pick another name", name)
 	}
 	return nil
 }
@@ -99,14 +89,14 @@ func WithWorktree(ctx context.Context, common, id string) context.Context {
 }
 
 // Create makes a new worktree of repoPath on a new branch at <root>/<repoName>/<folder>, where
-// folder is the branch with "/" replaced by "-". A branch that CheckBranch refuses is refused. A
-// requested base names a branch on origin. Without one, the branch starts at origin/HEAD when that
-// resolves, else HEAD. It returns the absolute path, the branch used and the base. No fetch, no
-// network.
+// folder is the branch with "/" replaced by "-". A branch that CheckBranch refuses is refused. When
+// the branch or the folder exists it tries <branch>-2, <branch>-3 and so on. A requested base
+// names a branch on origin. Without one, the branch starts at origin/HEAD when that resolves, else
+// HEAD. It returns the absolute path, the branch used and the base. No fetch, no network.
 func Create(
 	ctx context.Context, repoPath, root, repoName, branch, requestedBase string,
 ) (path, used string, base Base, err error) {
-	if err = CheckBranch(ctx, repoPath, root, repoName, branch); err != nil {
+	if err = CheckBranch(ctx, repoPath, branch); err != nil {
 		return "", "", Base{}, err
 	}
 	start := startRef(ctx, repoPath)
@@ -144,8 +134,7 @@ func Create(
 	return path, used, base, err
 }
 
-// CreateFrom is Create for a branch that starts at the local branch from. When the branch or the
-// folder exists it tries <branch>-2, <branch>-3 and so on.
+// CreateFrom is Create for a branch that starts at the local branch from, with the same suffix rule.
 func CreateFrom(
 	ctx context.Context, repoPath, root, repoName, branch, from string,
 ) (path, used string, err error) {

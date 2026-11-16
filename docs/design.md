@@ -634,9 +634,9 @@ Follow-ups:
   a setting); read-only threads use a clean checkout.
 - The Bot names the branch at first edit (`start_work` takes the full `branch`), following the
   repo's instructions; with none, `<type>/<slug>` (feat, fix, chore, docs, test). Reef uses the
-  name as given and checks only that git accepts it and that it is free: no local branch, no
-  `origin/<name>` (no fetch), no worktree folder. A taken name is refused, never suffixed. The
-  name is fixed once created. Worktree folder: the branch with `/` replaced by `-`.
+  name as given and checks only that git accepts it; when the branch or its worktree folder
+  exists it is made unique (`-2`), and the reply names the branch used. The name is fixed once
+  created. Worktree folder: the branch with `/` replaced by `-`.
 - The worktree is removed when the GitLab MR merges or the thread closes; uncommitted work is saved
   first. A helper's worktree goes with its boss's (see Delegation).
 - The read-only checkout is a detached git worktree at `<data>/threads/<id>`, outside the worktree

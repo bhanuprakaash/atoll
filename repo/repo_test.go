@@ -93,7 +93,7 @@ func TestWorktrees(t *testing.T) {
 	if want := (Base{Name: "HEAD " + initSHA}); base != want {
 		t.Errorf("base without origin = %+v, want %+v", base, want)
 	}
-	for _, name := range []string{"fix/bug", "-x", "bad..name", ""} {
+	for _, name := range []string{"-x", "bad..name", ""} {
 		if _, _, _, err := Create(ctx, src, root, "demo", name, ""); err == nil || !strings.Contains(err.Error(), "branch") {
 			t.Fatalf("Create of %q = %v, want a branch refusal", name, err)
 		}
@@ -101,11 +101,16 @@ func TestWorktrees(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(root, "demo", "feat-folder"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := Create(ctx, src, root, "demo", "feat/folder", ""); err == nil {
-		t.Fatal("Create with an existing worktree folder succeeded")
+	if p, used, _, err := Create(ctx, src, root, "demo", "fix/bug", ""); err != nil || used != "fix/bug-2" ||
+		p != filepath.Join(root, "demo", "fix-bug-2") {
+		t.Fatalf("Create of a taken branch = %q, %q, %v", p, used, err)
+	}
+	if p, used, _, err := Create(ctx, src, root, "demo", "feat/folder", ""); err != nil || used != "feat/folder-2" ||
+		p != filepath.Join(root, "demo", "feat-folder-2") {
+		t.Fatalf("Create with an existing folder = %q, %q, %v", p, used, err)
 	}
 	second, used, err := CreateFrom(ctx, src, root, "demo", "fix/bug", "main")
-	if err != nil || used != "fix/bug-2" || second != filepath.Join(root, "demo", "fix-bug-2") {
+	if err != nil || used != "fix/bug-3" || second != filepath.Join(root, "demo", "fix-bug-3") {
 		t.Fatalf("CreateFrom of a taken name = %q, %q, %v", second, used, err)
 	}
 
