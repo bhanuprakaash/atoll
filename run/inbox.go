@@ -17,7 +17,7 @@ func (m *Manager) post(ctx context.Context, threadID, text string) (busy bool, e
 	m.mu.Lock()
 	_, busy = m.runs[threadID]
 	m.mu.Unlock()
-	if _, err := m.cfg.Store.Enqueue(ctx, store.InboxItem{ThreadID: threadID, Text: text, Queued: true}); err != nil {
+	if _, err := m.cfg.Store.Enqueue(ctx, store.InboxItem{ThreadID: threadID, Text: text, Queued: true, Notice: store.NoticeRelease}); err != nil {
 		return false, err
 	}
 	if busy {
@@ -57,7 +57,8 @@ func (m *Manager) drain(ctx context.Context, threadID string, wait bool) error {
 
 // pick returns the held messages the thread's next run takes, none when nothing is held or the
 // wake window still holds them. A thread that holds helper reports leaves them held unless the
-// person's message is. A helper thread's run takes one message, or the person's. Any
+// person's message is. A stopped helper thread leaves everything held until its boss's next continue, which
+// takes it all. A helper thread's run takes one message, or the person's. Any
 // other thread's takes everything held. inboxMu is held.
 func (m *Manager) pick(ctx context.Context, threadID string, wait bool) ([]store.InboxItem, error) {
 	t, err := m.cfg.Store.Thread(ctx, threadID)
@@ -65,6 +66,15 @@ func (m *Manager) pick(ctx context.Context, threadID string, wait bool) ([]store
 		return nil, err
 	}
 	if t.ParentThreadID != "" {
+		if t.HoldsReports {
+			held, err := m.cfg.Store.Held(ctx, threadID)
+			if err != nil || slices.ContainsFunc(held, func(it store.InboxItem) bool { return it.Notice == store.NoticeRelease }) {
+				return held, err
+			}
+			if !slices.ContainsFunc(held, func(it store.InboxItem) bool { return it.FromUser }) {
+				return nil, nil
+			}
+		}
 		it, ok, err := m.cfg.Store.OldestInbox(ctx, threadID)
 		if err != nil || !ok {
 			return nil, err

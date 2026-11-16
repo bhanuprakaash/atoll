@@ -1533,3 +1533,77 @@ func TestStore_HoldReports(t *testing.T) {
 		t.Fatalf("a run for the person's message: held %v, err %v; want the hold cleared", held(), err)
 	}
 }
+
+func TestStore_StartRunFrom_ReleaseEndsHold(t *testing.T) {
+	tests := []struct {
+		name     string
+		give     store.InboxItem
+		wantHeld bool
+	}{
+		{"a boss's continue releases", store.InboxItem{FromBotID: "boss", Text: "go", Notice: store.NoticeRelease}, false},
+		{"another wake keeps the hold", store.InboxItem{FromBotID: "boss", Text: "done", Notice: store.NoticeHelperDone}, true},
+		{"the person's message releases", store.InboxItem{FromUser: true, Text: "go"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+			boss, err := st.CreateThread(ctx, bot.ID, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			helper, err := st.CreateHelperThread(ctx, boss.ID, bot.ID, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.HoldReports(ctx, helper.ID); err != nil {
+				t.Fatal(err)
+			}
+			tt.give.ThreadID = helper.ID
+			if _, _, err := st.StartRunFrom(ctx, tt.give); err != nil {
+				t.Fatal(err)
+			}
+			got, err := st.Thread(ctx, helper.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.HoldsReports != tt.wantHeld {
+				t.Errorf("HoldsReports = %v, want %v", got.HoldsReports, tt.wantHeld)
+			}
+		})
+	}
+}
+
+func TestStore_HoldReports_StripsHeldRelease(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	boss, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper, err := st.CreateHelperThread(ctx, boss.ID, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Enqueue(ctx, store.InboxItem{ThreadID: helper.ID, FromBotID: "boss", Text: "go", Queued: true, Notice: store.NoticeRelease}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.HoldReports(ctx, helper.ID); err != nil {
+		t.Fatal(err)
+	}
+	held, err := st.Held(ctx, helper.ID)
+	if err != nil || len(held) != 1 {
+		t.Fatalf("Held = %v, %v; want one message", held, err)
+	}
+	if held[0].Notice != "" {
+		t.Errorf("held message notice %q after the hold, want none", held[0].Notice)
+	}
+}
