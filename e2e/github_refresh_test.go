@@ -579,3 +579,155 @@ func TestGitHubFixtures_RefreshGrant(t *testing.T) {
 		t.Errorf("fake counted %d ok of %d refresh requests, want 2 of 5", got, len(g.refreshes()))
 	}
 }
+
+// liveRun starts a run of the Bot that goes on until it is stopped, and returns once its provider
+// is going.
+func (f *githubFixture) liveRun(t *testing.T, b bot) (runInfo, <-chan event) {
+	t.Helper()
+	th := f.s.newThread(t, b)
+	ch := f.s.events(t, th)
+	run := f.s.send(t, th, _hangPrompt)
+	until(t, ch, run.ID, "tool_call")
+	return run, ch
+}
+
+// A refresh never ends a token a live run holds. A run that starts while another run of the
+// connection is live, with under 3 h left on the token, gets the current token; the refresh waits
+// until the token has expired or a run starts with no other run live. The first run of each case
+// refreshes at its start (nothing else is live) to a token with 1 h left, or 3 s.
+func TestGitHubRefresh_LiveRunKeepsItsToken(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name       string
+		refreshTTL int
+	}{{"another_run_live", 3600}, {"live_run_ended", 3600}, {"token_expired_while_live", 3}} {
+		for _, p := range _providers {
+			t.Run(c.name+"/"+p, func(t *testing.T) {
+				t.Parallel()
+				f := newGitHubFixture(t, p)
+				f.gh.set(func() { f.gh.refreshTTLs = []int{c.refreshTTL} })
+				id := f.connectWithTTL(t, 3600)
+				a, b := f.bot(t, p, []string{id}), f.bot(t, p, []string{id})
+
+				live, events := f.liveRun(t, a)
+				if n := f.gh.refreshed(); n != 1 {
+					t.Fatalf("fake GitHub refreshed %d times by the first run, want 1", n)
+				}
+				held := f.gh.currentToken()
+				if got := f.s.run(t, live.ID).Status; got != "running" {
+					t.Fatalf("first run is %q, want running", got)
+				}
+
+				switch c.name {
+				case "another_run_live":
+					done, probe := f.probe(t, b)
+					if done.Status != "done" {
+						t.Fatalf("run: %+v", done)
+					}
+					if reqs := f.gh.refreshes(); len(reqs) != 1 {
+						t.Fatalf("fake GitHub got %d refresh requests, want only the first run's: a live run holds the token (%+v)", len(reqs), reqs)
+					}
+					if !f.gh.authorised("Bearer " + held) {
+						t.Error("fake GitHub no longer takes the live run's token")
+					}
+					if got := f.gh.currentToken(); got != held {
+						t.Fatalf("fake GitHub issued a new token %q, want the live run's %q", got, held)
+					}
+					if probe.GH.Exit != 0 || !strings.Contains(probe.GH.Output, "reef-fixture") {
+						t.Errorf("gh api user in the new run: exit %d, output %q; want the fake user", probe.GH.Exit, probe.GH.Output)
+					}
+					if cred := githubCredential(probe.Git.Output); cred["password_sha256"] != digest(held) {
+						t.Errorf("git credential fill for github: %q, want the live run's token digest %s", probe.Git.Output, digest(held))
+					}
+					if !probe.MCP.Connected {
+						t.Errorf("get_me on the github MCP server: %+v", probe.MCP)
+					}
+					for _, r := range f.gh.mcpRequests() {
+						if r.Auth != "Bearer "+held {
+							t.Errorf("MCP request %+v, want Authorization Bearer <the live run's token>", r)
+						}
+					}
+					if got := githubRecordOf(t, id); got.AccessToken != held {
+						t.Errorf("keyring record %+v, want the live run's token kept", got)
+					}
+					if got := f.s.run(t, live.ID).Status; got != "running" {
+						t.Errorf("first run is %q after the second started, want running", got)
+					}
+					f.s.kill()
+					f.m.killFakes()
+					sessions := f.m.sessions(t, p)
+					if len(sessions) != 2 {
+						t.Fatalf("%s ran %d times, want 2", p, len(sessions))
+					}
+					for _, s := range sessions {
+						assertGitHubEnv(t, p, s.env, held)
+					}
+					if gh, ok := mcpServersOf(t, p, sessions[1])["github"]; !ok || p == "claude" && gh.Headers["Authorization"] != "Bearer "+held {
+						t.Errorf("MCP config github entry %+v, want Authorization Bearer <the live run's token>", gh)
+					}
+					wantRefreshedLines(t, f.m, id, 1)
+					wantNoTokensInLog(t, f.m, f.gh)
+
+				case "live_run_ended":
+					f.s.do(t, "POST", "/api/runs/"+live.ID+"/stop", nil, nil, http.StatusNoContent)
+					until(t, events, live.ID, "run_finished")
+					done, probe := f.probe(t, b)
+					if done.Status != "done" {
+						t.Fatalf("run: %+v", done)
+					}
+					reqs := f.gh.refreshes()
+					if len(reqs) != 2 || !reqs[1].OK || reqs[1].Left < time.Hour-time.Minute {
+						t.Fatalf("fake GitHub got refresh requests %+v, want the first run's and exactly one more, ok, with about 1 h left", reqs)
+					}
+					token := f.gh.currentToken()
+					if token == held {
+						t.Fatal("fake GitHub issued no new token")
+					}
+					if cred := githubCredential(probe.Git.Output); cred["password_sha256"] != digest(token) {
+						t.Errorf("git credential fill for github: %q, want the new token's digest %s", probe.Git.Output, digest(token))
+					}
+					if got := githubRecordOf(t, id); got.AccessToken != token {
+						t.Errorf("keyring record %+v, want the new token", got)
+					}
+					f.s.kill()
+					f.m.killFakes()
+					sessions := f.m.sessions(t, p)
+					if len(sessions) != 2 {
+						t.Fatalf("%s ran %d times, want 2", p, len(sessions))
+					}
+					assertGitHubEnv(t, p, sessions[1].env, token)
+					wantRefreshedLines(t, f.m, id, 2)
+
+				case "token_expired_while_live":
+					f.gh.waitExpired()
+					done, probe := f.probe(t, b)
+					if done.Status != "done" {
+						t.Fatalf("run: %+v", done)
+					}
+					reqs := f.gh.refreshes()
+					if len(reqs) != 2 || !reqs[1].OK || reqs[1].Left > _refreshSlack {
+						t.Fatalf("fake GitHub got refresh requests %+v, want the first run's and exactly one more, ok, made once the token had expired", reqs)
+					}
+					token := f.gh.currentToken()
+					if token == held {
+						t.Fatal("fake GitHub issued no new token")
+					}
+					if probe.GH.Exit != 0 || !strings.Contains(probe.GH.Output, "reef-fixture") {
+						t.Errorf("gh api user in the new run: exit %d, output %q; want the fake user", probe.GH.Exit, probe.GH.Output)
+					}
+					if cred := githubCredential(probe.Git.Output); cred["password_sha256"] != digest(token) {
+						t.Errorf("git credential fill for github: %q, want the new token's digest %s", probe.Git.Output, digest(token))
+					}
+					f.s.kill()
+					f.m.killFakes()
+					sessions := f.m.sessions(t, p)
+					if len(sessions) != 2 {
+						t.Fatalf("%s ran %d times, want 2", p, len(sessions))
+					}
+					assertGitHubEnv(t, p, sessions[1].env, token)
+					wantRefreshedLines(t, f.m, id, 2)
+				}
+			})
+		}
+	}
+}
