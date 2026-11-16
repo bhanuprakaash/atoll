@@ -330,29 +330,43 @@ func (m *Manager) Helpers(ctx context.Context, token string) ([]HelperRow, strin
 		if err != nil {
 			return nil, "", fmt.Errorf("load helper: %w", err)
 		}
+		m.mu.Lock()
+		var runID string
+		var started time.Time
+		act, held := m.runs[h.ID]
+		if held {
+			runID, started = act.run.ID, act.run.StartedAt
+		}
+		m.mu.Unlock()
+		going := held && runID != ""
 		id, err := m.cfg.Store.LatestRun(ctx, h.ID)
 		if err != nil {
 			return nil, "", err
 		}
-		last, err := m.cfg.Store.Run(ctx, id)
-		if err != nil {
-			return nil, "", fmt.Errorf("load helper run: %w", err)
-		}
-		row := HelperRow{Bot: bot.Name, ThreadID: h.ID, Title: h.Title, State: last.Status, Branch: h.Branch}
-		m.mu.Lock()
-		a, going := m.runs[h.ID]
-		m.mu.Unlock()
-		switch {
-		case going:
-			row.State = store.StatusRunning
-			since := a.run.StartedAt
-			if n := a.lastCall.Load(); n != 0 {
-				since = time.Unix(0, n)
+		row := HelperRow{Bot: bot.Name, ThreadID: h.ID, Title: h.Title, Branch: h.Branch}
+		var last store.Run
+		if id != "" {
+			if last, err = m.cfg.Store.Run(ctx, id); err != nil {
+				return nil, "", fmt.Errorf("load helper run: %w", err)
 			}
-			idle := int(time.Since(since).Seconds())
+		}
+		switch {
+		case going, id == "":
+			// A helper whose run has not started yet counts as running, as in the helpers line.
+			row.State = store.StatusRunning
+			idle := 0
+			if going {
+				since := started
+				if n := act.lastCall.Load(); n != 0 {
+					since = time.Unix(0, n)
+				}
+				idle = int(time.Since(since).Seconds())
+			}
 			row.IdleS = &idle
 		case last.ErrorKind == store.ErrorRateLimited:
 			row.State = "limited"
+		default:
+			row.State = last.Status
 		}
 		if boss.Worktree != "" && h.Worktree != "" && h.RepoID != "" {
 			rp, err := m.cfg.Store.Repo(ctx, h.RepoID)
