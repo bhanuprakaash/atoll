@@ -1,5 +1,7 @@
 // The thread's status belongs in its header panel, leaving the composer for the next message.
 import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, prompts, startAtoll, waitStatus } from './atoll';
 import { githubEnv, type GitHubFake, seedRepo, startGitHub } from './github-fixture';
@@ -12,7 +14,7 @@ let bot: { id: string };
 let repo: { id: string };
 test.beforeEach(async () => {
   github = await startGitHub();
-  root = mkdtempSync('/private/tmp/atoll-thread-details-');
+  root = mkdtempSync(join(tmpdir(), 'atoll-thread-details-'));
   m = await startAtoll({
     fakes: ['claude', 'gh'],
     secretStore: true,
