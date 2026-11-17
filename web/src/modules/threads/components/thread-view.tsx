@@ -449,7 +449,14 @@ export function ThreadView({
   const send = useSendMessage(threadId);
   const continueRun = useContinueRun(threadId);
   const stop = useStopRun();
-  const { runs, connected, worktreeRemoved, begin } = useThreadEvents(threadId);
+  const { runs: events, connected, worktreeRemoved, begin } = useThreadEvents(threadId);
+  // A run a restart killed replays its events with no run_finished: the thread says it is over.
+  const over = ['done', 'failed', 'stopped'].includes(thread?.run_status ?? '')
+    ? thread?.run_id
+    : undefined;
+  const runs = Object.fromEntries(
+    Object.entries(events).filter(([id, run]) => run.finished || id !== over),
+  );
   const activeId =
     Object.entries(runs).find(([, run]) => !run.finished)?.[0] ??
     (['running', 'waiting'].includes(thread?.run_status ?? '') ? thread?.run_id : undefined);
