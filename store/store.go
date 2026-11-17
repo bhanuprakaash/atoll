@@ -93,6 +93,9 @@ func SecretReadError(err error) error {
 // ErrorRateLimited is the error kind of a run a provider's usage limit stopped.
 const ErrorRateLimited = "rate_limited"
 
+// ErrorRestarted is the error kind of a run the server's restart cut short.
+const ErrorRestarted = "restarted"
+
 // Notices: what a held Reef notice is, kept in the inbox apart from its kind, which the chat and the
 // prompt read. The background guard reads the failures among them.
 const (
@@ -1596,7 +1599,9 @@ type Wake struct {
 	ThreadID   string // the helper's thread
 	Branch     string // the helper thread's branch
 	BossBranch string // the boss thread's branch
-	Run        Run
+	// RepoPath, Worktree and WorktreeGitDir place the helper's checkout; empty when it has none.
+	RepoPath, Worktree, WorktreeGitDir string
+	Run                                Run
 }
 
 // Notice is the notice kind of the wake: how the helper's run ended.
@@ -1699,8 +1704,8 @@ func (s *Store) FailUnfinished(
 			return err
 		}
 		if _, err := tx.ExecContext(ctx,
-			"UPDATE runs SET status = ?, error = ?, finished_at = ? WHERE status IN (?, ?)",
-			StatusFailed, reason, time.Now().UTC().UnixMicro(), StatusRunning, StatusWaiting); err != nil {
+			"UPDATE runs SET status = ?, error = ?, error_kind = ?, finished_at = ? WHERE status IN (?, ?)",
+			StatusFailed, reason, ErrorRestarted, time.Now().UTC().UnixMicro(), StatusRunning, StatusWaiting); err != nil {
 			return err
 		}
 		now := time.Now().UTC().UnixMicro()
@@ -1775,13 +1780,16 @@ func enqueueWake(ctx context.Context, tx *sql.Tx, runID string, wake func(Wake) 
 func readWake(ctx context.Context, tx *sql.Tx, runID string) (w heldWake, ok bool, err error) {
 	w.Run.ID = runID
 	err = tx.QueryRowContext(ctx,
-		`SELECT b.id, b.name, t.id, t.branch, p.id, p.branch, r.status, r.reply, r.error, r.error_kind, r.resets_at, r.provider
+		`SELECT b.id, b.name, t.id, t.branch, p.id, p.branch, r.status, r.reply, r.error, r.error_kind, r.resets_at, r.provider,
+		   coalesce(rp.path, ''), t.worktree, t.worktree_git_dir
 		 FROM runs r JOIN threads t ON t.id = r.thread_id
+		 LEFT JOIN repos rp ON rp.id = t.repo_id
 		 JOIN bots b ON b.id = t.bot_id AND b.removed = 0
 		 JOIN threads p ON p.id = t.parent_thread_id
 		 WHERE r.id = ?`, runID).
 		Scan(&w.botID, &w.Helper, &w.ThreadID, &w.Branch, &w.bossID, &w.BossBranch,
-			&w.Run.Status, &w.Run.Reply, &w.Run.Error, &w.Run.ErrorKind, &w.Run.ResetsAt, &w.Run.Provider)
+			&w.Run.Status, &w.Run.Reply, &w.Run.Error, &w.Run.ErrorKind, &w.Run.ResetsAt, &w.Run.Provider,
+			&w.RepoPath, &w.Worktree, &w.WorktreeGitDir)
 	if errors.Is(err, sql.ErrNoRows) {
 		return w, false, nil
 	}
