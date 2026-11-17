@@ -1411,15 +1411,16 @@ func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) ([]Message
 
 // Rerun starts a new run for the failed run runID and moves the run's messages onto it, so the
 // thread gains no message. It returns the messages with their images' data. It returns ErrNoRerun
-// unless the run failed, is its thread's newest and has a message of the person's.
+// unless the run failed, is its thread's newest and has a message of the person's. The new run
+// starts as streamed when the failed one was, so a failed Continue offers Continue again.
 func (s *Store) Rerun(ctx context.Context, runID string) ([]Message, Run, error) {
 	var msgs []Message
 	r := Run{ID: newID(), Status: StatusRunning, StartedAt: time.Now().UTC(), Tools: map[string]int{}}
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		var status, newest string
 		err := tx.QueryRowContext(ctx,
-			`SELECT thread_id, status, (SELECT id FROM runs WHERE thread_id = r.thread_id ORDER BY rowid DESC LIMIT 1)
-			 FROM runs r WHERE id = ?`, runID).Scan(&r.ThreadID, &status, &newest)
+			`SELECT thread_id, status, streamed, (SELECT id FROM runs WHERE thread_id = r.thread_id ORDER BY rowid DESC LIMIT 1)
+			 FROM runs r WHERE id = ?`, runID).Scan(&r.ThreadID, &status, &r.Streamed, &newest)
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("run %s: %w", runID, ErrNotFound)
 		}
@@ -1450,8 +1451,8 @@ func (s *Store) Rerun(ctx context.Context, runID string) ([]Message, Run, error)
 				return fmt.Errorf("list attachments: %w", err)
 			}
 		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO runs (id, thread_id, status, started_at) VALUES (?, ?, ?, ?)",
-			r.ID, r.ThreadID, r.Status, r.StartedAt.UnixMicro()); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO runs (id, thread_id, status, started_at, streamed) VALUES (?, ?, ?, ?, ?)",
+			r.ID, r.ThreadID, r.Status, r.StartedAt.UnixMicro(), r.Streamed); err != nil {
 			return fmt.Errorf("insert run: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, "UPDATE messages SET run_id = ? WHERE run_id = ? AND role = ?",
