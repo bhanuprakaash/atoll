@@ -21,8 +21,8 @@ const (
 	// idle-busy.jsonl: a reply streamed in 8 parts, 600 ms apart.
 	_idleBusyPrompt = "Report each check as it passes, then stop."
 	_idleBusyReply  = "Checked 1. Checked 2. Checked 3. Checked 4. Checked 5. Checked 6. Checked 7. Checked 8."
-	// idle-approve.jsonl: 1.5 s silent after its Write call, then the approval; once allowed, 1.2 s
-	// silent, then the reply.
+	// idle-approve.jsonl: 1.8 s silent after its Write call, then the approval; once allowed, 2.1 s
+	// silent (the fake's 300 ms tool pace, then an 1800 ms pause), then the reply.
 	_idleApprovePrompt = "Use the Write tool to create slow.txt containing the word hi."
 	_idleApproveReply  = "Created `hello.txt` containing `hi` at `/work/hello.txt`."
 	// idle-chatter.jsonl: one Bash call, then 12 text parts 500 ms apart, then no event until killed.
@@ -118,20 +118,21 @@ func TestIdleLimit_KeepsWorkInPersonThread(t *testing.T) {
 }
 
 // TestIdleLimit_ApprovalPausesClock: a run waiting on an approval for longer than the limit is not
-// stopped, and the clock starts from zero when the approval closes: the run, silent 1.5 s before
-// the approval and 1.2 s after it, ends done under a 2 s limit.
+// stopped, and the clock starts from zero when the approval closes: the run, silent 1.8 s before
+// the approval and 2.1 s after it, ends done under a 3 s limit. Each silence is at least 0.9 s
+// inside the limit; a clock that only paused would reach 3.9 s, 0.9 s past it.
 func TestIdleLimit_ApprovalPausesClock(t *testing.T) {
 	t.Parallel()
-	_, s := startIdle(t, "claude", "2s")
+	_, s := startIdle(t, "claude", "3s")
 	th := s.newThread(t, s.newBot(t, "Ada", "claude"))
 	ev := s.events(t, th)
 	r := s.send(t, th, _idleApprovePrompt)
 
 	es := until(t, ev, r.ID, "approval")
 	id, _ := es[len(es)-1].Data["id"].(string)
-	quiet(t, ev, r.ID, 5*time.Second)
+	quiet(t, ev, r.ID, 6*time.Second)
 	if got := s.run(t, r.ID).Status; got != "waiting" {
-		t.Fatalf("run status %q after 5 s on an open approval under a 2 s limit, want waiting", got)
+		t.Fatalf("run status %q after 6 s on an open approval under a 3 s limit, want waiting", got)
 	}
 
 	s.do(t, "POST", "/api/approvals/"+id, map[string]bool{"approve": true}, nil, http.StatusNoContent)
