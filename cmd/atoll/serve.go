@@ -133,6 +133,7 @@ func serve(ctx context.Context, token string, args []string, w io.Writer) error 
 		WorktreeRoot: filepath.Join(home, "Reef", "worktrees"),
 		PollInterval: pollInterval(),
 		WakeWindow:   wakeWindow(),
+		IdleLimit:    idleLimit(),
 		Log:          log,
 	})
 	pathDirs(ctx) // glab is found on the provider folders' PATH
@@ -201,6 +202,16 @@ func wakeWindow() time.Duration {
 	d, err := time.ParseDuration(os.Getenv("ATOLL_WAKE_WINDOW"))
 	if err != nil || d <= 0 {
 		return 20 * time.Second
+	}
+	return d
+}
+
+// idleLimit is ATOLL_IDLE_LIMIT, a Go duration, or 15 minutes when it is unset, invalid or not
+// positive.
+func idleLimit() time.Duration {
+	d, err := time.ParseDuration(os.Getenv("ATOLL_IDLE_LIMIT"))
+	if err != nil || d <= 0 {
+		return 15 * time.Minute
 	}
 	return d
 }

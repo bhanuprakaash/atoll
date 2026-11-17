@@ -114,7 +114,10 @@ type (
 		// WakeWindow is how long held helper messages alone wait for company before a run starts;
 		// zero starts one at once.
 		WakeWindow time.Duration
-		Log        *slog.Logger
+		// IdleLimit is how long a run may go without a stream event before Reef stops it as
+		// stuck; zero turns the check off.
+		IdleLimit time.Duration
+		Log       *slog.Logger
 	}
 
 	// Manager runs messages and fans their events out to the thread's subscribers.
@@ -161,25 +164,26 @@ type (
 
 	// active is a run in progress. The Manager's mu guards log and open.
 	active struct {
-		workMu   sync.Mutex
-		statusMu sync.Mutex // orders the open count with the run status it implies
-		threadID string
-		ctx      context.Context
-		cancel   context.CancelFunc
-		done     chan struct{}
-		stopped  bool
-		quiet    bool // stopped by Reef, not by the user: no wake, no held message
-		ending   bool
-		token    string
-		githubID string // the GitHub connection whose token the run holds; the Manager's mu guards it
-		run      store.Run
-		bot      store.Bot // settings as the run started
-		log      *os.File
-		open     int                      // approvals open
-		calls    map[string]chan struct{} // closed once the tool call with that id is published
-		tool     ToolCall
-		lastCall atomic.Int64 // unix nanoseconds of the run's last tool call
-		shown    []string     // memory ids the run's memory tools returned
+		workMu    sync.Mutex
+		statusMu  sync.Mutex // orders the open count with the run status it implies
+		threadID  string
+		ctx       context.Context
+		cancel    context.CancelFunc
+		done      chan struct{}
+		stopped   bool
+		quiet     bool // stopped by Reef, not by the user: no wake, no held message
+		ending    bool
+		token     string
+		githubID  string // the GitHub connection whose token the run holds; the Manager's mu guards it
+		run       store.Run
+		bot       store.Bot // settings as the run started
+		log       *os.File
+		open      int                      // approvals open
+		calls     map[string]chan struct{} // closed once the tool call with that id is published
+		tool      ToolCall
+		lastEvent atomic.Int64 // unix nanoseconds of the run's last stream event or approval close
+		stuck     bool         // the idle limit stopped the run; the Manager's mu guards it
+		shown     []string     // memory ids the run's memory tools returned
 		// usage and priorCostUSD are the run goroutine's: the provider's last report, and what the
 		// session had cost before this run.
 		usage        *provider.Usage
@@ -714,7 +718,15 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 		m.mu.Lock()
 		a.log = f
 		m.mu.Unlock()
+		a.lastEvent.Store(start.UnixNano())
+		idleCtx, stopIdle := context.WithCancel(a.ctx)
+		var idle sync.WaitGroup
+		if m.cfg.IdleLimit > 0 {
+			idle.Go(func() { m.watchIdle(idleCtx, a) })
+		}
 		reply, err = m.drive(a, text, images)
+		stopIdle()
+		idle.Wait()
 	}
 	res := store.RunResult{Status: store.StatusDone, Reply: strings.TrimSpace(reply)}
 	if err != nil {
@@ -744,6 +756,11 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	a.ending = true
 	if a.stopped {
 		res = store.RunResult{Status: store.StatusStopped}
+	} else if a.stuck && err != nil {
+		res = store.RunResult{
+			Status: store.StatusFailed, ErrorKind: store.ErrorStuck,
+			Error: "Stopped: no progress for " + plainDuration(m.cfg.IdleLimit) + ".",
+		}
 	}
 	quiet := a.quiet
 	res.StatusLine = a.background && (a.told || !a.guard)
@@ -763,7 +780,9 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	res.Usage, res.SessionCostUSD = a.usageResult()
 	var wake func(store.Wake) string
 	if !quiet {
-		wake = func(w store.Wake) string { return WakeText(w, "") }
+		wake = func(w store.Wake) string {
+			return WakeText(context.Background(), w, "", m.cfg.IdleLimit)
+		}
 	}
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
@@ -797,6 +816,31 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 		if res.Status != store.StatusStopped {
 			m.flushLog(a.threadID)
 		}
+	}
+}
+
+// watchIdle stops the run as stuck once it has gone IdleLimit without a stream event. The clock
+// does not run while an approval is open; an approval closing starts it again.
+func (m *Manager) watchIdle(ctx context.Context, a *active) {
+	timer := time.NewTimer(m.cfg.IdleLimit)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		m.mu.Lock()
+		wait := m.cfg.IdleLimit
+		if a.open == 0 {
+			wait -= time.Since(time.Unix(0, a.lastEvent.Load()))
+			if wait <= 0 && !a.stopped && !a.ending {
+				a.stuck = true
+				a.cancel()
+			}
+		}
+		m.mu.Unlock()
+		timer.Reset(max(wait, time.Millisecond))
 	}
 }
 
@@ -1115,6 +1159,7 @@ func (m *Manager) stream(a *active, sess provider.Session) (string, error) {
 			if !ok {
 				return "", errors.New("provider exited before the turn ended")
 			}
+			a.lastEvent.Store(time.Now().UnixNano())
 			if ev.Other {
 				m.logOther(a, ev)
 				continue
@@ -1152,7 +1197,6 @@ func (m *Manager) stream(a *active, sess provider.Session) (string, error) {
 						}
 					}
 				}
-				a.lastCall.Store(time.Now().UnixNano())
 				if err := m.cfg.Store.CountTool(a.ctx, a.run.ID, kind); err != nil {
 					m.cfg.Log.Warn("count tool", "error", err)
 				}
@@ -1260,6 +1304,9 @@ func (m *Manager) resume(ctx context.Context, a *active, id string) {
 	delete(m.approvals, id)
 	a.open--
 	idle := a.open == 0
+	if idle {
+		a.lastEvent.Store(time.Now().UnixNano())
+	}
 	m.mu.Unlock()
 	var err error
 	if idle {

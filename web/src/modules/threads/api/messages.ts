@@ -44,7 +44,8 @@ export type Run = {
     | 'provider_off'
     | 'needs_sign_in'
     | 'folder_gone'
-    | 'restarted';
+    | 'restarted'
+    | 'stuck';
   resets_at: string;
   provider: 'claude' | 'codex';
   usage?: RunUsage | null;

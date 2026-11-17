@@ -17,13 +17,13 @@ func backgroundLine(user string) string {
 		"tell them with tell_user."
 }
 
-// failure reports whether a notice holds a failure Reef knows of: a helper failed, was stopped, hit
-// its limit or was deleted, a restart cut helpers short, or CI failed. It reads the notice kind Reef
+// failure reports whether a notice holds a failure Reef knows of: a helper failed, was stopped, was
+// stuck, hit its limit or was deleted, a restart cut helpers short, or CI failed. It reads the notice kind Reef
 // stored where it wrote the wake, never the words.
 func failure(it store.InboxItem) bool {
 	switch it.Notice {
 	case store.NoticeHelperFailed, store.NoticeHelperStopped, store.NoticeHelperLimited,
-		store.NoticeHelperDeleted, store.NoticeRestart, store.NoticeCIFailed:
+		store.NoticeHelperStuck, store.NoticeHelperDeleted, store.NoticeRestart, store.NoticeCIFailed:
 		return true
 	}
 	return false

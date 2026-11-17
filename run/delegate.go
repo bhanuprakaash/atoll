@@ -357,7 +357,7 @@ func (m *Manager) Helpers(ctx context.Context, token string) ([]HelperRow, strin
 			idle := 0
 			if going {
 				since := started
-				if n := act.lastCall.Load(); n != 0 {
+				if n := act.lastEvent.Load(); n != 0 {
 					since = time.Unix(0, n)
 				}
 				idle = int(time.Since(since).Seconds())
@@ -365,6 +365,8 @@ func (m *Manager) Helpers(ctx context.Context, token string) ([]HelperRow, strin
 			row.IdleS = &idle
 		case last.ErrorKind == store.ErrorRateLimited:
 			row.State = "limited"
+		case last.ErrorKind == store.ErrorStuck:
+			row.State = "stuck"
 		default:
 			row.State = last.Status
 		}
