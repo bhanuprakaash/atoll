@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"atoll/repo"
 	"atoll/store"
 )
 
@@ -275,15 +276,39 @@ func WakeText(w store.Wake, helpers string) string {
 	return fmt.Sprintf("%s's run failed: %s\n(thread %s)\n\n%s", helper, run.Error, threadID, helpers)
 }
 
-// RestartWakeText is the message that tells a boss the restart interrupted its helpers' runs.
-func RestartWakeText(ws []store.Wake) string {
-	helpers := HelpersLine(nil)
-	if len(ws) == 1 {
-		return WakeText(ws[0], helpers)
+// stoppedBlock is a helper's block of a wake that says why its run stopped, then where its work
+// stands: its branch, commits ahead of the boss's and uncommitted changes, or that it has no branch.
+func stoppedBlock(ctx context.Context, w store.Wake, reason string) string {
+	head := fmt.Sprintf("%s stopped: %s.\n", w.Helper, reason)
+	if w.Branch == "" {
+		return fmt.Sprintf("%sNo branch yet. (thread %s)", head, w.ThreadID)
 	}
-	parts := []string{fmt.Sprintf("A restart interrupted %d helper runs.", len(ws))}
+	ahead := 0
+	if w.BossBranch != "" && w.RepoPath != "" {
+		ahead = repo.Ahead(ctx, w.RepoPath, w.BossBranch, w.Branch)
+	}
+	line := fmt.Sprintf("Branch %s, %d commit", w.Branch, ahead)
+	if ahead != 1 {
+		line += "s"
+	}
+	line += " ahead"
+	if w.Worktree != "" && repo.Dirty(ctx, w.RepoPath, w.Worktree, w.WorktreeGitDir) {
+		line += ", uncommitted changes"
+	}
+	return fmt.Sprintf("%s%s. (thread %s)", head, line, w.ThreadID)
+}
+
+// RestartWakeText is the message that tells a boss the restart interrupted its helpers' runs.
+func RestartWakeText(ctx context.Context, ws []store.Wake) string {
+	helpers := HelpersLine(nil)
+	block := func(w store.Wake) string { return stoppedBlock(ctx, w, w.Run.Error) }
+	if len(ws) == 1 {
+		return block(ws[0]) + "\n" + "Continue it to pick up where it stopped." + "\n\n" + helpers
+	}
+	parts := []string{fmt.Sprintf(
+		"A restart interrupted %d helper runs. Continue a helper to pick up where it stopped.", len(ws))}
 	for _, w := range ws {
-		parts = append(parts, strings.TrimSpace(WakeText(w, "")))
+		parts = append(parts, block(w))
 	}
 	return strings.Join(append(parts, helpers), "\n\n")
 }

@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	_restartReason = "Atoll stopped while the run was going"
+	_restartReason = "Reef restarted"
 	_shutdownGrace = 5 * time.Second
 )
 
@@ -98,7 +98,9 @@ func serve(ctx context.Context, token string, args []string, w io.Writer) error 
 	if err != nil {
 		return err
 	}
-	failed, err := st.FailUnfinished(ctx, _restartReason, threadrun.RestartWakeText)
+	failed, err := st.FailUnfinished(ctx, _restartReason, func(ws []store.Wake) string {
+		return threadrun.RestartWakeText(ctx, ws)
+	})
 	if err != nil {
 		return err
 	}
