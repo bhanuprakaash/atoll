@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -430,5 +431,120 @@ func TestRestartWake_ContinueResumesInItsWorktree(t *testing.T) {
 				t.Errorf("git status in the helper's worktree after the continue = %q, want its uncommitted answer.txt", got)
 			}
 		})
+	}
+}
+
+// quit stops the server the way quitting the app does, with SIGTERM, and serves it again.
+func (c *cutHelpers) quit(t *testing.T) {
+	t.Helper()
+	if err := c.s.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- c.s.cmd.Wait() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("atoll serve after SIGTERM: %v\nstderr:\n%s", err, c.s.log)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("atoll serve did not stop cleanly within 15s after SIGTERM")
+	}
+	c.s = c.m.serve(t)
+}
+
+// kindedMessages are the boss thread's messages with their kind.
+func kindedMessages(t *testing.T, s *server, boss string) []struct {
+	Role      string `json:"role"`
+	Text      string `json:"text"`
+	Kind      string `json:"kind"`
+	FromBotID string `json:"from_bot_id"`
+} {
+	t.Helper()
+	var out []struct {
+		Role      string `json:"role"`
+		Text      string `json:"text"`
+		Kind      string `json:"kind"`
+		FromBotID string `json:"from_bot_id"`
+	}
+	s.do(t, "GET", "/api/threads/"+boss+"/messages", nil, &out, http.StatusOK)
+	return out
+}
+
+// TestRestartWake_GracefulQuitPostsOneMessage: quitting the app (SIGTERM) and starting it again is a
+// restart like a crash: one restart message from Reef in the boss thread, the same as after a kill,
+// and no message per helper in the old `{Helper}'s run failed:` form.
+func TestRestartWake_GracefulQuitPostsOneMessage(t *testing.T) {
+	t.Parallel()
+	for _, p := range _oneProvider {
+		t.Run(p+"/two helpers", func(t *testing.T) {
+			c := newCutHelpers(t, p, []string{"Tester", "Reviewer"}, []int{3, 2})
+			c.quit(t)
+
+			msg := c.restartText(t)
+			want := strings.Join([]string{
+				"A restart interrupted 2 helper runs. " + _continueAll,
+				"Tester stopped: " + _restarted + ".\n" + progress(c.branch[0], 3, c.ids[0]),
+				"Reviewer stopped: " + _restarted + ".\n" + progress(c.branch[1], 2, c.ids[1]),
+				helpersLine(),
+			}, "\n\n")
+			if msg.Text != want {
+				t.Errorf("restart message:\n%s\nwant:\n%s", msg.Text, want)
+			}
+			if msg.FromBotID != "" {
+				t.Errorf("restart message from_bot_id %q, want Reef's (empty)", msg.FromBotID)
+			}
+			c.onlyRestartMessage(t)
+			for i, id := range c.ids {
+				if r := runOf(t, c.s, c.runs[i]); r.Status != "failed" || r.Error != _restarted || r.ErrorKind != "restarted" {
+					t.Errorf("helper %s run after the quit: %+v, want failed, %q, restarted", id, r, _restarted)
+				}
+			}
+		})
+		t.Run(p+"/one helper", func(t *testing.T) {
+			c := newCutHelpers(t, p, []string{"Tester"}, []int{3})
+			c.quit(t)
+
+			msg := c.restartText(t)
+			want := strings.Join([]string{
+				"Tester stopped: " + _restarted + ".\n" + progress(c.branch[0], 3, c.ids[0]) + "\n" + _continueOne,
+				helpersLine(),
+			}, "\n\n")
+			if msg.Text != want {
+				t.Errorf("restart message:\n%s\nwant:\n%s", msg.Text, want)
+			}
+			c.onlyRestartMessage(t)
+			if r := runOf(t, c.s, c.runs[0]); r.Status != "failed" || r.Error != _restarted || r.ErrorKind != "restarted" {
+				t.Errorf("helper run after the quit: %+v, want failed, %q, restarted", r, _restarted)
+			}
+		})
+	}
+}
+
+// onlyRestartMessage fails when the boss thread holds any message about a helper's run but the one
+// restart message: the old form `{Helper}'s run failed:` is none of them. With 2 helpers the one is
+// of kind restart; with 1 it is that helper's.
+func (c *cutHelpers) onlyRestartMessage(t *testing.T) {
+	t.Helper()
+	var about []string
+	for _, m := range kindedMessages(t, c.s, c.boss.ID) {
+		if m.Role != "user" {
+			continue
+		}
+		if strings.Contains(m.Text, "run failed:") || strings.Contains(m.Text, _oldWording) {
+			t.Errorf("boss message %q is in the old form, want the restart message only", m.Text)
+		}
+		for _, id := range c.ids {
+			if strings.Contains(m.Text, id) {
+				about = append(about, m.Kind+": "+m.Text)
+				break
+			}
+		}
+	}
+	if len(about) != 1 {
+		t.Errorf("%d boss messages name a helper thread after the quit, want the one restart message: %q", len(about), about)
+	}
+	if len(c.ids) > 1 && len(about) == 1 && !strings.HasPrefix(about[0], "restart: ") {
+		t.Errorf("restart message kind: %q, want restart", strings.SplitN(about[0], ":", 2)[0])
 	}
 }
