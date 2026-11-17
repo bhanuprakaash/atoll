@@ -33,6 +33,8 @@ const diesReply = 'Picked up after the exit.';
 const restartReply = 'Picked up after the restart.';
 const notice = 'Your last run stopped before it finished';
 const anyLine = /^(Didn't run|Run failed)\b/;
+// A run with a tool call and no reply may read either way, or name the restart.
+const restartLine = /Didn't run|Run failed|Reef restarted/;
 
 type Sent = {
   role: string;
@@ -115,22 +117,23 @@ test('a run a restart cut short shows Continue and it picks up the same session'
   await send(page, prompts.hang);
   const [thread] = await api(m, 'GET', `/api/bots/${bot.id}/threads`);
   await waitStatus(m, thread.id, 'running');
-  // The run has made its tool call, so it reached the model before the restart.
+  // step stays empty until the run's first tool call, so the run has reached the model by then.
   await expect
-    .poll(async () => (await api(m, 'GET', `/api/threads/${thread.id}`)).verb)
+    .poll(async () => (await api(m, 'GET', `/api/threads/${thread.id}`)).step)
     .toBeTruthy();
   m.kill();
   await m.restart();
+  await waitStatus(m, thread.id, 'failed');
 
   await page.reload();
-  await expect(log.getByText(anyLine)).toBeVisible();
+  await expect(log.getByText(restartLine)).toBeVisible();
   await expect(log.getByRole('button', { name: 'Continue' })).toBeVisible();
   await expect(log.getByRole('button', { name: 'Retry' })).toHaveCount(0);
 
   await log.getByRole('button', { name: 'Continue' }).click();
   await expect(log.getByText(restartReply)).toBeVisible();
   await expect(log.getByText(prompts.hang, { exact: true })).toHaveCount(1);
-  await expect(log.getByText(anyLine)).toHaveCount(0);
+  await expect(log.getByText(restartLine)).toHaveCount(0);
   expect(await userMessages(thread.id)).toHaveLength(1);
   expect(providerPrompts().filter((p) => p.includes(prompts.hang))).toHaveLength(1);
 });
