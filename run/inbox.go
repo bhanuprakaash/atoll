@@ -247,7 +247,7 @@ func asNotices(thread store.Thread, items []store.InboxItem) ([]store.InboxItem,
 }
 
 // WakeText is the message that tells a boss its helper's run ended; helpers is the helpers line.
-func WakeText(w store.Wake, helpers string) string {
+func WakeText(ctx context.Context, w store.Wake, helpers string, idle time.Duration) string {
 	helper, threadID, run := w.Helper, w.ThreadID, w.Run
 	merge := ""
 	if w.BossBranch != "" && strings.HasPrefix(w.Branch, w.BossBranch+"--") {
@@ -263,6 +263,12 @@ func WakeText(w store.Wake, helpers string) string {
 		return strings.TrimSpace(b.String()) + "\n\n" + helpers
 	case store.NoticeHelperStopped:
 		return fmt.Sprintf("The user stopped %s\n(thread %s)\n\n%s", helper, threadID, helpers)
+	case store.NoticeHelperStuck:
+		third := _continueIt
+		if w.StuckBefore && w.Branch != "" {
+			third = "Stuck twice in a row. Start a new helper from branch " + w.Branch + "."
+		}
+		return stoppedBlock(ctx, w, "no progress for "+shortDuration(idle)) + "\n" + third + "\n\n" + helpers
 	case store.NoticeHelperLimited:
 		until := "its Claude limit resets"
 		if run.Provider == "codex" {
@@ -298,12 +304,40 @@ func stoppedBlock(ctx context.Context, w store.Wake, reason string) string {
 	return fmt.Sprintf("%s%s. (thread %s)", head, line, w.ThreadID)
 }
 
+const _continueIt = "Continue it to pick up where it stopped."
+
+// shortDuration is d as a Go duration without its zero tails: 15m, not 15m0s.
+func shortDuration(d time.Duration) string {
+	s := d.String()
+	for _, tail := range []string{"0s", "0m"} {
+		if strings.HasSuffix(s, "m"+tail) || strings.HasSuffix(s, "h"+tail) {
+			s = strings.TrimSuffix(s, tail)
+		}
+	}
+	return s
+}
+
+// plainDuration is d in words, in its largest whole unit: 15 minutes, 2 seconds.
+func plainDuration(d time.Duration) string {
+	n, unit := int(d/time.Second), "second"
+	switch {
+	case d%time.Hour == 0:
+		n, unit = int(d/time.Hour), "hour"
+	case d%time.Minute == 0:
+		n, unit = int(d/time.Minute), "minute"
+	}
+	if n != 1 {
+		unit += "s"
+	}
+	return fmt.Sprintf("%d %s", n, unit)
+}
+
 // RestartWakeText is the message that tells a boss the restart interrupted its helpers' runs.
 func RestartWakeText(ctx context.Context, ws []store.Wake) string {
 	helpers := HelpersLine(nil)
 	block := func(w store.Wake) string { return stoppedBlock(ctx, w, w.Run.Error) }
 	if len(ws) == 1 {
-		return block(ws[0]) + "\n" + "Continue it to pick up where it stopped." + "\n\n" + helpers
+		return block(ws[0]) + "\n" + _continueIt + "\n\n" + helpers
 	}
 	parts := []string{fmt.Sprintf(
 		"A restart interrupted %d helper runs. Continue a helper to pick up where it stopped.", len(ws))}

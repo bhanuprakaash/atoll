@@ -93,6 +93,9 @@ func SecretReadError(err error) error {
 // ErrorRateLimited is the error kind of a run a provider's usage limit stopped.
 const ErrorRateLimited = "rate_limited"
 
+// ErrorStuck is the error kind of a run the idle limit stopped.
+const ErrorStuck = "stuck"
+
 // ErrorRestarted is the error kind of a run the server's restart cut short.
 const ErrorRestarted = "restarted"
 
@@ -103,6 +106,7 @@ const (
 	NoticeHelperFailed  = "helper_failed"
 	NoticeHelperStopped = "helper_stopped"
 	NoticeHelperLimited = "helper_limited"
+	NoticeHelperStuck   = "helper_stuck"
 	NoticeHelperDeleted = "helper_deleted"
 	NoticeRestart       = "restart"
 	NoticeCIPassed      = "ci_passed"
@@ -1506,7 +1510,7 @@ func (s *Store) HeldNotices(ctx context.Context, threadID string) (n int, err er
 func IsHelperNotice(it InboxItem) bool {
 	switch it.Notice {
 	case NoticeHelperDone, NoticeHelperFailed, NoticeHelperStopped, NoticeHelperLimited,
-		NoticeHelperDeleted, NoticeRestart:
+		NoticeHelperStuck, NoticeHelperDeleted, NoticeRestart:
 		return true
 	}
 	return false
@@ -1601,7 +1605,9 @@ type Wake struct {
 	BossBranch string // the boss thread's branch
 	// RepoPath, Worktree and WorktreeGitDir place the helper's checkout; empty when it has none.
 	RepoPath, Worktree, WorktreeGitDir string
-	Run                                Run
+	// StuckBefore: the helper thread's run before this one was stuck too.
+	StuckBefore bool
+	Run         Run
 }
 
 // Notice is the notice kind of the wake: how the helper's run ended.
@@ -1613,6 +1619,8 @@ func (w Wake) Notice() string {
 		return NoticeHelperStopped
 	case w.Run.ErrorKind == ErrorRateLimited:
 		return NoticeHelperLimited
+	case w.Run.ErrorKind == ErrorStuck:
+		return NoticeHelperStuck
 	}
 	return NoticeHelperFailed
 }
@@ -1781,7 +1789,9 @@ func readWake(ctx context.Context, tx *sql.Tx, runID string) (w heldWake, ok boo
 	w.Run.ID = runID
 	err = tx.QueryRowContext(ctx,
 		`SELECT b.id, b.name, t.id, t.branch, p.id, p.branch, r.status, r.reply, r.error, r.error_kind, r.resets_at, r.provider,
-		   coalesce(rp.path, ''), t.worktree, t.worktree_git_dir
+		   coalesce(rp.path, ''), t.worktree, t.worktree_git_dir,
+		   coalesce((SELECT q.error_kind = 'stuck' FROM runs q WHERE q.thread_id = r.thread_id AND q.rowid < r.rowid
+		     ORDER BY q.rowid DESC LIMIT 1), 0)
 		 FROM runs r JOIN threads t ON t.id = r.thread_id
 		 LEFT JOIN repos rp ON rp.id = t.repo_id
 		 JOIN bots b ON b.id = t.bot_id AND b.removed = 0
@@ -1789,7 +1799,7 @@ func readWake(ctx context.Context, tx *sql.Tx, runID string) (w heldWake, ok boo
 		 WHERE r.id = ?`, runID).
 		Scan(&w.botID, &w.Helper, &w.ThreadID, &w.Branch, &w.bossID, &w.BossBranch,
 			&w.Run.Status, &w.Run.Reply, &w.Run.Error, &w.Run.ErrorKind, &w.Run.ResetsAt, &w.Run.Provider,
-			&w.RepoPath, &w.Worktree, &w.WorktreeGitDir)
+			&w.RepoPath, &w.Worktree, &w.WorktreeGitDir, &w.StuckBefore)
 	if errors.Is(err, sql.ErrNoRows) {
 		return w, false, nil
 	}
