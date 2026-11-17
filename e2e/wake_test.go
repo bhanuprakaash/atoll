@@ -399,11 +399,11 @@ func TestWake_SurvivesRestart(t *testing.T) {
 			s = m.serve(t)
 
 			got := s.run(t, run)
-			if got.Status != "failed" || got.Error == "" {
-				t.Fatalf("helper run going at a restart: status %q, error %q; want failed with a reason", got.Status, got.Error)
+			if got.Status != "failed" || got.Error != _restarted {
+				t.Fatalf("helper run going at a restart: status %q, error %q; want failed, %q", got.Status, got.Error, _restarted)
 			}
 			msg, _, wake = woken(t, m, s, p, boss.ID, tester.ID, 2)
-			holdsAll(t, "message from Tester after a restart", msg.Text, hung, "Tester's run failed: "+got.Error)
+			holdsAll(t, "message from Tester after a restart", msg.Text, "Tester stopped: "+_restarted+".\nNo branch yet. (thread "+hung+")", _continueOne)
 			if wake.Status != "done" {
 				t.Errorf("boss run started on start: status %q, error %q; want done", wake.Status, wake.Error)
 			}
