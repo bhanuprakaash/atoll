@@ -71,6 +71,8 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		fail(w, http.StatusBadRequest, "Write a message or add an image.")
 	case errors.Is(err, store.ErrSent):
 		fail(w, http.StatusConflict, "That message was already sent.")
+	case errors.Is(err, store.ErrNoRerun):
+		fail(w, http.StatusConflict, "That run can't be continued.")
 	case errors.Is(err, run.ErrBusy):
 		failCode(w, http.StatusConflict, "busy", "A run is going in this thread.")
 	case errors.Is(err, run.ErrClosed):

@@ -15,7 +15,7 @@ import {
   type Message,
   type Run,
 } from '@/modules/threads/api/messages';
-import { useRun, useStopRun } from '@/modules/threads/api/runs';
+import { useContinueRun, useRun, useStopRun } from '@/modules/threads/api/runs';
 import { useCreateThreadWithMessage, useThread } from '@/modules/threads/api/threads';
 import { Composer } from '@/modules/threads/components/composer';
 import { ErrorNotice } from '@/components/error-notice';
@@ -447,6 +447,7 @@ export function ThreadView({
   }, [queryClient, threadId, thread?.run_id, queued.length]);
   const create = useCreateThreadWithMessage(botId);
   const send = useSendMessage(threadId);
+  const continueRun = useContinueRun(threadId);
   const stop = useStopRun();
   const { runs, connected, worktreeRemoved, begin } = useThreadEvents(threadId);
   const activeId =
@@ -495,9 +496,9 @@ export function ThreadView({
   const answered = new Set(messages.filter((m) => m.role === 'bot').map((m) => m.run_id));
   const fromHelper = (m: Message) => !!m.from_bot_id && m.from_bot_id !== thread?.parent_bot_id;
   const fromPerson = (m: Message) => m.role === 'user' && !m.from_bot_id && !m.kind;
+  const owned = (runId: string) => messages.some((m) => m.run_id === runId);
   const background = (runId: string) =>
-    messages.some((m) => m.run_id === runId) &&
-    messages.every((m) => m.run_id !== runId || fromHelper(m) || !!m.kind);
+    owned(runId) && messages.every((m) => m.run_id !== runId || fromHelper(m) || !!m.kind);
   const fromUser = new Set(messages.filter(fromPerson).map((m) => m.run_id));
   const lastOfRun = new Map(messages.filter((m) => m.role === 'user').map((m) => [m.run_id, m.id]));
   const unanswered = (m: Message) => m.role === 'user' && !answered.has(m.run_id);
@@ -520,8 +521,10 @@ export function ThreadView({
       if (run) begin(run.id);
     }
   };
-  const retry = (runId: string) =>
-    resend(messages.filter((m) => fromPerson(m) && m.run_id === runId));
+  const retry = async (runId: string) => {
+    const { run } = await continueRun.mutateAsync(runId);
+    begin(run.id);
+  };
   const sendFirst = (text: string, images?: ImageInput[], restore?: () => void) => {
     if (repoId && !thread?.repo_id)
       create.mutate(
@@ -696,7 +699,7 @@ export function ThreadView({
           {Object.entries(runs).map(([id, run]) => (
             <div key={id} className="flex flex-col gap-6">
               <LiveRun id={id} run={run} answered={answered.has(id)} look={look} />
-              {run.finished && !answered.has(id) && !background(id) && (
+              {run.finished && owned(id) && !answered.has(id) && !background(id) && (
                 <>
                   {afterRun?.(id)}
                   <RunResult

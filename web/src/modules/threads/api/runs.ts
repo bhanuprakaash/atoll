@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import type { Run } from '@/modules/threads/api/messages';
 
@@ -9,5 +9,17 @@ export function useRun(runId: string) {
 export function useStopRun() {
   return useMutation({
     mutationFn: (id: string) => api<void>(`/runs/${id}/stop`, { method: 'POST' }),
+  });
+}
+export function useContinueRun(threadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<{ run: Run }>(`/runs/${id}/continue`, { method: 'POST' }),
+    onSuccess: () =>
+      Promise.all(
+        [['messages', threadId], ['thread', threadId], ['bots']].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      ),
   });
 }

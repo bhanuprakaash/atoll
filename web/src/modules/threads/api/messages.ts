@@ -47,6 +47,7 @@ export type Run = {
   resets_at: string;
   provider: 'claude' | 'codex';
   usage?: RunUsage | null;
+  streamed: boolean;
 };
 
 type MessagePageParam = { before?: string; after?: string };

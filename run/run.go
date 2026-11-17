@@ -184,6 +184,7 @@ type (
 		// session had cost before this run.
 		usage        *provider.Usage
 		priorCostUSD float64
+		streamed     bool   // the run goroutine's: model output reached the store
 		kind         string // of the wake the run answers; empty when any message is not a wake
 		msgs         []store.InboxItem
 		// background: every message is a Reef notice, so the final message is a status line. guard:
@@ -358,35 +359,92 @@ func (m *Manager) SendNow(ctx context.Context, threadID, id string) (store.Run, 
 }
 
 func (m *Manager) send(ctx context.Context, items ...store.InboxItem) (store.Message, store.Run, error) {
-	threadID := items[0].ThreadID
-	runCtx, cancel := context.WithCancel(m.ctx)
-	a := &active{threadID: threadID, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
-	m.mu.Lock()
-	if m.ctx.Err() != nil {
-		cancel()
-		m.mu.Unlock()
-		return store.Message{}, store.Run{}, errors.New("atoll is stopping")
+	a, err := m.acquire(items[0].ThreadID)
+	if err != nil {
+		return store.Message{}, store.Run{}, err
 	}
-	if _, busy := m.runs[threadID]; busy {
-		cancel()
-		m.mu.Unlock()
-		return store.Message{}, store.Run{}, ErrBusy
-	}
-	m.runs[threadID] = a
-	m.wg.Add(1)
-	m.mu.Unlock()
-
 	items = m.withHelpersLine(ctx, items)
 	msgs, run, err := m.start(ctx, items)
 	if err != nil {
-		m.drop(a)
-		cancel()
-		m.wg.Done()
+		m.giveBack(a)
 		return store.Message{}, store.Run{}, err
 	}
 	items = slices.DeleteFunc(slices.Clone(items), func(it store.InboxItem) bool {
 		return it.ID != "" && !slices.ContainsFunc(msgs, func(msg store.Message) bool { return msg.ID == it.ID })
 	})
+	m.launch(a, run, items)
+	return msgs[0], run, nil
+}
+
+// Rerun continues the thread's failed run runID with a new run, which takes the run's messages
+// instead of adding any. A run that streamed model output resumes the session with a Reef notice
+// in place of the messages; any other sends the messages again. It returns store.ErrNoRerun when
+// the run cannot be continued, and ErrBusy when the thread's run is going.
+func (m *Manager) Rerun(ctx context.Context, runID string) (store.Run, error) {
+	failed, err := m.cfg.Store.Run(ctx, runID)
+	if err != nil {
+		return store.Run{}, err
+	}
+	m.inboxMu.Lock()
+	defer m.inboxMu.Unlock()
+	a, err := m.acquire(failed.ThreadID)
+	if err != nil {
+		return store.Run{}, err
+	}
+	t, err := m.cfg.Store.Thread(ctx, failed.ThreadID)
+	if err == nil && t.Closed {
+		err = ErrClosed
+	}
+	var msgs []store.Message
+	var run store.Run
+	if err == nil {
+		msgs, run, err = m.cfg.Store.Rerun(ctx, runID)
+	}
+	if err != nil {
+		m.giveBack(a)
+		return store.Run{}, err
+	}
+	items := make([]store.InboxItem, len(msgs))
+	for i, msg := range msgs {
+		items[i] = store.InboxItem{
+			ThreadID: msg.ThreadID, FromBotID: msg.FromBotID, Text: msg.Text, Kind: msg.Kind, Images: msg.Attachments,
+		}
+	}
+	if failed.Streamed {
+		items = []store.InboxItem{{ThreadID: failed.ThreadID, Kind: _continueKind, Text: _continueNotice}}
+	}
+	m.launch(a, run, items)
+	return run, nil
+}
+
+// acquire makes the thread's run slot, or returns ErrBusy.
+func (m *Manager) acquire(threadID string) (*active, error) {
+	runCtx, cancel := context.WithCancel(m.ctx)
+	a := &active{threadID: threadID, token: randHex(16), ctx: runCtx, cancel: cancel, done: make(chan struct{})}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.ctx.Err() != nil {
+		cancel()
+		return nil, errors.New("atoll is stopping")
+	}
+	if _, busy := m.runs[threadID]; busy {
+		cancel()
+		return nil, ErrBusy
+	}
+	m.runs[threadID] = a
+	m.wg.Add(1)
+	return a, nil
+}
+
+// giveBack gives back a slot whose run did not start.
+func (m *Manager) giveBack(a *active) {
+	m.drop(a)
+	a.cancel()
+	m.wg.Done()
+}
+
+// launch runs the stored run for items on a slot from acquire.
+func (m *Manager) launch(a *active, run store.Run, items []store.InboxItem) {
 	texts := make([]string, len(items))
 	var images []provider.Image
 	kind := items[0].Kind
@@ -404,7 +462,6 @@ func (m *Manager) send(ctx context.Context, items ...store.InboxItem) (store.Mes
 	m.tokens[a.token] = a
 	m.mu.Unlock()
 	go m.execute(a, strings.Join(texts, "\n\n"), images)
-	return msgs[0], run, nil
 }
 
 // start refuses a closed thread, then stores the messages and their run. It returns the messages
@@ -1118,6 +1175,13 @@ func (m *Manager) stream(a *active, sess provider.Session) (string, error) {
 			if ev.Other {
 				m.logOther(a, ev)
 				continue
+			}
+			if (ev.Kind == provider.KindText || ev.Kind == provider.KindToolCall) && !a.streamed {
+				if err := m.cfg.Store.MarkStreamed(a.ctx, a.run.ID); err != nil {
+					m.cfg.Log.Warn("mark run streamed", "error", err)
+				} else {
+					a.streamed = true
+				}
 			}
 			switch ev.Kind {
 			case provider.KindText:

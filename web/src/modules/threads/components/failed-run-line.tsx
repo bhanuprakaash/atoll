@@ -16,6 +16,7 @@ type LineProps = {
 };
 
 function Line({ run, botName, replied, retryable, retry, signedOut }: LineProps) {
+  const again = run.streamed ? 'Continue' : 'Retry';
   if (run.error_kind === 'rate_limited') {
     return (
       <p className="text-ink/80">
@@ -52,7 +53,7 @@ function Line({ run, botName, replied, retryable, retry, signedOut }: LineProps)
             onClick={() => retry(run.id)}
             className="h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink"
           >
-            Retry
+            {again}
           </button>
         )}
       </div>
@@ -78,7 +79,7 @@ function Line({ run, botName, replied, retryable, retry, signedOut }: LineProps)
       actions={[
         ...(settings ? [{ label: 'Open settings', to: settings }] : []),
         ...(retryable && kind !== 'folder_gone'
-          ? [{ label: 'Retry', onClick: () => retry(run.id) }]
+          ? [{ label: again, onClick: () => retry(run.id) }]
           : []),
       ]}
     />

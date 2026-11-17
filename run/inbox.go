@@ -230,6 +230,15 @@ func (m *Manager) withHelpersLine(ctx context.Context, items []store.InboxItem) 
 // _helperNotice is the kind the prompt gives a helper's wake, which the store keeps with none.
 const _helperNotice = "helper"
 
+// _continueKind is the kind of the notice that resumes a run that stopped. It is a Reef notice the
+// prompt marks, but not a background one: the run answers the person.
+const _continueKind = "continue"
+
+// _continueNotice is what Rerun sends in place of the person's text. The reason is the one the
+// run line gives a failure that has output; stuck and restarted runs read the same here.
+const _continueNotice = "Your last run stopped before it finished (something went wrong). " +
+	"Continue from where you stopped. Check what already happened before you repeat a step."
+
 // asNotices marks the held messages that come from Reef with a kind: a helper's wake in a thread
 // that is not a helper's has none stored. It reports whether every message is a notice, which makes
 // the run a background run: a helper thread has none.
@@ -240,7 +249,7 @@ func asNotices(thread store.Thread, items []store.InboxItem) ([]store.InboxItem,
 		if thread.ParentThreadID == "" && out[i].Kind == "" && out[i].FromBotID != "" {
 			out[i].Kind = _helperNotice
 		}
-		all = all && out[i].Kind != ""
+		all = all && out[i].Kind != "" && out[i].Kind != _continueKind
 	}
 	return out, all
 }

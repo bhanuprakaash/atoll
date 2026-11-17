@@ -146,6 +146,7 @@ func New(
 	mux.HandleFunc("GET /api/attachments/{id}", a.getAttachment)
 	mux.HandleFunc("GET /api/runs/{id}", a.getRun)
 	mux.HandleFunc("POST /api/runs/{id}/stop", a.stopRun)
+	mux.HandleFunc("POST /api/runs/{id}/continue", a.continueRun)
 	mux.HandleFunc("POST /api/approvals/{id}", a.answer)
 	mux.HandleFunc(MCPPath+"{token}", a.mcp)
 	// fs.Sub fails only for an invalid dir name.
@@ -692,6 +693,25 @@ func (a *api) stopRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *api) continueRun(w http.ResponseWriter, r *http.Request) {
+	failed, err := a.st.Run(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if !a.userMayWrite(w, r, failed.ThreadID) {
+		return
+	}
+	ru, err := a.runs.Rerun(r.Context(), failed.ID)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusAccepted, struct {
+		Run store.Run `json:"run"`
+	}{Run: ru})
 }
 
 func (a *api) getRun(w http.ResponseWriter, r *http.Request) {
