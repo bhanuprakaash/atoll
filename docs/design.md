@@ -1766,7 +1766,13 @@ Voice
   and selects that row. With nothing waiting, running or replied it reads "Nothing needs you".
 - Selected row: the sidebar marks where you are once. With a thread open, only that thread's row
   has the selected fill and `aria-current="page"`, in the Bot's pane or in Now. On the New thread
-  screen no row is selected; the rail bar alone marks the Bot. Never two selected rows.
+  screen no row is selected; the rail bar alone marks the Bot. Never two selected rows. A running
+  helper thread has no row, so while one is open the sidebar stays with its boss: the rail bar on
+  the boss Bot, the boss's pane, and the selected fill and `aria-current="page"` on the boss
+  thread's helper line, not on the boss thread's row. A finished helper thread is a row in its own
+  Bot's pane, so the rail bar and pane are that Bot's, as for any thread. Opened from Now, a helper
+  thread keeps the pane on Now. *The rail followed the helper Bot in the URL, whose pane has no row
+  for a running helper: the sidebar marked a place where the open thread was not.*
 - Narrow windows: below 900 px (inner width; 900 itself is wide) the rail stays docked and the
   pane floats over the thread column with a scrim; nothing shifts.
   - The pane is closed whenever the window becomes narrow and on every launch. Clicking a face or
