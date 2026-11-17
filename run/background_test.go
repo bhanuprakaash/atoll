@@ -23,6 +23,7 @@ func TestFailure(t *testing.T) {
 		{"helper failed", helper(store.StatusFailed, ""), true},
 		{"helper stopped", helper(store.StatusStopped, ""), true},
 		{"helper out of limit", helper(store.StatusFailed, store.ErrorRateLimited), true},
+		{"helper stuck", helper(store.StatusFailed, store.ErrorStuck), true},
 		{"helper deleted", store.NoticeHelperDeleted, true},
 		{"restart", store.NoticeRestart, true},
 		{"CI passed", ciNotice(ciResult{Passed: 4}), false},
