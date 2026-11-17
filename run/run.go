@@ -73,7 +73,6 @@ const (
 	// A slow SSE client must not stall the run: its channel holds this many events and the
 	// subscriber is closed when it is full, so the client reconnects.
 	_subscriberBuffer  = 64
-	_stopReason        = "Reef restarted"
 	_secretStoreReason = "Reef can't reach its secret store. Restart Reef, or unlock it, then send again."
 	_atollTools        = "mcp__" + provider.MCPServer + "__"
 	// _callWait bounds how long Ask waits for its tool call to come through the provider's
@@ -719,9 +718,7 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	res := store.RunResult{Status: store.StatusDone, Reply: strings.TrimSpace(reply)}
 	if err != nil {
 		res = store.RunResult{Status: store.StatusFailed, Error: err.Error()}
-		if m.ctx.Err() != nil {
-			res.Error, res.ErrorKind = _stopReason, store.ErrorRestarted
-		} else if errors.Is(err, store.ErrSecretStore) {
+		if errors.Is(err, store.ErrSecretStore) {
 			res.Error, res.ErrorKind = _secretStoreReason, store.ErrorSecretStore
 			m.cfg.Log.Warn("secret store unreachable", "run_id", a.run.ID,
 				"error_kind", res.ErrorKind, "error", err)
@@ -749,6 +746,12 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	res.StatusLine = a.background && (a.told || !a.guard)
 	told, stopped := a.told, a.stopped
 	m.mu.Unlock()
+	if err != nil && m.ctx.Err() != nil && !stopped {
+		// Shutdown cuts the run as a kill does: it stays going, and the next start fails it with
+		// the restart message (FailUnfinished).
+		m.drop(a)
+		return
+	}
 	if stopped {
 		// Under inboxMu: a drain that picked before the hold finishes its send while the run is still
 		// going (ErrBusy); a later pick sees the hold. mu is not held here.
