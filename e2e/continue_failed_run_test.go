@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -111,8 +112,17 @@ func TestContinue_ResumesWithTheNoticeNotTheText(t *testing.T) {
 				t.Errorf("notice %q holds the person's text", notices[0])
 			}
 
-			calls := m.calls(t, "claude")
-			if resumed := flagValue(calls[len(calls)-1].argv, "--resume"); resumed != c.session {
+			// The last call may be the thread's title session, whose stdin can land late.
+			var continued *call
+			for _, call := range m.calls(t, "claude") {
+				if slices.ContainsFunc(call.stdin, func(l string) bool { return strings.Contains(l, _continueHead) }) {
+					continued = call
+				}
+			}
+			if continued == nil {
+				t.Fatalf("no provider session got the continue notice")
+			}
+			if resumed := flagValue(continued.argv, "--resume"); resumed != c.session {
 				t.Errorf("continued run passed --resume %q, want the thread's session %q", resumed, c.session)
 			}
 
