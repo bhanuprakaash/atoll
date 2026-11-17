@@ -206,6 +206,12 @@ func newCutHelpers(t *testing.T, p string, names []string, ahead []int) *cutHelp
 		c.ids = append(c.ids, h.ThreadID)
 		c.branch = append(c.branch, h.Branch)
 		c.runs = append(c.runs, helperRunning(t, s, h.ThreadID))
+		// The run is `running` before its provider has said its session id, and a restart before
+		// that leaves a thread with no session to resume.
+		eventually(t, 30*time.Second, "helper thread "+h.ThreadID+" has a stored session", func() bool {
+			rows := dbRows(t, f.m, "SELECT session FROM threads WHERE id = ?", h.ThreadID)
+			return len(rows) == 1 && rows[0][0] != ""
+		})
 	}
 	for i := range names {
 		path := worktreeOf(t, f.repo.Path, c.branch[i])
