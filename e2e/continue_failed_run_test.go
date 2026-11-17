@@ -56,8 +56,10 @@ func TestContinue_ResumesWithTheNoticeNotTheText(t *testing.T) {
 		},
 		{
 			name: "a restart cuts the run short", text: _hangPrompt, session: _hangSession, reply: _hangContinue,
-			fail: func(t *testing.T, m *machine, s *server, th thread, _ <-chan event) (*server, runInfo) {
+			fail: func(t *testing.T, m *machine, s *server, th thread, ev <-chan event) (*server, runInfo) {
 				run := s.send(t, th, _hangPrompt)
+				// The run has made its tool call, so it reached the model before the restart.
+				until(t, ev, run.ID, "tool_call")
 				for deadline := time.Now().Add(15 * time.Second); len(promptsWith(t, m, "claude", _hangPrompt)) == 0; {
 					if time.Now().After(deadline) {
 						t.Fatal("the provider never got the hang prompt")
