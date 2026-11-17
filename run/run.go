@@ -414,7 +414,7 @@ func (m *Manager) Rerun(ctx context.Context, runID string) (store.Run, error) {
 		}
 	}
 	if failed.Streamed {
-		items = []store.InboxItem{{ThreadID: failed.ThreadID, Kind: _continueKind, Text: _continueNotice}}
+		items = []store.InboxItem{{ThreadID: failed.ThreadID, Kind: _continueKind, Text: continueNotice(failed)}}
 	}
 	m.launch(a, run, items)
 	return run, nil

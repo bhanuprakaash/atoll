@@ -1966,8 +1966,9 @@ Voice
     fact (`runs.streamed`), so the UI and the server decide from the same data. Continue resumes
     the thread's session with a Reef notice in place of the person's text: `Your last run stopped
     before it finished ({reason}). Continue from where you stopped. Check what already happened
-    before you repeat a step.`, where `{reason}` is the run line's reason. A run started by Continue counts
-    as streamed, so if it fails too the line offers Continue again, never a resend. It adds no user bubble:
+    before you repeat a step.`, where `{reason}` is the run line's reason: `Reef restarted` for a restarted run, `no progress for
+    15 minutes` (the limit's value) for a stuck one, else `something went wrong`. A run started by
+    Continue counts as streamed, so if it fails too the line offers Continue again, never a resend. It adds no user bubble:
     the new run takes over the failed run's messages, so the failed line gives way to it in place
     and a reload shows the same.
   - Retry, for a failed run with no model output (signed out, provider off): it sends the original
