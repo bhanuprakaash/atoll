@@ -254,13 +254,29 @@ counts a Bot that is already gone as removed.
   Codex approvals come as app-server requests; Claude approvals through the permission prompt
   tool.
 - Each run's event stream is saved to `<data>/runs/<id>.jsonl`. A run left `running` or `waiting`
-  when the server starts is marked `failed` with a reason. A thread's SSE stream first replays the
-  going run's latest events (consecutive text deltas joined into one `text` event), so a page that
-  opens late or reconnects shows the text so far, the current tool and approvals; it drops the
+  when the server starts is marked `failed` with `error_kind = restarted` and the reason `Reef
+  restarted`; Reef does not resume it. *A replayed turn may already have pushed, opened a PR or
+  posted, and Reef can't tell which.* A thread's SSE stream first replays the going run's latest
+  events (consecutive text deltas joined into one `text` event), so a page that opens late or
+  reconnects shows the text so far, the current tool and approvals; it drops the
   stream it drew and draws the replay. An approval that is answered, or dropped because its run or
   the provider's request ended, publishes `approval_closed {run_id, id}`, saved and replayed like
   the rest: a client drops every approval that has one, and the open ones are the cards left.
   `POST /api/approvals/{id}` on a closed approval answers `404`; the card leaves without an error.
+- Idle limit. A run with no stream event of any kind for `ATOLL_IDLE_LIMIT` is stuck, in every
+  thread, not only a helper's. The limit is a Go duration, 15m when unset, parsed as
+  `ATOLL_WAKE_WINDOW` is. The clock counts only while the run is `running`: it pauses while an
+  approval is open (`waiting`) and starts again from zero when the approval closes. At the limit
+  Reef stops the run as a Stop does (uncommitted work stays in the worktree) and marks it `failed`
+  with `error_kind = stuck`, as `rate_limited` is marked; there is no new status. A stuck run is not
+  held: only a Stop holds (Delegation), so the boss's next `continue` goes out at once. The chat
+  line reads `Stopped: no progress for 15 minutes.`, with the limit's actual value. Nothing warns
+  before the limit. There is no tool-finished event and no per-command ceiling. *In 582 saved runs,
+  every live silence over 10 minutes but two stopped at about 10 minutes, Claude Code's own cap on
+  one foreground command, which keeps long waits (chained CI or test waits) under the limit; the two
+  that ran longer (16.6 and 21.4 min) were both waiting on an approval. A 10-minute silence is
+  normal (one long `make e2e`), each warning would cost the boss a run, and `helpers()` already
+  shows idle time.* Accepted risk: a single Codex command longer than the limit is marked stuck.
 - Allow in this thread: a command approval (Codex `commandExecution`, Claude `Bash`) can be
   answered `{approve: true, in_thread: true}`. The card offers it as a third, quiet choice when
   `allow_in_thread` is true on the `approval` event and on `GET /api/threads/{id}`. Reef keeps the
@@ -501,8 +517,9 @@ Follow-ups:
   keep a helper stopped until its lead sends it work.*
 - `helpers()` returns `{"helpers": [...], "line": "<helpers line>"}`: one row per open helper
   thread of the calling boss thread, oldest first, with `bot`, `thread_id`, `title`, `state` (the
-  last run's: `running`, `done`, `failed`, `stopped` or `limited`), `idle_s` (seconds since its last
-  tool call, or since the run began when it has made none; only while `running`), `branch` (empty
+  last run's: `running`, `done`, `failed`, `stopped`, `limited` or `stuck`), `idle_s` (the idle
+  limit's clock, Threads and runs: seconds since the run's last stream event of any kind, or since
+  the run began or its last approval closed; only while `running`), `branch` (empty
   when none) and `ahead` (commits of that branch ahead of the boss's branch; 0 when the boss thread
   or the helper has no worktree). It never holds message text from a helper thread. With no helpers
   it returns an empty list and the line. It starts no run and writes nothing to either thread.
@@ -516,9 +533,25 @@ Follow-ups:
   is not shown in the boss thread's chat; the person reads the helper's reply in the helper
   thread. It starts `Reef: ` and always holds the helper thread id:
   - done: `{Helper} finished thread {id}:`, then the helper's reply;
-  - failed: `{Helper}'s run failed: {error}`; a helper run going at a restart fails with the usual
-    reason and wakes its boss on start, one message for all the boss thread's interrupted helper
-    runs (below);
+  - failed: `{Helper}'s run failed: {error}`; a helper run going at a restart fails (`Reef
+    restarted`) and wakes its boss on start, one message for all the boss thread's interrupted
+    helper runs (below);
+  - stuck (the idle limit, Threads and runs; notice `helper_stuck`):
+
+    ```text
+    Builder stopped: no progress for 15m.
+    Branch fix/x, 3 commits ahead, uncommitted changes. (thread 3f2a…)
+    Continue it to pick up where it stopped.
+
+    Helpers: 0 of 3 running. 3 free.
+    ```
+
+    The second line is the data `helpers()` computes (branch, commits ahead, a dirty worktree); with
+    no branch it reads `No branch yet. (thread 3f2a…)`. Reef counts a helper thread's consecutive
+    stucks: when the same helper is stuck a second time in a row, the third line reads instead
+    `Stuck twice in a row. Start a new helper from branch fix/x.` *A `continue` resumes the same
+    session and worktree, so the helper keeps its context and its uncommitted edits; a new delegate
+    would start over.*
   - stopped by a provider usage limit (`rate_limited`, see App and UI): `{Helper} is out until
     {time}.` and `Do not send it work until then.`, never the provider's text; `{time}` is
     `resets_at` in UTC, `2026-11-11T15:42:00Z`, or `its {provider} limit resets` with no
@@ -540,11 +573,26 @@ Follow-ups:
   delivers at once. *20 s covers helpers that finish together and still feels prompt for a lone
   report; a window that restarts on each report could wait for ever.* On start, held helper
   messages are delivered at once, except to a boss thread whose reports are held (below).
-- A restart that interrupted N helper runs of one boss thread posts one message into it, not N: for
-  N > 1, from Reef (`kind` `restart`, `from_bot_id` empty), whose first line is `A restart
-  interrupted {N} helper runs.` and then each run's failed text above, in the order the runs began;
-  for N = 1 the failed message of that helper. It is stored in the transaction that marks the runs
-  failed, so it cannot repeat or be lost.
+- A restart that interrupted N helper runs of one boss thread posts one message into it, not N. Reef
+  does not resume them (Threads and runs). For N > 1 it is from Reef (`kind` `restart`,
+  `from_bot_id` empty), one block per helper in the stuck wake's shape, in the order the runs
+  began:
+
+  ```text
+  A restart interrupted 2 helper runs. Continue a helper to pick up where it stopped.
+
+  Builder stopped: Reef restarted.
+  Branch fix/x, 3 commits ahead, uncommitted changes. (thread 3f2a…)
+
+  Verifier stopped: Reef restarted.
+  No branch yet. (thread 9c1e…)
+
+  Helpers: 0 of 3 running. 3 free.
+  ```
+
+  For N = 1 it is that helper's message: its two lines, then `Continue it to pick up where it
+  stopped.` and the helpers line. It is stored in the transaction that marks the runs failed, so it
+  cannot repeat or be lost.
 - Background runs. A run that starts only with Reef notices (a helper finished, a PR merged, CI
   finished, a ticket closed) is a background run, for every Bot not in a helper thread. Its final
   message is never a chat message, does not make the thread Replied and shows nowhere (App and
@@ -556,11 +604,12 @@ Follow-ups:
   listed. A helper thread has no background runs: every final message a helper writes goes to its
   boss, its own CI wake included.
   - Guard: when a background run's notices include a failure Reef knows of (a helper failed,
-    stopped, hit its limit or was deleted; a restart cut helpers short; CI failed) and the run ends
-    without a `tell_user`, its final message is posted to the chat as an ordinary reply and the
-    thread is Replied. The guard reads the inbox row's `notice`, which Reef sets where it writes the
-    wake, never the text. `tell_user` counts as called once its message is stored. *A missed `tell_user` would otherwise be silence; the guard reads only facts
-    Reef holds, never the text's meaning.*
+    stopped, was stuck, hit its limit or was deleted; a restart cut helpers short; CI failed) and
+    the run ends without a `tell_user`, its final message is posted to the chat as an ordinary reply
+    and the thread is Replied. The guard reads the inbox row's `notice`, which Reef sets where it
+    writes the wake, never the text. `tell_user` counts as called once its message is stored. *A
+    missed `tell_user` would otherwise be silence; the guard reads only facts Reef holds, never the
+    text's meaning.*
   *Quiet by default, loud on purpose: posting reports into the chat made the person read each one
   twice, and one blocker five times (#396), and the old "write no reply" rule was a request the
   boss broke. Spike 2026-11-13: with the rule only in the system prompt, Sonnet wrote a blocker as
@@ -751,11 +800,11 @@ Follow-ups:
   no longer the head or after the PR is done. A held row of another kind is never dropped.
 - An inbox row also has a `notice`, which the chat and the prompt never read: empty for a person's
   message, else what the wake is. Helper wakes: `helper_done`, `helper_failed`, `helper_stopped`,
-  `helper_limited`, `helper_deleted`; `restart` for the restart message; PR wakes: `ci_passed`,
-  `ci_failed`, `merged`, `closed`, `base`. It is separate from `kind` because a helper's wake has
-  no `kind` and `ci` covers a failed and a passed run. The background guard (Delegation) reads
-  `notice` for `helper_failed`, `helper_stopped`, `helper_limited`, `helper_deleted`, `restart`
-  and `ci_failed`.
+  `helper_stuck`, `helper_limited`, `helper_deleted`; `restart` for the restart message; PR wakes:
+  `ci_passed`, `ci_failed`, `merged`, `closed`, `base`. It is separate from `kind` because a
+  helper's wake has no `kind` and `ci` covers a failed and a passed run. The background guard
+  (Delegation) reads `notice` for `helper_failed`, `helper_stopped`, `helper_stuck`,
+  `helper_limited`, `helper_deleted`, `restart` and `ci_failed`.
 - The wake is one plain sentence built by Reef from fixed words, the MR as the thread names it
   (`PR #7`, `MR !7`), numbers and check names; no PR title, body, commit message or other API text
   is joined into it: `PR #7 merged into main at aff4bd0`, `PR #7 closed`,
@@ -1890,17 +1939,29 @@ Voice
   quiet line with its action inline: approvals (Allow, Deny, and Allow in this thread for a command
   that may repeat; the line leaves once answered; a long command or path wraps), the
   allowed-for-this-thread line, Chief's changes, the branch starting, the worktree cleaned up, a
-  failed run (Retry; a usage limit is calm and has none, below) and a refused message. Inline
-  actions (Undo, Undo all, Open, Retire, Details, Show more) are one quiet text-button style.
+  failed run (Continue or Retry; a usage limit is calm and has none, below) and a refused message.
+  Inline actions (Undo, Undo all, Open, Retire, Details, Show more) are one quiet text-button
+  style.
 - A run that fails before any reply leaves one quiet line under the message that started it: `Didn't
   run: <reason>`, in plain words (an unknown cause reads `Didn't run: something went wrong.`). The
-  line keeps its place after later runs and a reload. Retry shows only when that run is the thread's
-  newest. A run only a Reef wake or a helper's notice started has no message of the person's: its
-  line sits under the last of those messages, no Retry. Queued messages delivered as one run share
-  one line, under the last of them; Retry sends each again, in order, with its images; Resend sends
-  only the message it sits on; one that fails stops there and shows its error beside the line or
-  message it sits on. A sign-in failure keeps its own line (Claude sign-in expired). *A failure that
+  line keeps its place after later runs and a reload. The action shows only when that run is the
+  thread's newest and a message of the person's started it. A run only a Reef wake or a helper's
+  notice started has no message of the person's: its line sits under the last of those messages,
+  with no action; a helper thread has none, since its boss decides from its wake (Delegation).
+  Queued messages delivered as one run share one line, under the last of them. Resend sends only
+  the message it sits on; one that fails stops there and shows its error beside the line or message
+  it sits on. A sign-in failure keeps its own line (Claude sign-in expired). *A failure that
   vanished once a newer run started made the message look ignored.*
+  - Continue, for every failed run that had started (reached the provider): stuck, cut short by a
+    restart, or failed mid-run. It resumes the thread's session with a Reef notice in place of the
+    person's text: `Your last run stopped before it finished ({reason}). Continue from where you
+    stopped. Check what already happened before you repeat a step.`, where `{reason}` is the run
+    line's reason. It adds no user bubble: the failed line gives way to the new run in place.
+  - Retry, for a failed run that never reached the provider (signed out, provider off): it sends
+    the original message again on the same bubble, not as a copy; queued messages delivered as one
+    run go again together, in order, with their images.
+  - Open: whether a turn killed mid-run leaves its finished steps in the Claude and Codex session
+    files is not verified. The Continue ticket proves it first.
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `· Stopped
   by you after 4s`). Inside the run, above the footer: Chief's changes, then saved memory. Spacing:
   18 px between messages, 24 px between blocks of one reply (prose, changes, memories, footer), 14
@@ -1918,17 +1979,18 @@ Voice
   `error.message`, a JSON body, an HTTP status text or a Go error chain; `.message` is read only
   inside `ErrorNotice`, and only `Details` shows it. A chat run line is the same component in
   one-line form: the title is the line (`Didn't run: <reason>`, or `Run failed: <reason>` after a
-  reply), Retry or Resend is the action and replaces the next-step line, and `Details` holds the
-  provider's raw error (`error_detail` of a `provider_off` run, whose `error` is the plain sentence;
-  else the run's `error`). The reason comes from `error_kind` alone, never from the error's words:
-  the plain `error` of a `provider_off`, `needs_sign_in` or `folder_gone` run (the thread's worktree
-  folder was deleted: `this thread's folder {path} is gone. Start a new thread, or restore the folder`,
-  with no Retry, since it fails the same way), `the provider isn't signed in` for
-  `signed_out`, and `something went wrong` for any other failure (a usage limit, `secret_store` and
-  an expired sign-in keep their own lines); `Run failed` is for a run that had replied, `Didn't run`
-  for one that had not. The callback pages (`/oauth/callback`) take the same shape as static HTML:
-  title, next-step line and a closed `<details>` with the summary `Details`. *37 of 44 red texts
-  rendered a server string, `internal error` or a raw HTML 502 page.*
+  reply), Continue, Retry or Resend is the action and replaces the next-step line, and `Details`
+  holds the provider's raw error (`error_detail` of a `provider_off` run, whose `error` is the plain
+  sentence; else the run's `error`). The reason comes from `error_kind` alone, never from the
+  error's words: the plain `error` of a `provider_off`, `needs_sign_in` or `folder_gone` run (the
+  thread's worktree folder was deleted: `this thread's folder {path} is gone. Start a new thread, or
+  restore the folder`, with no Retry, since it fails the same way), `the provider isn't signed in`
+  for `signed_out`, and `something went wrong` for any other failure (a usage limit, `secret_store`
+  and an expired sign-in keep their own lines, as do `stuck`, `Stopped: no progress for 15
+  minutes.`, and `restarted`, `Run failed: Reef restarted.`); `Run failed` is for a run that had
+  replied, `Didn't run` for one that had not. The callback pages (`/oauth/callback`) take the same
+  shape as static HTML: title, next-step line and a closed `<details>` with the summary `Details`.
+  *37 of 44 red texts rendered a server string, `internal error` or a raw HTML 502 page.*
 - The server answers a failed request `{"error": "<plain sentence>", "code": "<id>"}`. `error` is
   the title as is; the UI adds the next step and action from `code`. A known cause gets its code and
   sentence; any other failure is `internal` with the generic sentence, its Go error chain goes to
@@ -2304,5 +2366,10 @@ shells run (`background_tasks_changed`) and treat Claude's own turn, when one en
 run of the thread; it reverses "no agent process lives between messages" and needs its own decision
 and a Codex check. A phone notice when a Bot needs the person, a few minutes later unless they
 opened the thread.
+
+Delegation, after slice #527: Reef runs long waits (CI, tests) itself and wakes the Bot when they
+end; the proper fix for long waits, it reverses "background shells stop at the reply" (Providers,
+Request lifecycle, #420) and needs its own decision. Steering a running helper. The person writing
+to a helper thread (it stays `409`). A lead reading a helper's transcript. #482 stays separate.
 
 An item moves into the build when its absence hurts in daily use.
