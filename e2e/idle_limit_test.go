@@ -261,8 +261,8 @@ func TestIdleLimit_StuckHelperNoBranch(t *testing.T) {
 	}
 
 	got := useAtoll(t, s, boss, ev, continueCall(helper, _keepPrompt))
-	if len(got) != 1 || got[0] == _queued || strings.Contains(got[0], "Queued") {
-		t.Errorf("continue to a stuck helper: reply %q, want it sent at once, not %q", got, _queued)
+	if len(got) == 0 || got[0] != "atoll/continue: Sent." {
+		t.Errorf("continue to a stuck helper: reply %q, want %q (sent at once, not %q)", got, "atoll/continue: Sent.", _queued)
 	}
 	eventually(t, 3*time.Second, "a new run of the stuck helper for the continue", func() bool {
 		return getThread(t, s, helper).RunID != run
