@@ -78,7 +78,11 @@ function Line({ run, botName, replied, retryable, retry, signedOut }: LineProps)
       : 'something went wrong.';
   return (
     <ErrorNotice
-      title={kind === 'stuck' ? reason : `${replied ? 'Run failed' : "Didn't run"}: ${reason}`}
+      title={
+        kind === 'stuck'
+          ? reason
+          : `${replied || kind === 'restarted' ? 'Run failed' : "Didn't run"}: ${reason}`
+      }
       details={run.error_detail || (plain ? '' : run.error)}
       actions={[
         ...(settings ? [{ label: 'Open settings', to: settings }] : []),

@@ -181,8 +181,8 @@ func TestStopHolds_SurvivesRestart(t *testing.T) {
 			s := l.m.serve(t)
 
 			got := s.run(t, l.hungRun)
-			if got.Status != "failed" || got.Error == "" {
-				t.Fatalf("hung helper run going at the restart: status %q, error %q; want failed with a reason", got.Status, got.Error)
+			if got.Status != "failed" || got.Error != _restarted {
+				t.Fatalf("hung helper run going at the restart: status %q, error %q; want failed, %q", got.Status, got.Error, _restarted)
 			}
 			bossStill(t, s, l.boss.ID, l.stoppedAt, time.Now().Add(4*_pace), "at once after the restart")
 			bossStill(t, s, l.boss.ID, l.stoppedAt, time.Now().Add(_holdWindow+2*time.Second), "after the wake window since the restart")
@@ -197,7 +197,7 @@ func TestStopHolds_SurvivesRestart(t *testing.T) {
 			if len(prompts) != 1 || !inOrder(prompts[0], ask, l.slow) {
 				t.Fatalf("boss prompts %q, want one with the person's text, then the report of helper %s", prompts, l.slow)
 			}
-			holdsAll(t, "the prompt with the person's message", prompts[0], finishedNotice("Tester", l.slow), l.hung, "Tester's run failed: "+got.Error)
+			holdsAll(t, "the prompt with the person's message", prompts[0], finishedNotice("Tester", l.slow), "Tester stopped: "+_restarted+".\nNo branch yet. (thread "+l.hung+")")
 			bossStill(t, s, l.boss.ID, run.ID, time.Now().Add(_holdWindow+2*time.Second), "after the window: the reports went with the person's message")
 
 			wakesAgain(t, l.m, s, p, l.boss, ev)
