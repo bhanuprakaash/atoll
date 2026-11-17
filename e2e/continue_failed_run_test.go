@@ -22,7 +22,6 @@ const (
 	_continueTail = "). Continue from where you stopped. Check what already happened before you repeat a step."
 
 	_exitSession  = "5b9e2d70-4a1c-4f83-a6d2-8c0e7b3a9d14"
-	_hangSession  = "5a14034e-0f32-46ec-8e71-6dcf5e32cf31"
 	_exitContinue = "Picked up after the exit."
 	_hangContinue = "Picked up after the restart."
 )
