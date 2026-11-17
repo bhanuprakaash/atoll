@@ -579,8 +579,8 @@ func TestRestart_ThreadRecovers(t *testing.T) {
 			if got.RunID != r.ID || got.RunStatus != "failed" || got.Approval != nil || got.Title != threadTitle(_keepPrompt) {
 				t.Errorf("thread after a restart: %+v; want run %s failed, no approval, title %q", got, r.ID, threadTitle(_keepPrompt))
 			}
-			if failed := s.run(t, r.ID); strings.TrimSpace(failed.Error) == "" {
-				t.Errorf("run %s after a restart: status %q, error %q; want failed with a reason", r.ID, failed.Status, failed.Error)
+			if failed := s.run(t, r.ID); failed.Error != _restarted {
+				t.Errorf("run %s after a restart: status %q, error %q; want failed, %q", r.ID, failed.Status, failed.Error, _restarted)
 			}
 			var msgs []message
 			s.do(t, "GET", "/api/threads/"+th.ID+"/messages", nil, &msgs, http.StatusOK)

@@ -60,7 +60,12 @@ function Line({ run, botName, replied, retryable, retry, signedOut }: LineProps)
     );
   }
   const kind = run.error_kind;
-  const plain = kind === 'provider_off' || kind === 'needs_sign_in' || kind === 'folder_gone';
+  const plain =
+    kind === 'provider_off' ||
+    kind === 'needs_sign_in' ||
+    kind === 'folder_gone' ||
+    kind === 'restarted' ||
+    kind === 'stuck';
   const settings =
     kind === 'provider_off' || kind === 'signed_out'
       ? '/settings/providers'
@@ -74,7 +79,11 @@ function Line({ run, botName, replied, retryable, retry, signedOut }: LineProps)
       : 'something went wrong.';
   return (
     <ErrorNotice
-      title={`${replied ? 'Run failed' : "Didn't run"}: ${reason}`}
+      title={
+        kind === 'stuck'
+          ? reason
+          : `${replied || kind === 'restarted' ? 'Run failed' : "Didn't run"}: ${reason}`
+      }
       details={run.error_detail || (plain ? '' : run.error)}
       actions={[
         ...(settings ? [{ label: 'Open settings', to: settings }] : []),

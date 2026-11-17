@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	_restartReason = "Atoll stopped while the run was going"
+	_restartReason = "Reef restarted"
 	_shutdownGrace = 5 * time.Second
 )
 
@@ -98,7 +98,9 @@ func serve(ctx context.Context, token string, args []string, w io.Writer) error 
 	if err != nil {
 		return err
 	}
-	failed, err := st.FailUnfinished(ctx, _restartReason, threadrun.RestartWakeText)
+	failed, err := st.FailUnfinished(ctx, _restartReason, func(ws []store.Wake) string {
+		return threadrun.RestartWakeText(ctx, ws)
+	})
 	if err != nil {
 		return err
 	}
@@ -131,6 +133,7 @@ func serve(ctx context.Context, token string, args []string, w io.Writer) error 
 		WorktreeRoot: filepath.Join(home, "Reef", "worktrees"),
 		PollInterval: pollInterval(),
 		WakeWindow:   wakeWindow(),
+		IdleLimit:    idleLimit(),
 		Log:          log,
 	})
 	pathDirs(ctx) // glab is found on the provider folders' PATH
@@ -199,6 +202,16 @@ func wakeWindow() time.Duration {
 	d, err := time.ParseDuration(os.Getenv("ATOLL_WAKE_WINDOW"))
 	if err != nil || d <= 0 {
 		return 20 * time.Second
+	}
+	return d
+}
+
+// idleLimit is ATOLL_IDLE_LIMIT, a Go duration, or 15 minutes when it is unset, invalid or not
+// positive.
+func idleLimit() time.Duration {
+	d, err := time.ParseDuration(os.Getenv("ATOLL_IDLE_LIMIT"))
+	if err != nil || d <= 0 {
+		return 15 * time.Minute
 	}
 	return d
 }

@@ -201,6 +201,20 @@ func Ahead(ctx context.Context, repoPath, base, branch string) int {
 	return n
 }
 
+// Dirty reports whether the worktree at dir, whose git directory is named id under the repo at
+// repoPath, has uncommitted changes. It is false when the status cannot be read.
+func Dirty(ctx context.Context, repoPath, dir, id string) bool {
+	if id != "" {
+		common, err := GitCommonDir(ctx, repoPath)
+		if err != nil {
+			return false
+		}
+		ctx = WithWorktree(ctx, common, id)
+	}
+	status, err := git(ctx, dir, nil, "status", "--porcelain")
+	return err == nil && status != ""
+}
+
 // aheadNote names the local default branch (the one origin/HEAD points at) and how far it is ahead
 // of origin/HEAD. It is empty when it is not ahead or cannot be read.
 func aheadNote(ctx context.Context, repoPath string) string {
