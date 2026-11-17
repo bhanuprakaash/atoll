@@ -104,7 +104,7 @@ test('only the newest failed run shows Retry, and it stays so after a reload', a
   await check();
 });
 
-type Sent = { role: string; text: string; run_id: string; from_bot_id?: string; kind?: string };
+type Sent = { id: string; role: string; text: string; run_id: string; from_bot_id?: string; kind?: string };
 const userMessages = async (threadID: string): Promise<(Sent & { attachments: unknown[] })[]> =>
   (await api(m, 'GET', `/api/threads/${threadID}/messages`)).filter(
     (s: Sent) => s.role === 'user' && !s.from_bot_id && !s.kind,
@@ -147,16 +147,24 @@ test('two queued messages that fail as one run show one line under the last, and
   await expect(log.getByText(anyLine)).toHaveCount(1);
   await inOrder(log, [firstQueued, secondQueued, anyLineAt, 'Retry']);
 
-  const before = (await userMessages(thread.id)).length;
+  const failedRun = delivered[0].run_id;
   await log.getByRole('button', { name: 'Retry' }).click();
+  // Retry reuses the bubbles: the same two messages move to the new run, in order, with the image.
   await expect
     .poll(async () => {
-      const sent = (await userMessages(thread.id)).slice(before);
-      const text = sent.map((s) => s.text).join('\n');
+      const sent = (await userMessages(thread.id)).filter((s) => s.text !== slow);
       return {
-        inOrder: text.includes(firstQueued) && text.indexOf(firstQueued) < text.indexOf(secondQueued),
+        ids: sent.map((s) => s.id),
+        text: sent.map((s) => s.text),
+        moved: sent.every((s) => s.run_id !== failedRun && s.run_id === sent[0].run_id),
         images: sent.reduce((n, s) => n + s.attachments.length, 0),
       };
     })
-    .toEqual({ inOrder: true, images: 1 });
+    .toEqual({
+      ids: delivered.map((s) => s.id),
+      text: [firstQueued, secondQueued],
+      moved: true,
+      images: 1,
+    });
+  expect(await userMessages(thread.id)).toHaveLength(3);
 });
