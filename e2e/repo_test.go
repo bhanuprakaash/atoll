@@ -61,10 +61,17 @@ func newRepoFixture(t *testing.T, provider string) *repoFixture {
 // newRepoFixtureIn is newRepoFixture with the data dir at data, when set.
 func newRepoFixtureIn(t *testing.T, provider, data string) *repoFixture {
 	t.Helper()
+	return newRepoFixtureEnv(t, provider, data)
+}
+
+// newRepoFixtureEnv is newRepoFixtureIn with env added to the server's.
+func newRepoFixtureEnv(t *testing.T, provider, data string, env ...string) *repoFixture {
+	t.Helper()
 	m := newMachine(t, provider, "glab")
 	if data != "" {
 		m.data = data
 	}
+	m.env = append(m.env, env...)
 	m.signIn(t, provider)
 	writeFile(t, filepath.Join(m.bin, "mr-state"), "opened")
 	// Share only the private Secret Service session, never the host's credentials or PATH.
