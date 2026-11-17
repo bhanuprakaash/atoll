@@ -59,7 +59,8 @@ function Line({ run, botName, replied, retryable, retry, signedOut }: LineProps)
     );
   }
   const kind = run.error_kind;
-  const plain = kind === 'provider_off' ||
+  const plain =
+    kind === 'provider_off' ||
     kind === 'needs_sign_in' ||
     kind === 'folder_gone' ||
     kind === 'restarted';
