@@ -1696,3 +1696,45 @@ func TestStore_HoldReports_StripsHeldRelease(t *testing.T) {
 		t.Errorf("held message notice %q after the hold, want none", held[0].Notice)
 	}
 }
+
+func TestStore_RerunInheritsStreamed(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := st.CreateThread(ctx, bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, run, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: thread.ID, Text: "go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, streamed := range []bool{false, true, true} {
+		if streamed && !run.Streamed {
+			if err := st.MarkStreamed(ctx, run.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := st.FinishRun(ctx, run.ID, store.RunResult{Status: store.StatusFailed, Error: "x"}, nil); err != nil {
+			t.Fatal(err)
+		}
+		_, next, err := st.Rerun(ctx, run.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if next.Streamed != streamed {
+			t.Fatalf("rerun of a run with streamed=%v starts with streamed=%v", streamed, next.Streamed)
+		}
+		if got, err := st.Run(ctx, next.ID); err != nil || got.Streamed != streamed {
+			t.Fatalf("stored rerun: %+v, %v; want streamed=%v", got, err, streamed)
+		}
+		run = next
+	}
+}

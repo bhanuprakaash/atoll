@@ -39,6 +39,9 @@ var (
 	ErrSent = errors.New("already sent")
 	// ErrNoneHeld is returned when every held message of a run to start was removed meanwhile.
 	ErrNoneHeld = errors.New("no held message is left")
+	// ErrNoRerun is returned when a run cannot be continued: it did not fail, is not its thread's
+	// newest or has no message of the person's.
+	ErrNoRerun = errors.New("run cannot be continued")
 	// ErrEmpty is returned when a message would have neither text nor an image.
 	ErrEmpty = errors.New("text or an image is required")
 )
@@ -342,6 +345,8 @@ type (
 		FinishedAt  time.Time      `json:"finished_at"`
 		Tools       map[string]int `json:"tools"`
 		Usage       *Usage         `json:"usage"`
+		// Streamed is set once the run streamed model output: a text or a tool call.
+		Streamed bool `json:"streamed"`
 	}
 
 	// Usage is what one run used; it counts that run only. CostUSD is nil when the provider
@@ -1411,6 +1416,72 @@ func (s *Store) StartRunFrom(ctx context.Context, items ...InboxItem) ([]Message
 	return stored, r, nil
 }
 
+// Rerun starts a new run for the failed run runID and moves the run's messages onto it, so the
+// thread gains no message. It returns the messages with their images' data. It returns ErrNoRerun
+// unless the run failed, is its thread's newest and has a message of the person's. The new run
+// starts as streamed when the failed one was, so a failed Continue offers Continue again.
+func (s *Store) Rerun(ctx context.Context, runID string) ([]Message, Run, error) {
+	var msgs []Message
+	r := Run{ID: newID(), Status: StatusRunning, StartedAt: time.Now().UTC(), Tools: map[string]int{}}
+	err := s.tx(ctx, func(tx *sql.Tx) error {
+		var status, newest string
+		err := tx.QueryRowContext(ctx,
+			`SELECT thread_id, status, streamed, (SELECT id FROM runs WHERE thread_id = r.thread_id ORDER BY rowid DESC LIMIT 1)
+			 FROM runs r WHERE id = ?`, runID).Scan(&r.ThreadID, &status, &r.Streamed, &newest)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("run %s: %w", runID, ErrNotFound)
+		}
+		if err != nil {
+			return fmt.Errorf("read run %s: %w", runID, err)
+		}
+		if status != StatusFailed || newest != runID {
+			return ErrNoRerun
+		}
+		msgs, err = query(ctx, tx,
+			"SELECT id, text, kind, from_bot_id FROM messages WHERE run_id = ? AND role = ? ORDER BY rowid",
+			func(rows *sql.Rows) (m Message, err error) {
+				m.ThreadID, m.Role, m.RunID = r.ThreadID, RoleUser, r.ID
+				return m, rows.Scan(&m.ID, &m.Text, &m.Kind, &m.FromBotID)
+			}, runID, RoleUser)
+		if err != nil {
+			return fmt.Errorf("list messages of run %s: %w", runID, err)
+		}
+		if !slices.ContainsFunc(msgs, func(m Message) bool { return m.Kind == "" && m.FromBotID == "" }) {
+			return ErrNoRerun
+		}
+		for i := range msgs {
+			msgs[i].Attachments, err = query(ctx, tx,
+				"SELECT id, mime, data FROM attachments WHERE message_id = ? ORDER BY rowid",
+				func(rows *sql.Rows) (a Attachment, err error) { return a, rows.Scan(&a.ID, &a.Mime, &a.Data) },
+				msgs[i].ID)
+			if err != nil {
+				return fmt.Errorf("list attachments: %w", err)
+			}
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO runs (id, thread_id, status, started_at, streamed) VALUES (?, ?, ?, ?, ?)",
+			r.ID, r.ThreadID, r.Status, r.StartedAt.UnixMicro(), r.Streamed); err != nil {
+			return fmt.Errorf("insert run: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE messages SET run_id = ? WHERE run_id = ? AND role = ?",
+			r.ID, runID, RoleUser); err != nil {
+			return fmt.Errorf("move messages: %w", err)
+		}
+		_, err = tx.ExecContext(ctx, "UPDATE threads SET last_activity = ?, holds_reports = 0 WHERE id = ?",
+			time.Now().UTC().UnixMicro(), r.ThreadID)
+		return err
+	})
+	if err != nil {
+		return nil, Run{}, err
+	}
+	return msgs, r, nil
+}
+
+// MarkStreamed records that the run streamed model output.
+func (s *Store) MarkStreamed(ctx context.Context, runID string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE runs SET streamed = 1 WHERE id = ?", runID)
+	return err
+}
+
 // AddReply stores text as the user's message in the thread, under run runID, with the approvals it
 // denied.
 func (s *Store) AddReply(
@@ -1529,8 +1600,8 @@ func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 	var started, finished int64
 	var tools string
 	err := s.db.QueryRowContext(ctx,
-		"SELECT id, thread_id, status, reply, error, error_kind, resets_at, provider, started_at, finished_at, tools, usage FROM runs WHERE id = ?", id).
-		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &r.ErrorKind, &r.ResetsAt, &r.Provider, &started, &finished, &tools, &usage)
+		"SELECT id, thread_id, status, reply, error, error_kind, resets_at, provider, started_at, finished_at, tools, usage, streamed FROM runs WHERE id = ?", id).
+		Scan(&r.ID, &r.ThreadID, &r.Status, &r.Reply, &r.Error, &r.ErrorKind, &r.ResetsAt, &r.Provider, &started, &finished, &tools, &usage, &r.Streamed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("run %s: %w", id, ErrNotFound)
 	}

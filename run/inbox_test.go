@@ -117,3 +117,17 @@ func TestPost_ReleasesStoppedHelper(t *testing.T) {
 		t.Errorf("held = %+v, %v; want none after the continue's run started", held, err)
 	}
 }
+
+func TestContinueNotice_ReasonIsTheRunLines(t *testing.T) {
+	for _, c := range []struct{ kind, err, reason string }{
+		{"", "claude exited: exit status 1", "something went wrong"},
+		{store.ErrorRestarted, "Reef restarted", "Reef restarted"},
+		{store.ErrorStuck, "Stopped: no progress for 15 minutes.", "no progress for 15 minutes"},
+	} {
+		want := "Your last run stopped before it finished (" + c.reason + "). Continue from where you stopped. " +
+			"Check what already happened before you repeat a step."
+		if got := continueNotice(store.Run{ErrorKind: c.kind, Error: c.err}); got != want {
+			t.Errorf("%q: notice %q, want %q", c.kind, got, want)
+		}
+	}
+}

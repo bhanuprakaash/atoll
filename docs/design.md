@@ -1958,16 +1958,27 @@ Voice
   the message it sits on; one that fails stops there and shows its error beside the line or message
   it sits on. A sign-in failure keeps its own line (Claude sign-in expired). *A failure that
   vanished once a newer run started made the message look ignored.*
-  - Continue, for every failed run that had started (reached the provider): stuck, cut short by a
-    restart, or failed mid-run. It resumes the thread's session with a Reef notice in place of the
-    person's text: `Your last run stopped before it finished ({reason}). Continue from where you
-    stopped. Check what already happened before you repeat a step.`, where `{reason}` is the run
-    line's reason. It adds no user bubble: the failed line gives way to the new run in place.
-  - Retry, for a failed run that never reached the provider (signed out, provider off): it sends
-    the original message again on the same bubble, not as a copy; queued messages delivered as one
-    run go again together, in order, with their images.
-  - Open: whether a turn killed mid-run leaves its finished steps in the Claude and Codex session
-    files is not verified. The Continue ticket proves it first.
+  - Continue, for a failed run that streamed model output: stuck, cut short by a restart, or failed
+    mid-run. A run streamed model output when at least one text or tool-call event came from the
+    model before it failed. A provider's synthetic error message (Claude `assistant` with `model:
+    "<synthetic>"` or an `error` field, as sent when signed out or rate-limited), an init event or
+    a spawned process with no output doesn't count: such a run shows Retry. The run stores the
+    fact (`runs.streamed`), so the UI and the server decide from the same data. Continue resumes
+    the thread's session with a Reef notice in place of the person's text: `Your last run stopped
+    before it finished ({reason}). Continue from where you stopped. Check what already happened
+    before you repeat a step.`, where `{reason}` is the run line's reason: `Reef restarted` for a restarted run, `no progress for
+    15 minutes` (the limit's value) for a stuck one, else `something went wrong`. A run started by
+    Continue counts as streamed, so if it fails too the line offers Continue again, never a resend. It adds no user bubble:
+    the new run takes over the failed run's messages, so the failed line gives way to it in place
+    and a reload shows the same.
+  - Retry, for a failed run with no model output (signed out, provider off): it sends the original
+    message again on the same bubble, not as a copy; queued messages delivered as one run go again
+    together, in order, with their images.
+  - Both are `POST /api/runs/{id}/continue`, which answers `202 {"run": {...}}`; the server picks
+    Continue or Retry from the run. It answers `409` when the run did not fail, is not its thread's
+    newest, or has no message of the person's.
+  - A turn killed mid-run keeps its finished steps in the Claude and Codex session files, so a
+    resume sees them (spiked on Claude 2.1.325 and Codex 0.165.0).
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `· Stopped
   by you after 4s`). Inside the run, above the footer: Chief's changes, then saved memory. Spacing:
   18 px between messages, 24 px between blocks of one reply (prose, changes, memories, footer), 14
