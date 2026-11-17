@@ -43,7 +43,8 @@ export type Run = {
     | 'rate_limited'
     | 'provider_off'
     | 'needs_sign_in'
-    | 'folder_gone';
+    | 'folder_gone'
+    | 'restarted';
   resets_at: string;
   provider: 'claude' | 'codex';
   usage?: RunUsage | null;

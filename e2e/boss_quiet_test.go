@@ -332,16 +332,16 @@ func TestBossQuiet_RestartWakesOnce(t *testing.T) {
 				t.Fatalf("%d messages in the boss thread name helper %s after the restart, want one that names all 3: %+v", len(texts), ids[0], texts)
 			}
 			text := texts[0]
-			if first, _, _ := strings.Cut(text.Text, "\n"); first != "A restart interrupted 3 helper runs." {
-				t.Errorf("restart message starts %q, want %q", first, "A restart interrupted 3 helper runs.")
+			if first, _, _ := strings.Cut(text.Text, "\n"); first != "A restart interrupted 3 helper runs. "+_continueAll {
+				t.Errorf("restart message starts %q, want %q", first, "A restart interrupted 3 helper runs. "+_continueAll)
 			}
 			var failed []string
 			for _, h := range ids {
 				r := s.run(t, runs[h])
-				if r.Status != "failed" || r.Error == "" {
-					t.Fatalf("helper run %s going at the restart: status %q, error %q; want failed with a reason", r.ID, r.Status, r.Error)
+				if r.Status != "failed" || r.Error != _restarted {
+					t.Fatalf("helper run %s going at the restart: status %q, error %q; want failed, %q", r.ID, r.Status, r.Error, _restarted)
 				}
-				holdsAll(t, "restart message", text.Text, h, "Tester's run failed: "+r.Error)
+				holdsAll(t, "restart message", text.Text, "Tester stopped: "+_restarted+".\nNo branch yet. (thread "+h+")")
 				failed = append(failed, h)
 			}
 			if !inOrder(text.Text, failed...) {
