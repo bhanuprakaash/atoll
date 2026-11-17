@@ -60,17 +60,6 @@ func stuckWakeLines(text string) []string {
 	return strings.Split(strings.TrimPrefix(text, "Reef: "), "\n")
 }
 
-// lastSession is the pid of the provider session whose prompt holds text.
-func lastSession(t *testing.T, m *machine, p, text string) int {
-	t.Helper()
-	var c *call
-	eventually(t, 30*time.Second, "a "+p+" session with "+text, func() bool {
-		c = sessionWith(t, m, p, text)
-		return c != nil
-	})
-	return c.pid
-}
-
 // TestIdleLimit_StopsSilentRun: a run in a person's thread with no stream event for
 // ATOLL_IDLE_LIMIT is stopped as a Stop stops it (its provider process exits) and stored failed
 // with error_kind stuck; not before the limit.
