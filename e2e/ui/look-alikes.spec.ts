@@ -118,7 +118,7 @@ test('Bot settings dims and names the same colours, leaving out the Bot being ed
     Green: 'A green seal is Tester.',
     Pink: 'A pink seal is Reviewer.',
   });
-  await expect(panel.getByText(/seal is .*Kelp/)).toHaveCount(0);
+  await expect(panel.getByText(/^An? \w+ seal is Kelp\.$/)).toHaveCount(0);
 });
 
 test('picking another creature updates which colours are dimmed', async ({ page }) => {
