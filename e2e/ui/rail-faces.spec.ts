@@ -287,9 +287,14 @@ test('faces below the fold show an N more chip above +, with the light dot when 
   expect((await fold(page)).below).toBeGreaterThan(0);
 
   await expect(chip(page)).toBeVisible();
-  const { below, cut } = await fold(page);
-  expect([below, cut]).toContain(await chipCount(page));
-  await expect(chip(page)).toHaveAccessibleName(`${await chipCount(page)} more`);
+  await expect
+    .poll(async () => {
+      const { below, cut } = await fold(page);
+      return [below, cut].includes(await chipCount(page));
+    })
+    .toBe(true);
+  const n = await chipCount(page);
+  await expect(chip(page)).toHaveAccessibleName(`${n} more`);
   expect((await dots(chip(page))).filter((d) => d.colour === 'light')).toHaveLength(0);
   const c = await box(chip(page));
   const plus = await box(rail(page).getByRole('button', { name: 'New', exact: true }));
@@ -297,11 +302,17 @@ test('faces below the fold show an N more chip above +, with the light dot when 
   expect(c.x).toBeGreaterThanOrEqual(0);
   expect(c.x + c.width).toBeLessThanOrEqual(64);
 
-  const last = bots[bots.length - 1];
-  const t = await openThreadAPI(m, last.id, prompts.write);
-  await waitStatus(m, t.id, 'waiting');
+  const inView = await openThreadAPI(m, bots[0].id, prompts.write);
+  await waitStatus(m, inView.id, 'waiting');
+  await expect(sidebarRow(page, 'Face 1')).toHaveAttribute('data-marker', 'needs-you');
+  await expect(sidebarRow(page, 'Face 1')).toBeInViewport({ ratio: 1 });
+  await expect(chip(page)).toHaveAccessibleName(`${n} more`);
+  expect((await dots(chip(page))).filter((d) => d.colour === 'light')).toHaveLength(0);
+
+  const below = await openThreadAPI(m, bots[bots.length - 1].id, prompts.write);
+  await waitStatus(m, below.id, 'waiting');
   await expect(sidebarRow(page, 'Face 14')).toHaveAttribute('data-marker', 'needs-you');
-  await expect(chip(page)).toHaveAccessibleName(`${await chipCount(page)} more, needs you`);
+  await expect(chip(page)).toHaveAccessibleName(`${n} more, needs you`);
   await expect
     .poll(async () => (await dots(chip(page))).filter((d) => d.colour === 'light').length)
     .toBe(1);
