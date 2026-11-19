@@ -1,6 +1,6 @@
 import type { KeyboardEvent, ReactNode } from 'react';
 
-export type Choice = { value: string; label: string; content?: ReactNode };
+export type Choice = { value: string; label: string; content?: ReactNode; describedBy?: string };
 
 export function Segmented({
   label,
@@ -39,6 +39,7 @@ export function Segmented({
           role="radio"
           aria-checked={i === current}
           aria-label={c.content ? c.label : undefined}
+          aria-describedby={c.describedBy}
           data-value={c.value}
           tabIndex={i === current ? 0 : -1}
           className={choiceClass(i === current)}
