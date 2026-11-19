@@ -26,20 +26,20 @@ test('New Bot creates the Bot and opens its empty thread; a starter sends', asyn
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('menuitem', { name: 'New Bot' }).click();
   await expect(page.getByRole('heading', { name: 'New Bot' })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Name' }).fill('Coral');
+  await page.getByRole('textbox', { name: 'Name' }).fill('Reefy');
   await page.getByRole('textbox', { name: 'Persona' }).fill('Reviews Go carefully.');
   await page
     .getByRole('radiogroup', { name: 'Creature' })
     .getByRole('radio', { name: 'Seal' })
     .check();
   await pickModel(page, page, 'Claude Code', 'Reef Probe');
-  await expect(page.getByRole('region', { name: 'Preview' })).toContainText('Coral');
+  await expect(page.getByRole('region', { name: 'Preview' })).toContainText('Reefy');
   await page.getByRole('button', { name: 'Create Bot' }).click();
 
-  await expect(page.getByRole('heading', { name: 'What should Coral work on?' })).toBeVisible();
-  await expect(sidebarRow(page, 'Coral').getByRole('img', { name: 'Seal, idle' })).toBeVisible();
-  const coral = await bot('Coral');
-  expect(coral).toMatchObject({
+  await expect(page.getByRole('heading', { name: 'What should Reefy work on?' })).toBeVisible();
+  await expect(sidebarRow(page, 'Reefy').getByRole('img', { name: 'Seal, idle' })).toBeVisible();
+  const reefy = await bot('Reefy');
+  expect(reefy).toMatchObject({
     look: 'seal',
     model: 'reef-probe',
     provider: 'claude',
@@ -51,7 +51,7 @@ test('New Bot creates the Bot and opens its empty thread; a starter sends', asyn
   await expect(
     page.getByRole('log', { name: 'Messages' }).getByRole('article', { name: 'You' }),
   ).toHaveText(text);
-  const [thread] = await api(m, 'GET', `/api/bots/${coral.id}/threads`);
+  const [thread] = await api(m, 'GET', `/api/bots/${reefy.id}/threads`);
   expect(thread.title).toBe(threadTitle(text));
 });
 
@@ -67,7 +67,7 @@ test('Bot settings save as you change them and apply from the next run', async (
   await name.blur();
   await panel
     .getByRole('radiogroup', { name: 'Creature' })
-    .getByRole('radio', { name: 'Narwhal' })
+    .getByRole('radio', { name: 'Turtle' })
     .check();
   await panel.getByRole('textbox', { name: 'Persona' }).fill('Writes release notes.');
   await panel.getByRole('textbox', { name: 'Persona' }).blur();
@@ -79,12 +79,12 @@ test('Bot settings save as you change them and apply from the next run', async (
     .poll(async () => api(m, 'GET', `/api/bots/${kelp.id}`))
     .toMatchObject({
       name: 'Kelp Two',
-      look: 'narwhal',
+      look: 'turtle',
       persona: 'Writes release notes.',
       model: 'sonnet',
     });
   await expect(
-    sidebarRow(page, 'Kelp Two').getByRole('img', { name: 'Narwhal, idle' }),
+    sidebarRow(page, 'Kelp Two').getByRole('img', { name: 'Turtle, idle' }),
   ).toBeVisible();
 
   await panel.getByRole('button', { name: 'Close' }).click();

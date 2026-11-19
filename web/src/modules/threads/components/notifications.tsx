@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { refuse } from '@/components/button';
-import { Creature, type CreatureLook } from '@/components/creature';
+import { Creature, type Appearance } from '@/components/creature';
 import { ErrorNotice } from '@/components/error-notice';
 import { useAnswerApproval } from '@/modules/threads/api/approvals';
 import { approvalTarget, approvalVerb } from '@/modules/threads/components/approval-card';
@@ -11,7 +11,7 @@ import type {
 } from '@/modules/threads/hooks/use-notifications';
 import { relativeTime } from '@/utils/time';
 
-type Looks = Record<string, CreatureLook | undefined>;
+type Looks = Record<string, Appearance | undefined>;
 
 const threadPath = (n: { bot_id: string; thread_id: string }) =>
   `/bots/${n.bot_id}/threads/${n.thread_id}`;
@@ -40,20 +40,14 @@ function AnswerButtons({ id, className }: { id: string; className: string }) {
   );
 }
 
-export function ApprovalDrop({
-  approval,
-  look,
-}: {
-  approval: ApprovalNotice;
-  look?: CreatureLook;
-}) {
+export function ApprovalDrop({ approval, look }: { approval: ApprovalNotice; look?: Appearance }) {
   return (
     <div
       role="alert"
       className="flex flex-col gap-3 border-t border-composer-line px-4 pt-3.5 pb-4 motion-safe:animate-rise"
     >
       <div className="flex items-center gap-3">
-        <Creature look={look} state="needs_you" size={32} />
+        <Creature {...look} state="needs_you" size={32} />
         <div className="min-w-0 flex-1 text-sm">
           <div className="flex gap-1">
             <span className="truncate font-medium">{approval.bot_name}</span>
@@ -76,11 +70,11 @@ export function ApprovalDrop({
   );
 }
 
-export function FinishedNotice({ notice, look }: { notice: EarlierNotice; look?: CreatureLook }) {
+export function FinishedNotice({ notice, look }: { notice: EarlierNotice; look?: Appearance }) {
   return (
     <div role="status" className="border-t border-composer-line motion-safe:animate-rise">
       <div className="flex items-center gap-3 px-3 py-2.5">
-        <Creature look={look} size={28} />
+        <Creature {...look} size={28} />
         <span className="min-w-0 flex-1 truncate text-sm">{notice.text}</span>
         <Link to={threadPath(notice)} className="text-[13px] hover:text-muted">
           View
@@ -115,7 +109,7 @@ export function NotificationList({
           <ul aria-label="Needs you" className="flex flex-col gap-0.5">
             {needs.map((n) => (
               <li key={n.id} className="flex items-center gap-2.5 rounded-2xl bg-box p-2">
-                <Creature look={looks[n.bot_id]} state="needs_you" size={28} />
+                <Creature {...looks[n.bot_id]} state="needs_you" size={28} />
                 <Link to={threadPath(n)} onClick={onClose} className="min-w-0 flex-1">
                   <span className="block truncate text-[13.5px]">
                     {n.bot_name} · {n.title}
@@ -150,7 +144,7 @@ export function NotificationList({
                   onClick={onClose}
                   className="flex items-center gap-2.5 rounded-2xl p-2 hover:bg-selected"
                 >
-                  <Creature look={looks[n.bot_id]} size={28} />
+                  <Creature {...looks[n.bot_id]} size={28} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13.5px]">{n.text}</span>
                     {n.detail && (

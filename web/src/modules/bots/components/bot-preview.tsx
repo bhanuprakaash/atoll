@@ -1,6 +1,12 @@
 import type { CSSProperties } from 'react';
 import { BrandLogo } from '@/components/brand-logo';
-import { Creature, type CreatureLook } from '@/components/creature';
+import {
+  colourOf,
+  colourVars,
+  Creature,
+  type BotColour,
+  type CreatureLook,
+} from '@/components/creature';
 import type { Provider } from '@/modules/bots/api/bots';
 
 type Named = { id: string; name: string };
@@ -22,6 +28,7 @@ export function BotPreview({
   provider,
   model,
   look,
+  colour,
   skills,
   connections,
   repos,
@@ -31,6 +38,7 @@ export function BotPreview({
   provider: Provider;
   model: string;
   look: CreatureLook;
+  colour: BotColour;
   skills: Named[];
   connections: { id: string; kind: 'gitlab' | 'github'; instance_url: string }[];
   repos: Named[] | 'all';
@@ -41,10 +49,10 @@ export function BotPreview({
   return (
     <div
       className="overflow-hidden rounded-[28px] border border-[color-mix(in_srgb,var(--tint)_30%,var(--color-selected))] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--tint)_26%,var(--color-box))_0%,color-mix(in_srgb,var(--tint)_12%,var(--color-box))_45%,color-mix(in_srgb,var(--tint)_5%,var(--color-box))_100%)]"
-      style={{ '--tint': `var(--color-${look})` } as CSSProperties}
+      style={{ '--tint': colourVars[colourOf(look, colour)] } as CSSProperties}
     >
       <div className="flex h-40 items-center justify-center">
-        <Creature look={look} size={104} />
+        <Creature look={look} colour={colour} size={104} />
       </div>
       <div className="flex flex-col items-center gap-2.5 px-6 pb-5 text-center">
         <h3 className={`text-2xl tracking-[-0.01em] ${name ? '' : 'text-muted'}`}>
@@ -125,10 +133,18 @@ export function BotPreview({
   );
 }
 
-export function CreatureSidebar({ look, name }: { look: CreatureLook; name: string }) {
+export function CreatureSidebar({
+  look,
+  colour,
+  name,
+}: {
+  look: CreatureLook;
+  colour: BotColour;
+  name: string;
+}) {
   return (
     <>
-      <Creature look={look} size={44} />
+      <Creature look={look} colour={colour} size={44} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex justify-between gap-2 text-[15px]">
           <span className={`truncate ${name ? '' : 'text-muted'}`}>{name || 'Name your Bot'}</span>

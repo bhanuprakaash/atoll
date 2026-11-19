@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRun } from '@/modules/threads/api/runs';
-import { Creature, type CreatureLook } from '@/components/creature';
+import { Creature, type Appearance } from '@/components/creature';
 import { ApprovalCard } from '@/modules/threads/components/approval-card';
 import type { LivePart, LiveRun as Live } from '@/modules/threads/hooks/use-thread-events';
 
@@ -76,7 +76,7 @@ export function LiveRun({
   id: string;
   run: Live;
   answered: boolean;
-  look?: CreatureLook;
+  look?: Appearance;
 }) {
   const { data } = useRun(id);
   const [now, setNow] = useState(Date.now);
@@ -95,7 +95,7 @@ export function LiveRun({
       {!(answered || (run.finished && run.settled)) && (
         <div className="flex items-center gap-3 text-sm">
           <span className="relative size-8 flex-none">
-            <Creature look={look} state="working" kind={kind} size={32} />
+            <Creature {...look} state="working" kind={kind} size={32} />
           </span>
           <span role="status" className="tide min-w-0 flex-1 truncate">
             <span key={status} className="animate-fade">

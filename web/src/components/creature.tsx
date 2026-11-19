@@ -1,256 +1,388 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  bodyPath,
+  bump,
+  colours,
+  eyesPath,
+  kinds,
+  limbAngle,
+  limbOutline,
+  looks,
+  restChain,
+  RING,
+  ringAngles,
+  type BotColour,
+  type CreatureLook,
+  type Frame,
+  type Kind,
+} from '@/components/creature-shape';
+
+export type { BotColour, CreatureLook };
+export type Appearance = { look?: CreatureLook; colour?: string };
 export type CreatureState = 'idle' | 'working' | 'needs_you' | 'asleep' | 'failed';
 export type ToolKind =
   'none' | 'read' | 'search' | 'memory' | 'edit' | 'platform' | 'command' | 'work' | 'other';
 
-type Paint = 'body' | 'belly' | 'lure' | 'tusk' | 'ridge' | 'eye';
-type Trait = { d: string; motion?: string; fill?: Paint; stroke?: Paint; width?: number };
-type Drawing = {
-  colour: string;
-  motion: string;
-  eyes: readonly [number, number, number];
-  // body, face and upright draw a look that is not the shared pebble: Chief as the Reef logo.
-  body?: string;
-  face?: string;
-  upright?: boolean;
-  back?: Trait;
-  front?: Trait;
-};
-
-const pebble = 'M31 10 C44 9 55 19 56 33 C57 46 47 56 32 56 C17 56 7 47 8 34 C9 20 18 11 31 10 Z';
-
-const fixed = {
-  belly: 'var(--color-penguin-belly)',
-  lure: 'var(--color-anglerfish-lure)',
-  tusk: 'var(--color-narwhal-tusk)',
-  ridge: 'var(--color-scallop-ridge)',
-  eye: 'var(--color-eye)',
-};
-const asleep = {
-  body: 'var(--color-sleep-body)',
-  belly: 'var(--color-sleep-light)',
-  lure: 'var(--color-sleep-accent)',
-  tusk: 'var(--color-sleep-white)',
-  ridge: fixed.ridge,
-  eye: fixed.eye,
-};
-
-const drawings = {
-  jellyfish: {
-    colour: 'var(--color-jellyfish)',
-    motion: 'bob',
-    eyes: [38, 46, 21],
-    body: 'M8 36 a24 24 0 0 1 48 0 q0 6 -6 6 H14 q-6 0 -6 -6 z',
-    face: 'M37 20 L38.5 28 M45 19 L46.5 27',
-    upright: true,
-    back: {
-      d: 'M18 44 q-4 6 0 13 M32 44 q4 6 0 13 M46 44 q-4 6 0 13',
-      stroke: 'body',
-      width: 5.5,
-      motion: 'sway',
-    },
-  },
-  whale: {
-    colour: 'var(--color-whale)',
-    motion: 'bob',
-    eyes: [31, 42, 24],
-    back: {
-      d: 'M29 9 q-1 -5 -6 -6 M32 9 v-7 M35 9 q1 -5 6 -6',
-      stroke: 'body',
-      width: 3,
-      motion: 'puff',
-    },
-  },
-  shark: {
-    colour: 'var(--color-shark)',
-    motion: 'swim',
-    eyes: [27, 45, 26],
-    back: { d: 'M24 14 Q32 -3 42 0 Q36 7 40 13 Z', fill: 'body', motion: 'fin' },
-  },
-  penguin: {
-    colour: 'var(--color-penguin)',
-    motion: 'waddle',
-    eyes: [31, 42, 24],
-    front: { d: 'M19 43 a13 11 0 1 0 26 0 a13 11 0 1 0 -26 0', fill: 'belly' },
-  },
-  anglerfish: {
-    colour: 'var(--color-anglerfish)',
-    motion: 'bob',
-    eyes: [31, 42, 21],
-    back: { d: 'M24 13 Q21 -1 36 2', stroke: 'body', width: 3 },
-    front: { d: 'M35 2.5 a4.5 4.5 0 1 0 9 0 a4.5 4.5 0 1 0 -9 0', fill: 'lure', motion: 'glow' },
-  },
-  pufferfish: {
-    colour: 'var(--color-pufferfish)',
-    motion: 'bob',
-    eyes: [31, 42, 29],
-    back: {
-      d: 'M32 10 v-7 M47 15 l5 -5 M56 33 h7 M48 51 l5 5 M17 15 l-5 -5 M8 34 h-7 M16 51 l-5 5',
-      stroke: 'body',
-      width: 3,
-      motion: 'spike',
-    },
-  },
-  octopus: {
-    colour: 'var(--color-octopus)',
-    motion: 'bob',
-    eyes: [31, 42, 25],
-    back: {
-      d: 'M16 48 q-3 8 2 13 M27 53 q-1 6 1 10 M37 53 q1 6 -1 10 M48 48 q3 8 -2 13',
-      stroke: 'body',
-      width: 5,
-      motion: 'sway',
-    },
-  },
-  crab: {
-    colour: 'var(--color-crab)',
-    motion: 'side',
-    eyes: [31, 42, 24],
-    back: { d: 'M5 15 a6.5 6.5 0 1 0 13 0 a6.5 6.5 0 1 0 -13 0', fill: 'body', motion: 'snipl' },
-    front: { d: 'M46 15 a6.5 6.5 0 1 0 13 0 a6.5 6.5 0 1 0 -13 0', fill: 'body', motion: 'snipr' },
-  },
-  seal: {
-    colour: 'var(--color-seal)',
-    motion: 'bob',
-    eyes: [27, 45, 26],
-    front: {
-      d: 'M21 41 h-9 M21 44 l-8 4 M43 41 h9 M43 44 l8 4',
-      stroke: 'eye',
-      width: 1.6,
-      motion: 'twitch',
-    },
-  },
-  manta: {
-    colour: 'var(--color-manta)',
-    motion: 'bob',
-    eyes: [31, 42, 24],
-    back: {
-      d: 'M12 28 L-2 42 L14 46 Z M52 28 L66 42 L50 46 Z',
-      fill: 'body',
-      stroke: 'body',
-      width: 2,
-      motion: 'flap',
-    },
-  },
-  scallop: {
-    colour: 'var(--color-scallop)',
-    motion: 'bob',
-    eyes: [31, 42, 21],
-    front: {
-      d: 'M32 55 V41 M32 55 L23 42 M32 55 L41 42 M32 55 L15 45 M32 55 L49 45',
-      stroke: 'ridge',
-      width: 2,
-    },
-  },
-  narwhal: {
-    colour: 'var(--color-narwhal)',
-    motion: 'bob',
-    eyes: [31, 42, 29],
-    back: { d: 'M40 12 L53 -5', stroke: 'tusk', width: 3 },
-  },
-} satisfies Record<string, Drawing>;
-
-export type CreatureLook = keyof typeof drawings;
 const lookName = (look: string) => look[0].toUpperCase() + look.slice(1);
-export const creatureLooks = (Object.keys(drawings) as CreatureLook[]).map((look) => ({
-  look,
-  name: lookName(look),
-  colour: drawings[look].colour,
-}));
+export const creatureLooks = looks.map((look) => ({ look, name: lookName(look) }));
+export const botColours = colours;
+// Each token is written out in full so the stylesheet keeps it.
+export const colourVars: Record<BotColour, string> = {
+  brown: 'var(--color-bot-brown)',
+  orange: 'var(--color-bot-orange)',
+  amber: 'var(--color-bot-amber)',
+  green: 'var(--color-bot-green)',
+  teal: 'var(--color-bot-teal)',
+  sky: 'var(--color-bot-sky)',
+  blue: 'var(--color-bot-blue)',
+  purple: 'var(--color-bot-purple)',
+  pink: 'var(--color-bot-pink)',
+};
+export const colourOf = (look: CreatureLook, colour?: string): BotColour =>
+  colours.includes(colour as BotColour) ? (colour as BotColour) : kinds[look].colour;
 
-function eyePath(state: CreatureState, [a, b, y]: Drawing['eyes']) {
-  if (state === 'failed') {
-    return `M${a - 3} ${y + 5} L${a + 3} ${y + 1} M${b - 3} ${y + 1} L${b + 3} ${y + 5}`;
-  }
-  if (state === 'asleep') return `M${a - 3} ${y + 3} h6 M${b - 3} ${y + 3} h6`;
-  return `M${a} ${y - 0.5} L${a + 0.5} ${y + 6.5} M${b} ${y - 1} L${b + 0.5} ${y + 6}`;
+// Below this size a creature turns toward the threads and keeps still; from it up it is the live
+// jelly that follows the pointer.
+const LIVE = 64;
+
+type Pose = { hl: number; left: number; right: number; curl: number; raise: number };
+const poses: Record<CreatureState, Pose> = {
+  idle: { hl: 3.7, left: 0, right: 0, curl: 1, raise: 0 },
+  working: { hl: 3.1, left: 0, right: 0, curl: 1, raise: 0 },
+  needs_you: { hl: 4.3, left: 0, right: 0, curl: 1, raise: 1 },
+  asleep: { hl: 2.5, left: Math.PI / 2, right: Math.PI / 2, curl: 0.7, raise: 0 },
+  failed: { hl: 3.3, left: Math.PI / 6, right: -Math.PI / 6, curl: 0.3, raise: 0 },
+};
+
+const rest = (kind: Kind): Frame => ({ ox: kind.cx, oy: kind.cy, sx: 1, sy: 1, t: 0 });
+
+function limbsAt(kind: Kind, state: CreatureState, f: Frame) {
+  const pose = poses[state];
+  return kind.limbs
+    .filter((l) => !l.working || state === 'working')
+    .map((l) => limbOutline(l, restChain(l, f, pose.curl, pose.raise)))
+    .join('');
+}
+
+function workMotion(kind: ToolKind) {
+  if (['read', 'search', 'memory'].includes(kind)) return 'scan';
+  if (['edit', 'platform'].includes(kind)) return 'bounce';
+  return kind === 'command' ? 'breathe' : 'circle';
 }
 
 export function Creature({
   look = 'jellyfish',
+  colour,
   state = 'idle',
   kind = 'none',
   size,
 }: {
   look?: CreatureLook;
+  colour?: string;
   state?: CreatureState;
   kind?: ToolKind;
   size: number;
 }) {
-  const drawing: Drawing = drawings[look] ?? drawings.jellyfish;
-  const paints = { ...fixed, ...(state === 'asleep' ? asleep : { body: drawing.colour }) };
-  const moving = state === 'working' || state === 'idle';
+  const known: CreatureLook = kinds[look] ? look : 'jellyfish';
+  const shape = kinds[known];
+  const fill = state === 'asleep' ? 'var(--color-sleep-body)' : colourVars[colourOf(known, colour)];
+  const live = size >= LIVE;
   const still = state === 'failed' || state === 'asleep';
-  const motion =
-    state === 'working'
-      ? ['read', 'search', 'memory'].includes(kind)
-        ? 'scan'
-        : ['edit', 'platform'].includes(kind)
-          ? 'bounce'
-          : kind === 'command'
-            ? 'breathe'
-            : 'circle'
-      : state === 'idle'
-        ? 'blink'
-        : '';
-  const trait = ({ d, motion: m, fill, stroke, width }: Trait) => (
-    <path
-      className={moving && m ? `creature-${m}` : undefined}
-      d={d}
-      fill={fill ? paints[fill] : 'none'}
-      stroke={stroke ? paints[stroke] : 'none'}
-      strokeWidth={width}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  );
+  const pose = poses[state];
+  const drawing = useMemo(() => {
+    const f = rest(shape);
+    const side = !live;
+    const ex = shape.cx + shape.eyeX + (side ? 7 * shape.travel : 0);
+    const ey = shape.cy + shape.eyeY - (side ? 1 : 0);
+    const gap = shape.gap * (side ? 0.88 : 1);
+    return {
+      body: bodyPath(shape, f),
+      limbs: limbsAt(shape, state, f),
+      eyes: eyesPath(ex, ey, gap, pose.hl, pose.left, pose.right),
+    };
+  }, [shape, state, live, pose]);
+  const [poke, setPoke] = useState(0);
+  const motion = state === 'working' ? workMotion(kind) : state === 'idle' ? 'blink' : '';
+  const body = state === 'working' && ['edit', 'platform', 'command'].includes(kind);
   return (
     <svg
       width={size}
       height={size}
-      viewBox="-4 -8 72 76"
+      viewBox="0 0 64 64"
       role="img"
-      aria-label={`${lookName(look)}, ${state.replace('_', ' ')}`}
+      aria-label={`${lookName(known)}, ${state.replace('_', ' ')}`}
       className="shrink-0 overflow-visible"
+      onClick={() => !live && setPoke((n) => n + 1)}
     >
-      <g transform={state === 'failed' || drawing.upright ? undefined : 'rotate(-8 32 34)'}>
-        <g className={moving ? `creature-${drawing.motion}` : undefined}>
-          <g
-            className={
-              state === 'working' && ['edit', 'platform', 'command'].includes(kind)
-                ? `creature-${motion}`
-                : undefined
-            }
-          >
-            {drawing.back && trait(drawing.back)}
-            <path d={drawing.body ?? pebble} fill={paints.body} />
-            {drawing.front && trait(drawing.front)}
-            <g className={moving ? `creature-${motion}` : undefined}>
-              <path
-                d={
-                  still
-                    ? eyePath(state, drawing.eyes)
-                    : (drawing.face ?? eyePath(state, drawing.eyes))
-                }
-                fill="none"
-                stroke={paints.eye}
-                strokeWidth={still || drawing.face ? 4 : 5}
-                strokeLinecap="round"
-              />
+      {live && !still ? (
+        <Jelly key={known} kind={shape} state={state} fill={fill} drawing={drawing} />
+      ) : (
+        <g key={poke} className={poke ? 'creature-poke' : undefined}>
+          <g className={still ? undefined : 'creature-bob'}>
+            <g className={body ? `creature-${motion}` : undefined}>
+              <path className={still ? undefined : 'creature-sway'} d={drawing.limbs} fill={fill} />
+              <path d={drawing.body} fill={fill} />
+              <g className={motion && !body ? `creature-${motion}` : undefined}>
+                <path
+                  d={drawing.eyes}
+                  fill="none"
+                  stroke="var(--color-eye)"
+                  strokeWidth={4.3}
+                  strokeLinecap="round"
+                />
+              </g>
             </g>
           </g>
         </g>
-      </g>
+      )}
       {state === 'needs_you' && (
         <circle
           className="creature-pulse"
-          cx="56"
-          cy="4"
-          r="7"
+          cx="54"
+          cy="9"
+          r="5.5"
           fill="var(--color-accent)"
           stroke="var(--color-bg)"
-          strokeWidth="3"
+          strokeWidth="2.5"
         />
       )}
     </svg>
   );
+}
+
+class Spring {
+  vel = 0;
+  constructor(
+    public val: number,
+    public target: number = val,
+    private k = 210,
+    private c = 16,
+  ) {}
+  step(dt: number) {
+    this.vel += (-this.k * (this.val - this.target) - this.c * this.vel) * dt;
+    this.val += this.vel * dt;
+    return this.val;
+  }
+}
+
+const pointer = { x: 0, y: 0, t: -1e9 };
+if (typeof window !== 'undefined') {
+  window.addEventListener(
+    'pointermove',
+    (e) => Object.assign(pointer, { x: e.clientX, y: e.clientY, t: performance.now() }),
+    { passive: true },
+  );
+}
+
+// Jelly is the live creature: a ring of springs for the body, limbs that trail behind it, a
+// pulse, a blink and eyes that follow the pointer. It draws by writing path data on each frame.
+function Jelly({
+  kind,
+  state,
+  fill,
+  drawing,
+}: {
+  kind: Kind;
+  state: CreatureState;
+  fill: string;
+  drawing: { body: string; limbs: string; eyes: string };
+}) {
+  const body = useRef<SVGPathElement>(null);
+  const limbs = useRef<SVGPathElement>(null);
+  const eyes = useRef<SVGPathElement>(null);
+  const sim = useRef<ReturnType<typeof makeSim> | null>(null);
+  sim.current ??= makeSim(kind);
+  sim.current.state = state;
+
+  useEffect(() => {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let last = performance.now();
+    let frame = requestAnimationFrame(function tick(now) {
+      const dt = Math.min(0.032, Math.max(0.001, (now - last) / 1000));
+      last = now;
+      const svg = body.current?.ownerSVGElement;
+      const d = sim.current && svg ? sim.current.step(dt, now, svg.getBoundingClientRect()) : null;
+      if (d) {
+        body.current?.setAttribute('d', d.body);
+        limbs.current?.setAttribute('d', d.limbs);
+        eyes.current?.setAttribute('d', d.eyes);
+      }
+      frame = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const onClick = (e: React.MouseEvent) => {
+    const r = body.current?.ownerSVGElement?.getBoundingClientRect();
+    if (!r || !sim.current) return;
+    sim.current.poke(
+      Math.atan2(e.clientX - (r.left + r.width / 2), -(e.clientY - (r.top + r.height * 0.45))),
+    );
+  };
+  return (
+    <g onClick={onClick}>
+      <path ref={limbs} d={drawing.limbs} fill={fill} />
+      <path ref={body} d={drawing.body} fill={fill} />
+      <path
+        ref={eyes}
+        d={drawing.eyes}
+        fill="none"
+        stroke="var(--color-eye)"
+        strokeWidth={4.3}
+        strokeLinecap="round"
+      />
+    </g>
+  );
+}
+
+function makeSim(kind: Kind) {
+  const s = {
+    state: 'idle' as CreatureState,
+    phase: Math.random() * 6,
+    beat: Math.random(),
+    nextBlink: performance.now() + 1500,
+    blinkStart: -1e9,
+    px: new Spring(0, 0, 200, 14),
+    py: new Spring(0, 0, 200, 13),
+    sx: new Spring(1, 1, 260, 13),
+    sy: new Spring(1, 1, 260, 13),
+    lx: new Spring(0, 0, 170, 18),
+    ly: new Spring(0, 0, 170, 18),
+    hl: new Spring(3.7, 3.7, 260, 20),
+    raise: new Spring(0, 0, 90, 12),
+    spout: new Spring(0, 0, 120, 12),
+    dents: new Float32Array(RING),
+    vel: new Float32Array(RING),
+    chains: kind.limbs.map((l) => l.rest.map(() => ({ x: 0, y: 0, vx: 0, vy: 0, set: false }))),
+    poke(angle: number) {
+      for (let i = 0; i < RING; i++) s.vel[i] += -105 * bump(ringAngles[i], angle, 0.6) + 22;
+      s.sx.vel += 2.8;
+      s.sy.vel -= 2.8;
+      s.py.vel += -55 * Math.cos(angle) - 25;
+      s.px.vel += -55 * Math.sin(angle);
+    },
+    step(dt: number, now: number, rect: DOMRect) {
+      const working = s.state === 'working';
+      const needs = s.state === 'needs_you';
+      s.phase += dt * 3 * (working ? 2 : 1);
+      s.beat = (s.beat + dt * 0.42 * (working ? 2 : 1)) % 1;
+      const b = s.beat;
+      const con =
+        (b < 0.3
+          ? Math.sin((b / 0.3) * (Math.PI / 2))
+          : Math.cos(((b - 0.3) / 0.7) * (Math.PI / 2))) * kind.pulse;
+      const hop = Math.abs(Math.sin(s.phase * 0.75));
+      s.py.target = needs ? -2.5 - hop * 2.6 : -2.4 * con + Math.sin(s.phase * 0.5) * 0.7;
+      s.sx.target = needs ? 0.97 : 1 - 0.08 * con;
+      s.sy.target = needs ? 1.04 : 1 + 0.07 * con;
+      let hl = poses[s.state].hl;
+      if (now >= s.nextBlink) {
+        s.blinkStart = now;
+        s.nextBlink = now + 2200 + Math.random() * 3600;
+      }
+      const blink = now - s.blinkStart;
+      if (blink >= 0 && blink <= 150) hl *= 1 - Math.sin((blink / 150) * Math.PI) * 0.9;
+      s.hl.target = hl;
+      let lookX = 0;
+      let lookY = 0;
+      if (working) {
+        lookX = Math.sin(s.phase * 0.9) * 5;
+        lookY = 1;
+      } else if (now - pointer.t < 4000) {
+        const dx = pointer.x - (rect.left + rect.width / 2);
+        const dy = pointer.y - (rect.top + rect.height * 0.42);
+        const dist = Math.hypot(dx, dy) || 1;
+        const f = Math.min(1, dist / 200) * (needs ? 0.4 : 1);
+        lookX = (dx / dist) * 7 * f;
+        lookY = (dy / dist) * 4 * f - (needs ? 1 : 0);
+      } else {
+        lookX = 5;
+        lookY = -2.5;
+      }
+      s.lx.target = Math.max(-7.5, Math.min(7.5, lookX)) * kind.travel;
+      s.ly.target = Math.max(-4.5, Math.min(4.5, lookY));
+      s.raise.target = needs ? 1 : 0;
+      s.spout.target = working ? 1 : 0;
+      const px = s.px.step(dt);
+      const py = s.py.step(dt);
+      const sx = s.sx.step(dt);
+      const sy = s.sy.step(dt);
+      const ex = s.lx.step(dt);
+      const ey = s.ly.step(dt);
+      const eh = Math.max(0.15, s.hl.step(dt));
+      const raise = Math.max(0, Math.min(1, s.raise.step(dt)));
+      const spout = Math.max(0, Math.min(1.2, s.spout.step(dt)));
+
+      const h = dt / 2;
+      for (let pass = 0; pass < 2; pass++) {
+        for (let i = 0; i < RING; i++) {
+          const a = ringAngles[i];
+          const lean = Math.sin(a) * ex * 0.22 - Math.cos(a) * ey * 0.15;
+          const force =
+            -170 * (s.dents[i] - lean) -
+            7.5 * s.vel[i] +
+            900 * (s.dents[(i + RING - 1) % RING] + s.dents[(i + 1) % RING] - 2 * s.dents[i]);
+          s.vel[i] += (force + (s.py.vel * Math.cos(a) - s.px.vel * Math.sin(a)) * 1.4) * h;
+        }
+        for (let i = 0; i < RING; i++)
+          s.dents[i] = Math.max(-9, Math.min(10, s.dents[i] + s.vel[i] * h));
+      }
+      const f: Frame = {
+        ox: kind.cx + px,
+        oy: kind.cy + py + (1 - sy) * 12,
+        sx,
+        sy,
+        t: s.phase,
+        dents: s.dents,
+      };
+
+      let limbsD = '';
+      kind.limbs.forEach((l, li) => {
+        const seg = l.seg * (l.working ? spout : 1);
+        if (l.working && spout < 0.05) return;
+        const rootX = f.ox + l.x * sx;
+        const rootY = f.oy + l.y * sy;
+        const chain: [number, number][] = [
+          [rootX, rootY - 3],
+          [rootX, rootY],
+        ];
+        let [prevX, prevY] = [rootX, rootY];
+        s.chains[li].forEach((p, j) => {
+          const wave =
+            l.sway *
+            Math.sin(s.phase * 0.9 - j * 0.8 + l.ph) *
+            ((j + 1) / l.rest.length) *
+            (l.raise ? 1 + raise * 1.2 : 1);
+          const th = limbAngle(l, j, 1, raise) + wave;
+          if (j === 0) chain[0] = [rootX - Math.sin(th) * 3, rootY - Math.cos(th) * 3];
+          const tx = prevX + Math.sin(th) * seg;
+          const ty = prevY + Math.cos(th) * seg;
+          if (!p.set) Object.assign(p, { x: tx, y: ty, set: true });
+          const k = 150 - j * 14;
+          p.vx += ((tx - p.x) * k - p.vx * 11) * dt;
+          p.vy += ((ty - p.y) * k - p.vy * 11) * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          chain.push([p.x, p.y]);
+          prevX = p.x;
+          prevY = p.y;
+        });
+        limbsD += limbOutline(l, chain);
+      });
+      const pose = poses[s.state];
+      return {
+        body: bodyPath(kind, f),
+        limbs: limbsD,
+        eyes: eyesPath(
+          f.ox + kind.eyeX + ex,
+          f.oy + kind.eyeY + ey,
+          kind.gap,
+          eh,
+          pose.left,
+          pose.right,
+        ),
+      };
+    },
+  };
+  return s;
 }

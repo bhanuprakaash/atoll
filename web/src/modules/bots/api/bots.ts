@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreatureLook, CreatureState } from '@/components/creature';
+import type { BotColour, CreatureLook, CreatureState } from '@/components/creature';
 import { api } from '@/lib/api-client';
 
 export type Provider = 'claude' | 'codex';
@@ -26,6 +26,7 @@ export type Bot = {
   name: string;
   persona: string;
   look: CreatureLook;
+  colour: BotColour;
   model: string;
   mode: 'auto' | 'ask' | 'full';
   state: CreatureState;
@@ -45,7 +46,15 @@ export type Bot = {
 
 export type NewBot = Pick<
   Bot,
-  'name' | 'persona' | 'provider' | 'skills' | 'repo_access' | 'connections' | 'look' | 'model'
+  | 'name'
+  | 'persona'
+  | 'provider'
+  | 'skills'
+  | 'repo_access'
+  | 'connections'
+  | 'look'
+  | 'colour'
+  | 'model'
 >;
 
 export function useBots() {

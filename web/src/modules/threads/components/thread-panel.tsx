@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { CreatureLook } from '@/components/creature';
+import type { Appearance } from '@/components/creature';
 import { useStopRun } from '@/modules/threads/api/runs';
 import type { PullRequest, Thread } from '@/modules/threads/api/threads';
 import { HelperCreature } from '@/modules/threads/components/helper-creature';
@@ -13,7 +13,7 @@ import {
 } from '@/modules/threads/utils/helper-state';
 import { headPR, mrRef } from '@/modules/threads/utils/mr-ref';
 
-type Bots = Record<string, { name: string; look: CreatureLook }>;
+type Bots = Record<string, { name: string; look: Appearance }>;
 
 const ciStyle: Record<string, string> = {
   running: 'text-muted',

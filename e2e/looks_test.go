@@ -9,10 +9,13 @@ func TestLooks_RetiredLooksComeBackAsNewOnes(t *testing.T) {
 	t.Parallel()
 	m, s := start(t, "claude")
 	retired := map[string]string{
-		"starfish": "scallop", "sand_dollar": "seal", "sponge": "shark", "kelp": "narwhal",
-		"shell": "octopus", "wave": "manta", "island": "seal", "sun": "pufferfish", "sailboat": "seal",
-		"turtle": "narwhal", "seahorse": "pufferfish", "otter": "seal", "clownfish": "scallop",
-		"octopus": "octopus", "manta": "manta",
+		"shark": "whale", "manta": "whale", "wave": "whale",
+		"penguin": "seal", "sand_dollar": "seal", "island": "seal", "sailboat": "seal", "otter": "seal",
+		"anglerfish": "octopus", "shell": "octopus",
+		"pufferfish": "starfish", "sun": "starfish", "seahorse": "starfish",
+		"crab": "coral", "scallop": "clam", "clownfish": "clam",
+		"narwhal": "turtle", "kelp": "turtle",
+		"starfish": "starfish", "sponge": "sponge", "turtle": "turtle", "octopus": "octopus",
 	}
 	ids := map[string]string{}
 	for old := range retired {

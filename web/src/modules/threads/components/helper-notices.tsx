@@ -1,4 +1,4 @@
-import type { CreatureLook } from '@/components/creature';
+import type { Appearance } from '@/components/creature';
 import type { Thread } from '@/modules/threads/api/threads';
 import { ApprovalCard } from '@/modules/threads/components/approval-card';
 import { HelperCreature } from '@/modules/threads/components/helper-creature';
@@ -15,7 +15,7 @@ export function HelperNotices({
   held,
 }: {
   helpers: Thread[];
-  bots: Record<string, { name: string; look: CreatureLook }>;
+  bots: Record<string, { name: string; look: Appearance }>;
   // held is the reports a Stop holds, null when none is held.
   held: number | null;
 }) {

@@ -1,4 +1,11 @@
-import { Creature, creatureLooks, type CreatureLook } from '@/components/creature';
+import {
+  botColours,
+  colourVars,
+  Creature,
+  creatureLooks,
+  type BotColour,
+  type CreatureLook,
+} from '@/components/creature';
 import { Segmented } from '@/components/segmented';
 
 function Arrow({ label, d, onClick }: { label: string; d: string; onClick: () => void }) {
@@ -29,9 +36,13 @@ function Arrow({ label, d, onClick }: { label: string; d: string; onClick: () =>
 export function CreatureCarousel({
   value,
   onChange,
+  colour,
+  onColour,
 }: {
   value: CreatureLook;
   onChange: (look: CreatureLook) => void;
+  colour: BotColour;
+  onColour: (colour: BotColour) => void;
 }) {
   const i = Math.max(
     0,
@@ -43,7 +54,7 @@ export function CreatureCarousel({
     <div className="flex flex-col items-center gap-3 py-2">
       <div className="flex w-full max-w-80 items-center justify-between">
         <Arrow label="Previous look" d="M15 6l-6 6 6 6" onClick={() => step(-1)} />
-        <Creature look={value} size={104} />
+        <Creature look={value} colour={colour} size={104} />
         <Arrow label="Next look" d="M9 6l6 6-6 6" onClick={() => step(1)} />
       </div>
       <span className="text-[13px] text-muted">{creatureLooks[i].name}</span>
@@ -59,6 +70,22 @@ export function CreatureCarousel({
           value: look,
           label: name,
           content: <span className="sr-only">{name}</span>,
+        }))}
+      />
+      <Segmented
+        label="Colour"
+        value={colour}
+        onChange={(c) => onColour(c as BotColour)}
+        className="flex gap-2 pt-1"
+        choiceClass={(on) =>
+          `size-[18px] rounded-full ${on ? 'ring-2 ring-ink ring-offset-2 ring-offset-bg' : ''}`
+        }
+        choices={botColours.map((c) => ({
+          value: c,
+          label: c[0].toUpperCase() + c.slice(1),
+          content: (
+            <span className="block size-full rounded-full" style={{ background: colourVars[c] }} />
+          ),
         }))}
       />
     </div>

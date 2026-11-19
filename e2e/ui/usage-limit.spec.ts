@@ -27,7 +27,7 @@ test.afterAll(() => m?.stop());
 
 const cases = [
   { provider: 'claude', label: 'Claude', bot: 'Kelp' },
-  { provider: 'codex', label: 'Codex', bot: 'Coral' },
+  { provider: 'codex', label: 'Codex', bot: 'Reefy' },
 ] as const;
 
 const providerText =

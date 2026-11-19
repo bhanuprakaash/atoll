@@ -22,25 +22,16 @@
   --color-blocked: #f5a524;
   --color-eye: #1c1c1e;
   --color-jellyfish: #f26b2e;
-  --color-whale: #3b82f6;
-  --color-shark: #6366f1;
-  --color-penguin: #3fbfa0;
-  --color-penguin-belly: #f4f1ea;
-  --color-anglerfish: #8b5cf6;
-  --color-anglerfish-lure: #f5c542;
-  --color-pufferfish: #f5c542;
-  --color-octopus: #f472b6;
-  --color-crab: #ff7a6b;
-  --color-seal: #d9b48f;
-  --color-manta: #5ec8e5;
-  --color-scallop: #f2a03a;
-  --color-scallop-ridge: rgb(0 0 0 / 0.22);
-  --color-narwhal: #a3d65c;
-  --color-narwhal-tusk: #ece6d6;
+  --color-bot-brown: #a9764f;
+  --color-bot-orange: #f26b2e;
+  --color-bot-amber: #f0a132;
+  --color-bot-green: #57c278;
+  --color-bot-teal: #42b8a8;
+  --color-bot-sky: #4fb3e8;
+  --color-bot-blue: #3f83f8;
+  --color-bot-purple: #8f5cf5;
+  --color-bot-pink: #ec4f9a;
   --color-sleep-body: #4a4a4e;
-  --color-sleep-light: #6a6a70;
-  --color-sleep-accent: #5c5c61;
-  --color-sleep-white: #8e8e93;
   --radius-card: 0.75rem;
   --radius-control: 0.5rem;
   --font-sans:
@@ -261,191 +252,38 @@ body {
       transform: translateY(-2.5px);
     }
   }
-  @keyframes swim {
-    0%,
-    100% {
-      transform: translateX(-1.5px);
-    }
-    50% {
-      transform: translateX(1.5px);
-    }
-  }
-  @keyframes waddle {
-    0%,
-    100% {
-      transform: rotate(-6deg);
-    }
-    50% {
-      transform: rotate(6deg);
-    }
-  }
-  @keyframes side {
-    0%,
-    100% {
-      transform: translateX(-2px);
-    }
-    50% {
-      transform: translateX(2px);
-    }
-  }
   @keyframes sway {
     0%,
     100% {
-      transform: skewX(-8deg);
+      transform: skewX(-4deg);
     }
     50% {
-      transform: skewX(8deg);
-    }
-  }
-  @keyframes puff {
-    0%,
-    55%,
-    100% {
-      transform: scale(0.55);
-      opacity: 0.3;
-    }
-    72% {
-      transform: scale(1.1);
-      opacity: 1;
-    }
-  }
-  @keyframes fin {
-    0%,
-    100% {
-      transform: rotate(-5deg);
-    }
-    50% {
-      transform: rotate(5deg);
-    }
-  }
-  @keyframes glow {
-    0%,
-    100% {
-      opacity: 0.55;
-      transform: scale(0.85);
-    }
-    50% {
-      opacity: 1;
-      transform: scale(1.15);
-    }
-  }
-  @keyframes spike {
-    0%,
-    100% {
-      transform: scale(0.86);
-    }
-    50% {
-      transform: scale(1.06);
-    }
-  }
-  @keyframes snipl {
-    0%,
-    70%,
-    100% {
-      transform: rotate(0);
-    }
-    80% {
-      transform: rotate(-16deg);
-    }
-    90% {
-      transform: rotate(5deg);
-    }
-  }
-  @keyframes snipr {
-    0%,
-    70%,
-    100% {
-      transform: rotate(0);
-    }
-    80% {
-      transform: rotate(16deg);
-    }
-    90% {
-      transform: rotate(-5deg);
-    }
-  }
-  @keyframes flap {
-    0%,
-    100% {
-      transform: scaleY(1);
-    }
-    50% {
-      transform: scaleY(0.55);
-    }
-  }
-  @keyframes twitch {
-    0%,
-    80%,
-    100% {
-      transform: scaleX(1);
-    }
-    88% {
-      transform: scaleX(1.12);
+      transform: skewX(4deg);
     }
   }
   .creature-bob,
-  .creature-swim,
-  .creature-waddle,
-  .creature-side,
-  .creature-sway,
-  .creature-puff,
-  .creature-fin,
-  .creature-glow,
-  .creature-spike,
-  .creature-snipl,
-  .creature-snipr,
-  .creature-flap,
-  .creature-twitch {
+  .creature-sway {
     transform-box: fill-box;
   }
   .creature-bob {
     animation: bob 3.2s ease-in-out infinite;
   }
-  .creature-swim {
-    animation: swim 2.6s ease-in-out infinite;
-  }
-  .creature-waddle {
-    transform-origin: 50% 100%;
-    animation: waddle 1.3s ease-in-out infinite;
-  }
-  .creature-side {
-    animation: side 2.2s ease-in-out infinite;
-  }
   .creature-sway {
     transform-origin: 50% 0%;
     animation: sway 2.6s ease-in-out infinite;
   }
-  .creature-puff {
+  .creature-poke {
+    transform-box: fill-box;
     transform-origin: 50% 100%;
-    animation: puff 3s ease-out infinite;
+    animation: poke 0.45s ease-out;
   }
-  .creature-fin {
-    transform-origin: 30% 100%;
-    animation: fin 2.4s ease-in-out infinite;
-  }
-  .creature-glow {
-    transform-origin: 50% 50%;
-    animation: glow 2.2s ease-in-out infinite;
-  }
-  .creature-spike {
-    transform-origin: 50% 50%;
-    animation: spike 1.6s ease-in-out infinite;
-  }
-  .creature-snipl {
-    transform-origin: 70% 70%;
-    animation: snipl 2.2s ease-in-out infinite;
-  }
-  .creature-snipr {
-    transform-origin: 30% 70%;
-    animation: snipr 2.2s ease-in-out 0.15s infinite;
-  }
-  .creature-flap {
-    transform-origin: 50% 0%;
-    animation: flap 1.7s ease-in-out infinite;
-  }
-  .creature-twitch {
-    transform-origin: 50% 50%;
-    animation: twitch 3s ease-in-out infinite;
+  @keyframes poke {
+    30% {
+      transform: scale(1.12, 0.86);
+    }
+    60% {
+      transform: scale(0.94, 1.08);
+    }
   }
   .creature-pulse {
     animation: pulse 1.2s ease-in-out infinite;

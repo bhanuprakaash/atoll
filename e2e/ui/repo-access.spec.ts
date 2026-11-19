@@ -52,7 +52,7 @@ test('Chief has no Repo access control and its empty thread no Repo picker', asy
 
 test('a thread whose Bot lost access to its repo says so', async ({ page }) => {
   for (const [name, kept] of [
-    ['Coral', true],
+    ['Reefy', true],
     ['Kelp', false],
   ] as const) {
     const bot = await newBotAPI(m, name, 'claude', { repo_access: [repo.id] });

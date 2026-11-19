@@ -17,7 +17,13 @@ import {
   useUpdateProvider,
 } from '@/modules/providers/api/providers';
 
-type Bot = { id: string; name: string; look: CreatureLook; provider: Provider['name'] };
+type Bot = {
+  id: string;
+  name: string;
+  look: CreatureLook;
+  colour: string;
+  provider: Provider['name'];
+};
 
 type Failure = Pick<
   ComponentProps<typeof ErrorNotice>,
@@ -221,7 +227,7 @@ function ProviderRow({ provider, bots }: { provider: Provider; bots: Bot[] }) {
                     to={`/bots/${bot.id}`}
                     className="flex items-center gap-1 rounded-full bg-tile px-2 py-0.5"
                   >
-                    <Creature look={bot.look} size={20} />
+                    <Creature look={bot.look} colour={bot.colour} size={20} />
                     {bot.name}
                   </Link>
                 ))}

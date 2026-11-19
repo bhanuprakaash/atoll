@@ -233,7 +233,7 @@ const escaped = (s: string) =>
 // handOff has Poteto hand the report prompt to Tester, whose approval then waits in Poteto's thread.
 async function handOff(page: Page) {
   const poteto = await newBotAPI(m, 'Poteto', 'claude', { look: 'whale' });
-  const tester = await newBotAPI(m, 'Tester', 'claude', { look: 'shark' });
+  const tester = await newBotAPI(m, 'Tester', 'claude', { look: 'octopus' });
   await api(m, 'PUT', `/api/bots/${poteto.id}`, { delegates: [tester.id] });
   await page.goto(m.url);
   await sidebarRow(page, 'Poteto').click();

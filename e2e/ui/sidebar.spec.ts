@@ -17,14 +17,14 @@ let m: Machine;
 test.beforeAll(async () => {
   // codex is installed but not signed in: its Bots are asleep.
   m = await startAtoll({ fakes: ['claude', 'codex'] });
-  await newBotAPI(m, 'Idle', 'claude', { look: 'penguin' });
-  await newBotAPI(m, 'Sleeper', 'codex', { look: 'narwhal' });
+  await newBotAPI(m, 'Idle', 'claude', { look: 'seal' });
+  await newBotAPI(m, 'Sleeper', 'codex', { look: 'turtle' });
   for (const [name, prompt, status] of [
     ['Worker', prompts.hang, 'running'],
     ['Asker', prompts.write, 'waiting'],
     ['Breaker', prompts.none, 'failed'],
   ]) {
-    const b = await newBotAPI(m, name, 'claude', { look: 'shark' });
+    const b = await newBotAPI(m, name, 'claude', { look: 'whale' });
     const th = await openThreadAPI(m, b.id, prompt);
     await expect
       .poll(async () => (await api(m, 'GET', `/api/threads/${th.id}`)).run_status, {
@@ -42,11 +42,11 @@ test('rail faces show each state on the creature, Chief first', async ({ page })
   await expect(nav.getByRole('button', { name: 'New', exact: true })).toBeVisible();
   for (const [name, img] of [
     ['Chief', 'Jellyfish, idle'],
-    ['Idle', 'Penguin, idle'],
-    ['Sleeper', 'Narwhal, asleep'],
-    ['Worker', 'Shark, working'],
-    ['Asker', 'Shark, needs you'],
-    ['Breaker', 'Shark, failed'],
+    ['Idle', 'Seal, idle'],
+    ['Sleeper', 'Turtle, asleep'],
+    ['Worker', 'Whale, working'],
+    ['Asker', 'Whale, needs you'],
+    ['Breaker', 'Whale, failed'],
   ]) {
     await expect(sidebarRow(page, name).getByRole('img', { name: img, exact: true })).toBeVisible();
   }

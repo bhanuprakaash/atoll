@@ -16,7 +16,7 @@ dependency.
 
 | Word | Meaning |
 | --- | --- |
-| Bot | A configured agent: persona, Model, skills, connections, repo access, delegate list, look |
+| Bot | A configured agent: persona, Model, skills, connections, repo access, delegate list, look, colour |
 | Chief | The Bot that exists out of the box and manages the platform |
 | Thread | A chat with one Bot |
 | Run | One message handled: the agent starts, resumes the Bot's session, replies, exits |
@@ -29,7 +29,7 @@ dependency.
 ## Bots
 
 - Settings: name, persona, Model, skills, connections, MCP servers, repo access, delegate list,
-  look, Mode.
+  look, colour, Mode.
 - Persona holds expertise only. Who the Bot talks to comes from the run, not the persona.
 - Model is one field, e.g. `Claude Code · Opus 5.5`, `Codex · GPT-5`, listing only enabled, ready
   providers. Models come from asking each provider.
@@ -129,7 +129,7 @@ dependency.
 **Chief.** Created on first launch. No repo access, ever (a Chief on Codex keeps its shell: see
 Known gap): `PUT` and its own `edit_bot` refuse to give it repos, its Bot settings and empty thread
 offer none, a launch moves an older install's Chief to none. It does no code work. The "Can manage
-the platform" switch is on: tools to create and edit Bots (including model, look, Mode and
+the platform" switch is on: tools to create and edit Bots (including model, look, colour, Mode and
 delegates), skills and repos, and to attach connections, served as Reef's own MCP tools. Read tools
 list Bots, skills, connections, repos, MCP servers and signed-in models and record no change.
 
@@ -155,7 +155,7 @@ list Bots, skills, connections, repos, MCP servers and signed-in models and reco
   off keep Reef's MCP tools callable and stop shell and file reads. The platform prompt names no
   Chief tools, so it stays true either way.
 
-A model must be one the Bot's provider lists while signed in. An unknown model, look or Mode fails
+A model must be one the Bot's provider lists while signed in. An unknown model, look, colour or Mode fails
 with the valid ones named, as does a repo id in a Bot's repo access that no registered repo has.
 REST answers 400 with the same text for repo, delegate and MCP server ids, and for a provider that
 is turned off. POST takes any model; PUT checks a model only when it or the provider changes, so a
@@ -1678,23 +1678,31 @@ Voice
     muted; removed lines are soft pink ink (`--color-del`) on a dark red ground. Brand and creature
     colours are identity, not state.
   *Red on every waiting item taught the user to skim past red (#146).*
-- Bot looks: 12, each the same soft pebble with one small sea trait at its edge, its own flat
-  colour, two short upright pill eyes set right of centre, and the same 8° lean to the left, so the
-  face reads as turned: jellyfish (Chief: the Reef logo, a dome with three tentacles, upright),
-  whale (spout), shark (fin), penguin (belly), anglerfish (lure), pufferfish (spikes), octopus
-  (arms), crab (claws), seal (whiskers), manta (wings), scallop (ridges), narwhal (tusk). A Bot
-  stores the look's name (`pufferfish`). *Replaces the 14 looks in three groups: the user picked
-  pebble + one trait on the canvas. The eyes and lean follow the canvas's Grok-inspired looks
-  (https://claude.ai/artifact/Nw8knYvm9Mxk4PwfuXwbeY); the user found thin ticks too small.*
-  - Traits move while idle or working, still while asleep or failed: tentacles and arms sway, the
-    spout puffs, the shark swims and its fin moves, the lure glows, spikes puff, the crab steps
-    sideways and snips, whiskers twitch, wings flap, the penguin waddles, the rest bob. Idle
-    blinks; needs you is a pulsing light dot; asleep is grey; failed has slanted eyes; reduced
-    motion stops every animation.
-  - Bots saved with a dropped look move to the nearest by colour on launch: starfish, clownfish to
-    scallop; sand dollar, island, sailboat, otter to seal; sponge to shark; kelp, turtle to
-    narwhal; shell to octopus; wave to manta; sun, seahorse to pufferfish. Octopus and manta are
-    looks again and keep their Bots.
+- Bot looks: 9 soft jelly bodies, each its own outline with at most one small feature, chunky
+  limbs and plenty of room around the eyes: jellyfish (Chief: the Reef logo, a dome on three wavy
+  tentacles), octopus (round head on four arms that fan out), whale (round body, small tail fluke,
+  a spout only while working), starfish (chubby five-point cushion), sponge (soft rounded square),
+  coral (cloud: three lumps over a flat base), turtle (soft hexagon with a head nub), clam (fan),
+  seal (short pill with two flippers). Eyes are two upright dark pills. A Bot stores the look's
+  name (`octopus`). *Replaces the 12 pebbles with one trait each: on the board the user found
+  traits on one pebble read as one blob with hats, and picked one round footprint with own
+  outlines (https://claude.ai/artifact/4QWMNdg1bGufXq5RBp8eiq).*
+- Bot colours: a Bot stores a colour apart from its look, one of 9: brown, orange, amber, green,
+  teal, sky, blue, purple, pink. Any look takes any colour; a new Bot without one gets its look's
+  (jellyfish orange, octopus purple, whale blue, starfish amber, sponge brown, coral pink, turtle
+  teal, clam green, seal sky). The new-Bot form and Bot settings pick it under the creature. Red,
+  amber-as-blocked and grey stay out: they are states. *The user picked deeper colours like Grok's
+  workshop board over pastels, and wanted users to choose colours as Grok Bots allow.*
+  - At 64 px and up a creature is live: its body is a ring of springs that dents where it is
+    clicked and wobbles back, limbs trail behind, the body pulses, and the eyes follow the pointer.
+    Smaller creatures face right, toward the threads, and keep to light motion: idle bobs, limbs
+    sway and the eyes blink; a click squashes them once. Asleep is grey with flat eyes and failed
+    has slanted eyes, both still; needs you is a pulsing light dot; reduced motion stops every
+    animation.
+  - Bots saved with a dropped look move to the nearest kept one on launch: shark, manta and wave to
+    whale; penguin, sand dollar, island, sailboat and otter to seal; anglerfish and shell to
+    octopus; pufferfish, sun and seahorse to starfish; crab to coral; scallop and clownfish to clam;
+    narwhal and kelp to turtle. A Bot without a colour gets the one nearest its old look's.
 - Working shows by tool kind in the creature: no tool yet, eyes circle up; reading, searching or
   recalling, eyes scan; editing, writing, remembering or changing the platform, it bounces; running
   a command, it breathes. No spinner rings or bubbles; a running thread shows three small wave

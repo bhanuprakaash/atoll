@@ -25,7 +25,7 @@ import {
 } from '@/modules/skills/api/skills';
 import { ErrorNotice } from '@/components/error-notice';
 
-type Bot = { id: string; name: string; look: CreatureLook; skills: string[] };
+type Bot = { id: string; name: string; look: CreatureLook; colour: string; skills: string[] };
 
 const labelClass = 'text-xs tracking-wide text-label';
 
@@ -430,7 +430,7 @@ function SkillEditor({
                   key={b.id}
                   className="flex h-8 items-center gap-1.5 rounded-full border border-outline bg-tile pl-1.5 pr-3 text-[13px]"
                 >
-                  <Creature look={b.look} size={22} />
+                  <Creature look={b.look} colour={b.colour} size={22} />
                   {b.name}
                 </li>
               ))}

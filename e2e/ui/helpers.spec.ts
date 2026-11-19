@@ -140,7 +140,7 @@ test('the helper thread is not a row of the boss pane and is read-only; Allow th
   await expect(
     helperPage
       .getByRole('navigation', { name: 'Bots' })
-      .getByRole('link', { name: /^Shark\b.*\bTester\b/ }),
+      .getByRole('link', { name: /^Octopus\b.*\bTester\b/ }),
   ).toBeVisible();
   await expect(threadPane(helperPage, 'Poteto')).toBeVisible();
   await expect(
