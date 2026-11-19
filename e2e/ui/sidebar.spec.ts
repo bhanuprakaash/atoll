@@ -36,7 +36,8 @@ test.beforeAll(async () => {
 test.afterAll(() => m?.stop());
 
 test('rail faces show each state on the creature, Chief first', async ({ page }) => {
-  await page.goto(m.url);
+  // Landing on / would open the newest thread, Breaker's failed one, and reading it clears its pip.
+  await page.goto(`${m.url}/bots/chief/new`);
   const nav = page.getByRole('navigation', { name: 'Bots' });
   await expect(nav.getByRole('link').first()).toContainText('Chief');
   await expect(nav.getByRole('button', { name: 'New', exact: true })).toBeVisible();
