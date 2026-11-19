@@ -28,7 +28,6 @@ test.afterEach(() => m?.stop());
 
 const rail = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
 const nowButton = (page: Page) => rail(page).getByRole('button', { name: /^Now\b/ });
-const badge = (page: Page) => nowButton(page).locator('[data-badge]');
 const group = (page: Page, name: string) => rail(page).getByRole('group', { name, exact: true });
 const groupLine = (page: Page, name: string) =>
   group(page, name).getByRole('button', { name, exact: true });
@@ -72,7 +71,7 @@ const animating = (el: Locator) =>
   );
 
 test.describe('#469 rail and the Bot pane', () => {
-  test('the rail lists Now, Chief, groups in order, Ungrouped last; a long name ends in … and shows in full on hover and focus', async ({
+  test('the rail lists Now, Chief, groups in order, Ungrouped last; a long name shows in full on hover and focus', async ({
     page,
   }) => {
     const long = 'Bartholomew Longname Reviewer';
@@ -89,7 +88,7 @@ test.describe('#469 rail and the Bot pane', () => {
 
     await page.goto(`${m.url}/settings`);
     await expect(rail(page)).toBeVisible();
-    expect(Math.abs((await box(rail(page))).width - 76)).toBeLessThanOrEqual(1);
+    expect(Math.abs((await box(rail(page))).width - 64)).toBeLessThanOrEqual(1);
     await expect(nowButton(page)).toBeVisible();
     expect(await precedes(nowButton(page), sidebarRow(page, 'Chief'))).toBe(true);
 
@@ -112,18 +111,8 @@ test.describe('#469 rail and the Bot pane', () => {
     await expect(group(page, 'Ungrouped').getByRole('link', { name: /\bElm\b/ })).toBeVisible();
 
     const face = sidebarRow(page, 'Bartholomew');
-    const name = face.getByText(long, { exact: true });
-    await expect(name).toBeVisible();
-    const creature = await box(face.getByRole('img').first());
-    expect((await box(name)).y).toBeGreaterThanOrEqual(creature.y + creature.height - 1);
-    const cut = await name.evaluate((el) => ({
-      overflow: getComputedStyle(el).textOverflow,
-      cut: el.scrollWidth > el.clientWidth,
-      width: el.getBoundingClientRect().width,
-    }));
-    expect(cut.overflow).toBe('ellipsis');
-    expect(cut.cut).toBe(true);
-    expect(cut.width).toBeLessThanOrEqual(65);
+    await expect(face).toBeVisible();
+    expect((await face.innerText()).trim()).toBe('');
 
     await face.hover();
     await expect(page.getByRole('tooltip')).toContainText(long);
@@ -423,7 +412,7 @@ test.describe('#469 rail and the Bot pane', () => {
     await page.keyboard.press('ControlOrMeta+b');
     await expect(pane).toBeHidden();
     await expect(rail(page)).toBeVisible();
-    expect(Math.abs((await box(rail(page))).width - 76)).toBeLessThanOrEqual(1);
+    expect(Math.abs((await box(rail(page))).width - 64)).toBeLessThanOrEqual(1);
     await expect.poll(async () => (await box(page.locator('main'))).width).toBeGreaterThan(wide);
 
     await page.keyboard.press('ControlOrMeta+b');
@@ -621,7 +610,7 @@ test.describe('#471 Now', () => {
     }
   });
 
-  test('the Now badge equals the Needs you count and clears when nothing waits', async ({
+  test('the Now count equals the Needs you count and clears when nothing waits', async ({
     page,
   }) => {
     const first = await newBotAPI(m, 'First');
@@ -632,7 +621,7 @@ test.describe('#471 Now', () => {
     await waitStatus(m, b.id, 'waiting');
     await page.goto(`${m.url}/settings`);
     await expect(nowButton(page)).toBeVisible();
-    await expect(badge(page)).toHaveText('2');
+    await expect(nowButton(page)).toHaveText('2');
 
     for (const [t, left] of [
       [a, '1'],
@@ -641,8 +630,7 @@ test.describe('#471 Now', () => {
       const { approval } = await api(m, 'GET', `/api/threads/${t.id}`);
       await api(m, 'POST', `/api/approvals/${approval.id}`, { approve: true });
       await waitStatus(m, t.id, 'done');
-      if (left) await expect(badge(page)).toHaveText(left);
-      else await expect(badge(page)).toHaveCount(0);
+      await expect(nowButton(page)).toHaveText(left);
     }
     await expect(nowButton(page)).toBeVisible();
   });
@@ -685,7 +673,7 @@ test.describe('#471 Now', () => {
     const now = await nowPane(page);
     await expect(now).toContainText('Nothing needs you');
     await expect(now.getByRole('listitem')).toHaveCount(0);
-    await expect(badge(page)).toHaveCount(0);
+    await expect(nowButton(page)).toHaveText('');
   });
 });
 
@@ -706,17 +694,17 @@ test.describe('#472 narrow window', () => {
     await expect(rail(page)).toBeVisible();
     const r = await box(rail(page));
     expect(r.x).toBe(0);
-    expect(Math.abs(r.width - 76)).toBeLessThanOrEqual(1);
+    expect(Math.abs(r.width - 64)).toBeLessThanOrEqual(1);
     await expect(pane).toBeHidden();
     const main = await box(page.locator('main'));
-    expect(Math.abs(main.x - 76)).toBeLessThanOrEqual(1);
-    expect(Math.abs(main.width - (700 - 76))).toBeLessThanOrEqual(1);
+    expect(Math.abs(main.x - 64)).toBeLessThanOrEqual(1);
+    expect(Math.abs(main.width - (700 - 64))).toBeLessThanOrEqual(1);
 
     // Esc closes it and focus goes back to the face.
     await face.click();
     await expect(pane).toBeVisible();
     const p = await box(pane);
-    expect(Math.abs(p.x - 76)).toBeLessThanOrEqual(1);
+    expect(Math.abs(p.x - 64)).toBeLessThanOrEqual(1);
     expect(await box(page.locator('main'))).toEqual(main);
     await expect(page.getByRole('separator', { name: 'Resize thread pane' })).toBeHidden();
     await page.keyboard.press('Escape');
@@ -743,7 +731,7 @@ test.describe('#472 narrow window', () => {
     await page.setViewportSize({ width: 360, height: 640 });
     await face.click();
     await expect(pane).toBeVisible();
-    expect((await box(pane)).width).toBeLessThanOrEqual(360 - 76 - 48);
+    expect((await box(pane)).width).toBeLessThanOrEqual(360 - 64 - 48);
   });
 
   test('no page scrolls sideways at 420 px and up', async ({ page }) => {
