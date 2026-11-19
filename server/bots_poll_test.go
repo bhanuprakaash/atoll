@@ -240,6 +240,53 @@ func TestBotsPoll_New(t *testing.T) {
 	}
 }
 
+// TestBotsPoll_FailedBot proves a Bot reads failed only while the thread whose run failed is unread.
+func TestBotsPoll_FailedBot(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil, "")
+	bot, err := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := st.CreateHelperThread(ctx, "", bot.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.FailUnfinished(ctx, "restart", nil); err != nil {
+		t.Fatal(err)
+	}
+	botState := func() (state, activity string) {
+		t.Helper()
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/bots/"+bot.ID, nil)
+		req.Host = "127.0.0.1:4317"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		var one struct{ State, Activity string }
+		if err := json.Unmarshal(rec.Body.Bytes(), &one); err != nil {
+			t.Fatal(err)
+		}
+		return one.State, one.Activity
+	}
+	if state, activity := botState(); state != "failed" || activity != "Run failed" {
+		t.Errorf("unread: state %q, activity %q, want failed, Run failed", state, activity)
+	}
+	if err := st.MarkOpened(ctx, th.ID); err != nil {
+		t.Fatal(err)
+	}
+	if state, activity := botState(); state != "idle" || activity != "" {
+		t.Errorf("opened: state %q, activity %q, want idle and none", state, activity)
+	}
+}
+
 // TestBotsPoll_ClosedThreadApproval proves the poll still shows an approval that waits on a closed
 // thread: closed alone, as a closed helper of an open boss, and as a closed helper of a closed
 // boss. A person must never miss an approval.

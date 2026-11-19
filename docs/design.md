@@ -1724,7 +1724,7 @@ Voice
     the Bot's group and state joined by ` · ` (`Frontend · Run failed`); the state alone with no
     group, the group alone with no state, the name alone with neither. A face of a Bot that is not
     selected still shows Needs you (the pulsing light dot) and its working motion; a failed Bot
-    shows a red pip at the same place as the light dot, and Needs you wins when a Bot has both.
+    (its newest run failed and that thread is still unread) shows a red pip at the same place as the light dot, and Needs you wins when a Bot has both.
   - Clicking a face opens the Bot's latest thread and shows its pane. Right-click on a face opens
     the Bot menu (New thread, Pin to sidebar, Move to group, Bot settings). Chief cannot be pinned.
   - Current Bot: a 3 px light bar at the rail's left edge; no fill. *One selected mark: the fill
