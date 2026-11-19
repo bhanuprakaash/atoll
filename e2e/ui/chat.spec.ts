@@ -127,7 +127,8 @@ test('a failed run is marked failed and offers a new thread, not a sign-in', asy
   await send(page, prompts.none);
   await expect(log.getByRole('button', { name: 'Retry' })).toBeVisible();
   await expect(log.getByRole('button', { name: 'Sign in again' })).toHaveCount(0);
-  await expect(sidebarRow(page, 'Moss').getByRole('img', { name: /, failed$/ })).toBeVisible();
+  // The failed thread is open, so it is read: the failure shows here and the rail face is calm.
+  await expect(sidebarRow(page, 'Moss').getByRole('img', { name: /, idle$/ })).toBeVisible();
   await expect(
     page
       .getByRole('region', { name: 'Moss', exact: true })
