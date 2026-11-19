@@ -1,5 +1,5 @@
-// The rail of faces only (#572): 64 px, a face is the Bot's creature with no name, the hover label
-// names the Bot with its group and state, a red pip for failed, an `N more` chip for faces below the
+// The rail of faces (#572): 76 px, a face is the Bot's creature with its name under it, the hover
+// label names the Bot with its group and state, a red pip for failed, an `N more` chip for faces below the
 // fold, the bar alone marks the current Bot or Now, and Now is the count of threads waiting.
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
@@ -180,30 +180,39 @@ const chipCount = async (page: Page) =>
     )![0],
   );
 
-test('the rail is 64 px; a face is the 40 px creature with no name under it; no group name shows', async ({
+test('the rail is 76 px; a face is the 40 px creature with the Bot’s name under it, cut with … when too long; no group name shows', async ({
   page,
 }) => {
+  const long = 'Bartholomew Longname Reviewer';
   const bots: Record<string, { id: string }> = {};
-  for (const name of ['Ivy', 'Oak', 'Elm']) bots[name] = await newBotAPI(m, name);
+  for (const name of ['Ivy', 'Oak', 'Elm', long]) bots[name] = await newBotAPI(m, name);
   const backend = await api(m, 'POST', '/api/groups', { name: 'Backend' });
   const frontend = await api(m, 'POST', '/api/groups', { name: 'Frontend' });
   await grouped(bots.Ivy.id, backend.id);
   await grouped(bots.Oak.id, frontend.id);
 
   await page.goto(`${m.url}/settings`);
-  await expect(faces(page)).toHaveCount(4);
-  expect(Math.abs((await box(rail(page))).width - 64)).toBeLessThanOrEqual(0.5);
-  for (const face of await faces(page).all()) {
+  await expect(faces(page)).toHaveCount(5);
+  expect(Math.abs((await box(rail(page))).width - 76)).toBeLessThanOrEqual(0.5);
+  for (const name of ['Chief', 'Ivy', 'Oak', 'Elm', long]) {
+    const face = sidebarRow(page, name);
+    await expect(face).toHaveCount(1);
     const creature = await box(face.getByRole('img').first());
     expect(Math.abs(creature.width - 40)).toBeLessThanOrEqual(1);
     expect(Math.abs(creature.height - 40)).toBeLessThanOrEqual(1);
-    expect((await face.innerText()).trim()).toBe('');
+    const label = face.getByText(name, { exact: true });
+    await expect(label).toBeVisible();
+    expect((await box(label)).y).toBeGreaterThanOrEqual(creature.y + creature.height - 1);
   }
-  for (const name of ['Chief', 'Ivy', 'Oak', 'Elm'])
-    await expect(sidebarRow(page, name)).toHaveCount(1);
+  const cut = await sidebarRow(page, long)
+    .getByText(long, { exact: true })
+    .evaluate((el) => ({
+      overflow: getComputedStyle(el).textOverflow,
+      cut: el.scrollWidth > el.clientWidth,
+    }));
+  expect(cut).toEqual({ overflow: 'ellipsis', cut: true });
   const text = await rail(page).innerText();
-  for (const name of ['Chief', 'Ivy', 'Oak', 'Elm', 'Backend', 'Frontend', 'Ungrouped'])
-    expect(text).not.toContain(name);
+  for (const name of ['Backend', 'Frontend', 'Ungrouped']) expect(text).not.toContain(name);
   for (const name of ['Backend', 'Frontend', 'Ungrouped']) {
     const line = rail(page)
       .getByRole('group', { name, exact: true })
@@ -300,7 +309,7 @@ test('faces below the fold show an N more chip above +, with the light dot when 
   const plus = await box(rail(page).getByRole('button', { name: 'New', exact: true }));
   expect(c.y + c.height).toBeLessThanOrEqual(plus.y);
   expect(c.x).toBeGreaterThanOrEqual(0);
-  expect(c.x + c.width).toBeLessThanOrEqual(64);
+  expect(c.x + c.width).toBeLessThanOrEqual(76);
 
   const inView = await openThreadAPI(m, bots[0].id, prompts.write);
   await waitStatus(m, inView.id, 'waiting');
@@ -331,7 +340,9 @@ test('faces below the fold show an N more chip above +, with the light dot when 
   await expect(chip(page)).toHaveCount(0);
 });
 
-test('the current Bot is marked by the 3 px bar alone, with no fill', async ({ page }) => {
+test('the current Bot is marked by the 3 px bar alone, with no fill; its name is in ink, others muted', async ({
+  page,
+}) => {
   const pilot = await newBotAPI(m, 'Pilot');
   await newBotAPI(m, 'Other');
   const t = await openThreadAPI(m, pilot.id, prompts.pong);
@@ -350,7 +361,11 @@ test('the current Bot is marked by the 3 px bar alone, with no fill', async ({ p
     await sidebarRow(page, 'Other').evaluate((el) => getComputedStyle(el).backgroundColor),
   );
   expect(['transparent', 'rgba(0, 0, 0, 0)']).toContain(fill);
-  expect((await face.innerText()).trim()).toBe('');
+  await expect(face.getByText('Pilot', { exact: true })).toHaveCSS('color', 'rgb(236, 236, 236)');
+  await expect(sidebarRow(page, 'Other').getByText('Other', { exact: true })).toHaveCSS(
+    'color',
+    'rgb(155, 155, 155)',
+  );
 });
 
 test('Now is the count of threads in Needs you or failed on the light accent, with no icon and no badge; with none it is the grey mark; a hairline separates it from Chief', async ({
@@ -421,7 +436,7 @@ test('while Now’s pane shows, the rail bar is on Now, not on a Bot', async ({ 
   await expectBarOn(page, nowButton(page));
 });
 
-test('the thread pane and the narrow drawer sit against the 64 px rail with no gap and no overlap', async ({
+test('the thread pane and the narrow drawer sit against the 76 px rail with no gap and no overlap', async ({
   page,
 }) => {
   const pilot = await newBotAPI(m, 'Pilot');
@@ -431,7 +446,7 @@ test('the thread pane and the narrow drawer sit against the 64 px rail with no g
   const edge = async () => {
     const r = await box(rail(page));
     expect(r.x).toBe(0);
-    expect(Math.abs(r.width - 64)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(r.width - 76)).toBeLessThanOrEqual(0.5);
     expect(Math.abs((await box(pane)).x - (r.x + r.width))).toBeLessThanOrEqual(0.5);
   };
 
@@ -443,7 +458,7 @@ test('the thread pane and the narrow drawer sit against the 64 px rail with no g
   await page.setViewportSize({ width: 700, height: 500 });
   await expect(pane).toBeHidden();
   const main = await box(page.locator('main'));
-  expect(Math.abs(main.x - 64)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(main.x - 76)).toBeLessThanOrEqual(0.5);
   await sidebarRow(page, 'Pilot').click();
   await expect(pane).toBeVisible();
   await edge();
