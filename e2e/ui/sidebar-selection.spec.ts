@@ -138,7 +138,7 @@ test('a running helper thread has no row; its Bot has the bar and the boss is no
   page,
 }) => {
   const poteto = await newBotAPI(m, 'Poteto', 'claude', { look: 'whale' });
-  const tester = await newBotAPI(m, 'Tester', 'claude', { look: 'shark' });
+  const tester = await newBotAPI(m, 'Tester', 'claude', { look: 'octopus' });
   await api(m, 'PUT', `/api/bots/${poteto.id}`, { delegates: [tester.id] });
   const brief = 'Run the checks, then report back.';
   const escaped = `"${Array.from(brief, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`).join('')}"`;

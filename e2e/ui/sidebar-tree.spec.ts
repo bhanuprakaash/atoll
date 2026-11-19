@@ -96,7 +96,7 @@ test('a run ending in an unseen thread shows it as Replied; opening it clears Re
 test('a running thread shows wave dots; no spinner ring on any creature or thread', async ({
   page,
 }) => {
-  const bot = await newBotAPI(m, 'Drummer', 'claude', { look: 'shark' });
+  const bot = await newBotAPI(m, 'Drummer', 'claude', { look: 'whale' });
   await showPane(page, m, bot.id, 'Drummer');
   const busy = await openThreadAPI(m, bot.id, prompts.hang);
   await waitStatus(m, busy.id, 'running');

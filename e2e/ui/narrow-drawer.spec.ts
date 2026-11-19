@@ -141,8 +141,8 @@ test('the island drops the thread title before the helper creatures and the Bot 
   page,
 }) => {
   const boss = await newBotAPI(m, 'Poteto', 'claude', { look: 'whale' });
-  const tester = await newBotAPI(m, 'Tester', 'claude', { look: 'shark' });
-  const reviewer = await newBotAPI(m, 'Reviewer', 'claude', { look: 'shark' });
+  const tester = await newBotAPI(m, 'Tester', 'claude', { look: 'octopus' });
+  const reviewer = await newBotAPI(m, 'Reviewer', 'claude', { look: 'octopus' });
   await api(m, 'PUT', `/api/bots/${boss.id}`, {
     delegates: [tester.id, reviewer.id],
   });

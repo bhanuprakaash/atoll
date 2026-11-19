@@ -343,7 +343,7 @@ test('at 1280x800 the card stops at 480px, scrolls inside and leaves the chat lo
   await page.setViewportSize({ width: 1280, height: 800 });
   const connections = [connection.id];
   const tester = await newBotAPI(m, 'Tester', 'claude', {
-    look: 'shark',
+    look: 'octopus',
     repo_access: [repo.id],
     connections,
   });

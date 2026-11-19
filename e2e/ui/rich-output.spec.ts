@@ -170,7 +170,7 @@ test("a helper's reply in its own thread renders the same table", async ({ page 
     look: 'whale',
   });
   const tester = await newBotAPI(m, 'Tester relay', 'claude', {
-    look: 'shark',
+    look: 'octopus',
   });
   await api(m, 'PUT', `/api/bots/${poteto.id}`, { delegates: [tester.id] });
   const brief = 'Rich output: report the status table.';

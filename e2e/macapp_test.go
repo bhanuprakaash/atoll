@@ -73,7 +73,7 @@ type (
 	}
 )
 
-var _creatures = []string{"jellyfish", "whale", "shark", "penguin", "anglerfish", "pufferfish", "octopus", "crab", "seal", "manta", "scallop", "narwhal"}
+var _creatures = []string{"jellyfish", "octopus", "whale", "starfish", "sponge", "coral", "turtle", "clam", "seal"}
 
 const _noRecordingPrompt = "This message has no recording, so the provider fails."
 
@@ -267,12 +267,12 @@ func TestBots_LookAndModel(t *testing.T) {
 
 			var b botInfo
 			s.do(t, "POST", "/api/bots", map[string]any{
-				"name": "Finn", "persona": "Fixes things.", "provider": p, "look": "shark",
+				"name": "Finn", "persona": "Fixes things.", "provider": p, "look": "whale",
 				"model": _probeModel[p], "repo_access": []string{repo.ID}, "connections": []string{},
 			}, &b, http.StatusCreated)
 			got := s.bot(t, b.ID)
-			if got.Look != "shark" || got.Model != _probeModel[p] || string(got.RepoAccess) != `["`+repo.ID+`"]` || got.Connections == nil {
-				t.Errorf("GET /api/bots/%s: %+v; want look shark, model %s, repo_access [%s], connections []", b.ID, got, _probeModel[p], repo.ID)
+			if got.Look != "whale" || got.Model != _probeModel[p] || string(got.RepoAccess) != `["`+repo.ID+`"]` || got.Connections == nil {
+				t.Errorf("GET /api/bots/%s: %+v; want look whale, model %s, repo_access [%s], connections []", b.ID, got, _probeModel[p], repo.ID)
 			}
 
 			var plain botInfo
@@ -283,9 +283,9 @@ func TestBots_LookAndModel(t *testing.T) {
 			s.do(t, "POST", "/api/bots", map[string]string{"name": "Bad", "persona": "x", "provider": p, "look": "dragon"}, nil, http.StatusBadRequest)
 
 			var edited botInfo
-			s.do(t, "PUT", "/api/bots/"+b.ID, map[string]string{"look": "anglerfish"}, &edited, http.StatusOK)
-			if edited.Look != "anglerfish" || edited.Model != _probeModel[p] {
-				t.Errorf("PUT look: %+v; want look anglerfish, model %s kept", edited, _probeModel[p])
+			s.do(t, "PUT", "/api/bots/"+b.ID, map[string]string{"look": "octopus"}, &edited, http.StatusOK)
+			if edited.Look != "octopus" || edited.Model != _probeModel[p] {
+				t.Errorf("PUT look: %+v; want look octopus, model %s kept", edited, _probeModel[p])
 			}
 
 			th := s.newThread(t, bot{ID: b.ID})

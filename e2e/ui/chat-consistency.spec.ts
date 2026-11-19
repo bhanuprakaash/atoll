@@ -38,7 +38,7 @@ test('a run ends with one footer under the reply: time, worked, tools', async ({
 
 test('the handoff line names each Bot once, linking to its helper thread', async ({ page }) => {
   const poteto = await newBotAPI(m, 'Handoff Boss', 'claude', { look: 'whale' });
-  const tester = await newBotAPI(m, 'Twice', 'claude', { look: 'shark' });
+  const tester = await newBotAPI(m, 'Twice', 'claude', { look: 'octopus' });
   await api(m, 'PUT', `/api/bots/${poteto.id}`, { delegates: [tester.id] });
   const call = `{"server":"atoll","tool":"delegate","args":{"bot":"Twice","brief":${escaped(prompts.hang)}}}`;
   const boss = await openThreadAPI(m, poteto.id, `Use MCP tools. [${call},${call}]`);

@@ -168,8 +168,8 @@ test.describe('#469 rail and the Bot pane', () => {
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
-    const asker = await newBotAPI(m, 'Asker', 'claude', { look: 'shark' });
-    const worker = await newBotAPI(m, 'Worker', 'claude', { look: 'shark' });
+    const asker = await newBotAPI(m, 'Asker', 'claude', { look: 'whale' });
+    const worker = await newBotAPI(m, 'Worker', 'claude', { look: 'whale' });
     const waiting = await openThreadAPI(m, asker.id, prompts.write);
     const busy = await openThreadAPI(m, worker.id, prompts.hang);
     try {
@@ -181,13 +181,13 @@ test.describe('#469 rail and the Bot pane', () => {
       await expect(asking).not.toHaveAttribute('data-current', 'true');
       await expect(asking).toHaveAttribute('data-marker', 'needs-you');
       await expect(
-        asking.getByRole('img', { name: 'Shark, needs you', exact: true }),
+        asking.getByRole('img', { name: 'Whale, needs you', exact: true }),
       ).toBeVisible();
       await expect.poll(() => animating(asking)).toBeGreaterThan(0);
 
       const working = sidebarRow(page, 'Worker');
       await expect(working).not.toHaveAttribute('data-current', 'true');
-      await expect(working.getByRole('img', { name: 'Shark, working', exact: true })).toBeVisible();
+      await expect(working.getByRole('img', { name: 'Whale, working', exact: true })).toBeVisible();
       await expect.poll(() => animating(working)).toBeGreaterThan(0);
       await expect(working).not.toHaveAttribute('data-marker', 'needs-you');
     } finally {
@@ -586,8 +586,8 @@ test.describe('#471 Now', () => {
   test('Now lists Needs you, Running and Replied threads across every Bot, each with its creature and Bot · note', async ({
     page,
   }) => {
-    const asker = await newBotAPI(m, 'Asker', 'claude', { look: 'shark' });
-    const worker = await newBotAPI(m, 'Worker', 'claude', { look: 'penguin' });
+    const asker = await newBotAPI(m, 'Asker', 'claude', { look: 'octopus' });
+    const worker = await newBotAPI(m, 'Worker', 'claude', { look: 'seal' });
     const newsy = await newBotAPI(m, 'Newsy', 'claude', { look: 'whale' });
     const calm = await newBotAPI(m, 'Calm');
     const waiting = await openThreadAPI(m, asker.id, prompts.write);
@@ -605,8 +605,8 @@ test.describe('#471 Now', () => {
       const now = await nowPane(page);
       await expect.poll(() => sections(now)).toEqual(['Needs you', 'Running', 'Replied']);
       for (const [name, id, bot, img] of [
-        ['Needs you', waiting.id, 'Asker', /^Shark\b/],
-        ['Running', busy.id, 'Worker', /^Penguin\b/],
+        ['Needs you', waiting.id, 'Asker', /^Octopus\b/],
+        ['Running', busy.id, 'Worker', /^Seal\b/],
         ['Replied', replied.id, 'Newsy', /^Whale\b/],
       ] as const) {
         const row = rowOf(section(now, name), id);

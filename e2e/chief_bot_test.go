@@ -112,13 +112,13 @@ func TestChiefBot_Look(t *testing.T) {
 			if got := s.bot(t, id); got.Look != "whale" {
 				t.Fatalf("create_bot look whale: GET look %q", got.Look)
 			}
-			chiefCall(t, s, "edit_bot", map[string]any{"id": id, "look": "anglerfish"})
-			if got := s.bot(t, id); got.Look != "anglerfish" {
-				t.Fatalf("edit_bot look anglerfish: GET look %q", got.Look)
+			chiefCall(t, s, "edit_bot", map[string]any{"id": id, "look": "octopus"})
+			if got := s.bot(t, id); got.Look != "octopus" {
+				t.Fatalf("edit_bot look octopus: GET look %q", got.Look)
 			}
 
 			failsListing(t, chiefCall(t, s, "edit_bot", map[string]any{"id": id, "look": "dragon"}), _creatures)
-			if got := s.bot(t, id); got.Look != "anglerfish" {
+			if got := s.bot(t, id); got.Look != "octopus" {
 				t.Fatalf("edit_bot look dragon changed look to %q", got.Look)
 			}
 			var bots []botInfo
@@ -140,23 +140,23 @@ func TestChiefBot_EditModelAndLookUndo(t *testing.T) {
 			_, s := start(t, p)
 			old := _fakeModels[p][0]
 			var b botInfo
-			s.do(t, "POST", "/api/bots", map[string]string{"name": "Poteto", "persona": "Reviews diffs.", "provider": p, "look": "shark", "model": old}, &b, 201)
+			s.do(t, "POST", "/api/bots", map[string]string{"name": "Poteto", "persona": "Reviews diffs.", "provider": p, "look": "whale", "model": old}, &b, 201)
 
 			model := chiefCall(t, s, "edit_bot", map[string]any{"id": b.ID, "model": _probeModel[p]})
 			modelChange := platformChange(t, model.events, "chief", model.thread, model.run, "bot", b.ID, "edit")
-			look := chiefCall(t, s, "edit_bot", map[string]any{"id": b.ID, "look": "anglerfish"})
+			look := chiefCall(t, s, "edit_bot", map[string]any{"id": b.ID, "look": "octopus"})
 			lookChange := platformChange(t, look.events, "chief", look.thread, look.run, "bot", b.ID, "edit")
-			if got := s.bot(t, b.ID); got.Model != _probeModel[p] || got.Look != "anglerfish" {
-				t.Fatalf("after edits: %+v, want model %s, look anglerfish", got, _probeModel[p])
+			if got := s.bot(t, b.ID); got.Model != _probeModel[p] || got.Look != "octopus" {
+				t.Fatalf("after edits: %+v, want model %s, look octopus", got, _probeModel[p])
 			}
 
 			s.do(t, "POST", "/api/platform/changes/"+lookChange+"/undo", nil, nil, 204)
-			if got := s.bot(t, b.ID); got.Model != _probeModel[p] || got.Look != "shark" {
-				t.Fatalf("undo look: %+v, want model %s, look shark", got, _probeModel[p])
+			if got := s.bot(t, b.ID); got.Model != _probeModel[p] || got.Look != "whale" {
+				t.Fatalf("undo look: %+v, want model %s, look whale", got, _probeModel[p])
 			}
 			s.do(t, "POST", "/api/platform/changes/"+modelChange+"/undo", nil, nil, 204)
-			if got := s.bot(t, b.ID); got.Model != old || got.Look != "shark" {
-				t.Fatalf("undo model: %+v, want model %s, look shark", got, old)
+			if got := s.bot(t, b.ID); got.Model != old || got.Look != "whale" {
+				t.Fatalf("undo model: %+v, want model %s, look whale", got, old)
 			}
 		})
 	}
@@ -208,9 +208,9 @@ func TestChiefBot_EditKeepsOldModel(t *testing.T) {
 			var b botInfo
 			s.do(t, "POST", "/api/bots", map[string]string{"name": "Poteto", "persona": "Reviews diffs.", "provider": p, "model": "retired-model"}, &b, 201)
 			chiefCall(t, s, "edit_bot", map[string]any{"id": b.ID, "name": "Renamed"})
-			chiefCall(t, s, "edit_bot", map[string]any{"id": b.ID, "provider": p, "model": "retired-model", "look": "anglerfish"})
-			if got := s.bot(t, b.ID); got.Name != "Renamed" || got.Provider != p || got.Model != "retired-model" || got.Look != "anglerfish" {
-				t.Fatalf("edits keeping provider and model: %+v, want Renamed, anglerfish, %s with retired-model", got, p)
+			chiefCall(t, s, "edit_bot", map[string]any{"id": b.ID, "provider": p, "model": "retired-model", "look": "octopus"})
+			if got := s.bot(t, b.ID); got.Name != "Renamed" || got.Provider != p || got.Model != "retired-model" || got.Look != "octopus" {
+				t.Fatalf("edits keeping provider and model: %+v, want Renamed, octopus, %s with retired-model", got, p)
 			}
 		})
 	}

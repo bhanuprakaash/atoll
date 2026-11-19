@@ -38,7 +38,7 @@ const cases = [
     provider: 'codex',
     label: 'Codex',
     line: 'Codex sign-in expired',
-    bot: 'Coral',
+    bot: 'Reefy',
     raw: /access token could not be refreshed|refresh token was revoked/,
     finish: async () => m.release('codex'),
   },

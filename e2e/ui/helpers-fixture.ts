@@ -35,14 +35,14 @@ export type HelperThread = {
   step: string;
 };
 
-// makeBoss makes Poteto (whale), whose delegate list holds one shark Bot per name, and returns
+// makeBoss makes Poteto (whale), whose delegate list holds one octopus Bot per name, and returns
 // them. extra is merged into a helper Bot's create body.
 export async function makeBoss(m: Machine, names: string[], extra: Record<string, object> = {}) {
   const poteto = await newBotAPI(m, 'Poteto', 'claude', { look: 'whale' });
   const bots: Record<string, { id: string }> = {};
   for (const name of names)
     bots[name] = await newBotAPI(m, name, 'claude', {
-      look: 'shark',
+      look: 'octopus',
       ...extra[name],
     });
   await api(m, 'PUT', `/api/bots/${poteto.id}`, {
