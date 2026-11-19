@@ -6,6 +6,9 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, showPane, sidebarRow, startAtoll } from './atoll';
 
+// Every face must be in view at once: a drag cannot scroll the rail between pressing and dropping.
+test.use({ viewport: { width: 1280, height: 1100 } });
+
 let m: Machine;
 const ids: Record<string, string> = {};
 let platform = '';
