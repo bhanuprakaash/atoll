@@ -164,7 +164,7 @@ function BotPane({
   return (
     <>
       <div className="flex items-center gap-2.5 px-3.5 pt-4 pb-3">
-        <Creature look={bot.look} state={bot.state} size={28} />
+        <Creature look={bot.look} colour={bot.colour} state={bot.state} size={28} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px]">{bot.name}</span>
           <span className="block truncate text-xs text-muted">{group}</span>

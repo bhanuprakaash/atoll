@@ -115,7 +115,7 @@ func botArgs(b Bot) ([]any, error) {
 	}
 	return []any{
 		b.ID, b.Name, b.Persona, b.Provider, access, string(conns), string(skills),
-		b.CanManagePlatform, b.Look, b.Model, string(mcp), b.Mode, string(delegates),
+		b.CanManagePlatform, b.Look, b.Model, string(mcp), b.Mode, string(delegates), b.Colour,
 	}, nil
 }
 
@@ -148,7 +148,7 @@ func updateBot(ctx context.Context, db execer, b Bot) error {
 	args = append(args[1:], b.ID)
 	res, err := db.ExecContext(ctx,
 		"UPDATE bots SET name = ?, persona = ?, provider = ?, repo_access = ?, connections = ?, "+
-			"skills = ?, can_manage_platform = ?, look = ?, model = ?, mcp_servers = ?, mode = ?, delegates = ? "+
+			"skills = ?, can_manage_platform = ?, look = ?, model = ?, mcp_servers = ?, mode = ?, delegates = ?, colour = ? "+
 			"WHERE id = ? AND removed = 0", args...)
 	if err != nil {
 		return fmt.Errorf("update bot: %w", err)

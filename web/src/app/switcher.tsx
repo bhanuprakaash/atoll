@@ -12,6 +12,7 @@ type Row = {
   kind: 'bot' | 'thread';
   to: string;
   look: CreatureLook;
+  colour: string;
   state: CreatureState;
   title: string;
   bot: string;
@@ -32,6 +33,7 @@ function allRows(bots: Bot[], groups: Group[]) {
       kind: 'thread',
       to: `/bots/${bot.id}/threads/${t.id}`,
       look: bot.look,
+      colour: bot.colour,
       state: bot.state,
       title: t.title || 'Empty thread',
       bot: bot.name,
@@ -49,6 +51,7 @@ function allRows(bots: Bot[], groups: Group[]) {
     kind: 'bot',
     to: `/bots/${bot.id}`,
     look: bot.look,
+    colour: bot.colour,
     state: bot.state,
     title: bot.name,
     bot: bot.name,
@@ -166,7 +169,7 @@ export function Switcher({ onClose }: { onClose: () => void }) {
                 onMouseMove={() => setSelected(i)}
                 className={`flex items-center gap-3 rounded-card px-2.5 py-1.5 ${i === selected ? 'bg-selected' : ''}`}
               >
-                <Creature look={row.look} state={row.state} size={28} />
+                <Creature look={row.look} colour={row.colour} state={row.state} size={28} />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="flex items-baseline gap-2 text-sm">
                     <span className="min-w-0 truncate">{row.title}</span>

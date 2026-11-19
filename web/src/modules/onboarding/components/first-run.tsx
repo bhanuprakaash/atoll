@@ -6,13 +6,13 @@ import { TextField } from '@/components/text-field';
 
 const floaters: { look: CreatureLook; size: number; place: string; drift: string }[] = [
   {
-    look: 'shark',
+    look: 'coral',
     size: 150,
     place: '-left-10 top-[4%] opacity-15',
     drift: 'motion-safe:animate-drift-a',
   },
   {
-    look: 'penguin',
+    look: 'seal',
     size: 44,
     place: 'left-[23%] top-[34%] opacity-40',
     drift: 'motion-safe:animate-drift-c',
@@ -24,7 +24,7 @@ const floaters: { look: CreatureLook; size: number; place: string; drift: string
     drift: 'motion-safe:animate-drift-b',
   },
   {
-    look: 'pufferfish',
+    look: 'starfish',
     size: 64,
     place: 'left-[72%] top-[9%] opacity-30',
     drift: 'motion-safe:animate-drift-c [animation-direction:reverse]',
@@ -36,7 +36,7 @@ const floaters: { look: CreatureLook; size: number; place: string; drift: string
     drift: 'motion-safe:animate-drift-b',
   },
   {
-    look: 'shark',
+    look: 'clam',
     size: 96,
     place: 'left-[83%] top-[76%] opacity-20',
     drift: 'motion-safe:animate-drift-a',

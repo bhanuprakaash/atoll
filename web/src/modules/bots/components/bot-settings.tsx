@@ -9,6 +9,7 @@ import { TextArea, TextField } from '@/components/text-field';
 import { useDeleteBot, usePinBot, useUpdateBot, type Bot } from '@/modules/bots/api/bots';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { ConnectionList } from '@/modules/bots/components/connection-list';
+import { colourOf } from '@/components/creature';
 import { CreatureCarousel } from '@/modules/bots/components/creature-picker';
 import {
   repoAccess as repoAccessChoices,
@@ -109,7 +110,12 @@ export function BotSettings({
           </button>
         </div>
         <div className="flex flex-col gap-6">
-          <CreatureCarousel value={current.look} onChange={(value) => save({ look: value })} />
+          <CreatureCarousel
+            value={current.look}
+            onChange={(value) => save({ look: value })}
+            colour={colourOf(current.look, current.colour)}
+            onColour={(value) => save({ colour: value })}
+          />
           <Field label="Name">
             {(id) => (
               <TextField

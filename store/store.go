@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -169,6 +170,7 @@ type (
 		Persona           string     `json:"persona"`
 		Provider          string     `json:"provider"`
 		Look              string     `json:"look,omitempty"`
+		Colour            string     `json:"colour,omitempty"`
 		Model             string     `json:"model,omitempty"`
 		Mode              string     `json:"mode"`
 		Pinned            bool       `json:"pinned,omitempty"`
@@ -374,22 +376,64 @@ const (
 
 const (
 	_botColumns = "id, name, persona, provider, repo_access, connections, skills, " +
-		"can_manage_platform, look, model, mcp_servers, mode, delegates"
-	_insertBot = "INSERT INTO bots (" + _botColumns + ", position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, " +
+		"can_manage_platform, look, model, mcp_servers, mode, delegates, colour"
+	_insertBot = "INSERT INTO bots (" + _botColumns + ", position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, " +
 		"(SELECT coalesce(max(position), 0) + 1 FROM bots))"
 	_threadColumns   = "id, bot_id, session, repo_id, branch, worktree, closed, created, last_activity, worktree_removed, closed_at, snapshot_ref, title, parent_thread_id, session_provider, checkout_git_dir, worktree_git_dir, session_cost_usd, pinned_at IS NOT NULL, holds_reports"
 	_messagePageSize = 50
 )
 
-// _retireLooks moves Bots off the creatures the design dropped onto the nearest new one by colour.
-const _retireLooks = `UPDATE bots SET look = CASE look
-	WHEN 'starfish' THEN 'scallop' WHEN 'sand_dollar' THEN 'seal' WHEN 'sponge' THEN 'shark'
-	WHEN 'kelp' THEN 'narwhal' WHEN 'shell' THEN 'octopus' WHEN 'wave' THEN 'manta'
-	WHEN 'island' THEN 'seal' WHEN 'sun' THEN 'pufferfish' WHEN 'sailboat' THEN 'seal'
-	WHEN 'turtle' THEN 'narwhal' WHEN 'seahorse' THEN 'pufferfish' WHEN 'otter' THEN 'seal'
-	WHEN 'clownfish' THEN 'scallop' END
-	WHERE look IN ('starfish', 'sand_dollar', 'sponge', 'kelp', 'shell', 'wave', 'island', 'sun',
-		'sailboat', 'turtle', 'seahorse', 'otter', 'clownfish')`
+// Looks are the creatures a Bot can be, and Colours the colours it can take.
+var (
+	Looks   = []string{"jellyfish", "octopus", "whale", "starfish", "sponge", "coral", "turtle", "clam", "seal"}
+	Colours = []string{"brown", "orange", "amber", "green", "teal", "sky", "blue", "purple", "pink"}
+)
+
+var (
+	_lookColours = map[string]string{
+		"jellyfish": "orange", "octopus": "purple", "whale": "blue", "starfish": "amber", "sponge": "brown",
+		"coral": "pink", "turtle": "teal", "clam": "green", "seal": "sky",
+	}
+	// _movedLooks are the creatures the design dropped, each to the nearest one kept.
+	_movedLooks = map[string]string{
+		"shark": "whale", "manta": "whale", "penguin": "seal", "anglerfish": "octopus", "pufferfish": "starfish",
+		"crab": "coral", "scallop": "clam", "narwhal": "turtle", "sand_dollar": "seal", "kelp": "turtle",
+		"shell": "octopus", "wave": "whale", "island": "seal", "sun": "starfish", "sailboat": "seal",
+		"seahorse": "starfish", "otter": "seal", "clownfish": "clam",
+	}
+	// _oldColours keep a Bot that had no colour of its own close to the colour its old look drew.
+	_oldColours = map[string]string{
+		"jellyfish": "orange", "whale": "blue", "shark": "purple", "penguin": "teal", "anglerfish": "purple",
+		"pufferfish": "amber", "octopus": "pink", "crab": "orange", "seal": "amber", "manta": "sky",
+		"scallop": "amber", "narwhal": "green",
+	}
+)
+
+// LookColour is the colour a Bot of look takes when it has none of its own.
+func LookColour(look string) string {
+	if c, ok := _lookColours[look]; ok {
+		return c
+	}
+	return "orange"
+}
+
+// retireLooks moves Bots off dropped looks and gives every Bot without a colour one.
+func retireLooks() string {
+	sqlCase := func(expr string, m map[string]string, orElse string) string {
+		keys := slices.Sorted(maps.Keys(m))
+		var b strings.Builder
+		b.WriteString("CASE " + expr)
+		for _, k := range keys {
+			fmt.Fprintf(&b, " WHEN '%s' THEN '%s'", k, m[k])
+		}
+		return b.String() + " ELSE " + orElse + " END"
+	}
+	moved := sqlCase("look", _movedLooks, "look")
+	keys := slices.Sorted(maps.Keys(_movedLooks))
+	return "UPDATE bots SET colour = CASE WHEN colour != '' THEN colour ELSE " +
+		sqlCase("look", _oldColours, sqlCase(moved, _lookColours, "'orange'")) + " END, " +
+		"look = " + moved + " WHERE colour = '' OR look IN ('" + strings.Join(keys, "', '") + "')"
+}
 
 // Open opens dir/atoll.db, creating dir and the file if needed, applies any migration the file
 // lacks, and moves Bots off retired looks.
@@ -425,7 +469,7 @@ func OpenWrapped(dir string, wrap func(driver.Connector) driver.Connector) (*Sto
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-	if _, err := db.Exec(_retireLooks); err != nil {
+	if _, err := db.Exec(retireLooks()); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("retire looks: %w", err)
 	}
@@ -2217,7 +2261,7 @@ func scanBotWith(r *sql.Rows, extra ...any) (Bot, error) {
 	var access sql.NullString
 	var conns, skills, mcp, delegates string
 	err := r.Scan(append([]any{&b.ID, &b.Name, &b.Persona, &b.Provider, &access, &conns, &skills,
-		&b.CanManagePlatform, &b.Look, &b.Model, &mcp, &b.Mode, &delegates, &b.Pinned, &b.GroupID}, extra...)...)
+		&b.CanManagePlatform, &b.Look, &b.Model, &mcp, &b.Mode, &delegates, &b.Colour, &b.Pinned, &b.GroupID}, extra...)...)
 	if err != nil {
 		return Bot{}, err
 	}

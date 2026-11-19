@@ -26,7 +26,7 @@ import { ErrorNotice } from '@/components/error-notice';
 import { ApiError } from '@/lib/api-client';
 import { messageTime } from '@/utils/time';
 
-type Bot = { id: string; name: string; look: CreatureLook; connections: string[] };
+type Bot = { id: string; name: string; look: CreatureLook; colour: string; connections: string[] };
 
 export function ConnectionsSettings({ bots = [] }: { bots?: Bot[] }) {
   const queryClient = useQueryClient();

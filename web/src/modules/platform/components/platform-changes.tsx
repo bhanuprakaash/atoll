@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { quiet } from '@/components/button';
-import { Creature, type CreatureLook } from '@/components/creature';
+import { Creature, type Appearance } from '@/components/creature';
 import { Fold } from '@/components/fold';
 import { type PlatformChange, useChanges, useUndoChange } from '@/modules/platform/api/changes';
 import { ErrorNotice } from '@/components/error-notice';
@@ -108,14 +108,14 @@ function NewBotRow({
   names,
 }: {
   change: PlatformChange;
-  look?: CreatureLook;
+  look?: Appearance;
   names: Names;
 }) {
   const undo = useUndoChange([change.id]);
   const after = change.after ?? {};
   return (
     <div className="flex items-center gap-3 border-t border-sidebar-line px-4 py-2.5 first:border-t-0">
-      <Creature look={look ?? after.look} size={30} />
+      <Creature {...(look ?? after)} size={30} />
       <div className={`min-w-0 flex-1 ${change.undone ? 'text-muted' : ''}`}>
         <div className={`truncate text-sm ${change.undone ? 'line-through' : ''}`}>
           {after.name}
@@ -162,7 +162,7 @@ function NewBots({
   changes: PlatformChange[];
   botId: string;
   botName?: string;
-  looks: Record<string, CreatureLook>;
+  looks: Record<string, Appearance>;
   names: Names;
 }) {
   const pending = changes.filter((change) => !change.undone);
@@ -176,7 +176,7 @@ function NewBots({
           <span className="flex flex-none">
             {changes.slice(0, 3).map((change, i) => (
               <span key={change.id} className={i > 0 ? '-ml-1.5' : ''}>
-                <Creature look={looks[change.entity_id] ?? change.after?.look} size={18} />
+                <Creature {...(looks[change.entity_id] ?? change.after)} size={18} />
               </span>
             ))}
           </span>
@@ -379,7 +379,7 @@ export function PlatformChanges({
   runId: string;
   botId: string;
   botNames: Record<string, string>;
-  looks: Record<string, CreatureLook>;
+  looks: Record<string, Appearance>;
   names: Omit<Names, 'connections'> & { connections: { id: string; kind: string }[] };
 }) {
   const { data: all = [] } = useChanges(threadId);

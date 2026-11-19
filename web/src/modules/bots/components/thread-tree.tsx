@@ -126,6 +126,7 @@ function HelpersLine({
             <Creature
               key={w.id}
               look={w.bot.look}
+              colour={w.bot.colour}
               state={w.needsYou ? 'needs_you' : 'working'}
               size={18}
             />
@@ -213,7 +214,12 @@ export function ThreadSection({
                   <>
                     {owner && (
                       <span className="flex-none pl-2.5">
-                        <Creature look={owner.bot.look} state={owner.bot.state} size={22} />
+                        <Creature
+                          look={owner.bot.look}
+                          colour={owner.bot.colour}
+                          state={owner.bot.state}
+                          size={22}
+                        />
                       </span>
                     )}
                     <span className="min-w-0 flex-1">

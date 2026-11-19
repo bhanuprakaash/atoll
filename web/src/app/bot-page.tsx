@@ -9,7 +9,7 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router';
-import { Creature, type CreatureLook } from '@/components/creature';
+import { Creature, type Appearance } from '@/components/creature';
 import { Gone } from '@/components/gone';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { BotMemory } from '@/modules/memory/components/bot-memory';
@@ -47,7 +47,7 @@ export function BotHeader({
   bot?: Bot;
   thread?: Thread;
   boss?: { bot: Bot; threadId: string; title: string };
-  helpers?: { id: string; name: string; look?: CreatureLook; state: HelperState }[];
+  helpers?: { id: string; name: string; look?: Appearance; state: HelperState }[];
   waiting?: number;
   open?: boolean;
   onNotifications?: () => void;
@@ -71,7 +71,12 @@ export function BotHeader({
               aria-label="Breadcrumb"
               className="relative z-10 flex min-w-0 items-center gap-1.5 text-sm"
             >
-              <Creature look={boss.bot.look} state={boss.bot.state} size={22} />
+              <Creature
+                look={boss.bot.look}
+                colour={boss.bot.colour}
+                state={boss.bot.state}
+                size={22}
+              />
               <Link
                 to={`/bots/${boss.bot.id}/threads/${boss.threadId}`}
                 className="max-w-40 truncate text-muted hover:text-ink"
@@ -81,12 +86,12 @@ export function BotHeader({
               <span aria-hidden="true" className="text-label">
                 ›
               </span>
-              {bot && <Creature look={bot.look} state={bot.state} size={18} />}
+              {bot && <Creature look={bot.look} colour={bot.colour} state={bot.state} size={18} />}
               <h1>{bot?.name}</h1>
             </nav>
           ) : (
             <>
-              {bot && <Creature look={bot.look} state={bot.state} size={22} />}
+              {bot && <Creature look={bot.look} colour={bot.colour} state={bot.state} size={22} />}
               <div className="flex min-w-0 items-center gap-1.5">
                 <h1 className="text-sm">{bot?.name}</h1>
                 {title && (
@@ -280,7 +285,7 @@ function BotFrame() {
     };
   }, [expanded, dismiss]);
   const bot = bots.find((item) => item.id === botId);
-  const looks = Object.fromEntries(bots.map((item) => [item.id, item.look]));
+  const looks = Object.fromEntries(bots.map((item) => [item.id, item]));
   const current = threads.find((thread) => thread.id === threadId);
   const bossThread = current?.parent_thread_id
     ? bots
@@ -294,7 +299,7 @@ function BotFrame() {
       return {
         id: helper.id,
         name: helperBot?.name ?? 'Helper',
-        look: helperBot?.look,
+        look: helperBot,
         state: helperState(helper),
       };
     });
@@ -340,7 +345,7 @@ function BotFrame() {
           <ThreadPanel
             thread={openThread}
             repoName={repos.find((r) => r.id === openThread.repo_id)?.name}
-            bots={Object.fromEntries(bots.map((b) => [b.id, { name: b.name, look: b.look }]))}
+            bots={Object.fromEntries(bots.map((b) => [b.id, { name: b.name, look: b }]))}
           />
         )}
       </div>

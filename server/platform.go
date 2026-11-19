@@ -28,19 +28,20 @@ import (
 	"atoll/store"
 )
 
-var _looks = []string{"jellyfish", "whale", "shark", "penguin", "anglerfish", "pufferfish", "octopus", "crab", "seal", "manta", "scallop", "narwhal"}
-
 var _repoName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 var _modes = []string{provider.ModeAuto, provider.ModeAsk, provider.ModeFull}
 
 func createWithLook(ctx context.Context, st *store.Store, b store.Bot) (store.Bot, error) {
 	if b.Look == "" {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(_looks))))
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(store.Looks))))
 		if err != nil {
 			return store.Bot{}, err
 		}
-		b.Look = _looks[n.Int64()]
+		b.Look = store.Looks[n.Int64()]
+	}
+	if b.Colour == "" {
+		b.Colour = store.LookColour(b.Look)
 	}
 	return st.CreateBot(ctx, b)
 }
@@ -50,8 +51,10 @@ func botProblem(b store.Bot) string {
 	switch {
 	case b.Name == "" || (b.Provider != "claude" && b.Provider != "codex"):
 		return "name is required and provider must be claude or codex"
-	case b.Look != "" && !slices.Contains(_looks, b.Look):
-		return fmt.Sprintf("unknown look %q; looks: %s", b.Look, strings.Join(_looks, ", "))
+	case b.Look != "" && !slices.Contains(store.Looks, b.Look):
+		return fmt.Sprintf("unknown look %q; looks: %s", b.Look, strings.Join(store.Looks, ", "))
+	case b.Colour != "" && !slices.Contains(store.Colours, b.Colour):
+		return fmt.Sprintf("unknown colour %q; colours: %s", b.Colour, strings.Join(store.Colours, ", "))
 	case b.Mode != "" && !slices.Contains(_modes, b.Mode):
 		return fmt.Sprintf("unknown mode %q; modes: %s", b.Mode, strings.Join(_modes, ", "))
 	}
@@ -61,6 +64,7 @@ func botProblem(b store.Bot) string {
 type botResponse struct {
 	store.Bot
 	Look         string     `json:"look"`
+	Colour       string     `json:"colour"`
 	Model        string     `json:"model"`
 	Pinned       bool       `json:"pinned"`
 	Activity     string     `json:"activity"`
@@ -92,7 +96,7 @@ func (r botResponse) MarshalJSON() ([]byte, error) {
 }
 
 func responseBot(b store.Bot) botResponse {
-	return botResponse{Bot: b, Look: b.Look, Model: b.Model, Pinned: b.Pinned, Activity: b.Activity, LastActivity: b.LastActivity}
+	return botResponse{Bot: b, Look: b.Look, Colour: b.Colour, Model: b.Model, Pinned: b.Pinned, Activity: b.Activity, LastActivity: b.LastActivity}
 }
 
 func (a *api) botSummary(
@@ -422,8 +426,8 @@ func (a *api) listChanges(w http.ResponseWriter, r *http.Request) {
 }
 
 const _platformTools = `[
-{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"},"mode":{"type":"string","enum":["auto","ask","full"]},"delegates":{"type":"array","items":{"type":"string"}}},"required":["name","provider"]}},
-{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string"},"mode":{"type":"string","enum":["auto","ask","full"]},"delegates":{"type":"array","items":{"type":"string"}}},"required":["id"]}},
+{"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string","enum":["jellyfish","octopus","whale","starfish","sponge","coral","turtle","clam","seal"]},"colour":{"type":"string","enum":["brown","orange","amber","green","teal","sky","blue","purple","pink"]},"mode":{"type":"string","enum":["auto","ask","full"]},"delegates":{"type":"array","items":{"type":"string"}}},"required":["name","provider"]}},
+{"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string","enum":["jellyfish","octopus","whale","starfish","sponge","coral","turtle","clam","seal"]},"colour":{"type":"string","enum":["brown","orange","amber","green","teal","sky","blue","purple","pink"]},"mode":{"type":"string","enum":["auto","ask","full"]},"delegates":{"type":"array","items":{"type":"string"}}},"required":["id"]}},
 {"name":"create_skill","description":"Create a skill.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"}},"required":["name","content"]}},
 {"name":"edit_skill","description":"Edit a skill.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"content":{"type":"string"}},"required":["id"]}},
 {"name":"import_skill","description":"Import a local skill folder (SKILL.md and its text files), or update the skill imported from it. Returns what it added, changed, removed and skipped.","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"replace":{"type":"boolean","description":"Overwrite edits made in Reef. Only after the user agreed."}},"required":["path"]}},

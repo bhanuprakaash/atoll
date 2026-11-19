@@ -8,6 +8,7 @@ type ChangeSnapshot = {
   command?: string;
   content?: string;
   look?: CreatureLook;
+  colour?: string;
   provider?: 'claude' | 'codex';
   model?: string;
   mode?: 'auto' | 'ask' | 'full';

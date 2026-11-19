@@ -148,7 +148,7 @@ function BotFace({
             className={`absolute inset-x-2 h-0.5 rounded-full bg-ink ${dropAt === 'before' ? 'top-0' : 'bottom-0'}`}
           />
         )}
-        <Creature look={bot.look} state={bot.state} size={40} />
+        <Creature look={bot.look} colour={bot.colour} state={bot.state} size={40} />
         <span className="max-w-16 truncate">{bot.name}</span>
       </Link>
       {anchor && (

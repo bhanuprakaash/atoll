@@ -102,7 +102,7 @@ export function Tag({
   );
 }
 
-type Bot = { id: string; name: string; look: CreatureLook };
+type Bot = { id: string; name: string; look: CreatureLook; colour: string };
 
 export function UsedBy({ bots }: { bots: Bot[] }) {
   return (
@@ -113,7 +113,7 @@ export function UsedBy({ bots }: { bots: Bot[] }) {
     >
       {bots.map((b) => (
         <span key={b.id} className="-ml-1.5 rounded-full bg-box">
-          <Creature look={b.look} size={24} />
+          <Creature look={b.look} colour={b.colour} size={24} />
         </span>
       ))}
     </span>

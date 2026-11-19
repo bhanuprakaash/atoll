@@ -153,6 +153,50 @@ func TestStore_Open_CleansTitlesOnce(t *testing.T) {
 	reopen("Title: Login redirect loop")
 }
 
+func TestStore_Open_MovesLooks(t *testing.T) {
+	ctx := t.Context()
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct{ look, colour, wantLook, wantColour string }{
+		{"jellyfish", "", "jellyfish", "orange"},
+		{"octopus", "", "octopus", "pink"},
+		{"shark", "", "whale", "purple"},
+		{"penguin", "", "seal", "teal"},
+		{"narwhal", "", "turtle", "green"},
+		{"kelp", "", "turtle", "teal"},
+		{"crab", "green", "coral", "green"},
+		{"sponge", "", "sponge", "brown"},
+	}
+	var ids []string
+	for _, tt := range tests {
+		b, err := st.CreateBot(ctx, store.Bot{Name: tt.look, Persona: "p", Provider: "claude", Look: tt.look, Colour: tt.colour})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, b.ID)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	for i, tt := range tests {
+		b, err := st.Bot(ctx, ids[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b.Look != tt.wantLook || b.Colour != tt.wantColour {
+			t.Errorf("%s %q after opening = %s %q, want %s %q", tt.look, tt.colour, b.Look, b.Colour, tt.wantLook, tt.wantColour)
+		}
+	}
+}
+
 func TestRepoAccess_JSON(t *testing.T) {
 	tests := []struct {
 		name    string

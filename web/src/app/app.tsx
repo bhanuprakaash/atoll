@@ -100,8 +100,8 @@ function ThreadPage() {
   const { data: skills = [] } = useSkills();
   const repoName = repos.find((r) => r.id === thread?.repo_id)?.name;
   const botNames = Object.fromEntries(bots.map((b) => [b.id, b.name]));
-  const botLooks = Object.fromEntries(bots.map((b) => [b.id, b.look]));
-  const botInfo = Object.fromEntries(bots.map((b) => [b.id, { name: b.name, look: b.look }]));
+  const botLooks = Object.fromEntries(bots.map((b) => [b.id, b]));
+  const botInfo = Object.fromEntries(bots.map((b) => [b.id, { name: b.name, look: b }]));
   const bot = bots.find((b) => b.id === botId);
   const allowed = allowedRepos(bot, repos);
   const lostRepo =
@@ -122,7 +122,7 @@ function ThreadPage() {
       threadId={threadId}
       botId={botId}
       botName={bots.find((b) => b.id === botId)?.name ?? ''}
-      look={bots.find((b) => b.id === botId)?.look}
+      look={bots.find((b) => b.id === botId)}
       bots={botInfo}
       repos={allowed}
       bot={withConnectionNames(bot, connections)}
@@ -156,7 +156,7 @@ function DraftThreadPage() {
       key={botId}
       botId={botId}
       botName={bot?.name ?? ''}
-      look={bot?.look}
+      look={bot}
       bot={withConnectionNames(bot, connections)}
       repos={allowedRepos(bot, repos)}
     />

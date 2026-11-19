@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Button } from '@/components/button';
-import type { CreatureLook } from '@/components/creature';
+import { colourOf, type BotColour, type CreatureLook } from '@/components/creature';
 import { Field } from '@/components/field';
 import { Segmented } from '@/components/segmented';
 import { TextArea, TextField } from '@/components/text-field';
@@ -48,6 +48,8 @@ export function NewBotForm({
   const [provider, setProvider] = useState<Provider>('claude');
   const [model, setModel] = useState('');
   const [look, setLook] = useState<CreatureLook>('jellyfish');
+  const [picked, setPicked] = useState<BotColour>();
+  const colour = colourOf(look, picked);
   const [onlyThese, setOnlyThese] = useState(false);
   const [repoIds, setRepoIds] = useState<string[]>([]);
   const [connectionIds, setConnectionIds] = useState<string[]>([]);
@@ -62,6 +64,7 @@ export function NewBotForm({
         provider,
         model,
         look,
+        colour,
         repo_access: onlyThese ? repoIds : 'all',
         connections: connectionIds,
         skills: skillIds,
@@ -111,7 +114,12 @@ export function NewBotForm({
             </Field>
             <div className="flex flex-col gap-2">
               <span className="text-xs tracking-wide text-label">Look</span>
-              <CreatureCarousel value={look} onChange={setLook} />
+              <CreatureCarousel
+                value={look}
+                onChange={setLook}
+                colour={colour}
+                onColour={setPicked}
+              />
             </div>
           </section>
           <section className="flex flex-col gap-5 border-t border-line pt-7">
@@ -185,13 +193,14 @@ export function NewBotForm({
             provider={provider}
             model={model}
             look={look}
+            colour={colour}
             skills={skills.filter((skill) => skillIds.includes(skill.id))}
             connections={connections.filter((connection) => connectionIds.includes(connection.id))}
             repos={onlyThese ? repos.filter((repo) => repoIds.includes(repo.id)) : 'all'}
           />
           <h2 className="mt-6 mb-3 text-xs tracking-wide text-label">In the sidebar</h2>
           <div className="flex items-center gap-3 rounded-card border border-line bg-card p-2.5">
-            <CreatureSidebar look={look} name={name} />
+            <CreatureSidebar look={look} colour={colour} name={name} />
           </div>
         </section>
       </div>

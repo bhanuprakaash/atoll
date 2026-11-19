@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router';
 import { BrandLogo } from '@/components/brand-logo';
 import { quiet } from '@/components/button';
-import { Creature, type CreatureLook } from '@/components/creature';
+import { Creature, type Appearance } from '@/components/creature';
 import { Markdown } from '@/components/markdown';
 import { ZoomImage } from '@/components/zoom-image';
 import { Select } from '@/components/select';
@@ -154,7 +154,7 @@ const names = (list: { name: string; href: string }[]) => {
   ));
 };
 
-type Bots = Record<string, { name: string; look: CreatureLook }>;
+type Bots = Record<string, { name: string; look: Appearance }>;
 
 function MessageLine({
   message,
@@ -190,7 +190,7 @@ function MessageLine({
         className="flex flex-col items-start gap-2"
       >
         <span className="flex items-center gap-2 text-sm">
-          <Creature look={from?.look} size={24} />
+          <Creature {...from?.look} size={24} />
           {from?.name ?? 'Helper'}
         </span>
         <Clamp className={`self-stretch ${chatText}`}>
@@ -279,7 +279,7 @@ function EmptyThread({
   onSent,
 }: {
   botName: string;
-  look?: CreatureLook;
+  look?: Appearance;
   setup?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
   repoId: string;
@@ -291,7 +291,7 @@ function EmptyThread({
 }) {
   return (
     <div className="mx-auto flex w-full max-w-160 flex-col items-center gap-4">
-      <Creature look={look} size={88} />
+      <Creature {...look} size={88} />
       <h2 className="text-[28px] tracking-tight">What should {botName} work on?</h2>
       {setup && (
         <div className="flex items-center gap-2 text-sm text-muted">
@@ -364,7 +364,7 @@ export function DraftThread({
 }: {
   botId: string;
   botName: string;
-  look?: CreatureLook;
+  look?: Appearance;
   bot?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
 }) {
@@ -422,7 +422,7 @@ export function ThreadView({
   threadId: string;
   botId: string;
   botName: string;
-  look?: CreatureLook;
+  look?: Appearance;
   bots: Bots;
   bot?: { provider: 'claude' | 'codex'; model: string; skills: string[]; connections: string[] };
   repos: { id: string; name: string }[];
@@ -782,7 +782,7 @@ export function ThreadView({
                 className="pointer-events-auto flex size-10 items-center justify-center rounded-full border border-outline bg-card shadow-sm"
               >
                 {activeId ? (
-                  <Creature look={look} state="working" size={28} />
+                  <Creature {...look} state="working" size={28} />
                 ) : (
                   <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none">
                     <path
