@@ -79,7 +79,7 @@ test('a thread of a provider at its usage limit reads Out until the reset time',
 
   const limitedRow = row(page, 'Limited', threadTitle(prompts.keep));
   await expect(limitedRow).toContainText(/Out until \d/);
-  await expect(limitedRow).not.toContainText('Failed');
+  await expect(limitedRow).not.toContainText('Run failed');
   await expect(limitedRow).not.toContainText('Replied');
 });
 
