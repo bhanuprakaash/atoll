@@ -146,6 +146,16 @@ export function Creature({
           strokeWidth="2.5"
         />
       )}
+      {state === 'failed' && (
+        <circle
+          cx="54"
+          cy="9"
+          r="5.5"
+          fill="var(--color-danger)"
+          stroke="var(--color-bg)"
+          strokeWidth="2.5"
+        />
+      )}
     </svg>
   );
 }

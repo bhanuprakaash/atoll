@@ -1,4 +1,4 @@
-import { useState, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Creature } from '@/components/creature';
 import { Menu } from '@/components/menu';
@@ -27,8 +27,7 @@ const stateLabel: Partial<Record<Bot['state'], string>> = {
   failed: 'Run failed',
 };
 
-const faceStyle =
-  'relative flex w-full flex-col items-center gap-1 px-1 py-2 text-[11px] text-muted outline-none hover:text-ink focus-visible:text-ink';
+const faceStyle = 'relative flex w-full items-center justify-center px-1 py-2 outline-none';
 
 function Bar() {
   return (
@@ -48,35 +47,36 @@ function NowButton({
   return (
     <button
       type="button"
+      aria-label={count > 0 ? `Now, ${count} waiting` : 'Now'}
       data-current={current ? 'true' : undefined}
       onClick={(event) => onClick(event.currentTarget)}
-      className={`${faceStyle} ${current ? 'text-ink' : ''}`}
+      className={faceStyle}
     >
       {current && <Bar />}
-      <span
-        aria-hidden="true"
-        className="flex size-8 items-center justify-center rounded-full bg-field"
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        >
-          <circle cx="12" cy="12" r="8" />
-          <circle cx="12" cy="12" r="2" fill="currentColor" />
-        </svg>
-      </span>
-      <span>Now</span>
-      {count > 0 && (
+      {count > 0 ? (
         <span
-          data-badge
-          className="absolute top-1 right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] text-accent-ink"
+          aria-hidden="true"
+          className="flex size-10 items-center justify-center rounded-control bg-accent text-base font-medium text-accent-ink"
         >
           {count}
+        </span>
+      ) : (
+        <span
+          aria-hidden="true"
+          className="flex size-10 items-center justify-center rounded-control bg-field text-muted"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          >
+            <circle cx="12" cy="12" r="8" />
+            <circle cx="12" cy="12" r="2" fill="currentColor" />
+          </svg>
         </span>
       )}
     </button>
@@ -85,6 +85,7 @@ function NowButton({
 
 function BotFace({
   bot,
+  group,
   current,
   onSelect,
   onNewGroup,
@@ -92,6 +93,7 @@ function BotFace({
   onDropBot,
 }: {
   bot: Bot;
+  group?: string;
   current: boolean;
   onSelect: (link: HTMLAnchorElement) => void;
   onNewGroup: () => void;
@@ -112,6 +114,7 @@ function BotFace({
         to={`/bots/${bot.id}`}
         data-current={current ? 'true' : undefined}
         data-marker={bot.state === 'needs_you' ? 'needs-you' : undefined}
+        aria-label={bot.name}
         draggable={bot.id !== 'chief'}
         onDragStart={(event) => {
           event.dataTransfer.setData(botDragType, bot.id);
@@ -138,7 +141,7 @@ function BotFace({
           event.preventDefault();
           setMenu({ x: event.clientX, y: event.clientY });
         }}
-        className={`${faceStyle} ${current ? 'text-ink' : ''}`}
+        className={faceStyle}
         {...tip}
       >
         {current && <Bar />}
@@ -149,12 +152,13 @@ function BotFace({
           />
         )}
         <Creature look={bot.look} colour={bot.colour} state={bot.state} size={40} />
-        <span className="max-w-16 truncate">{bot.name}</span>
       </Link>
       {anchor && (
         <Tooltip anchor={anchor}>
           <span>{bot.name}</span>
-          {state && <span className="text-xs text-muted">{state}</span>}
+          {(group || state) && (
+            <span className="text-xs text-muted">{[group, state].filter(Boolean).join(' · ')}</span>
+          )}
         </Tooltip>
       )}
       {menu && (
@@ -298,10 +302,35 @@ export function BotRail({
   const moveGroup = useMoveGroup();
   const [dragging, setDragging] = useState(false);
   const { top, inGroup, ungrouped } = sidebarOrder(bots, groups);
-  const needsYou = bots.reduce(
-    (n, bot) => n + (bot.threads ?? []).filter((t) => t.state === 'needs_you').length,
+  const waiting = bots.reduce(
+    (n, bot) =>
+      n + (bot.threads ?? []).filter((t) => t.state === 'needs_you' || t.state === 'failed').length,
     0,
   );
+  const scroller = useRef<HTMLDivElement>(null);
+  const [below, setBelow] = useState(0);
+  const [belowNeedsYou, setBelowNeedsYou] = useState(false);
+  useEffect(() => {
+    const box = scroller.current;
+    if (!box) return;
+    const measure = () => {
+      const bottom = box.getBoundingClientRect().bottom + 0.5;
+      const hidden = [...box.querySelectorAll<HTMLElement>('a[href^="/bots/"]')].filter(
+        (face) => face.getBoundingClientRect().bottom > bottom,
+      );
+      setBelow(hidden.length);
+      setBelowNeedsYou(hidden.some((face) => face.dataset.marker === 'needs-you'));
+    };
+    measure();
+    box.addEventListener('scroll', measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    if (box.firstElementChild) observer.observe(box.firstElementChild);
+    return () => {
+      box.removeEventListener('scroll', measure);
+      observer.disconnect();
+    };
+  }, [bots, groups]);
   const dropOnFace = (target: Bot) => (botId: string, after: boolean) => {
     const dragged = bots.find((bot) => bot.id === botId);
     if (!dragged || dragged === target) return;
@@ -325,7 +354,8 @@ export function BotRail({
     <BotFace
       key={bot.id}
       bot={bot}
-      current={view === bot.id || openBotId === bot.id}
+      group={groups.find((group) => group.id === bot.group_id)?.name}
+      current={view !== 'now' && (view === bot.id || openBotId === bot.id)}
       onSelect={(link) => onView(bot.id, link)}
       onNewGroup={() => onCreatingGroup({ botId: bot.id })}
       onDragging={setDragging}
@@ -338,55 +368,78 @@ export function BotRail({
     if (id !== target.id) moveGroup.mutate({ id, before: target.id });
   };
   return (
-    <div className="flex flex-col">
-      <NowButton
-        current={view === 'now' && !openBotId}
-        count={needsYou}
-        onClick={(button) => onView('now', button)}
-      />
-      <div className="flex flex-col">{top.map(face)}</div>
-      {groups.map((group) => {
-        const members = inGroup(group.id);
-        return (
+    <>
+      <div ref={scroller} className="mt-2 min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
+        <div className="flex flex-col">
+          <NowButton
+            current={view === 'now'}
+            count={waiting}
+            onClick={(button) => onView('now', button)}
+          />
+          <div aria-hidden="true" className="flex h-4 items-center justify-center">
+            <span className="h-px w-8 bg-sidebar-line" />
+          </div>
+          <div className="flex flex-col">{top.map(face)}</div>
+          {groups.map((group) => {
+            const members = inGroup(group.id);
+            return (
+              <BotGroup
+                key={group.id}
+                group={group}
+                name={group.name}
+                count={members.length}
+                line
+                dragging={dragging}
+                onDragging={setDragging}
+                onDropBot={moveTo(group.id)}
+                onDropGroup={dropOnGroup(group)}
+              >
+                {members.map(face)}
+              </BotGroup>
+            );
+          })}
+          {creatingGroup && (
+            <GroupNameField
+              onDone={(name) => {
+                onCreatingGroup(null);
+                if (!name) return;
+                createGroup.mutate(name, {
+                  onSuccess: (group) => {
+                    if (creatingGroup.botId)
+                      setGroup.mutate({ botId: creatingGroup.botId, groupId: group.id });
+                  },
+                });
+              }}
+            />
+          )}
           <BotGroup
-            key={group.id}
-            group={group}
-            name={group.name}
-            count={members.length}
-            line
+            name="Ungrouped"
+            count={ungrouped.length}
+            line={groups.length > 0}
             dragging={dragging}
             onDragging={setDragging}
-            onDropBot={moveTo(group.id)}
-            onDropGroup={dropOnGroup(group)}
+            onDropBot={moveTo(null)}
           >
-            {members.map(face)}
+            {ungrouped.map(face)}
           </BotGroup>
-        );
-      })}
-      {creatingGroup && (
-        <GroupNameField
-          onDone={(name) => {
-            onCreatingGroup(null);
-            if (!name) return;
-            createGroup.mutate(name, {
-              onSuccess: (group) => {
-                if (creatingGroup.botId)
-                  setGroup.mutate({ botId: creatingGroup.botId, groupId: group.id });
-              },
-            });
-          }}
-        />
+        </div>
+      </div>
+      {below > 0 && (
+        <button
+          type="button"
+          aria-label={`${below} more${belowNeedsYou ? ', needs you' : ''}`}
+          onClick={() => scroller.current?.scrollTo({ top: scroller.current.scrollHeight })}
+          className="relative mx-auto mt-1 flex h-6 flex-none items-center rounded-full bg-field px-2.5 text-[11px] text-muted"
+        >
+          {below} more
+          {belowNeedsYou && (
+            <span
+              aria-hidden="true"
+              className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-accent"
+            />
+          )}
+        </button>
       )}
-      <BotGroup
-        name="Ungrouped"
-        count={ungrouped.length}
-        line={groups.length > 0}
-        dragging={dragging}
-        onDragging={setDragging}
-        onDropBot={moveTo(null)}
-      >
-        {ungrouped.map(face)}
-      </BotGroup>
-    </div>
+    </>
   );
 }

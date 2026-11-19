@@ -1711,19 +1711,27 @@ Voice
   Mockups: the "Reef sidebar: rail + threads" canvas, board A
   (https://claude.ai/artifact/Nw8knYvm9Mxk4PwfuXwbeY). *One column held Bots, groups, up to 3
   threads per Bot and helper lines; with 7 Bots and 2 running it read as a tree, not a list.*
-  - Rail: 76 px, fixed. Top to bottom: Now, Chief, pinned Bots in pinned order (no heading), the
+  - Rail: 64 px, fixed. Top to bottom: Now, a hairline, Chief, pinned Bots in pinned order (no heading), the
     user's groups in order, Ungrouped; at the bottom `+` (New Bot, New group) and the user's avatar
     (Settings). Settings shows the rail alone, with no thread pane; clicking Now or a face brings the
-    pane back. *Settings has its own section list, and the pane beside it made three columns.* No logo, no search field, no group chats. A face is the Bot's 40 px creature with
-    its name under it, 11 px, one line, cut with `…` at 64 px. No cost, time or activity line on
-    the rail.
-  - Hover or keyboard focus on a face shows a label beside the rail: the full name and the Bot's
-    state (Needs you, Working, Run failed, or nothing). A face of a Bot that is not selected still
-    shows Needs you (the pulsing light dot) and its working motion.
+    pane back. *Settings has its own section list, and the pane beside it made three columns.* No logo, no search field, no group chats. A face is the Bot's 40 px creature
+    alone: no name, no group name, no cost, time or activity line on the rail; its link is named by
+    the Bot's name. *Names under faces were chosen when two Bots of one look could not be told
+    apart. Each Bot has its own colour now, so the face carries identity, and text on a 64 px rail
+    is cut.* The faces scroll inside the rail without a scrollbar. When faces fall below the fold,
+    a chip above `+` reads `N more` for the faces not wholly in view and carries the light dot when
+    one of them needs you; clicking it scrolls to them. With every face in view there is no chip.
+    *A Bot that needs the person never hides below the fold without a cue.*
+  - Hover or keyboard focus on a face shows a label beside the rail: the full name and, under it,
+    the Bot's group and state joined by ` · ` (`Frontend · Run failed`); the state alone with no
+    group, the group alone with no state, the name alone with neither. A face of a Bot that is not
+    selected still shows Needs you (the pulsing light dot) and its working motion; a failed Bot
+    shows a red pip at the same place as the light dot, and Needs you wins when a Bot has both.
   - Clicking a face opens the Bot's latest thread and shows its pane. Right-click on a face opens
     the Bot menu (New thread, Pin to sidebar, Move to group, Bot settings). Chief cannot be pinned.
-  - Current Bot: a 3 px light bar at the rail's left edge and the name in main ink; no fill. *One
-    selected mark: the fill belongs to the open thread.*
+  - Current Bot: a 3 px light bar at the rail's left edge; no fill. *One selected mark: the fill
+    belongs to the open thread.* While Now's pane shows, the bar is on Now, even with a Bot's thread
+    open from it.
   - Opening Reef at `/` goes to the Bot whose newest thread that is not a helper's moved last.
     *Landing on a helper's thread showed work the person never asked to see.*
   - A thread's activity time moves when a run starts, an approval opens or closes, and a run ends
@@ -1769,8 +1777,9 @@ Voice
 - Now: the first rail item, a view across every Bot, never a forced landing. Its pane lists Needs
   you, Running and Replied threads; a row is the Bot's 22 px creature, the title and, under it,
   "Bot · note" (the live step or the waiting ask, else the time), with 8 px above and below and
-  10 px from the edge to the creature. The Now icon's badge is the
-  Needs you count and clears when nothing waits. Opening a thread from Now keeps the pane on Now
+  10 px from the edge to the creature. On the rail Now is the
+  count of threads in Needs you or failed, on the light accent, with no icon and no badge; with
+  none it rests as a grey mark. A hairline separates it from Chief. Opening a thread from Now keeps the pane on Now
   and selects that row. With nothing waiting, running or replied it reads "Nothing needs you".
 - Selected row: the sidebar marks where you are once. With a thread open, only that thread's row
   has the selected fill and `aria-current="page"`, in the Bot's pane or in Now. On the New thread
@@ -1853,8 +1862,8 @@ Voice
   - The Bots poll (`GET /api/bots`) gives each open thread its `branch`, `prs` and
     `last_activity`, so the switcher needs no request of its own.
 - Bot groups are only rail sections; they change nothing else about a Bot. A Bot is in one group
-  or Ungrouped. A hairline separates groups; hover or keyboard focus grows the line and shows the
-  group name and Bot count beside the rail. Create one from `+` › New group (an inline name field:
+  or Ungrouped. A hairline separates groups, and the rail shows no group name; hover or keyboard focus grows the
+  line and shows the group name and Bot count beside the rail. Create one from `+` › New group (an inline name field:
   Enter saves, Esc cancels). Move a Bot with right-click › Move to group (the groups, No group, New
   group…) or by dragging. Right-click on a line opens the group menu (Rename, New Bot in this
   group, Delete group); deleting moves its Bots to Ungrouped. Name and order are stored

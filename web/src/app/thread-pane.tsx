@@ -25,7 +25,7 @@ const WIDTH_MIN = 240;
 const WIDTH_MAX = 420;
 const WIDTH_STEP = 16;
 const WIDTH_KEY = 'atoll.sidebarWidth';
-const RAIL_WIDTH = 76;
+const RAIL_WIDTH = 64;
 const DRAWER_GUTTER = 48;
 
 const isPinLimit = (error: Error) => error instanceof ApiError && error.status === 409;
@@ -278,7 +278,7 @@ export function ThreadPane({
       style={{
         width: onWidth ? width : `min(${width}px, calc(100vw - ${RAIL_WIDTH + DRAWER_GUTTER}px))`,
       }}
-      className={`flex flex-none flex-col border-r border-sidebar-line bg-card ${onWidth ? 'relative' : 'fixed inset-y-0 left-19 z-40'}`}
+      className={`flex flex-none flex-col border-r border-sidebar-line bg-card ${onWidth ? 'relative' : 'fixed inset-y-0 left-16 z-40'}`}
     >
       {now ? (
         <NowPane bots={bots} openThreadId={openThreadId} />
