@@ -1,5 +1,7 @@
+import { useId } from 'react';
 import {
   botColours,
+  colourOf,
   colourVars,
   Creature,
   creatureLooks,
@@ -7,6 +9,21 @@ import {
   type CreatureLook,
 } from '@/components/creature';
 import { Segmented } from '@/components/segmented';
+
+type Wearer = { id: string; name: string; look: CreatureLook; colour?: string };
+
+// freePair walks the looks in order, each look's own colour first, and returns the first look and
+// colour no Bot wears. When all are worn it returns the first look and its own colour.
+export function freePair(bots: Wearer[]) {
+  for (const { look } of creatureLooks) {
+    const own = colourOf(look);
+    const free = [own, ...botColours.filter((c) => c !== own)].find(
+      (c) => !bots.some((b) => b.look === look && colourOf(b.look, b.colour) === c),
+    );
+    if (free) return { look, colour: free };
+  }
+  return { look: creatureLooks[0].look, colour: colourOf(creatureLooks[0].look) };
+}
 
 function Arrow({ label, d, onClick }: { label: string; d: string; onClick: () => void }) {
   return (
@@ -38,12 +55,26 @@ export function CreatureCarousel({
   onChange,
   colour,
   onColour,
+  others,
 }: {
   value: CreatureLook;
   onChange: (look: CreatureLook) => void;
   colour: BotColour;
   onColour: (colour: BotColour) => void;
+  others: Wearer[];
 }) {
+  const prefix = useId();
+  const alikes = others
+    .filter((b) => b.look === value)
+    .map((b) => {
+      const c = colourOf(b.look, b.colour);
+      const article = c === 'amber' || c === 'orange' ? 'An' : 'A';
+      return {
+        id: `${prefix}-${b.id}`,
+        colour: c,
+        text: `${article} ${c} ${b.look} is ${b.name}.`,
+      };
+    });
   const i = Math.max(
     0,
     creatureLooks.findIndex((c) => c.look === value),
@@ -83,11 +114,28 @@ export function CreatureCarousel({
         choices={botColours.map((c) => ({
           value: c,
           label: c[0].toUpperCase() + c.slice(1),
+          describedBy:
+            alikes
+              .filter((a) => a.colour === c)
+              .map((a) => a.id)
+              .join(' ') || undefined,
           content: (
-            <span className="block size-full rounded-full" style={{ background: colourVars[c] }} />
+            <span
+              className={`block size-full rounded-full ${alikes.some((a) => a.colour === c) ? 'opacity-40' : ''}`}
+              style={{ background: colourVars[c] }}
+            />
           ),
         }))}
       />
+      {alikes.length > 0 && (
+        <p className="flex flex-wrap justify-center gap-x-3 text-xs text-muted">
+          {alikes.map((a) => (
+            <span key={a.id} id={a.id}>
+              {a.text}
+            </span>
+          ))}
+        </p>
+      )}
     </div>
   );
 }

@@ -74,6 +74,7 @@ function NewBotPage() {
   return (
     <NewBotForm
       chiefId={bots.find((b) => b.can_manage_platform)?.id}
+      bots={bots}
       modelControl={(provider, model, onChange) => (
         <ModelSelect providers={providers} provider={provider} model={model} onChange={onChange} />
       )}

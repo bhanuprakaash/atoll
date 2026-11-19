@@ -9,7 +9,7 @@ import { useCreateBot, type Bot, type Provider } from '@/modules/bots/api/bots';
 import { BotPreview, CreatureSidebar } from '@/modules/bots/components/bot-preview';
 import { ChoiceList } from '@/modules/bots/components/choice-list';
 import { ConnectionList } from '@/modules/bots/components/connection-list';
-import { CreatureCarousel } from '@/modules/bots/components/creature-picker';
+import { CreatureCarousel, freePair } from '@/modules/bots/components/creature-picker';
 import { ErrorNotice } from '@/components/error-notice';
 
 export type ModelControl = (
@@ -42,14 +42,22 @@ export function NewBotForm({
   onCreated,
   modelControl,
   chiefId,
-}: Choices & { onCreated: (bot: Bot) => void; modelControl: ModelControl; chiefId?: string }) {
+  bots,
+}: Choices & {
+  onCreated: (bot: Bot) => void;
+  modelControl: ModelControl;
+  chiefId?: string;
+  bots: Bot[];
+}) {
   const [name, setName] = useState('');
   const [persona, setPersona] = useState('');
   const [provider, setProvider] = useState<Provider>('claude');
   const [model, setModel] = useState('');
-  const [look, setLook] = useState<CreatureLook>('jellyfish');
+  const [pickedLook, setLook] = useState<CreatureLook>();
   const [picked, setPicked] = useState<BotColour>();
-  const colour = colourOf(look, picked);
+  const free = freePair(bots);
+  const look = pickedLook ?? free.look;
+  const colour = picked ?? (look === free.look ? free.colour : colourOf(look));
   const [onlyThese, setOnlyThese] = useState(false);
   const [repoIds, setRepoIds] = useState<string[]>([]);
   const [connectionIds, setConnectionIds] = useState<string[]>([]);
@@ -119,6 +127,7 @@ export function NewBotForm({
                 onChange={setLook}
                 colour={colour}
                 onColour={setPicked}
+                others={bots}
               />
             </div>
           </section>
