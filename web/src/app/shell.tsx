@@ -131,19 +131,17 @@ export function Shell() {
           className="flex w-19 flex-none flex-col border-r border-sidebar-line bg-card pt-4 pb-3"
         >
           {inDesktopApp && <div data-tauri-drag-region="deep" className="h-8" />}
-          <div className="mt-2 min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
-            <BotRail
-              view={view}
-              openBotId={botId}
-              onView={(next, from) => {
-                setView(next);
-                setSettingsHidesPane(false);
-                openPane(from);
-              }}
-              creatingGroup={creatingGroup}
-              onCreatingGroup={setCreatingGroup}
-            />
-          </div>
+          <BotRail
+            view={view}
+            openBotId={botId}
+            onView={(next, from) => {
+              setView(next);
+              setSettingsHidesPane(false);
+              openPane(from);
+            }}
+            creatingGroup={creatingGroup}
+            onCreatingGroup={setCreatingGroup}
+          />
           <div className="mt-2 flex flex-none flex-col items-center gap-2">
             <button
               type="button"

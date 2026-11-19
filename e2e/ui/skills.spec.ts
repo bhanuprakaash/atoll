@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { sidebarRow } from "./atoll";
 
 test("Chief creates a skill and Bot in chat, and Undo removes the Bot", async ({
   page,
 }) => {
   await page.goto("/");
-  const nav = page.getByRole("navigation", { name: "Bots" });
-  await nav.getByText("Chief", { exact: true }).click();
+  await sidebarRow(page, "Chief").click();
   await page
     .getByRole("region", { name: "Chief", exact: true })
     .getByRole("button", { name: "New thread" })
@@ -56,8 +56,7 @@ test("a reply that created 2 Bots folds into one line: Undo all works folded, th
   page,
 }) => {
   await page.goto("/");
-  const nav = page.getByRole("navigation", { name: "Bots" });
-  await nav.getByText("Chief", { exact: true }).click();
+  await sidebarRow(page, "Chief").click();
   await page
     .getByRole("region", { name: "Chief", exact: true })
     .getByRole("button", { name: "New thread" })

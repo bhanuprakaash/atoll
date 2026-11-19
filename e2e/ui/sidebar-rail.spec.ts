@@ -28,7 +28,6 @@ test.afterEach(() => m?.stop());
 
 const rail = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
 const nowButton = (page: Page) => rail(page).getByRole('button', { name: /^Now\b/ });
-const badge = (page: Page) => nowButton(page).locator('[data-badge]');
 const group = (page: Page, name: string) => rail(page).getByRole('group', { name, exact: true });
 const groupLine = (page: Page, name: string) =>
   group(page, name).getByRole('button', { name, exact: true });
@@ -621,7 +620,7 @@ test.describe('#471 Now', () => {
     }
   });
 
-  test('the Now badge equals the Needs you count and clears when nothing waits', async ({
+  test('the Now count equals the Needs you count and clears when nothing waits', async ({
     page,
   }) => {
     const first = await newBotAPI(m, 'First');
@@ -632,7 +631,7 @@ test.describe('#471 Now', () => {
     await waitStatus(m, b.id, 'waiting');
     await page.goto(`${m.url}/settings`);
     await expect(nowButton(page)).toBeVisible();
-    await expect(badge(page)).toHaveText('2');
+    await expect(nowButton(page)).toHaveText('2');
 
     for (const [t, left] of [
       [a, '1'],
@@ -641,8 +640,7 @@ test.describe('#471 Now', () => {
       const { approval } = await api(m, 'GET', `/api/threads/${t.id}`);
       await api(m, 'POST', `/api/approvals/${approval.id}`, { approve: true });
       await waitStatus(m, t.id, 'done');
-      if (left) await expect(badge(page)).toHaveText(left);
-      else await expect(badge(page)).toHaveCount(0);
+      await expect(nowButton(page)).toHaveText(left);
     }
     await expect(nowButton(page)).toBeVisible();
   });
@@ -685,7 +683,7 @@ test.describe('#471 Now', () => {
     const now = await nowPane(page);
     await expect(now).toContainText('Nothing needs you');
     await expect(now.getByRole('listitem')).toHaveCount(0);
-    await expect(badge(page)).toHaveCount(0);
+    await expect(nowButton(page)).toHaveText('');
   });
 });
 

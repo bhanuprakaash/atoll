@@ -103,12 +103,14 @@ func (a *api) botSummary(
 	ctx context.Context, b store.Bot, threads, helpers []store.ThreadRun,
 ) store.Bot {
 	latest := ""
+	failed := false
 	for _, t := range threads {
 		if t.Status == "" {
 			continue
 		}
 		if latest == "" {
 			latest = t.Status
+			failed = latest == "failed" && t.Failed
 			at := t.LastActivity
 			b.LastActivity = &at
 			switch latest {
@@ -117,7 +119,9 @@ func (a *api) botSummary(
 			case "done":
 				b.Activity = preview(t.Reply)
 			case "failed":
-				b.Activity = "Run failed"
+				if failed {
+					b.Activity = "Run failed"
+				}
 			case store.StatusStopped:
 				b.Activity = "Stopped"
 			}
@@ -145,7 +149,7 @@ func (a *api) botSummary(
 	if b.State != "" {
 		return b
 	}
-	if latest == "failed" {
+	if failed {
 		b.State = "failed"
 	} else if !a.runs.Available(ctx, b.Provider) {
 		b.State = "asleep"
