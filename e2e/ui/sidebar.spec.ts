@@ -38,7 +38,7 @@ test.afterAll(() => m?.stop());
 test('rail faces show each state on the creature, Chief first', async ({ page }) => {
   await page.goto(m.url);
   const nav = page.getByRole('navigation', { name: 'Bots' });
-  await expect(nav.getByRole('link').first()).toHaveAccessibleName(/\bChief\b/);
+  await expect(nav.getByRole('link').first()).toContainText('Chief');
   await expect(nav.getByRole('button', { name: 'New', exact: true })).toBeVisible();
   for (const [name, img] of [
     ['Chief', 'Jellyfish, idle'],
@@ -76,7 +76,7 @@ const waves = (el: Locator) =>
         .filter((a) => (a as CSSAnimation).animationName === 'wave').length,
   );
 
-test('a face is a 40px creature with no name under it and no activity line; the creature follows the runs', async ({
+test('a face is a 40px creature with its name under it and no activity line; the creature follows the runs', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -91,7 +91,8 @@ test('a face is a 40px creature with no name under it and no activity line; the 
   await expect(idle).toBeVisible();
   const c = (await idle.boundingBox())!;
   expect(Math.abs(c.width - 40)).toBeLessThanOrEqual(1);
-  expect((await row.innerText()).trim()).toBe('');
+  const name = row.getByText('Calm', { exact: true });
+  expect((await name.boundingBox())!.y).toBeGreaterThanOrEqual(c.y + c.height - 1);
   await expect(row).not.toContainText(replied);
   expect(await waves(row)).toBe(0);
 

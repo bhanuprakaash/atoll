@@ -1,4 +1,4 @@
-// Narrow windows (#472): below 900 px the 64 px rail stays docked and the thread pane floats over
+// Narrow windows (#472): below 900 px the 76 px rail stays docked and the thread pane floats over
 // the thread column, closed by default; the whole-sidebar drawer and its Sidebar button are gone.
 // Design: docs/design.md, "Narrow windows". The floating
 // pane's opening and closing is in sidebar-rail.spec.ts.
@@ -64,10 +64,10 @@ test('at 700x500 and 600x800 the rail stays docked, the thread column fills the 
     await openAt(page, width, height);
     const r = await box(rail(page));
     expect(r.x).toBe(0);
-    expect(Math.abs(r.width - 64)).toBeLessThanOrEqual(1);
+    expect(Math.abs(r.width - 76)).toBeLessThanOrEqual(1);
     const main = await box(page.locator('main'));
-    expect(Math.abs(main.x - 64)).toBeLessThanOrEqual(1);
-    expect(Math.abs(main.width - (width - 64))).toBeLessThanOrEqual(1);
+    expect(Math.abs(main.x - 76)).toBeLessThanOrEqual(1);
+    expect(Math.abs(main.width - (width - 76))).toBeLessThanOrEqual(1);
     await expect(pane(page)).toBeHidden();
     await expect(toggle(page)).toHaveCount(0);
     await expect(handle(page)).toBeHidden();
@@ -130,11 +130,11 @@ test('resizing across 900px: widening docks the pane at its stored width, narrow
   await expect.poll(async () => Math.round((await box(pane(page))).width)).toBe(284);
   await expect
     .poll(async () => Math.round((await box(page.locator('main'))).width))
-    .toBe(1000 - 64 - 284);
+    .toBe(1000 - 76 - 284);
 
   await page.setViewportSize({ width: 800, height: 600 });
   await expect(pane(page)).toBeHidden();
-  await expect.poll(async () => Math.round((await box(page.locator('main'))).width)).toBe(800 - 64);
+  await expect.poll(async () => Math.round((await box(page.locator('main'))).width)).toBe(800 - 76);
 });
 
 test('the island drops the thread title before the helper creatures and the Bot name', async ({

@@ -1,5 +1,5 @@
 // Resizable thread pane (#469): 284px by default, 240–420px, double-click resets, the width
-// survives a reload, the handle is a focusable separator that arrows move by 16px, and the 64px
+// survives a reload, the handle is a focusable separator that arrows move by 16px, and the 76px
 // rail never resizes. Each test opens a fresh browser context, so its storage starts empty, as on
 // first launch.
 import { expect, type Page, test } from '@playwright/test';
@@ -11,7 +11,7 @@ const rail = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
 const handle = (page: Page) => page.getByRole('separator', { name: 'Resize thread pane' });
 
 async function expectRail(page: Page) {
-  expect(Math.abs((await rail(page).boundingBox())!.width - 64)).toBeLessThanOrEqual(1);
+  expect(Math.abs((await rail(page).boundingBox())!.width - 76)).toBeLessThanOrEqual(1);
 }
 
 async function expectWidth(page: Page, px: number) {
@@ -48,7 +48,7 @@ test('on first launch the pane is 284px and its handle is a vertical separator',
   await expect(h).toHaveAttribute('aria-valuemax', '420');
 });
 
-test('dragging the handle right by 100px makes 384px; far left stops at 240, far right at 420; the rail stays 64px', async ({
+test('dragging the handle right by 100px makes 384px; far left stops at 240, far right at 420; the rail stays 76px', async ({
   page,
 }) => {
   await page.goto(home);
