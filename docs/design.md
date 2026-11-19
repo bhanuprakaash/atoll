@@ -1679,7 +1679,7 @@ Voice
     colours are identity, not state.
   *Red on every waiting item taught the user to skim past red (#146).*
 - Bot looks: 9 soft jelly bodies, each its own outline with at most one small feature, chunky
-  limbs and plenty of room around the eyes: jellyfish (Chief: the Reef logo, a dome on three
+  limbs and plenty of room around the eyes: jellyfish (Chief: the Reef logo, a dome on three wavy
   tentacles), octopus (round head on four arms that fan out), whale (round body, small tail fluke,
   a spout only while working), starfish (chubby five-point cushion), sponge (soft rounded square),
   coral (cloud: three lumps over a flat base), turtle (soft hexagon with a head nub), clam (fan),

@@ -103,11 +103,11 @@ export const kinds: Record<CreatureLook, Kind> = {
       limb({
         x,
         y: 9,
-        seg: 3.5,
+        seg: 3.3,
         w0: 5.8,
         w1: 4.6,
         side: x < 0 ? -1 : 1,
-        rest: [0, 0, 0, 0, 0],
+        rest: [-14, -20, -10, 8, 20, 24].map((a) => a * (i === 1 ? -1 : 1) * (x < 0 ? -1 : 1)),
         sway: 0.55,
         ph: i * 1.9,
       }),
