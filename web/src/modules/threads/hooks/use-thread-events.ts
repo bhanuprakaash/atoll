@@ -65,6 +65,8 @@ export function useThreadEvents(threadId: string) {
         setRuns((prev) => ({ ...prev, [data.run_id]: change(data, prev[data.run_id] ?? empty) }));
       });
     source.onopen = () => {
+      // Again once subscribed: a run that ends before then sends no run_finished to mark it read.
+      void opened();
       setConnected(true);
       setLost(false);
       const refreshed = refresh();
