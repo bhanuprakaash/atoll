@@ -460,14 +460,19 @@ func (a *api) liveVerb(threadID string) string {
 
 func (a *api) liveStep(threadID string) string {
 	tool := a.runs.ActiveTool(threadID)
-	target := tool.Target
+	return strings.TrimSpace(tool.Verb + " " + stepTarget(tool.Name, tool.Input, tool.Target))
+}
+
+// stepTarget is the short target a step names: a Bash command's program and subcommand, not its
+// description.
+func stepTarget(name string, input json.RawMessage, target string) string {
 	var in struct {
 		Command string `json:"command"`
 	}
-	if tool.Name == "Bash" && json.Unmarshal(tool.Input, &in) == nil && in.Command != "" {
-		target = run.CommandTarget(in.Command)
+	if name == "Bash" && json.Unmarshal(input, &in) == nil && in.Command != "" {
+		return run.CommandTarget(in.Command)
 	}
-	return strings.TrimSpace(tool.Verb + " " + target)
+	return target
 }
 
 func (a *api) listThreads(w http.ResponseWriter, r *http.Request) {
