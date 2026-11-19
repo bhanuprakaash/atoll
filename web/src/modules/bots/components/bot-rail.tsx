@@ -27,7 +27,8 @@ const stateLabel: Partial<Record<Bot['state'], string>> = {
   failed: 'Run failed',
 };
 
-const faceStyle = 'relative flex w-full items-center justify-center px-1 py-2 outline-none';
+const faceStyle =
+  'relative flex w-full flex-col items-center gap-1 px-1 py-2 text-[11px] outline-none hover:text-ink focus-visible:text-ink';
 
 function Bar() {
   return (
@@ -141,7 +142,7 @@ function BotFace({
           event.preventDefault();
           setMenu({ x: event.clientX, y: event.clientY });
         }}
-        className={faceStyle}
+        className={`${faceStyle} ${current ? 'text-ink' : 'text-muted'}`}
         {...tip}
       >
         {current && <Bar />}
@@ -152,6 +153,7 @@ function BotFace({
           />
         )}
         <Creature look={bot.look} colour={bot.colour} state={bot.state} size={40} />
+        <span className="max-w-16 truncate">{bot.name}</span>
       </Link>
       {anchor && (
         <Tooltip anchor={anchor}>

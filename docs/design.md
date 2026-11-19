@@ -1711,14 +1711,12 @@ Voice
   Mockups: the "Reef sidebar: rail + threads" canvas, board A
   (https://claude.ai/artifact/Nw8knYvm9Mxk4PwfuXwbeY). *One column held Bots, groups, up to 3
   threads per Bot and helper lines; with 7 Bots and 2 running it read as a tree, not a list.*
-  - Rail: 64 px, fixed. Top to bottom: Now, a hairline, Chief, pinned Bots in pinned order (no heading), the
+  - Rail: 76 px, fixed. Top to bottom: Now, a hairline, Chief, pinned Bots in pinned order (no heading), the
     user's groups in order, Ungrouped; at the bottom `+` (New Bot, New group) and the user's avatar
     (Settings). Settings shows the rail alone, with no thread pane; clicking Now or a face brings the
     pane back. *Settings has its own section list, and the pane beside it made three columns.* No logo, no search field, no group chats. A face is the Bot's 40 px creature
-    alone: no name, no group name, no cost, time or activity line on the rail; its link is named by
-    the Bot's name. *Names under faces were chosen when two Bots of one look could not be told
-    apart. Each Bot has its own colour now, so the face carries identity, and text on a 64 px rail
-    is cut.* The faces scroll inside the rail without a scrollbar. When faces fall below the fold,
+    with the Bot's name under it, 11 px, one line, cut with `…` at 64 px; no group name, cost, time
+    or activity line on the rail. *The owner wants names readable at a glance.* The faces scroll inside the rail without a scrollbar. When faces fall below the fold,
     a chip above `+` reads `N more` for the faces not wholly in view and carries the light dot when
     one of them needs you; clicking it scrolls to them. With every face in view there is no chip.
     *A Bot that needs the person never hides below the fold without a cue.*

@@ -122,13 +122,13 @@ export function Shell() {
         <div
           aria-hidden="true"
           onClick={closePane}
-          className="fixed inset-y-0 right-0 left-16 z-30 bg-scrim"
+          className="fixed inset-y-0 right-0 left-19 z-30 bg-scrim"
         />
       )}
       <div className="flex flex-none">
         <nav
           aria-label="Bots"
-          className="flex w-16 flex-none flex-col border-r border-sidebar-line bg-card pt-4 pb-3"
+          className="flex w-19 flex-none flex-col border-r border-sidebar-line bg-card pt-4 pb-3"
         >
           {inDesktopApp && <div data-tauri-drag-region="deep" className="h-8" />}
           <BotRail
