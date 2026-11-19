@@ -45,7 +45,7 @@ test('a thread waiting on an approval shows in its Bot pane as Needs you; answer
 
   const asking = row(page, 'Asker', threadTitle(prompts.write));
   await expect(asking).toHaveAttribute('data-marker', 'needs-you');
-  await expect(asking).toContainText('Needs you');
+  await expect(asking).not.toContainText('Needs you');
 
   await asking.getByRole('link').click();
   await expect(page).toHaveURL(`${m.url}/bots/${bot.id}/threads/${waiting.id}`);
@@ -141,7 +141,7 @@ test('two threads needing approval both show first, beside three running', async
   await expect(needs).toHaveCount(2);
   for (let i = 0; i < 2; i++) {
     await expect(needs.nth(i)).toBeVisible();
-    await expect(needs.nth(i)).toContainText('Needs you');
+    await expect(needs.nth(i)).not.toContainText('Needs you');
     await expect(tree.getByRole('listitem').nth(i)).toHaveAttribute('data-marker', 'needs-you');
   }
   for (const t of busy) await api(m, 'POST', `/api/runs/${t.run.id}/stop`);

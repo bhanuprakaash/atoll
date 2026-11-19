@@ -371,7 +371,7 @@ test('a quiet background run adds nothing to the island, live or after a reload'
 // changes neither the sidebar's label nor the island's row.
 for (const [news, preamble, label, verb] of [
   ['reply', '', 'Replied', 'finished'],
-  ['failure', 'Then fail. ', 'Failed', 'failed'],
+  ['failure', 'Then fail. ', 'Run failed', 'failed'],
 ] as const) {
   test(`an unread ${news} followed by a quiet background run keeps its Earlier row and its sidebar label`, async ({
     page,
