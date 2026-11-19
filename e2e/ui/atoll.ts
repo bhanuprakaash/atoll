@@ -413,3 +413,45 @@ export async function nowPane(page: Page) {
   await expect(pane).toBeVisible();
   return pane;
 }
+
+export type Mark = { colour: 'light' | 'red' | 'blue'; x: number; right: number };
+
+// marks lists the coloured dots shown inside el, with their centre and right edge: light (the
+// accent, Needs you), red (danger, failed) and blue (kind, Replied). A creature's own drawing is
+// not a mark.
+export const marks = (el: Locator) =>
+  el.evaluate((root) => {
+    const paint = (token: string) => {
+      const probe = document.createElement('div');
+      probe.style.background = `var(--color-${token})`;
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return colour;
+    };
+    const named = [
+      ['light', paint('accent')],
+      ['red', paint('danger')],
+      ['blue', paint('kind')],
+    ] as const;
+    const found: Mark[] = [];
+    for (const e of root.querySelectorAll('*')) {
+      if (e.closest('svg')) continue;
+      const r = e.getBoundingClientRect();
+      if (!r.width || r.width > 12 || Math.abs(r.width - r.height) > 1) continue;
+      if (getComputedStyle(e).visibility === 'hidden') continue;
+      const bg = getComputedStyle(e).backgroundColor;
+      const hit = named.find(([, colour]) => colour === bg);
+      if (hit) found.push({ colour: hit[0], x: r.x + r.width / 2, right: r.right });
+    }
+    return found;
+  });
+
+// lines is the text el shows, one entry per line.
+export const lines = (el: Locator) =>
+  el.evaluate((node) =>
+    (node as HTMLElement).innerText
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
