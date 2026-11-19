@@ -60,10 +60,16 @@ function ThreadMarker({ thread }: { thread: SidebarThread }) {
   if (thread.state === 'needs_you') return <Dot className="bg-accent" />;
   if (thread.state === 'failed') return <Dot className="bg-danger" />;
   if (thread.state === 'limited')
-    return <span className="flex-none text-xs text-muted">{outUntil(thread)}</span>;
+    return (
+      <>
+        {thread.pinned && <Pin />}
+        <span className="flex-none text-xs text-muted">{outUntil(thread)}</span>
+      </>
+    );
   if (thread.state === 'new')
     return (
       <>
+        {thread.pinned && <Pin />}
         <Dot className="bg-kind" />
         <span className="sr-only">Replied</span>
       </>

@@ -1754,14 +1754,15 @@ Voice
     Pinned and was absent from Now: attention the person missed.*
   - A row is 32 px: the title and one marker at its right end, the thread's label (Thread labels,
     below): a light dot for Needs you; three wave dots for Working; the red dot for a failed run;
-    `Out until 3 PM`, muted; a blue dot and a bold title for Replied; a pin when pinned and no
-    label applies. The thread on screen is never Replied. A Needs you or failed row has a second
-    line under the title: what the Bot asks (the approval's verb and the short target the live
-    step names: `Wants to edit hello.txt`, `Wants to run make check`) or `Run failed · 3:02 PM`;
-    the word "Needs you" is not on the row. *The heading says it once; the title was cut to about
-    14 characters to make room for the marker's words.* Hover or keyboard focus swaps the marker
-    for Pin (Unpin when pinned) and Close (Close thread, saving unfinished work); right-click has
-    Rename and Close. Pinning a 4th thread asks which pin to replace.
+    `Out until 3 PM`, muted; a blue dot and a bold title for Replied; a pin beside the label of a
+    pinned row in Threads (alone when no label applies). The thread on screen is never Replied. A
+    Needs you or failed row has a second line under the title: what the Bot asks (the approval's
+    verb and the short target the live step names: `Wants to edit hello.txt`, `Wants to run make
+    check`) or `Run failed · 3:02 PM`; the word "Needs you" is not on the row. *The heading says
+    it once; the title was cut to about 14 characters to make room for the marker's words.* Hover
+    or keyboard focus swaps the marker for Pin (Unpin when pinned) and Close (Close thread,
+    saving unfinished work); right-click has Rename and Close. Pinning a 4th thread asks which
+    pin to replace.
   - While a helper runs, one line under its boss thread (not a row) shows the helper Bots'
     creatures, then the name and step of the one that acted last only (never cut), or the one
     that needs the person first with its name and `Needs you`. Clicking it opens the boss thread with its
