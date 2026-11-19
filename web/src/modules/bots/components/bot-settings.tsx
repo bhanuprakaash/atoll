@@ -42,7 +42,7 @@ export function BotSettings({
   onClose: () => void;
   modelControl: ModelControl;
   mcpServers: { id: string; name: string }[];
-  bots: { id: string; name: string }[];
+  bots: Bot[];
   memory?: ReactNode;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -115,6 +115,7 @@ export function BotSettings({
             onChange={(value) => save({ look: value })}
             colour={colourOf(current.look, current.colour)}
             onColour={(value) => save({ colour: value })}
+            others={bots.filter((other) => other.id !== bot.id)}
           />
           <Field label="Name">
             {(id) => (

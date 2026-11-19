@@ -1679,7 +1679,7 @@ Voice
     colours are identity, not state.
   *Red on every waiting item taught the user to skim past red (#146).*
 - Bot looks: 9 soft jelly bodies, each its own outline with at most one small feature, chunky
-  limbs and plenty of room around the eyes: jellyfish (Chief: the Reef logo, a dome on three wavy
+  limbs and plenty of room around the eyes: jellyfish (Chief: the Reef logo, a dome on three curved
   tentacles), octopus (round head on four arms that fan out), whale (round body, small tail fluke,
   a spout only while working), starfish (chubby five-point cushion), sponge (soft rounded square),
   coral (cloud: three lumps over a flat base), turtle (soft hexagon with a head nub), clam (fan),
@@ -1690,9 +1690,15 @@ Voice
 - Bot colours: a Bot stores a colour apart from its look, one of 9: brown, orange, amber, green,
   teal, sky, blue, purple, pink. Any look takes any colour; a new Bot without one gets its look's
   (jellyfish orange, octopus purple, whale blue, starfish amber, sponge brown, coral pink, turtle
-  teal, clam green, seal sky). The new-Bot form and Bot settings pick it under the creature. Red,
+  teal, clam green, seal sky). The new-Bot form and Bot settings pick it under the creature. The
+  new-Bot form starts on the first free pair: it walks the looks in order, tries each look's own
+  colour first, then the others in palette order, and takes the first pair no Bot has (none free:
+  the first look and its own colour). The picker dims each colour another Bot of the chosen
+  creature wears and names those Bots in one line (`A pink seal is Reviewer.`); nothing is
+  blocked, and Bots made through Chief or the API keep their look and colour as sent. Red,
   amber-as-blocked and grey stay out: they are states. *The user picked deeper colours like Grok's
-  workshop board over pastels, and wanted users to choose colours as Grok Bots allow.*
+  workshop board over pastels, and wanted users to choose colours as Grok Bots allow. This is so
+  two Bots do not look alike by accident: the rail shows faces first, names under them.*
   - At 64 px and up a creature is live: its body is a ring of springs that dents where it is
     clicked and wobbles back, limbs trail behind, the body pulses, and the eyes follow the pointer.
     Smaller creatures face right, toward the threads, and keep to light motion: idle bobs, limbs
