@@ -166,6 +166,8 @@ func needsYou(ap run.Approval) string {
 		return strings.TrimSpace("Wants to edit " + target)
 	case "command":
 		return strings.TrimSpace("Wants to run " + target)
+	case "read", "search":
+		return strings.TrimSpace("Wants to " + kind + " " + target)
 	}
 	return strings.TrimSpace("Wants to use " + ap.Tool + " " + target)
 }
