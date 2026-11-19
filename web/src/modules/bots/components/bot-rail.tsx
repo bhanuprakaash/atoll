@@ -17,6 +17,7 @@ import {
 import { BotMenu } from '@/modules/bots/components/bot-menu';
 import { GroupNameField } from '@/modules/bots/components/group-name-field';
 import { sidebarOrder } from '@/modules/bots/utils/sidebar-order';
+import { isLiveHelper } from '@/modules/bots/utils/thread-tree';
 
 const botDragType = 'application/x-reef-bot';
 const groupDragType = 'application/x-reef-group';
@@ -306,7 +307,10 @@ export function BotRail({
   const { top, inGroup, ungrouped } = sidebarOrder(bots, groups);
   const waiting = bots.reduce(
     (n, bot) =>
-      n + (bot.threads ?? []).filter((t) => t.state === 'needs_you' || t.state === 'failed').length,
+      n +
+      (bot.threads ?? []).filter(
+        (t) => (t.state === 'needs_you' || t.state === 'failed') && !isLiveHelper(t),
+      ).length,
     0,
   );
   const scroller = useRef<HTMLDivElement>(null);
@@ -373,16 +377,18 @@ export function BotRail({
   };
   return (
     <>
-      <div ref={scroller} className="mt-2 min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
+      <div className="mt-2 flex-none">
+        <NowButton
+          current={view === 'now'}
+          count={waiting}
+          onClick={(button) => onView('now', button)}
+        />
+        <div aria-hidden="true" className="flex h-4 items-center justify-center">
+          <span className="h-px w-8 bg-sidebar-line" />
+        </div>
+      </div>
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
         <div className="flex flex-col">
-          <NowButton
-            current={view === 'now'}
-            count={waiting}
-            onClick={(button) => onView('now', button)}
-          />
-          <div aria-hidden="true" className="flex h-4 items-center justify-center">
-            <span className="h-px w-8 bg-sidebar-line" />
-          </div>
           <div className="flex flex-col">{top.map(face)}</div>
           {groups.map((group) => {
             const members = inGroup(group.id);
@@ -434,7 +440,10 @@ export function BotRail({
             <button
               type="button"
               aria-label={`${below} more${belowNeedsYou ? ', needs you' : ''}`}
-              onClick={() => scroller.current?.scrollTo({ top: scroller.current.scrollHeight })}
+              onClick={() => {
+                const box = scroller.current;
+                box?.scrollBy({ top: box.clientHeight });
+              }}
               className="relative flex h-full items-center rounded-full bg-field px-2.5 text-[11px] text-muted"
             >
               {below} more

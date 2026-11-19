@@ -1716,9 +1716,9 @@ Voice
     (Settings). Settings shows the rail alone, with no thread pane; clicking Now or a face brings the
     pane back. *Settings has its own section list, and the pane beside it made three columns.* No logo, no search field, no group chats. A face is the Bot's 40 px creature
     with the Bot's name under it, 11 px, one line, cut with `…` at 64 px; no group name, cost, time
-    or activity line on the rail. *The owner wants names readable at a glance.* The faces scroll inside the rail without a scrollbar. When faces fall below the fold,
+    or activity line on the rail. *The owner wants names readable at a glance.* Now and its hairline stay at the top; the faces scroll beneath them without a scrollbar. When faces fall below the fold,
     a chip above `+` reads `N more` for the faces not wholly in view and carries the light dot when
-    one of them needs you; clicking it scrolls to them. With every face in view there is no chip.
+    one of them needs you; clicking it scrolls the faces by one rail height. With every face in view there is no chip.
     *A Bot that needs the person never hides below the fold without a cue.*
   - Hover or keyboard focus on a face shows a label beside the rail: the full name and, under it,
     the Bot's group and state joined by ` · ` (`Frontend · Run failed`); the state alone with no
@@ -1776,7 +1776,7 @@ Voice
   you, Running and Replied threads; a row is the Bot's 22 px creature, the title and, under it,
   "Bot · note" (the live step or the waiting ask, else the time), with 8 px above and below and
   10 px from the edge to the creature. On the rail Now is the
-  count of threads in Needs you or failed, on the light accent, with no icon and no badge; with
+  count of threads in Needs you or failed (a live helper thread is not counted, as Now lists none), on the light accent, with no icon and no badge; with
   none it rests as a grey mark. A hairline separates it from Chief. Opening a thread from Now keeps the pane on Now
   and selects that row. With nothing waiting, running or replied it reads "Nothing needs you".
 - Selected row: the sidebar marks where you are once. With a thread open, only that thread's row
