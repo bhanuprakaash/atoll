@@ -12,8 +12,6 @@ import { Segmented } from '@/components/segmented';
 
 type Wearer = { id: string; name: string; look: CreatureLook; colour?: string };
 
-// freePair walks the looks in order, each look's own colour first, and returns the first look and
-// colour no Bot wears. When all are worn it returns the first look and its own colour.
 export function freePair(bots: Wearer[]) {
   for (const { look } of creatureLooks) {
     const own = colourOf(look);

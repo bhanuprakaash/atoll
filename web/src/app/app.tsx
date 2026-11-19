@@ -68,9 +68,10 @@ function NewBotPage() {
   const { data: connections = [] } = useConnections();
   const { data: skills = [] } = useSkills();
   const { data: providers = [] } = useProviders();
-  const { data: bots = [] } = useBots();
+  const { data: bots } = useBots();
   const [params] = useSearchParams();
   const setGroup = useSetBotGroup();
+  if (!bots) return null;
   return (
     <NewBotForm
       chiefId={bots.find((b) => b.can_manage_platform)?.id}

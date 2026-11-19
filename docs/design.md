@@ -1697,8 +1697,8 @@ Voice
   creature wears and names those Bots in one line (`A pink seal is Reviewer.`); nothing is
   blocked, and Bots made through Chief or the API keep their look and colour as sent. Red,
   amber-as-blocked and grey stay out: they are states. *The user picked deeper colours like Grok's
-  workshop board over pastels, and wanted users to choose colours as Grok Bots allow. With no
-  names on the rail the creature and colour tell Bots apart.*
+  workshop board over pastels, and wanted users to choose colours as Grok Bots allow. This is so
+  two Bots do not look alike by accident: the rail shows faces first, names under them.*
   - At 64 px and up a creature is live: its body is a ring of springs that dents where it is
     clicked and wobbles back, limbs trail behind, the body pulses, and the eyes follow the pointer.
     Smaller creatures face right, toward the threads, and keep to light motion: idle bobs, limbs

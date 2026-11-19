@@ -55,7 +55,7 @@ export function NewBotForm({
   const [model, setModel] = useState('');
   const [pickedLook, setLook] = useState<CreatureLook>();
   const [picked, setPicked] = useState<BotColour>();
-  const free = freePair(bots);
+  const [free] = useState(() => freePair(bots));
   const look = pickedLook ?? free.look;
   const colour = picked ?? (look === free.look ? free.colour : colourOf(look));
   const [onlyThese, setOnlyThese] = useState(false);
