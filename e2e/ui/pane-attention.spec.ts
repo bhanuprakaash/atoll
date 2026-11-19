@@ -33,8 +33,8 @@ test.beforeEach(async () => {
 });
 test.afterEach(() => m?.stop());
 
-// What the Bot asks: the approval card's words for testdata/claude/run-approve.jsonl (Write
-// hello.txt) and helper-report.jsonl (Bash make check).
+// What the Bot asks: the approval card's verb with the short target of the live verb, for
+// testdata/claude/run-approve.jsonl (Write /work/hello.txt) and helper-report.jsonl (Bash make check).
 const editAsk = 'Wants to edit hello.txt';
 const checkAsk = 'Wants to run make check';
 // The helper plays testdata/claude/helper-loop.jsonl: one gh pr view per PR, then it hangs.
