@@ -310,6 +310,7 @@ export function BotRail({
     0,
   );
   const scroller = useRef<HTMLDivElement>(null);
+  const [overflows, setOverflows] = useState(false);
   const [below, setBelow] = useState(0);
   const [belowNeedsYou, setBelowNeedsYou] = useState(false);
   useEffect(() => {
@@ -320,6 +321,7 @@ export function BotRail({
       const hidden = [...box.querySelectorAll<HTMLElement>('a[href^="/bots/"]')].filter(
         (face) => face.getBoundingClientRect().bottom > bottom,
       );
+      setOverflows(box.scrollHeight > box.clientHeight);
       setBelow(hidden.length);
       setBelowNeedsYou(hidden.some((face) => face.dataset.marker === 'needs-you'));
     };
@@ -426,21 +428,25 @@ export function BotRail({
           </BotGroup>
         </div>
       </div>
-      {below > 0 && (
-        <button
-          type="button"
-          aria-label={`${below} more${belowNeedsYou ? ', needs you' : ''}`}
-          onClick={() => scroller.current?.scrollTo({ top: scroller.current.scrollHeight })}
-          className="relative mx-auto mt-1 flex h-6 flex-none items-center rounded-full bg-field px-2.5 text-[11px] text-muted"
-        >
-          {below} more
-          {belowNeedsYou && (
-            <span
-              aria-hidden="true"
-              className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-accent"
-            />
+      {overflows && (
+        <div className="mt-1 flex h-6 flex-none justify-center">
+          {below > 0 && (
+            <button
+              type="button"
+              aria-label={`${below} more${belowNeedsYou ? ', needs you' : ''}`}
+              onClick={() => scroller.current?.scrollTo({ top: scroller.current.scrollHeight })}
+              className="relative flex h-full items-center rounded-full bg-field px-2.5 text-[11px] text-muted"
+            >
+              {below} more
+              {belowNeedsYou && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-accent"
+                />
+              )}
+            </button>
           )}
-        </button>
+        </div>
       )}
     </>
   );
