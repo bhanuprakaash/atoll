@@ -183,6 +183,7 @@ type (
 		lastEvent atomic.Int64 // unix nanoseconds of the run's last stream event or approval close
 		stuck     bool         // the idle limit stopped the run; the Manager's mu guards it
 		shown     []string     // memory ids the run's memory tools returned
+		shelf     memory.Shelf // what the run's memory tools may see; the Manager's mu guards it
 		// usage and priorCostUSD are the run goroutine's: the provider's last report, and what the
 		// session had cost before this run.
 		usage        *provider.Usage
@@ -1056,6 +1057,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		}
 		rp.Host = RepoHost(a.ctx, rp.Path)
 	}
+	m.mu.Lock()
+	a.shelf = memory.Shelf{RepoID: rp.ID, BotID: thread.BotID}
+	m.mu.Unlock()
 	cwd, stale, err := m.workdir(thread, rp)
 	if err != nil {
 		return "", err
@@ -1110,7 +1114,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	var items []memory.Item
 	var counts memory.Counts
 	if m.cfg.Memory != nil && a.kind == "" {
-		shelf := memory.Shelf{RepoID: rp.ID, BotID: thread.BotID}
+		shelf := a.shelf
 		var seen map[string]bool
 		if thread.Session != "" {
 			seen, err = m.cfg.Memory.Seen(a.ctx, thread.Session)
@@ -1258,9 +1262,7 @@ func (m *Manager) stream(a *active, sess provider.Session) (string, error) {
 						if input.Arguments.ID != "" {
 							input.ID = input.Arguments.ID
 						}
-						item, err := m.cfg.Memory.Read(a.ctx, input.ID)
-						shelf, shelfErr := m.shelf(a.ctx, a.token)
-						if err == nil && shelfErr == nil && shelf.Has(item) {
+						if item, err := m.onShelf(a.ctx, a.shelf, input.ID); err == nil {
 							target = shortMemory(item.Body)
 						}
 					}
