@@ -974,7 +974,10 @@ func (m *Manager) codexAutoRoots(ctx context.Context, thread store.Thread, rp st
 		if err != nil {
 			return nil, fmt.Errorf("compare repo and worktree root: %w", err)
 		}
-		if (rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) && (repoRel == ".." || strings.HasPrefix(repoRel, ".."+string(filepath.Separator))) {
+		outside := func(rel string) bool {
+			return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+		}
+		if outside(rel) && outside(repoRel) {
 			roots = []string{root}
 		}
 		roots = append(roots, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"))
@@ -992,7 +995,7 @@ func (m *Manager) codexAutoRoots(ctx context.Context, thread store.Thread, rp st
 			if err != nil {
 				return nil, fmt.Errorf("resolve thread git directory: %w", err)
 			}
-			if id == "" || filepath.Dir(gitDir) != filepath.Join(resolvedCommon, "worktrees") {
+			if filepath.Dir(gitDir) != filepath.Join(resolvedCommon, "worktrees") {
 				return nil, errors.New("thread git directory is outside the registered repo")
 			}
 			if !slices.Contains(roots, gitDir) {
@@ -1071,11 +1074,6 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			return "", err
 		}
 	}
-	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
-		if cfg.WritableRoots, err = m.codexAutoRoots(a.ctx, thread, rp); err != nil {
-			return "", err
-		}
-	}
 	bossName := ""
 	onBossBranch := false
 	if thread.ParentThreadID != "" {
@@ -1144,6 +1142,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		return "", err
 	}
 	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
+		if cfg.WritableRoots, err = m.codexAutoRoots(a.ctx, thread, rp); err != nil {
+			return "", err
+		}
 		cache, env, err := m.codexAutoCache(bot.ID)
 		if err != nil {
 			return "", err
