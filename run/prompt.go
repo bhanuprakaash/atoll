@@ -91,9 +91,6 @@ Voice
 // onBossBranch is true for a helper thread whose branch the boss merges; boss is true when the run
 // lists delegate.
 func systemPrompt(bot store.Bot, user, bossName string, onBossBranch, boss bool) string {
-	if user == "" {
-		user = "The user"
-	}
 	prompt := _corePrompt
 	if bossName != "" {
 		prompt = strings.Replace(prompt, "{user} talks", "{boss} talks", 1)

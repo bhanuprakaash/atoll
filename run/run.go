@@ -5,6 +5,7 @@ package run
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -684,9 +685,7 @@ func (m *Manager) AnswerInThread(ctx context.Context, id string, allow bool) err
 			SourceBotID: o.run.bot.ID, SourceThreadID: o.run.threadID, SourceRunID: o.run.run.ID,
 		})
 		if err == nil {
-			m.publish(o.run, EventPlatformChanged, PlatformChanged{
-				SourceBotID: c.SourceBotID, ThreadID: c.SourceThreadID, RunID: c.SourceRunID, Change: c,
-			})
+			m.publishChange(o.run, c)
 		}
 	}
 	if err != nil {
@@ -1071,6 +1070,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if err != nil {
 		return "", fmt.Errorf("load user name: %w", err)
 	}
+	user = cmp.Or(user, "The user")
 	cfg.Model = bot.Model
 	cfg.Mode = bot.Mode
 	cfg.Log = m.cfg.Log

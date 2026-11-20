@@ -46,6 +46,10 @@ func (m *Manager) Changed(token string, c store.Change) {
 	if err != nil {
 		return
 	}
+	m.publishChange(a, c)
+}
+
+func (m *Manager) publishChange(a *active, c store.Change) {
 	m.publish(a, EventPlatformChanged, PlatformChanged{SourceBotID: c.SourceBotID, ThreadID: c.SourceThreadID, RunID: c.SourceRunID, Change: c})
 }
 

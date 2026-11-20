@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	"atoll/store"
@@ -48,13 +49,7 @@ func (m *Manager) Reply(ctx context.Context, threadID, text string) (Replied, er
 	if len(taken) == 0 {
 		return Replied{}, ErrNoApproval
 	}
-	ids := slices.Sorted(func(yield func(string) bool) {
-		for id := range taken {
-			if !yield(id) {
-				return
-			}
-		}
-	})
+	ids := slices.Sorted(maps.Keys(taken))
 	msg, err := m.storeReply(ctx, threadID, going, text, ids, taken)
 	if err != nil {
 		m.mu.Lock()

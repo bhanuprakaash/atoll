@@ -218,7 +218,7 @@ func (m *Manager) CloseThread(ctx context.Context, threadID string) error {
 			return fmt.Errorf("load repo: %w", err)
 		}
 		if t.Worktree != "" {
-			if err := m.release(ctx, t, rp, "closed"); err != nil {
+			if err := m.release(ctx, t, rp, _mrClosed); err != nil {
 				return err
 			}
 		}
@@ -946,7 +946,7 @@ func (m *Manager) releaseDoneThread(t store.Thread, rp store.Repo) error {
 	if ok, err := m.releaseHelpers(t, rp); !ok || err != nil {
 		return err
 	}
-	return m.release(m.ctx, t, rp, "merged")
+	return m.release(m.ctx, t, rp, _mrMerged)
 }
 
 // released is whether every PR is merged or closed and at least one merged.
@@ -985,7 +985,7 @@ func (m *Manager) releaseHelpers(boss store.Thread, rp store.Repo) (bool, error)
 		owned = append(owned, h)
 	}
 	for _, h := range owned {
-		if err := m.release(m.ctx, h, rp, "merged"); err != nil {
+		if err := m.release(m.ctx, h, rp, _mrMerged); err != nil {
 			return false, err
 		}
 	}
