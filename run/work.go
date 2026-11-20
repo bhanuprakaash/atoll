@@ -986,7 +986,7 @@ func (m *Manager) releaseHelpers(boss store.Thread, rp store.Repo) (bool, error)
 	}()
 	var owned []store.Thread
 	for _, h := range helpers {
-		if h.Worktree == "" || !strings.HasPrefix(h.Branch, boss.Branch+"--") {
+		if h.Worktree == "" || !isHelperBranch(boss.Branch, h.Branch) {
 			continue
 		}
 		slot := m.reserve(h.ID)

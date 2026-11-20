@@ -114,7 +114,7 @@ func (m *Manager) startHelper(
 		if err != nil {
 			return h, "", err
 		}
-		name := t.Branch + "--" + repo.Slug(helper.Name)
+		name := helperBranch(t.Branch, helper.Name)
 		if path, h.Branch, err = repo.CreateFrom(ctx, rp.Path, root, rp.Name, name, t.Branch); err != nil {
 			return h, "", err
 		}
@@ -449,4 +449,12 @@ func helperBrief(text string) string {
 		}
 	}
 	return text
+}
+
+func helperBranch(boss, name string) string {
+	return boss + "--" + repo.Slug(name)
+}
+
+func isHelperBranch(boss, branch string) bool {
+	return strings.HasPrefix(branch, boss+"--")
 }

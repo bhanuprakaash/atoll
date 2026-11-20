@@ -1088,7 +1088,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			return "", fmt.Errorf("load boss bot: %w", err)
 		}
 		bossName = bossBot.Name
-		onBossBranch = thread.Branch != "" && boss.Branch != "" && strings.HasPrefix(thread.Branch, boss.Branch+"--")
+		onBossBranch = thread.Branch != "" && boss.Branch != "" && isHelperBranch(boss.Branch, thread.Branch)
 	}
 	cfg.SystemPrompt = systemPrompt(bot, user, bossName, onBossBranch,
 		len(bot.Delegates) > 0 && thread.ParentThreadID == "")
