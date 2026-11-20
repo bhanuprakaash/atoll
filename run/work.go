@@ -273,7 +273,7 @@ func (m *Manager) DeleteBot(ctx context.Context, botID string) error {
 		}
 	}
 	for i, w := range wakes {
-		line, err := m.helpersLine(ctx, w.ThreadID, "")
+		line, err := m.helpersLine(ctx, w.ThreadID)
 		if err != nil {
 			return err
 		}

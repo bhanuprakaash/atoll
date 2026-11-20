@@ -219,7 +219,7 @@ func (m *Manager) withHelpersLine(ctx context.Context, items []store.InboxItem) 
 		if it.HelperThread == "" {
 			continue
 		}
-		line, err := m.helpersLine(ctx, it.ThreadID, "")
+		line, err := m.helpersLine(ctx, it.ThreadID)
 		if err != nil {
 			m.cfg.Log.Error("count helpers", "thread_id", it.HelperThread, "error", err)
 		}
