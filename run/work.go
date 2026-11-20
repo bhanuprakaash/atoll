@@ -153,11 +153,7 @@ func (m *Manager) StartWork(
 			err = errors.Join(err, repo.Remove(ctx, rp.Path, createdPath), repo.DeleteBranch(ctx, rp.Path, createdBranch))
 		}
 	}()
-	common, err := repo.GitCommonDir(ctx, rp.Path)
-	if err != nil {
-		return "", "", repo.Base{}, err
-	}
-	id, err := repo.WorktreeID(common, path)
+	id, err := gitDirID(ctx, rp.Path, path)
 	if err != nil {
 		return "", "", repo.Base{}, err
 	}
@@ -501,11 +497,7 @@ func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, string, error)
 		}
 		_, statErr := os.Stat(rp.Path)
 		if rp.ID != "" && t.WorktreeGitDir == "" && !errors.Is(statErr, os.ErrNotExist) {
-			common, err := repo.GitCommonDir(m.ctx, rp.Path)
-			if err != nil {
-				return "", "", err
-			}
-			id, err := repo.WorktreeID(common, t.Worktree)
+			id, err := gitDirID(m.ctx, rp.Path, t.Worktree)
 			if err != nil {
 				return "", "", err
 			}
@@ -520,11 +512,7 @@ func (m *Manager) workdir(t store.Thread, rp store.Repo) (string, string, error)
 			return "", "", err
 		}
 		if t.CheckoutGitDir == "" {
-			common, err := repo.GitCommonDir(m.ctx, rp.Path)
-			if err != nil {
-				return "", "", err
-			}
-			id, err := repo.WorktreeID(common, dir)
+			id, err := gitDirID(m.ctx, rp.Path, dir)
 			if err != nil {
 				return "", "", err
 			}
@@ -1048,4 +1036,12 @@ func writeFileAtomic(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+func gitDirID(ctx context.Context, repoPath, dir string) (string, error) {
+	common, err := repo.GitCommonDir(ctx, repoPath)
+	if err != nil {
+		return "", err
+	}
+	return repo.WorktreeID(common, dir)
 }

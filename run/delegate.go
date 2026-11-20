@@ -131,11 +131,7 @@ func (m *Manager) startHelper(
 		if err := m.cfg.Store.SetWorktree(ctx, ht.ID, h.Branch, path); err != nil {
 			return h, path, err
 		}
-		common, err := repo.GitCommonDir(ctx, rp.Path)
-		if err != nil {
-			return h, path, err
-		}
-		id, err := repo.WorktreeID(common, path)
+		id, err := gitDirID(ctx, rp.Path, path)
 		if err != nil {
 			return h, path, err
 		}
