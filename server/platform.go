@@ -17,7 +17,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"atoll/mcpserver"
@@ -161,17 +160,16 @@ func (a *api) botSummary(
 
 func needsYou(ap run.Approval) string {
 	kind, target := run.ToolKind(ap.Tool, ap.Input)
-	verb := "use"
+	target = stepTarget(ap.Tool, ap.Input, target)
 	switch kind {
-	case "search", "read", "edit":
-		verb = kind
+	case "edit":
+		return strings.TrimSpace("Wants to edit " + target)
 	case "command":
-		verb = "run"
+		return strings.TrimSpace("Wants to run " + target)
+	case "read", "search":
+		return strings.TrimSpace("Wants to " + kind + " " + target)
 	}
-	if tool := ap.Tool; tool != "" && unicode.IsUpper([]rune(tool)[0]) {
-		verb = tool
-	}
-	return strings.TrimSpace("Needs you: " + verb + " " + target)
+	return strings.TrimSpace("Wants to use " + ap.Tool + " " + target)
 }
 
 const _previewLen = 60

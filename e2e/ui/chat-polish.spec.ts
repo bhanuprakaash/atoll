@@ -60,8 +60,7 @@ test('the face shows no activity; Now notes the current verb or the approval pro
   const rowOf = (id: string) =>
     now.getByRole('listitem').filter({ has: page.locator(`a[href$="/threads/${id}"]`) });
   await expect(rowOf(running.id)).toContainText('Working activity · Running Run the build');
-  await expect(rowOf(waiting.id)).toContainText('Approval activity · ');
-  await expect(rowOf(waiting.id)).toContainText('Write hello.txt');
+  await expect(rowOf(waiting.id)).toContainText('Approval activity · Wants to edit hello.txt');
   await expect(rowOf(done.id)).toHaveCount(0);
   await api(m, 'POST', `/api/runs/${running.run.id}/stop`);
 });

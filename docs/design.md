@@ -750,7 +750,7 @@ Follow-ups:
   shows while that run goes. A message from the person brings it back for good; a later merge of a
   newly tracked PR hides it again. *A boss with a PR still open is not finished; hiding it would
   hide the next wake.* A pinned thread and the open thread are never hidden. A hidden
-  thread is a row under Recent in the thread pane and is left out of Now.
+  thread is a row under Threads in the thread pane and is left out of Now.
 - GitHub reads per PR: the PR; and, while it is open and its head commit has no stored CI
   result, that commit's check runs and combined status, with `per_page=100`, following `Link` until
   every item is read. Each read sends `If-None-Match` with the last ETag (in memory); a `304` costs
@@ -1749,25 +1749,32 @@ Voice
     move the thread. *Its final message is a status line, shown nowhere; it moved the older thread
     above a newer one and replaced the Bot's activity (#459).*
 - Thread pane: the selected Bot's open threads, in full. Header: the Bot's 28 px creature, its
-  name, its group (Chief: "Sets up your Bots"; no group: "Ungrouped"), `+` (New thread) and `⋯`
+  name, its group (Chief: "Sets up your Bots"; no group: no line), `+` (New thread) and `⋯`
   (the Bot menu). Under it a search field filters this Bot's threads by title, branch and MR
   reference (`#92`, `!7`); in Now it searches every Bot's open threads.
-  - Sections: Needs you, Running, Pinned, Recent, each newest activity first, a section with no
-    rows left out. Closed is folded at the bottom ("Closed · N"); open, it shows the latest few
-    closed threads and "Search closed threads". No 3-row cap, no `N more`. *The pane has the room
-    the tree lacked, so the cap, `N more`, `N more running` and the threads popup retired.*
+  - Sections: Needs you (threads that need you and failed threads), Running, Threads (pinned
+    first, then the rest), each newest activity first, a section with no rows left out. Closed is
+    folded at the bottom ("Closed · N"); open, it shows the latest few closed threads and "Search
+    closed threads". No 3-row cap, no `N more`. *The pane has the room the tree lacked, so the cap,
+    `N more`, `N more running` and the threads popup retired. A failed run sat in Recent under
+    Pinned and was absent from Now: attention the person missed.*
   - A row is 32 px: the title and one marker at its right end, the thread's label (Thread labels,
-    below): "Needs you" and a light dot; three wave dots for Working; "Failed" with the red dot;
-    `Out until 3 PM`, muted; a blue dot and a bold title for Replied; a pin when pinned and no
-    label applies. The thread on screen is never Replied. Hover or keyboard focus swaps the marker
-    for Pin (Unpin when pinned) and Close (Close thread, saving unfinished work); right-click has
-    Rename and Close. Pinning a 4th thread asks which pin to replace.
+    below): a light dot for Needs you; three wave dots for Working; the red dot for a failed run;
+    `Out until 3 PM`, muted; a blue dot and a bold title for Replied; a pin beside the label of a
+    pinned row in Threads (alone when no label applies). The thread on screen is never Replied. A
+    Needs you or failed row has a second line under the title: what the Bot asks (the approval's
+    verb and the short target the live step names: `Wants to edit hello.txt`, `Wants to run make
+    check`) or `Run failed · 3:02 PM`; the word "Needs you" is not on the row. *The heading says
+    it once; the title was cut to about 14 characters to make room for the marker's words.* Hover
+    or keyboard focus swaps the marker for Pin (Unpin when pinned) and Close (Close thread,
+    saving unfinished work); right-click has Rename and Close. Pinning a 4th thread asks which
+    pin to replace.
   - While a helper runs, one line under its boss thread (not a row) shows the helper Bots'
-    creatures, names and the step of the one that acted last, or the one that needs the person
-    first with `Needs you`, which shows nowhere else. Clicking it opens the boss thread with its
+    creatures, then the name and step of the one that acted last only (never cut), or the one
+    that needs the person first with its name and `Needs you`. Clicking it opens the boss thread with its
     thread panel open.
   - In the helper Bot's own pane a running helper thread has no row; only the boss thread's helper
-    line shows it (with `Needs you`). A finished helper thread and a merged thread the watcher hides (`hidden`) are rows under Recent.
+    line shows it (with `Needs you`). A finished helper thread and a merged thread the watcher hides (`hidden`) are rows under Threads.
     *Every open thread has a row; the hiding existed to save the 3 slots.*
   - Width: the pane is 284 px by default, dragged on its right edge between 240 px and 420 px;
     double-click on the edge resets it; Left and Right arrows on the focused edge move it 16 px.
@@ -1779,10 +1786,15 @@ Voice
   a live thread its `activity` (Now's note: the live verb or the waiting ask), and each Bot's open
   threads with their marker on `GET /api/bots`; the client builds the sections.*
 - Now: the first rail item, a view across every Bot, never a forced landing. Its pane lists Needs
-  you, Running and Replied threads; a row is the Bot's 22 px creature, the title and, under it,
-  "Bot · note" (the live step or the waiting ask, else the time), with 8 px above and below and
-  10 px from the edge to the creature. On the rail Now is the
-  count of threads in Needs you or failed (a live helper thread is not counted, as Now lists none), on the light accent, with no icon and no badge; with
+  you (threads that need you and failed threads), Running and Replied threads; a row is the Bot's
+  22 px creature, the title and, under it, "Bot · note" (the waiting ask, `Run failed · 3:02 PM`,
+  the live verb, else the time), with 8 px above and below and 10 px from the edge to the creature,
+  and one marker at its right end: the light dot (Needs you), the red dot (failed), the blue dot
+  (Replied) or wave dots (running). The words "Needs you" show only in the heading. A boss
+  thread's row has no helper line; its note names the helper that acted last and its step
+  (`Poteto · Tester: Running make check`), or the helper that needs the person and its ask. On the
+  rail Now is the count of threads in Needs you or failed (a live helper thread is not counted, as
+  Now lists none), on the light accent, with no icon and no badge; with
   none it rests as a grey mark. A hairline separates it from Chief. Opening a thread from Now keeps the pane on Now
   and selects that row. With nothing waiting, running or replied it reads "Nothing needs you".
 - Selected row: the sidebar marks where you are once. With a thread open, only that thread's row
@@ -1809,7 +1821,7 @@ Voice
   keeps it in view.*
 - Bot list poll (`GET /api/bots`, every 2 s): the Bots with their summary, each with every open
   thread as `{id, title, state, pinned, helper?, hidden?}`, newest activity first. `hidden` is a
-  merged thread (see the watcher); the pane lists it under Recent. `state` is
+  merged thread (see the watcher); the pane lists it under Threads. `state` is
   `needs_you`, `running`, `failed`, `limited`, `new` (shown as Replied) or empty.
   - Two queries, a Bots query and a threads query. The threads query reads each thread row once,
     never joins every thread to its newest run, never reads `runs` inside the loop over threads.
@@ -2151,7 +2163,7 @@ Voice
   thread included, puts its text and images back in the box with the error under it; text typed
   meanwhile stays, on a new line after the restored text.
 - Thread labels. A thread shows one label, the first that holds: Needs you (an approval is open,
-  until answered); Working (a run is going); Failed (a run failed since the person last opened the
+  until answered); Working (a run is going); Run failed (a run failed since the person last opened the
   thread, until opened); `Out until 3 PM` (the provider's usage limit, until its reset time);
   Replied (a reply or a `tell_user` message since the person last opened the thread, until opened;
   the API's `new`). `GET /api/bots` gives each thread's `state` (`needs_you`, `running`, `failed`,

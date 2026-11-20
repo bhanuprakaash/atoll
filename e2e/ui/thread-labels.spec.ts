@@ -50,20 +50,20 @@ async function hasStatusLine(threadID: string) {
 const row = (page: Page, bot: string, title: string) =>
   threadPane(page, bot).getByRole('listitem').filter({ hasText: title });
 
-test('a failed run shows Failed on its row until the thread is opened', async ({ page }) => {
+test('a failed run shows Run failed on its row until the thread is opened', async ({ page }) => {
   const bot = await newBotAPI(m, 'Failer');
   await showPane(page, m, bot.id, 'Failer');
   const failed = await openThreadAPI(m, bot.id, prompts.none);
   await waitStatus(m, failed.id, 'failed');
 
   const failing = row(page, 'Failer', threadTitle(prompts.none));
-  await expect(failing).toContainText('Failed');
+  await expect(failing).toContainText('Run failed');
   await expect(failing).not.toContainText('Replied');
 
   await failing.getByRole('link').click();
   await expect(page).toHaveURL(`${m.url}/bots/${bot.id}/threads/${failed.id}`);
   await showPane(page, m, bot.id, 'Failer');
-  await expect(row(page, 'Failer', threadTitle(prompts.none))).not.toContainText('Failed');
+  await expect(row(page, 'Failer', threadTitle(prompts.none))).not.toContainText('Run failed');
 });
 
 test('a thread of a provider at its usage limit reads Out until the reset time', async ({ page }) => {
@@ -79,7 +79,7 @@ test('a thread of a provider at its usage limit reads Out until the reset time',
 
   const limitedRow = row(page, 'Limited', threadTitle(prompts.keep));
   await expect(limitedRow).toContainText(/Out until \d/);
-  await expect(limitedRow).not.toContainText('Failed');
+  await expect(limitedRow).not.toContainText('Run failed');
   await expect(limitedRow).not.toContainText('Replied');
 });
 

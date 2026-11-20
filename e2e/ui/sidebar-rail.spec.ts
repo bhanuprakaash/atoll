@@ -7,6 +7,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
   api,
   type Machine,
+  marks,
   newBotAPI,
   nowPane,
   openThreadAPI,
@@ -194,7 +195,7 @@ test.describe('#469 rail and the Bot pane', () => {
     }
   });
 
-  test('the pane lists every open thread under Needs you, Running, Pinned and Recent with their markers; no cap, no N more', async ({
+  test('the pane lists every open thread under Needs you, Running and Threads with their markers; no cap, no N more', async ({
     page,
   }) => {
     const bot = await newBotAPI(m, 'Many');
@@ -213,10 +214,10 @@ test.describe('#469 rail and the Bot pane', () => {
       await visit(page, bot.id, pinned.id);
 
       const pane = await showPane(page, m, bot.id, 'Many');
-      await expect.poll(() => sections(pane)).toEqual(['Needs you', 'Running', 'Pinned', 'Recent']);
+      await expect.poll(() => sections(pane)).toEqual(['Needs you', 'Running', 'Threads']);
       await expect(pane.getByRole('listitem')).toHaveCount(10);
-      const marked = async (name: string, marker: string, ids: string[]) => {
-        await expect(section(pane, name).getByRole('listitem')).toHaveCount(ids.length);
+      const marked = async (name: string, marker: string, ids: string[], count = ids.length) => {
+        await expect(section(pane, name).getByRole('listitem')).toHaveCount(count);
         for (const id of ids)
           await expect(rowOf(section(pane, name), id)).toHaveAttribute('data-marker', marker);
       };
@@ -230,16 +231,21 @@ test.describe('#469 rail and the Bot pane', () => {
         'running',
         busy.map((t) => t.id),
       );
-      await marked('Pinned', 'pinned', [pinned.id]);
+      await marked('Threads', 'pinned', [pinned.id], 6);
       await marked(
-        'Recent',
+        'Threads',
         'new',
         recent.map((t) => t.id),
+        6,
       );
-      await expect(section(pane, 'Needs you').getByRole('listitem').first()).toContainText(
+      await expect(section(pane, 'Threads').getByRole('listitem').first()).toHaveAttribute(
+        'data-marker',
+        'pinned',
+      );
+      await expect(section(pane, 'Needs you').getByRole('listitem').first()).not.toContainText(
         'Needs you',
       );
-      await expect(section(pane, 'Recent').getByRole('listitem').first()).toContainText('Replied');
+      await expect(section(pane, 'Threads').getByRole('listitem').nth(1)).toContainText('Replied');
       await expect(pane.getByRole('button', { name: /\bmore\b/ })).toHaveCount(0);
       await expect(pane.getByRole('button', { name: 'Show less' })).toHaveCount(0);
     } finally {
@@ -447,27 +453,30 @@ test.describe('#470 row actions, Closed and New thread', () => {
       await api(m, 'PATCH', `/api/threads/${threads[name].id}`, {
         title: `${name} notes`,
       });
+      await api(m, 'POST', `/api/threads/${threads[name].id}/opened`);
     }
 
     const pane = await showPane(page, m, bot.id, 'Beacon');
     const needs = rowOf(pane, asking.id);
-    const marker = needs.getByText('Needs you', { exact: true });
-    await expect(marker).toBeVisible();
+    const marker = async () => (await marks(needs)).map((d) => d.colour);
+    await page.mouse.move(1270, 700);
+    await expect.poll(marker).toEqual(['light']);
     await expect(needs.getByRole('button', { name: 'Close thread' })).toBeHidden();
     await needs.hover();
     await expect(needs.getByRole('button', { name: 'Pin', exact: true })).toBeVisible();
     await expect(needs.getByRole('button', { name: 'Close thread' })).toBeVisible();
-    await expect(marker).toBeHidden();
+    await expect.poll(marker).toEqual([]);
     await page.mouse.move(1270, 700);
-    await expect(marker).toBeVisible();
+    await expect.poll(marker).toEqual(['light']);
 
     const row = (name: string) => rowOf(pane, threads[name].id);
     const pin = async (name: string) => {
       await row(name).hover();
       await row(name).getByRole('button', { name: 'Pin', exact: true }).click();
     };
+    const pinnedRows = () => section(pane, 'Threads').locator('[data-marker="pinned"]');
     for (const name of ['Delta', 'Echo', 'Foxtrot']) await pin(name);
-    await expect(section(pane, 'Pinned').getByRole('listitem')).toHaveCount(3);
+    await expect(pinnedRows()).toHaveCount(3);
 
     await page.mouse.move(1270, 700);
     await row('Delta').getByRole('link').focus();
@@ -485,13 +494,10 @@ test.describe('#470 row actions, Closed and New thread', () => {
     await expect(replace).toHaveCount(0);
 
     const expectPins = async () => {
-      const pinned = section(pane, 'Pinned');
-      await expect(pinned.getByRole('listitem')).toHaveCount(3);
+      await expect(pinnedRows()).toHaveCount(3);
       for (const name of ['Echo', 'Foxtrot', 'Golf'])
-        await expect(pinned.getByRole('listitem').filter({ hasText: `${name} notes` })).toHaveCount(
-          1,
-        );
-      await expect(pinned).not.toContainText('Delta notes');
+        await expect(pinnedRows().filter({ hasText: `${name} notes` })).toHaveCount(1);
+      await expect(pinnedRows().filter({ hasText: 'Delta notes' })).toHaveCount(0);
     };
     await expectPins();
     m.kill();
@@ -501,7 +507,7 @@ test.describe('#470 row actions, Closed and New thread', () => {
 
     await row('Echo').hover();
     await row('Echo').getByRole('button', { name: 'Unpin', exact: true }).click();
-    await expect(section(pane, 'Pinned').getByRole('listitem')).toHaveCount(2);
+    await expect(pinnedRows()).toHaveCount(2);
     expect((await api(m, 'GET', `/api/threads/${threads.Echo.id}`)).pinned).toBe(false);
 
     await row('Delta').hover();

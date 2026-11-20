@@ -1,4 +1,4 @@
-// A thread the person started whose PR merged is hidden but stays open: it stays a row under Recent
+// A thread the person started whose PR merged is hidden but stays open: it stays a row under Threads
 // in its Bot's pane, opens with its history, and is left out of Now until the person writes in it.
 // An open approval and a pin keep it shown. GitHub is a scripted server the PR watcher reads.
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -134,15 +134,15 @@ const rowOf = (page: Page, threadID: string) =>
     .getByRole('listitem')
     .filter({ has: page.locator(`a[href$="/threads/${threadID}"]`) });
 
-// recentOf is the thread's link under Recent in Coder's pane.
+// recentOf is the thread's link under Threads in Coder's pane.
 async function recentOf(page: Page, threadID: string) {
   await showPane(page, m, coder.id, 'Coder');
   return threadPane(page, 'Coder')
-    .getByRole('list', { name: 'Recent', exact: true })
+    .getByRole('list', { name: 'Threads', exact: true })
     .locator(`a[href$="/threads/${threadID}"]`);
 }
 
-test('a thread whose PR merged leaves Now, stays a row under Recent in its Bot pane and opens with its history', async ({
+test('a thread whose PR merged leaves Now, stays a row under Threads in its Bot pane and opens with its history', async ({
   page,
 }) => {
   const id = await prThread(1);

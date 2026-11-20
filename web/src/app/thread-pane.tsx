@@ -10,7 +10,12 @@ import { useBots, type Bot, type SidebarThread } from '@/modules/bots/api/bots';
 import { useGroups } from '@/modules/bots/api/groups';
 import { BotMenu } from '@/modules/bots/components/bot-menu';
 import { ThreadSection } from '@/modules/bots/components/thread-tree';
-import { nowSections, threadSections, workersByBoss } from '@/modules/bots/utils/thread-tree';
+import {
+  nowSections,
+  threadNote,
+  threadSections,
+  workersByBoss,
+} from '@/modules/bots/utils/thread-tree';
 import {
   useCloseThread,
   usePinThread,
@@ -83,19 +88,19 @@ function NowPane({ bots, openThreadId }: { bots: Bot[]; openThreadId?: string })
   const [query, setQuery] = useState('');
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const owners = new Map<string, { bot: Bot; note: string }>();
+  const workers = workersByBoss(bots);
   const threads = bots.flatMap((bot) =>
     (bot.threads ?? []).filter((t) => matchesQuery(t, words)).map((t) => ({ bot, t })),
   );
   for (const { bot, t } of threads)
     owners.set(t.id, {
       bot,
-      note: t.activity || relativeTime(t.last_activity),
+      note: threadNote(t, workers.get(t.id)) || relativeTime(t.last_activity),
     });
   const sections = nowSections(
     threads.map(({ t }) => t),
     openThreadId,
   );
-  const workers = workersByBoss(bots);
   return (
     <>
       <span className="px-3.5 pt-4 pb-3 text-[15px]">Now</span>
@@ -107,7 +112,6 @@ function NowPane({ bots, openThreadId }: { bots: Bot[]; openThreadId?: string })
             label={label}
             threads={threads}
             openThreadId={openThreadId}
-            workers={workers}
             owners={owners}
           />
         ))}
@@ -158,16 +162,14 @@ function BotPane({
   const created = new Map(details.map((t) => [t.id, t.created_at]));
   const newThread = () => navigate(`/bots/${bot.id}/new`);
   const group =
-    bot.id === 'chief'
-      ? 'Sets up your Bots'
-      : (groups.find((g) => g.id === bot.group_id)?.name ?? 'Ungrouped');
+    bot.id === 'chief' ? 'Sets up your Bots' : groups.find((g) => g.id === bot.group_id)?.name;
   return (
     <>
       <div className="flex items-center gap-2.5 px-3.5 pt-4 pb-3">
         <Creature look={bot.look} colour={bot.colour} state={bot.state} size={28} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px]">{bot.name}</span>
-          <span className="block truncate text-xs text-muted">{group}</span>
+          {group && <span className="block truncate text-xs text-muted">{group}</span>}
         </span>
         <button
           type="button"

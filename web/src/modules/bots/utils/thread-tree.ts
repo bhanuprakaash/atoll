@@ -1,35 +1,43 @@
 import type { Bot, SidebarThread } from '@/modules/bots/api/bots';
+import { relativeTime } from '@/utils/time';
 
 export const isLiveHelper = (t: SidebarThread) =>
   t.parent_thread_id !== '' && (t.state === 'running' || t.state === 'needs_you');
 
-const sectionLabels = ['Needs you', 'Running', 'Pinned', 'Recent'] as const;
+const sectionLabels = ['Needs you', 'Running', 'Threads'] as const;
 
 const sectionOf = (t: SidebarThread) =>
-  t.state === 'needs_you'
+  t.state === 'needs_you' || t.state === 'failed'
     ? 'Needs you'
     : t.state === 'running'
       ? 'Running'
-      : t.pinned
-        ? 'Pinned'
-        : 'Recent';
+      : 'Threads';
 
-// threadSections splits a Bot's threads into the pane's sections, keeping the server's order and
-// leaving out the empty ones. The open thread is never Replied; a live helper thread is no row (its
+// threadSections splits a Bot's threads into the pane's sections, keeping the server's order except
+// that pinned threads come first under Threads, and leaving out the empty ones. The open thread is never Replied; a live helper thread is no row (its
 // boss thread's helper line shows it, with its Needs you).
 export function threadSections(all: SidebarThread[], openId: string | undefined) {
   const threads = all
     .filter((t) => !isLiveHelper(t))
     .map((t) => (t.id === openId && t.state === 'new' ? { ...t, state: '' as const } : t));
   return sectionLabels
-    .map((label) => ({ label, threads: threads.filter((t) => sectionOf(t) === label) }))
+    .map((label) => {
+      const inSection = threads.filter((t) => sectionOf(t) === label);
+      return {
+        label,
+        threads:
+          label === 'Threads'
+            ? inSection.sort((a, b) => Number(b.pinned) - Number(a.pinned))
+            : inSection,
+      };
+    })
     .filter((section) => section.threads.length > 0);
 }
 
 const nowLabels = [
-  ['Needs you', 'needs_you'],
-  ['Running', 'running'],
-  ['Replied', 'new'],
+  ['Needs you', ['needs_you', 'failed']],
+  ['Running', ['running']],
+  ['Replied', ['new']],
 ] as const;
 
 // nowSections splits every Bot's threads into Now's sections, newest activity first, leaving out
@@ -40,11 +48,21 @@ export function nowSections(all: SidebarThread[], openId: string | undefined) {
     .filter((t) => !isLiveHelper(t) && !t.hidden && !(t.id === openId && t.state === 'new'))
     .sort((a, b) => Date.parse(b.last_activity) - Date.parse(a.last_activity));
   return nowLabels
-    .map(([label, state]) => ({ label, threads: threads.filter((t) => t.state === state) }))
+    .map(([label, states]) => ({
+      label,
+      threads: threads.filter((t) => (states as readonly string[]).includes(t.state)),
+    }))
     .filter((section) => section.threads.length > 0);
 }
 
-export type Worker = { id: string; bot: Bot; needsYou: boolean; step: string; wake: string };
+export type Worker = {
+  id: string;
+  bot: Bot;
+  needsYou: boolean;
+  ask: string;
+  step: string;
+  wake: string;
+};
 
 // workersByBoss lists the helpers running for each boss thread: the one that needs the person
 // first, then the one that acted last.
@@ -61,12 +79,26 @@ export function workersByBoss(bots: Bot[]): Map<string, Worker[]> {
   for (const { bot, t } of live)
     out.set(t.parent_thread_id, [
       ...(out.get(t.parent_thread_id) ?? []),
-      { id: t.id, bot, needsYou: t.state === 'needs_you', step: t.step ?? '', wake: t.wake ?? '' },
+      {
+        id: t.id,
+        bot,
+        needsYou: t.state === 'needs_you',
+        ask: t.activity ?? '',
+        step: t.step ?? '',
+        wake: t.wake ?? '',
+      },
     ]);
   return out;
 }
 
-export const workerNames = (workers: Worker[]) =>
-  workers.length > 2
-    ? `${workers[0].bot.name} +${workers.length - 1}`
-    : workers.map((w) => w.bot.name).join(', ');
+export const workerNote = (w: Worker) =>
+  w.needsYou ? w.ask : [w.wake, w.step].filter(Boolean).join(' · ') || 'Working';
+
+// threadNote is the second line of a row that asks something of the person: what a needs-you thread
+// asks, or when a failed run failed. A running boss thread names its first helper and its note.
+export function threadNote(t: SidebarThread, workers?: Worker[]) {
+  if (t.state === 'needs_you') return t.activity ?? '';
+  if (t.state === 'failed') return `Run failed · ${relativeTime(t.last_activity)}`;
+  if (t.state === 'running' && workers) return `${workers[0].bot.name}: ${workerNote(workers[0])}`;
+  return t.activity ?? '';
+}

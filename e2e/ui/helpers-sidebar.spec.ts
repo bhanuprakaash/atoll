@@ -1,5 +1,5 @@
 // Delegated work in the thread pane: one line under the boss thread, the helper thread a row of its
-// own Bot's pane only once it is finished (under Recent), a breadcrumb from the helper thread
+// own Bot's pane only once it is finished (under Threads), a breadcrumb from the helper thread
 // back to the boss thread.
 import { expect, type Page, test } from '@playwright/test';
 import { api, type Machine, prompts, showPane, startAtoll, threadPane } from './atoll';
@@ -51,7 +51,7 @@ test('one helper: one line under the boss thread with its name and step; in its 
   expect(sidebar.find((t) => t.id === boss)?.parent_thread_id ?? '').toBe('');
 });
 
-test('two helpers: still one line, naming both', async ({ page }) => {
+test('two helpers: still one line, naming one of them', async ({ page }) => {
   const { poteto, bots, thread } = await bossHandsOff(m, page, [
     ['Tester', prompts.hang],
     ['Reviewer', prompts.hang],
@@ -59,8 +59,8 @@ test('two helpers: still one line, naming both', async ({ page }) => {
   await showPane(page, m, poteto.id, 'Poteto');
 
   await expect(line(page)).toHaveCount(1);
-  await expect(line(page)).toContainText('Tester');
-  await expect(line(page)).toContainText('Reviewer');
+  await expect(line(page)).toContainText(/Tester|Reviewer/);
+  await expect(line(page)).not.toContainText(/Tester.*Reviewer|Reviewer.*Tester/);
   for (const name of ['Tester', 'Reviewer']) {
     await expect(rowOf(page, 'Poteto', thread(name))).toHaveCount(0);
     await showPane(page, m, bots[name].id, name);
@@ -118,7 +118,7 @@ test('the helper thread header is a breadcrumb: the boss thread title, then the 
   await expect(page).toHaveURL(`${m.url}/bots/${poteto.id}/threads/${boss}`);
 });
 
-test('after the helper reports the line is gone and the helper thread is a row under Recent in its Bot pane, also after a reload and a restart; it opens with its history', async ({
+test('after the helper reports the line is gone and the helper thread is a row under Threads in its Bot pane, also after a reload and a restart; it opens with its history', async ({
   page,
 }) => {
   const { poteto, bots, thread } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
@@ -131,7 +131,7 @@ test('after the helper reports the line is gone and the helper thread is a row u
 
   const recent = (page: Page) =>
     threadPane(page, 'Tester').getByRole('list', {
-      name: 'Recent',
+      name: 'Threads',
       exact: true,
     });
   await showPane(page, m, bots.Tester.id, 'Tester');

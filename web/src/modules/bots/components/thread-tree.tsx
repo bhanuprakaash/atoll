@@ -4,7 +4,7 @@ import { Creature } from '@/components/creature';
 import { Menu } from '@/components/menu';
 import { TextField } from '@/components/text-field';
 import type { Bot, SidebarThread } from '@/modules/bots/api/bots';
-import { workerNames, type Worker } from '@/modules/bots/utils/thread-tree';
+import { threadNote, workerNote, type Worker } from '@/modules/bots/utils/thread-tree';
 import { clockTime } from '@/utils/time';
 
 const marker = (t: SidebarThread) =>
@@ -57,25 +57,19 @@ const outUntil = (thread: SidebarThread) =>
   thread.resets_at ? `Out until ${clockTime(thread.resets_at)}` : 'Out';
 
 function ThreadMarker({ thread }: { thread: SidebarThread }) {
-  if (thread.state === 'needs_you')
-    return (
-      <>
-        <span className="flex-none text-xs text-ink">Needs you</span>
-        <Dot className="bg-accent" />
-      </>
-    );
-  if (thread.state === 'failed')
-    return (
-      <>
-        <span className="flex-none text-xs text-ink">Failed</span>
-        <Dot className="bg-danger" />
-      </>
-    );
+  if (thread.state === 'needs_you') return <Dot className="bg-accent" />;
+  if (thread.state === 'failed') return <Dot className="bg-danger" />;
   if (thread.state === 'limited')
-    return <span className="flex-none text-xs text-muted">{outUntil(thread)}</span>;
+    return (
+      <>
+        {thread.pinned && <Pin />}
+        <span className="flex-none text-xs text-muted">{outUntil(thread)}</span>
+      </>
+    );
   if (thread.state === 'new')
     return (
       <>
+        {thread.pinned && <Pin />}
         <Dot className="bg-kind" />
         <span className="sr-only">Replied</span>
       </>
@@ -132,9 +126,7 @@ function HelpersLine({
             />
           ))}
         </span>
-        <span className="flex-none text-ink">
-          {needsYou ? workers[0].bot.name : workerNames(workers)}
-        </span>{' '}
+        <span className="flex-none text-ink">{workers[0].bot.name}</span>{' '}
         {needsYou ? (
           <>
             <span className="flex-none text-ink">Needs you</span>
@@ -143,9 +135,7 @@ function HelpersLine({
           </>
         ) : (
           <>
-            <span className="min-w-0 flex-1 truncate">
-              {[workers[0].wake, workers[0].step].filter(Boolean).join(' · ') || 'Working'}
-            </span>
+            <span className="min-w-0 flex-1 truncate">{workerNote(workers[0])}</span>
             <Wave />
           </>
         )}
@@ -169,7 +159,7 @@ export function ThreadSection({
   threads: SidebarThread[];
   botId?: string;
   openThreadId?: string;
-  workers: Map<string, Worker[]>;
+  workers?: Map<string, Worker[]>;
   owners?: Map<string, { bot: Bot; note: string }>;
   onPinThread?: (thread: SidebarThread) => void;
   onCloseThread?: (threadId: string) => void;
@@ -190,6 +180,11 @@ export function ThreadSection({
           const selected = thread.id === openThreadId;
           const owner = owners?.get(thread.id);
           const ownerId = owner?.bot.id ?? botId!;
+          const note = owner
+            ? `${owner.bot.name} · ${owner.note}`
+            : thread.state === 'needs_you' || thread.state === 'failed'
+              ? threadNote(thread)
+              : '';
           return (
             <Fragment key={thread.id}>
               <div
@@ -200,7 +195,7 @@ export function ThreadSection({
                   event.preventDefault();
                   setMenu({ x: event.clientX, y: event.clientY, thread });
                 }}
-                className={`group relative flex items-center rounded-lg ${owner ? 'gap-2.5 py-2' : 'gap-2'} ${selected ? 'bg-selected' : 'hover:bg-field'}`}
+                className={`group relative flex items-center rounded-lg ${owner ? 'gap-2.5' : 'gap-2'} ${note ? 'py-2' : ''} ${selected ? 'bg-selected' : 'hover:bg-field'}`}
               >
                 {renaming === thread.id ? (
                   <RenameField
@@ -227,7 +222,7 @@ export function ThreadSection({
                         to={`/bots/${ownerId}/threads/${thread.id}`}
                         aria-current={selected ? 'page' : undefined}
                         draggable={false}
-                        className={`${rowStyle} ${owner ? 'h-5 pl-0' : 'h-8'} after:absolute after:inset-0 after:rounded-lg`}
+                        className={`${rowStyle} ${note ? 'h-5' : 'h-8'} ${owner ? 'pl-0' : ''} after:absolute after:inset-0 after:rounded-lg`}
                       >
                         <span
                           className={`min-w-0 truncate ${thread.state === 'new' ? 'font-semibold' : ''}`}
@@ -235,9 +230,11 @@ export function ThreadSection({
                           {thread.title || 'Empty thread'}
                         </span>
                       </Link>
-                      {owner && (
-                        <span className="block truncate text-xs text-muted">
-                          {owner.bot.name} · {owner.note}
+                      {note && (
+                        <span
+                          className={`block truncate text-xs text-muted ${owner ? '' : 'px-2'}`}
+                        >
+                          {note}
                         </span>
                       )}
                     </span>
@@ -280,7 +277,7 @@ export function ThreadSection({
                   </>
                 )}
               </div>
-              {workers.get(thread.id) && (
+              {workers?.get(thread.id) && (
                 <HelpersLine
                   botId={ownerId}
                   threadId={thread.id}
