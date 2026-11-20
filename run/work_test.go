@@ -195,11 +195,11 @@ func TestRun_RepoAccessRevoked(t *testing.T) {
 	var shelf string
 	second := e.run(t, func(token string) {
 		_, _, _, startErr = e.m.StartWork(t.Context(), token, "feat/y", "")
-		sh, err := e.m.shelf(t.Context(), token)
+		a, err := e.m.byToken(token)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
-		shelf = sh.RepoID
+		shelf = e.m.shelf(a).RepoID
 		tests := []struct {
 			name    string
 			scope   string

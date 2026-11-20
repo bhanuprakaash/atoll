@@ -5,6 +5,7 @@ package run
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -183,6 +184,7 @@ type (
 		lastEvent atomic.Int64 // unix nanoseconds of the run's last stream event or approval close
 		stuck     bool         // the idle limit stopped the run; the Manager's mu guards it
 		shown     []string     // memory ids the run's memory tools returned
+		shelf     memory.Shelf // what the run's memory tools may see; the Manager's mu guards it
 		// usage and priorCostUSD are the run goroutine's: the provider's last report, and what the
 		// session had cost before this run.
 		usage        *provider.Usage
@@ -519,10 +521,13 @@ func (m *Manager) stop(ctx context.Context, id string, quiet bool) error {
 func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()) {
 	ch := make(chan Event, _subscriberBuffer)
 	m.mu.Lock()
-	if m.ctx.Err() != nil {
-		close(ch)
+	if m.subs[threadID] == nil {
+		m.subs[threadID] = map[chan Event]struct{}{}
+	}
+	cancel, ok := m.join(m.subs[threadID], ch)
+	if !ok {
 		m.mu.Unlock()
-		return ch, func() {}
+		return ch, cancel
 	}
 	var snapshot *io.SectionReader
 	var file *os.File
@@ -540,10 +545,6 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 			m.cfg.Log.Warn("open replay snapshot", "run_id", a.run.ID, "error", err)
 		}
 	}
-	if m.subs[threadID] == nil {
-		m.subs[threadID] = map[chan Event]struct{}{}
-	}
-	m.subs[threadID][ch] = struct{}{}
 	m.mu.Unlock()
 	if file != nil {
 		defer func() { _ = file.Close() }()
@@ -551,14 +552,7 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 	if snapshot != nil {
 		m.replay(threadID, ch, snapshot)
 	}
-	return ch, func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		if _, ok := m.subs[threadID][ch]; ok {
-			delete(m.subs[threadID], ch)
-			close(ch)
-		}
-	}
+	return ch, cancel
 }
 
 // SubscribeAll streams the notice events of every thread from now on, until cancel is called.
@@ -566,10 +560,10 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 func (m *Manager) SubscribeAll() (approvals []Event, events <-chan Event, cancel func()) {
 	ch := make(chan Event, _subscriberBuffer)
 	m.mu.Lock()
-	if m.ctx.Err() != nil {
-		close(ch)
+	cancel, ok := m.join(m.all, ch)
+	if !ok {
 		m.mu.Unlock()
-		return nil, ch, func() {}
+		return nil, ch, cancel
 	}
 	for threadID, a := range m.runs {
 		for _, o := range m.approvals {
@@ -578,16 +572,26 @@ func (m *Manager) SubscribeAll() (approvals []Event, events <-chan Event, cancel
 			}
 		}
 	}
-	m.all[ch] = struct{}{}
 	m.mu.Unlock()
-	return approvals, ch, func() {
+	return approvals, ch, cancel
+}
+
+// join adds ch to subs and returns its cancel. When the Manager is closing it closes ch instead
+// and returns false. The caller holds mu.
+func (m *Manager) join(subs map[chan Event]struct{}, ch chan Event) (cancel func(), ok bool) {
+	if m.ctx.Err() != nil {
+		close(ch)
+		return func() {}, false
+	}
+	subs[ch] = struct{}{}
+	return func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		if _, ok := m.all[ch]; ok {
-			delete(m.all, ch)
+		if _, ok := subs[ch]; ok {
+			delete(subs, ch)
 			close(ch)
 		}
-	}
+	}, true
 }
 
 // Active returns the id of the run going in the thread and its open approvals. ok is false when
@@ -681,9 +685,7 @@ func (m *Manager) AnswerInThread(ctx context.Context, id string, allow bool) err
 			SourceBotID: o.run.bot.ID, SourceThreadID: o.run.threadID, SourceRunID: o.run.run.ID,
 		})
 		if err == nil {
-			m.publish(o.run, EventPlatformChanged, PlatformChanged{
-				SourceBotID: c.SourceBotID, ThreadID: c.SourceThreadID, RunID: c.SourceRunID, Change: c,
-			})
+			m.publishChange(o.run, c)
 		}
 	}
 	if err != nil {
@@ -974,7 +976,10 @@ func (m *Manager) codexAutoRoots(ctx context.Context, thread store.Thread, rp st
 		if err != nil {
 			return nil, fmt.Errorf("compare repo and worktree root: %w", err)
 		}
-		if (rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) && (repoRel == ".." || strings.HasPrefix(repoRel, ".."+string(filepath.Separator))) {
+		outside := func(rel string) bool {
+			return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+		}
+		if outside(rel) && outside(repoRel) {
 			roots = []string{root}
 		}
 		roots = append(roots, filepath.Join(common, "objects"), filepath.Join(common, "refs"), filepath.Join(common, "logs"))
@@ -992,7 +997,7 @@ func (m *Manager) codexAutoRoots(ctx context.Context, thread store.Thread, rp st
 			if err != nil {
 				return nil, fmt.Errorf("resolve thread git directory: %w", err)
 			}
-			if id == "" || filepath.Dir(gitDir) != filepath.Join(resolvedCommon, "worktrees") {
+			if filepath.Dir(gitDir) != filepath.Join(resolvedCommon, "worktrees") {
 				return nil, errors.New("thread git directory is outside the registered repo")
 			}
 			if !slices.Contains(roots, gitDir) {
@@ -1053,6 +1058,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		}
 		rp.Host = RepoHost(a.ctx, rp.Path)
 	}
+	m.mu.Lock()
+	a.shelf = memory.Shelf{RepoID: rp.ID, BotID: thread.BotID}
+	m.mu.Unlock()
 	cwd, stale, err := m.workdir(thread, rp)
 	if err != nil {
 		return "", err
@@ -1062,17 +1070,13 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	if err != nil {
 		return "", fmt.Errorf("load user name: %w", err)
 	}
+	user = cmp.Or(user, "The user")
 	cfg.Model = bot.Model
 	cfg.Mode = bot.Mode
 	cfg.Log = m.cfg.Log
 	cfg.NoShell = bot.ID == "chief" && bot.Provider == "claude"
 	if bot.Provider == "claude" && !cfg.NoShell {
 		if cfg.HiddenPaths, err = m.hiddenPaths(a.ctx, bot); err != nil {
-			return "", err
-		}
-	}
-	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
-		if cfg.WritableRoots, err = m.codexAutoRoots(a.ctx, thread, rp); err != nil {
 			return "", err
 		}
 	}
@@ -1088,7 +1092,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 			return "", fmt.Errorf("load boss bot: %w", err)
 		}
 		bossName = bossBot.Name
-		onBossBranch = thread.Branch != "" && boss.Branch != "" && strings.HasPrefix(thread.Branch, boss.Branch+"--")
+		onBossBranch = thread.Branch != "" && boss.Branch != "" && isHelperBranch(boss.Branch, thread.Branch)
 	}
 	cfg.SystemPrompt = systemPrompt(bot, user, bossName, onBossBranch,
 		len(bot.Delegates) > 0 && thread.ParentThreadID == "")
@@ -1112,7 +1116,7 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 	var items []memory.Item
 	var counts memory.Counts
 	if m.cfg.Memory != nil && a.kind == "" {
-		shelf := memory.Shelf{RepoID: rp.ID, BotID: thread.BotID}
+		shelf := a.shelf
 		var seen map[string]bool
 		if thread.Session != "" {
 			seen, err = m.cfg.Memory.Seen(a.ctx, thread.Session)
@@ -1144,6 +1148,9 @@ func (m *Manager) drive(a *active, text string, images []provider.Image) (string
 		return "", err
 	}
 	if bot.Provider == "codex" && bot.Mode == provider.ModeAuto && rp.ID != "" {
+		if cfg.WritableRoots, err = m.codexAutoRoots(a.ctx, thread, rp); err != nil {
+			return "", err
+		}
 		cache, env, err := m.codexAutoCache(bot.ID)
 		if err != nil {
 			return "", err
@@ -1257,9 +1264,7 @@ func (m *Manager) stream(a *active, sess provider.Session) (string, error) {
 						if input.Arguments.ID != "" {
 							input.ID = input.Arguments.ID
 						}
-						item, err := m.cfg.Memory.Read(a.ctx, input.ID)
-						shelf, shelfErr := m.shelf(a.ctx, a.token)
-						if err == nil && shelfErr == nil && shelf.Has(item) {
+						if item, err := m.onShelf(a.ctx, a.shelf, input.ID); err == nil {
 							target = shortMemory(item.Body)
 						}
 					}
@@ -1433,15 +1438,7 @@ func (m *Manager) announce(threadID, runID, typ string, data any) {
 func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data any) {
 	m.writeEvent(runID, log, typ, data)
 	ev := Event{Type: typ, ThreadID: threadID, Data: data}
-	for ch := range m.subs[threadID] {
-		select {
-		case ch <- ev:
-		default:
-			delete(m.subs[threadID], ch)
-			close(ch)
-			m.cfg.Log.Warn("subscriber full, stream closed", "run_id", runID, "type", typ)
-		}
-	}
+	m.fanOut(m.subs[threadID], ev, runID)
 	switch typ {
 	case EventApproval, EventApprovalEnd, EventRunFinished, EventMRUpdated, EventPlatformChanged, EventThreadRead,
 		EventTold:
@@ -1451,13 +1448,19 @@ func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data
 	if f, ok := data.(Finished); ok && f.quiet {
 		return
 	}
-	for ch := range m.all {
+	m.fanOut(m.all, ev, runID)
+}
+
+// fanOut gives ev to each of subs and closes the stream of one whose buffer is full. The caller
+// holds mu.
+func (m *Manager) fanOut(subs map[chan Event]struct{}, ev Event, runID string) {
+	for ch := range subs {
 		select {
 		case ch <- ev:
 		default:
-			delete(m.all, ch)
+			delete(subs, ch)
 			close(ch)
-			m.cfg.Log.Warn("subscriber full, stream closed", "run_id", runID, "type", typ)
+			m.cfg.Log.Warn("subscriber full, stream closed", "run_id", runID, "type", ev.Type)
 		}
 	}
 }

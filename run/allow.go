@@ -134,12 +134,9 @@ func gitDiscards(words []string) bool {
 		if commandWord(w) != "git" {
 			continue
 		}
-		args := words[i+1:]
-		if end := slices.Index(args, ";"); end >= 0 {
-			args = args[:end]
-		}
+		args := commandArgs(words[i+1:])
 		for j := 0; j < len(args); j++ {
-			a := strings.Trim(args[j], `"'`)
+			a := unquote(args[j])
 			if a == "-C" || a == "-c" || a == "--git-dir" || a == "--work-tree" {
 				j++
 				continue
@@ -158,7 +155,7 @@ func gitDiscards(words []string) bool {
 
 func gitDiscardsWith(verb string, args []string) bool {
 	has := func(match func(string) bool) bool {
-		return slices.ContainsFunc(args, func(a string) bool { return match(strings.Trim(a, `"'`)) })
+		return slices.ContainsFunc(args, func(a string) bool { return match(unquote(a)) })
 	}
 	force := func(a string) bool {
 		return a == "--force" || _shortFlag.MatchString(a) && strings.Contains(a, "f")
@@ -181,12 +178,24 @@ func gitDiscardsWith(verb string, args []string) bool {
 func paths(args []string) int {
 	var n int
 	for i, a := range args {
-		a = strings.Trim(a, `"'`)
-		if !strings.HasPrefix(a, "-") && (i == 0 || !slices.Contains(_branchFlags, strings.Trim(args[i-1], `"'`))) {
+		a = unquote(a)
+		if !strings.HasPrefix(a, "-") && (i == 0 || !slices.Contains(_branchFlags, unquote(args[i-1]))) {
 			n++
 		}
 	}
 	return n
+}
+
+// commandArgs is the words up to the next separator.
+func commandArgs(words []string) []string {
+	if end := slices.Index(words, ";"); end >= 0 {
+		return words[:end]
+	}
+	return words
+}
+
+func unquote(s string) string {
+	return strings.Trim(s, `"'`)
 }
 
 // commandWord is w as a program name: unquoted, lower-case, without its folder.
@@ -200,10 +209,7 @@ func ghWrite(words []string) bool {
 		if commandWord(w) != "gh" {
 			continue
 		}
-		args := words[i+1:]
-		if end := slices.Index(args, ";"); end >= 0 {
-			args = args[:end]
-		}
+		args := commandArgs(words[i+1:])
 		if !ghRead(args) {
 			return true
 		}
@@ -214,7 +220,7 @@ func ghWrite(words []string) bool {
 func ghRead(args []string) bool {
 	var verbs []string
 	for _, a := range args {
-		if a = strings.Trim(a, `"'`); !strings.HasPrefix(a, "-") {
+		if a = unquote(a); !strings.HasPrefix(a, "-") {
 			verbs = append(verbs, a)
 		}
 	}
@@ -230,10 +236,10 @@ func ghRead(args []string) bool {
 // apiWrite reports whether gh api's args send a non-GET method, a field or an input.
 func apiWrite(args []string) bool {
 	for i, a := range args {
-		a = strings.Trim(a, `"'`)
+		a = unquote(a)
 		switch {
 		case a == "-X" || a == "--method":
-			if i+1 == len(args) || !strings.EqualFold(strings.Trim(args[i+1], `"'`), "GET") {
+			if i+1 == len(args) || !strings.EqualFold(unquote(args[i+1]), "GET") {
 				return true
 			}
 		case strings.HasPrefix(a, "--method="), strings.HasPrefix(a, "-X"):

@@ -25,10 +25,7 @@ func (m *Manager) Remember(
 	if err != nil {
 		return memory.Item{}, nil, err
 	}
-	sh, err := m.shelf(ctx, token)
-	if err != nil {
-		return memory.Item{}, nil, err
-	}
+	sh := m.shelf(a)
 	var scopeID string
 	switch scope {
 	case memory.ScopeRepo:
@@ -48,7 +45,7 @@ func (m *Manager) Remember(
 	}
 	m.publish(a, EventMemorySaved,
 		MemorySaved{Item: item, SourceBotID: sh.BotID, ThreadID: a.threadID, RunID: a.run.ID})
-	m.show(token, item)
+	m.show(a, item)
 	return item, similar, nil
 }
 
@@ -56,39 +53,39 @@ func (m *Manager) Remember(
 func (m *Manager) Recall(
 	ctx context.Context, token, query string, limit int,
 ) ([]memory.Item, error) {
-	sh, err := m.shelf(ctx, token)
+	a, err := m.byToken(token)
 	if err != nil {
 		return nil, err
 	}
-	items, err := m.cfg.Memory.Recall(ctx, sh, query, limit)
+	items, err := m.cfg.Memory.Recall(ctx, m.shelf(a), query, limit)
 	if err != nil {
 		return nil, err
 	}
-	m.show(token, items...)
+	m.show(a, items...)
 	return items, nil
 }
 
 // ReadMemory returns item id. It wraps memory.ErrNotFound for an item off the run's shelf.
 func (m *Manager) ReadMemory(ctx context.Context, token, id string) (memory.Item, error) {
-	sh, err := m.shelf(ctx, token)
+	a, err := m.byToken(token)
 	if err != nil {
 		return memory.Item{}, err
 	}
-	it, err := m.onShelf(ctx, sh, id)
+	it, err := m.onShelf(ctx, m.shelf(a), id)
 	if err != nil {
 		return memory.Item{}, err
 	}
-	m.show(token, it)
+	m.show(a, it)
 	return it, nil
 }
 
 // RetireMemory retires item id. It wraps memory.ErrNotFound for an item off the run's shelf.
 func (m *Manager) RetireMemory(ctx context.Context, token, id string) (memory.Item, error) {
-	sh, err := m.shelf(ctx, token)
+	a, err := m.byToken(token)
 	if err != nil {
 		return memory.Item{}, err
 	}
-	if _, err := m.onShelf(ctx, sh, id); err != nil {
+	if _, err := m.onShelf(ctx, m.shelf(a), id); err != nil {
 		return memory.Item{}, err
 	}
 	return m.cfg.Memory.Retire(ctx, id)
@@ -105,31 +102,15 @@ func (m *Manager) onShelf(ctx context.Context, sh memory.Shelf, id string) (memo
 	return it, nil
 }
 
-// shelf is what the run with token may see: its thread's repo and its Bot.
-func (m *Manager) shelf(ctx context.Context, token string) (memory.Shelf, error) {
-	a, err := m.byToken(token)
-	if err != nil {
-		return memory.Shelf{}, err
-	}
-	t, err := m.cfg.Store.Thread(ctx, a.threadID)
-	if err != nil {
-		return memory.Shelf{}, fmt.Errorf("load thread: %w", err)
-	}
+// shelf is what the run may see: its thread's repo and its Bot.
+func (m *Manager) shelf(a *active) memory.Shelf {
 	m.mu.Lock()
-	allowed := a.bot.RepoAccess.Allows(t.RepoID)
-	m.mu.Unlock()
-	if !allowed {
-		t.RepoID = ""
-	}
-	return memory.Shelf{RepoID: t.RepoID, BotID: t.BotID}, nil
+	defer m.mu.Unlock()
+	return a.shelf
 }
 
 // show records items the provider got from a memory tool, so resumed messages leave them out.
-func (m *Manager) show(token string, items ...memory.Item) {
-	a, err := m.byToken(token)
-	if err != nil {
-		return
-	}
+func (m *Manager) show(a *active, items ...memory.Item) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, it := range items {

@@ -86,7 +86,7 @@ func (m *Manager) Delegate(
 		m.abandonHelper(ctx, rp, h, path)
 		return Handoff{}, err
 	}
-	if h.Helpers, err = m.helpersLine(ctx, t.ID, ""); err != nil {
+	if h.Helpers, err = m.helpersLine(ctx, t.ID); err != nil {
 		m.cfg.Log.Error("count helpers", "thread_id", t.ID, "error", err)
 	}
 	m.publish(a, EventHelperStarted, HelperStarted{RunID: a.run.ID, ThreadID: h.ThreadID})
@@ -114,7 +114,7 @@ func (m *Manager) startHelper(
 		if err != nil {
 			return h, "", err
 		}
-		name := t.Branch + "--" + repo.Slug(helper.Name)
+		name := helperBranch(t.Branch, helper.Name)
 		if path, h.Branch, err = repo.CreateFrom(ctx, rp.Path, root, rp.Name, name, t.Branch); err != nil {
 			return h, "", err
 		}
@@ -131,11 +131,7 @@ func (m *Manager) startHelper(
 		if err := m.cfg.Store.SetWorktree(ctx, ht.ID, h.Branch, path); err != nil {
 			return h, path, err
 		}
-		common, err := repo.GitCommonDir(ctx, rp.Path)
-		if err != nil {
-			return h, path, err
-		}
-		id, err := repo.WorktreeID(common, path)
+		id, err := gitDirID(ctx, rp.Path, path)
 		if err != nil {
 			return h, path, err
 		}
@@ -249,13 +245,12 @@ func (m *Manager) hasGitHub(ctx context.Context, b store.Bot) bool {
 }
 
 func (m *Manager) helpersGoing(ctx context.Context, bossID string) (int, error) {
-	running, err := m.helpersRunning(ctx, bossID, "")
+	running, err := m.helpersRunning(ctx, bossID)
 	return len(running), err
 }
 
-// helpersRunning lists the helper threads of bossID that have a run going, oldest first, except
-// skip.
-func (m *Manager) helpersRunning(ctx context.Context, bossID, skip string) ([]store.Thread, error) {
+// helpersRunning lists the helper threads of bossID that have a run going, oldest first.
+func (m *Manager) helpersRunning(ctx context.Context, bossID string) ([]store.Thread, error) {
 	helpers, err := m.cfg.Store.HelperThreads(ctx, bossID)
 	if err != nil {
 		return nil, fmt.Errorf("list helper threads: %w", err)
@@ -264,7 +259,7 @@ func (m *Manager) helpersRunning(ctx context.Context, bossID, skip string) ([]st
 	defer m.mu.Unlock()
 	var running []store.Thread
 	for _, h := range helpers {
-		if _, ok := m.runs[h.ID]; ok && h.ID != skip {
+		if _, ok := m.runs[h.ID]; ok {
 			running = append(running, h)
 		}
 	}
@@ -282,9 +277,9 @@ func HelpersLine(running []string) string {
 		len(running), _maxHelpers, strings.Join(running, "; "), free)
 }
 
-// helpersLine is HelpersLine for the helper runs going under bossID, except the one on skip.
-func (m *Manager) helpersLine(ctx context.Context, bossID, skip string) (string, error) {
-	running, err := m.helpersRunning(ctx, bossID, skip)
+// helpersLine is HelpersLine for the helper runs going under bossID.
+func (m *Manager) helpersLine(ctx context.Context, bossID string) (string, error) {
+	running, err := m.helpersRunning(ctx, bossID)
 	if err != nil {
 		return "", err
 	}
@@ -379,7 +374,7 @@ func (m *Manager) Helpers(ctx context.Context, token string) ([]HelperRow, strin
 		}
 		rows = append(rows, row)
 	}
-	line, err := m.helpersLine(ctx, boss.ID, "")
+	line, err := m.helpersLine(ctx, boss.ID)
 	return rows, line, err
 }
 
@@ -393,7 +388,7 @@ func (m *Manager) BossHelpers(ctx context.Context, token string) (string, error)
 	if len(bot.Delegates) == 0 || t.ParentThreadID != "" {
 		return "", nil
 	}
-	return m.helpersLine(ctx, t.ID, "")
+	return m.helpersLine(ctx, t.ID)
 }
 
 func (m *Manager) helper(ctx context.Context, boss store.Bot, name string) (store.Bot, error) {
@@ -450,4 +445,12 @@ func helperBrief(text string) string {
 		}
 	}
 	return text
+}
+
+func helperBranch(boss, name string) string {
+	return boss + "--" + repo.Slug(name)
+}
+
+func isHelperBranch(boss, branch string) bool {
+	return strings.HasPrefix(branch, boss+"--")
 }

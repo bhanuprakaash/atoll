@@ -219,7 +219,7 @@ func (m *Manager) withHelpersLine(ctx context.Context, items []store.InboxItem) 
 		if it.HelperThread == "" {
 			continue
 		}
-		line, err := m.helpersLine(ctx, it.ThreadID, "")
+		line, err := m.helpersLine(ctx, it.ThreadID)
 		if err != nil {
 			m.cfg.Log.Error("count helpers", "thread_id", it.HelperThread, "error", err)
 		}
@@ -265,7 +265,7 @@ func asNotices(thread store.Thread, items []store.InboxItem) ([]store.InboxItem,
 func WakeText(ctx context.Context, w store.Wake, helpers string, idle time.Duration) string {
 	helper, threadID, run := w.Helper, w.ThreadID, w.Run
 	merge := ""
-	if w.BossBranch != "" && strings.HasPrefix(w.Branch, w.BossBranch+"--") {
+	if w.BossBranch != "" && isHelperBranch(w.BossBranch, w.Branch) {
 		merge = w.Branch
 	}
 	switch w.Notice() {
