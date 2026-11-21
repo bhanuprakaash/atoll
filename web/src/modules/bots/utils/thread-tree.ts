@@ -4,6 +4,8 @@ import { relativeTime } from '@/utils/time';
 export const isLiveHelper = (t: SidebarThread) =>
   t.parent_thread_id !== '' && (t.state === 'running' || t.state === 'needs_you');
 
+const hasNoRow = (t: SidebarThread) => t.parent_thread_id !== '' && t.state !== 'failed';
+
 const sectionLabels = ['Needs you', 'Running', 'Threads'] as const;
 
 const sectionOf = (t: SidebarThread) =>
@@ -15,11 +17,11 @@ const sectionOf = (t: SidebarThread) =>
 
 // threadSections splits a Bot's threads into the pane's sections, keeping the server's order except
 // that pinned threads come first under Threads, and leaving out the empty ones. The open thread is
-// never Replied; a live helper thread is no row (its boss thread's helper line shows it, with its
-// Needs you); a failed helper thread is a row under Threads.
+// never Replied; a helper thread is no row (while it runs, its boss thread's helper line shows it,
+// with its Needs you) unless its run failed: then it is a row under Threads.
 export function threadSections(all: SidebarThread[], openId: string | undefined) {
   const threads = all
-    .filter((t) => !isLiveHelper(t))
+    .filter((t) => !hasNoRow(t))
     .map((t) => (t.id === openId && t.state === 'new' ? { ...t, state: '' as const } : t));
   return sectionLabels
     .map((label) => {
@@ -47,8 +49,8 @@ const helperAsks = (t: SidebarThread, workers?: Worker[]) =>
   !!workers?.[0].needsYou && t.state !== 'needs_you' && t.state !== 'failed';
 
 // nowSections splits every Bot's threads into Now's sections, newest activity first, leaving out
-// the empty ones. A live helper thread is no row of its own (its boss thread shows it, under Needs
-// you while the helper asks), nor is a failed one (the boss's report carries the failure); a merged
+// the empty ones. A helper thread is no row of its own (its boss thread shows it, under Needs you
+// while the helper asks), not even a failed one (the boss's report carries the failure); a merged
 // thread the watcher hides is none, and the open thread is never Replied.
 export function nowSections(
   all: SidebarThread[],
@@ -57,11 +59,7 @@ export function nowSections(
 ) {
   const threads = all
     .filter(
-      (t) =>
-        !isLiveHelper(t) &&
-        !(t.parent_thread_id !== '' && t.state === 'failed') &&
-        !t.hidden &&
-        !(t.id === openId && t.state === 'new'),
+      (t) => t.parent_thread_id === '' && !t.hidden && !(t.id === openId && t.state === 'new'),
     )
     .map((t) => (helperAsks(t, workers.get(t.id)) ? { ...t, state: 'needs_you' as const } : t))
     .sort((a, b) => Date.parse(b.last_activity) - Date.parse(a.last_activity));
@@ -73,14 +71,13 @@ export function nowSections(
     .filter((section) => section.threads.length > 0);
 }
 
-// bossBotId is the Bot whose pane shows the open thread: for a live helper thread, which has no row
-// of its own, the Bot of its boss thread; else the Bot in the URL.
-export function bossBotId(bots: Bot[], openBotId: string, threadId: string | undefined) {
+// helperBoss is the boss thread and its Bot for an open helper thread that has no row of its own:
+// the sidebar stays with them.
+export function helperBoss(bots: Bot[], threadId: string | undefined) {
   const helper = bots.flatMap((bot) => bot.threads ?? []).find((t) => t.id === threadId);
-  if (!helper || !isLiveHelper(helper)) return openBotId;
-  return (
-    bots.find((bot) => bot.threads?.some((t) => t.id === helper.parent_thread_id))?.id ?? openBotId
-  );
+  if (!helper || !hasNoRow(helper)) return undefined;
+  const bot = bots.find((b) => b.threads?.some((t) => t.id === helper.parent_thread_id));
+  return bot && { botId: bot.id, threadId: helper.parent_thread_id, live: isLiveHelper(helper) };
 }
 
 export type Worker = {
