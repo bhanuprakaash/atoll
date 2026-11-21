@@ -1,6 +1,7 @@
-// An open running helper thread has no row in any pane, so the sidebar stays with its boss: the rail
-// bar on the boss Bot, the boss's pane, the selected fill and aria-current on the boss thread's
-// helper line. Issue #555; rule in docs/design.md (Selected row).
+// An open helper thread has no row in any pane, so the sidebar stays with its boss: the rail bar on
+// the boss Bot, the boss's pane, and the selected fill and aria-current on the boss thread's helper
+// line while the helper runs, on the boss thread's row once it is finished. Issues #555, #569; rule
+// in docs/design.md (Selected row).
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { api, type Machine, nowPane, prompts, startAtoll, threadPane, waitStatus } from './atoll';
 import { bossHandsOff, details, openDetails, reportPrompt, runStatus } from './helpers-fixture';
@@ -78,10 +79,10 @@ test('opening a running helper thread from the thread panel Helpers section give
   await expectWithBoss(page, poteto.id, bots.Tester.id, boss);
 });
 
-test('a finished helper thread that is open puts the rail on the helper Bot and selects its row under Threads', async ({
+test('a finished helper thread that is open keeps the rail and pane on the boss and selects the boss thread row', async ({
   page,
 }) => {
-  const { bots, thread } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
+  const { poteto, bots, boss, thread } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
   const helper = thread('Tester');
   await waitStatus(m, helper, 'waiting');
 
@@ -95,12 +96,14 @@ test('a finished helper thread that is open puts the rail on the helper Bot and 
   await expect.poll(() => runStatus(m, helper), { timeout: 30_000 }).toBe('done');
   await away(page);
 
-  await expect(face(page, bots.Tester.id)).toHaveAttribute('data-current', 'true');
-  const pane = threadPane(page, 'Tester');
+  await expect(face(page, poteto.id)).toHaveAttribute('data-current', 'true');
+  await expect(face(page, bots.Tester.id)).not.toHaveAttribute('data-current', 'true');
+  await expect(rail(page).locator('[aria-current]')).toHaveCount(0);
+  const pane = threadPane(page, 'Poteto');
   await expect(pane).toBeVisible();
-  const row = pane
-    .getByRole('list', { name: 'Threads', exact: true })
-    .locator(`a[href="${helperURL(bots.Tester.id, helper)}"]`);
+  await expect(threadPane(page, 'Tester')).toHaveCount(0);
+  await expect(line(page)).toHaveCount(0);
+  const row = pane.locator(`a[href="${helperURL(poteto.id, boss)}"]:not([data-line])`);
   await expect(row).toHaveCount(1);
   await expect(row).toHaveAttribute('aria-current', 'page');
   await expect.poll(() => filled(row)).toBe(true);
