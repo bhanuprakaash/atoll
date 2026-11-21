@@ -1790,8 +1790,8 @@ Voice
   22 px creature, the title and, under it, "Bot · note" (the waiting ask, `Run failed · 3:02 PM`,
   the live verb, else the time), with 8 px above and below and 10 px from the edge to the creature,
   and one marker at its right end: the light dot (Needs you), the red dot (failed), the blue dot
-  (Replied) or wave dots (running). The words "Needs you" show only in the heading. A boss
-  thread's row has no helper line; its note names the helper that acted last and its step
+  (Replied) or wave dots (running), never a pin. The words "Needs you" show only in the heading. A
+  boss thread's row has no helper line; its note names the helper that acted last and its step
   (`Poteto · Tester: Running make check`), or the helper that needs the person and its ask. On the
   rail Now is the count of threads in Needs you or failed (a live helper thread is not counted, as
   Now lists none), on the light accent, with no icon and no badge; with
