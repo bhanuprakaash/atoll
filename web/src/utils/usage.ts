@@ -5,7 +5,7 @@ export function cost(usd: number) {
 
 // modelName shows a Claude id as its name and version (claude-sonnet-5-5 is "Sonnet 5.5"); any
 // other id as it is.
-function modelName(model: string) {
+export function modelName(model: string) {
   const claude = /^claude-(opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/.exec(model);
   if (!claude) return model;
   const [, name, major, minor] = claude;
