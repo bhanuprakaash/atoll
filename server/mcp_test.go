@@ -316,3 +316,7 @@ type fakeProviders []Provider
 func (fakeProviders) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
 func (f fakeProviders) Cached(context.Context) []Provider { return f }
+
+func (fakeProviders) Limits(context.Context, string) (provider.Limits, error) {
+	return provider.Limits{}, nil
+}

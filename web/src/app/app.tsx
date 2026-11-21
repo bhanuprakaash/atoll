@@ -18,6 +18,7 @@ import {
   ProvidersPage,
   SettingsPage,
   SkillsPage,
+  UsagePage,
 } from '@/app/settings-page';
 import { Shell } from '@/app/shell';
 import { ReconnectingNotice } from '@/components/reconnecting-notice';
@@ -219,6 +220,7 @@ function AppRoutes() {
           <Route path="connections" element={<ConnectionsPage />} />
           <Route path="skills" element={<SkillsPage />} />
           <Route path="mcp-servers" element={<McpServersPage />} />
+          <Route path="usage" element={<UsagePage />} />
         </Route>
         <Route path="bots/new" element={<NewBotPage />} />
         <Route path="bots/:botId" element={<BotPage />}>

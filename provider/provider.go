@@ -201,6 +201,19 @@ type Usage struct {
 	SessionCostUSD *float64
 }
 
+// Window is one window of a provider's plan limits.
+type Window struct {
+	UsedPercent   float64
+	ResetsAt      time.Time
+	WindowMinutes int
+}
+
+// Limits is how much of a provider's plan is used. A window the provider does not report is nil.
+type Limits struct {
+	Session *Window
+	Weekly  *Window
+}
+
 // Env returns the parent environment without the variables that carry a provider's credentials or
 // session state (ANTHROPIC_*, CLAUDE*, OPENAI_*, CODEX_*) or the user's own GitLab and GitHub
 // tokens (GITLAB_TOKEN, GITLAB_ACCESS_TOKEN, GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN,

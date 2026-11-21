@@ -219,6 +219,26 @@ func (p *providers) Cached(ctx context.Context) []server.Provider {
 	return list
 }
 
+// Limits reads the plan limits of the provider name from the provider itself.
+func (p *providers) Limits(ctx context.Context, name string) (provider.Limits, error) {
+	a := p.adapter(name)
+	if a == nil {
+		return provider.Limits{}, fmt.Errorf("unknown provider %q", name)
+	}
+	bin, dir, err := a.prepare(ctx, p.pathOverride(name))
+	if err != nil {
+		return provider.Limits{}, _errNoProgram
+	}
+	return a.limits(ctx, bin, dir)
+}
+
+// _errNoProgram is in plain words for the person, who sees it on Settings › Usage.
+const _errNoProgram = plainError("Reef could not find the provider's program or folder.")
+
+type plainError string
+
+func (e plainError) Error() string { return string(e) }
+
 // view is what the last check found for a, with the stored switch and path override. It waits for
 // the start-up check.
 func (p *providers) view(ctx context.Context, a adapter) providerInfo {

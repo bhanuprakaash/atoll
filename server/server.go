@@ -81,6 +81,8 @@ func New(
 		mux.Handle("/api/providers", providers)
 		mux.Handle("/api/providers/", providers)
 	}
+	mux.HandleFunc("GET /api/usage", a.getUsage)
+	mux.HandleFunc("GET /api/usage/limits", a.getUsageLimits)
 	mux.HandleFunc("GET /api/settings", a.getSettings)
 	mux.HandleFunc("PUT /api/settings", a.putSettings)
 	mux.HandleFunc("POST /api/repos", a.createRepo)
