@@ -13,6 +13,7 @@ import { TextArea } from '@/components/text-field';
 import { ZoomImage } from '@/components/zoom-image';
 import { useSendMessage, type ImageInput, type Run } from '@/modules/threads/api/messages';
 import { useStopRun } from '@/modules/threads/api/runs';
+import { readDraft, saveDraft } from '@/modules/threads/utils/draft';
 
 const roundButton =
   'flex size-10 flex-none items-center justify-center rounded-full bg-accent text-accent-ink disabled:bg-segment disabled:text-muted';
@@ -36,6 +37,7 @@ const readImage = (file: File, id: number) =>
 
 export function Composer({
   threadId,
+  draftKey,
   botName,
   runId,
   disabled,
@@ -44,6 +46,7 @@ export function Composer({
   above,
 }: {
   threadId: string;
+  draftKey: string;
   botName: string;
   runId?: string;
   disabled: boolean;
@@ -51,7 +54,7 @@ export function Composer({
   onFirstSend?: (text: string, images: ImageInput[], restore: () => void) => void;
   above?: ReactNode;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => readDraft(draftKey));
   const [images, setImages] = useState<Attachment[]>([]);
   const [imageError, setImageError] = useState('');
   const nextImageId = useRef(0);
@@ -64,6 +67,8 @@ export function Composer({
     const held = document.activeElement?.closest('input, textarea, [role="dialog"], [role="menu"]');
     if (!held) box.current?.focus();
   }, []);
+
+  useEffect(() => saveDraft(draftKey, text), [draftKey, text]);
 
   useLayoutEffect(() => {
     const el = box.current;

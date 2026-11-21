@@ -274,6 +274,7 @@ function EmptyThread({
   repoId,
   setRepoId,
   threadId,
+  draftKey,
   disabled,
   sendFirst,
   onSent,
@@ -285,6 +286,7 @@ function EmptyThread({
   repoId: string;
   setRepoId: (id: string) => void;
   threadId: string;
+  draftKey: string;
   disabled: boolean;
   sendFirst: (text: string, images?: ImageInput[], restore?: () => void) => void;
   onSent: (run: Run) => void;
@@ -330,6 +332,7 @@ function EmptyThread({
       <div className="w-full">
         <Composer
           threadId={threadId}
+          draftKey={draftKey}
           botName={botName}
           disabled={disabled}
           onSent={onSent}
@@ -397,6 +400,7 @@ export function DraftThread({
           repoId={repoId}
           setRepoId={setRepoId}
           threadId=""
+          draftKey={`bot.${botId}`}
           disabled={create.isPending}
           sendFirst={sendFirst}
           onSent={() => {}}
@@ -641,6 +645,7 @@ export function ThreadView({
                 repoId={repoId}
                 setRepoId={setRepoId}
                 threadId={threadId}
+                draftKey={`thread.${threadId}`}
                 disabled={!connected}
                 sendFirst={sendFirst}
                 onSent={(run) => begin(run.id)}
@@ -844,6 +849,7 @@ export function ThreadView({
           ) : (
             <Composer
               threadId={threadId}
+              draftKey={`thread.${threadId}`}
               botName={botName}
               runId={activeId}
               disabled={!connected || !!thread?.closed}

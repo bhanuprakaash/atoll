@@ -2163,6 +2163,10 @@ Voice
   starters; a starter sends its text as the first message. A send that fails, the first message of a
   thread included, puts its text and images back in the box with the error under it; text typed
   meanwhile stays, on a new line after the restored text.
+- Unsent text stays in the composer when the person leaves and comes back, and after a reload or
+  restart. It is kept per thread on this device (browser storage keyed by thread id; a Bot's New
+  thread screen is keyed by Bot), never sent to the server. Sending, or clearing the box by hand,
+  removes it. Attachments are not kept.
 - Thread labels. A thread shows one label, the first that holds: Needs you (an approval is open,
   until answered); Working (a run is going); Run failed (a run failed since the person last opened the
   thread, until opened); `Out until 3 PM` (the provider's usage limit, until its reset time);
