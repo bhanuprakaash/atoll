@@ -9,6 +9,24 @@ import { join } from 'node:path';
 import { expect } from '@playwright/test';
 import { api, type Machine } from './atoll';
 
+export type ChangedFile = {
+  filename: string;
+  additions: number;
+  deletions: number;
+  // patch is left out of GitHub's reply when it is absent, as for a binary or too large file.
+  patch?: string;
+};
+
+export type FakeCheck = { name: string; status: string; conclusion: string | null };
+
+export type PullDetails = {
+  author?: string;
+  head?: string;
+  body?: string;
+  draft?: boolean;
+  mergeable?: boolean | null;
+};
+
 export type GitHubFake = {
   url: string;
   // merge turns pull request n merged, as GitHub does when the person merges it.
@@ -18,6 +36,18 @@ export type GitHubFake = {
   // open adds a pull request no Bot opened and returns its number.
   open: (title: string) => number;
   setCI: (n: number, state: 'running' | 'passed' | 'failed') => void;
+  // setChecks replaces the check runs of pull request n, in the order GitHub lists them.
+  setChecks: (n: number, checks: FakeCheck[]) => void;
+  // describe sets what the panel reads of pull request n beyond its title: author, head branch,
+  // description, draft and mergeable.
+  describe: (n: number, details: PullDetails) => void;
+  // setFiles sets the files of pull request n. The fake answers one file a page, with a Link
+  // header, whatever per_page says.
+  setFiles: (n: number, files: ChangedFile[]) => void;
+  // hide makes pull request n answer 404, as GitHub does for a PR the token cannot see.
+  hide: (n: number, hidden: boolean) => void;
+  // fail makes pull request n answer 500.
+  fail: (n: number, failing: boolean) => void;
   // reads is how many times the server asked about pull request n.
   reads: (n: number) => number;
   close: () => void;
@@ -29,17 +59,23 @@ export async function startGitHub(): Promise<GitHubFake> {
   const pulls: { title: string; state: string; merged: boolean }[] = [];
   const reads = new Map<number, number>();
   const ci = new Map<number, 'running' | 'passed' | 'failed'>();
+  const checks = new Map<number, FakeCheck[]>();
+  const details = new Map<number, PullDetails>();
+  const files = new Map<number, ChangedFile[]>();
+  const hidden = new Set<number>();
+  const failing = new Set<number>();
   let token = '';
   let url = '';
   const server: Server = createServer((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
     req.on('end', () => {
-      const json = (status: number, value: unknown) => {
-        res.writeHead(status, { 'Content-Type': 'application/json' });
+      const json = (status: number, value: unknown, headers: Record<string, string> = {}) => {
+        res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
         res.end(JSON.stringify(value));
       };
       const path = req.url ?? '';
+      const route = path.split('?')[0];
       let match: RegExpMatchArray | null;
       if (req.method === 'POST' && path === '/login/device/code') {
         json(200, {
@@ -68,16 +104,43 @@ export async function startGitHub(): Promise<GitHubFake> {
         });
         const n = pulls.length;
         json(201, { number: n, html_url: `${url}/octo/hello/pull/${n}` });
+      } else if (req.method === 'GET' && route === '/repos/octo/hello') {
+        json(200, {
+          full_name: 'octo/hello',
+          allow_merge_commit: true,
+          allow_squash_merge: true,
+          allow_rebase_merge: true,
+        });
+      } else if ((match = route.match(/^\/repos\/octo\/hello\/pulls\/(\d+)\/files$/))) {
+        const n = Number(match[1]);
+        if (!pulls[n - 1] || hidden.has(n)) return json(404, { message: 'Not Found' });
+        const page = Math.max(Number(new URL(path, url).searchParams.get('page') ?? 1), 1);
+        const all = files.get(n) ?? [];
+        const file = all[page - 1];
+        const headers: Record<string, string> = {};
+        if (page < all.length)
+          headers.Link = `<${url}/repos/octo/hello/pulls/${n}/files?per_page=100&page=${page + 1}>; rel="next"`;
+        json(
+          200,
+          file ? [{ ...file, status: 'modified', changes: file.additions + file.deletions }] : [],
+          headers,
+        );
       } else if ((match = path.match(/^\/repos\/octo\/hello\/pulls\/(\d+)$/))) {
         const n = Number(match[1]);
         reads.set(n, (reads.get(n) ?? 0) + 1);
         const pull = pulls[n - 1];
-        if (!pull) return json(404, { message: 'Not Found' });
+        if (!pull || hidden.has(n)) return json(404, { message: 'Not Found' });
+        if (failing.has(n)) return json(500, { message: 'Server Error' });
+        const d = details.get(n) ?? {};
         const payload = JSON.stringify({
           number: n,
           ...pull,
+          draft: d.draft ?? false,
+          body: d.body ?? '',
+          mergeable: d.mergeable === undefined ? true : d.mergeable,
+          user: { login: d.author ?? 'reef-fixture' },
           base: { ref: 'main' },
-          head: { sha: sha(n) },
+          head: { sha: sha(n), ref: d.head ?? `fix/pr-${n}` },
         });
         const etag = `"${createHash('sha256').update(payload).digest('hex').slice(0, 16)}"`;
         if (req.headers['if-none-match'] === etag) {
@@ -89,15 +152,17 @@ export async function startGitHub(): Promise<GitHubFake> {
       } else if ((match = path.match(/^\/repos\/octo\/hello\/commits\/head(\d+)0*\/check-runs/))) {
         const n = pulls.findIndex((_, i) => path.includes(`/commits/${sha(i + 1)}/`)) + 1;
         const state = ci.get(n);
-        const runs = state
-          ? [
-              {
-                name: 'build',
-                status: state === 'running' ? 'in_progress' : 'completed',
-                conclusion: state === 'passed' ? 'success' : state === 'failed' ? 'failure' : null,
-              },
-            ]
-          : [];
+        const runs: FakeCheck[] = (checks.get(n) ??
+          (state
+            ? [
+                {
+                  name: 'build',
+                  status: state === 'running' ? 'in_progress' : 'completed',
+                  conclusion:
+                    state === 'passed' ? 'success' : state === 'failed' ? 'failure' : null,
+                },
+              ]
+            : [])) as FakeCheck[];
         json(200, { total_count: runs.length, check_runs: runs });
       } else if (/^\/repos\/octo\/hello\/commits\/[0-9a-z]+\/status/.test(path)) {
         json(200, { state: 'pending', total_count: 0, statuses: [] });
@@ -122,6 +187,23 @@ export async function startGitHub(): Promise<GitHubFake> {
     },
     setCI: (n, state) => {
       ci.set(n, state);
+    },
+    setChecks: (n, list) => {
+      checks.set(n, list);
+    },
+    describe: (n, d) => {
+      details.set(n, { ...details.get(n), ...d });
+    },
+    setFiles: (n, list) => {
+      files.set(n, list);
+    },
+    hide: (n, on) => {
+      if (on) hidden.add(n);
+      else hidden.delete(n);
+    },
+    fail: (n, on) => {
+      if (on) failing.add(n);
+      else failing.delete(n);
     },
     reads: (n) => reads.get(n) ?? 0,
     close: () => {

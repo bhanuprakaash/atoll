@@ -87,5 +87,5 @@ test('a CI failure on a helper PR runs the helper, and the boss line and the hel
   await openDetails(page);
   const row = details(page).getByRole('listitem').filter({ hasText: 'Tester' });
   await expect(row).toContainText(/\bCI\b/);
-  await expect(row).toContainText(/#1\b/);
+  await expect(row).toContainText(/PR 1\b/);
 });
