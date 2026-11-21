@@ -158,6 +158,8 @@ func serve(log *fake.Log, args []string) error {
 		switch m.Method {
 		case "model/list":
 			reply(m.ID, json.RawMessage(_models), "")
+		case "account/rateLimits/read":
+			rateLimits(m.ID)
 		case "skills/extraRoots/set":
 			var roots struct {
 				ExtraRoots []string `json:"extraRoots"`
@@ -293,6 +295,18 @@ func limited(id json.RawMessage, thread string, at time.Time) {
 		b, _ := json.Marshal(n)
 		fmt.Println(string(b))
 	}
+}
+
+// rateLimits answers account/rateLimits/read with rate-limits.json beside the executable, read on
+// each call: the result as the real app-server sends it. Without the file the read fails.
+func rateLimits(id json.RawMessage) {
+	exe, _ := os.Executable()
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(exe), "rate-limits.json"))
+	if err != nil {
+		reply(id, nil, "failed to fetch codex rate limits: no rate-limits.json beside the fake")
+		return
+	}
+	reply(id, b, "")
 }
 
 // title answers a title session's turn with fake.TitleFor in one message delta, or fails it.
