@@ -101,12 +101,15 @@ function HelpersLine({
   botId,
   threadId,
   workers,
+  openThreadId,
 }: {
   botId: string;
   threadId: string;
   workers: Worker[];
+  openThreadId?: string;
 }) {
   const needsYou = workers[0].needsYou;
+  const selected = workers.some((w) => w.id === openThreadId);
   return (
     <div className="relative ml-2 pl-4 before:absolute before:-top-0.5 before:left-2 before:h-4.5 before:w-3.5 before:rounded-bl-[9px] before:border-b-[1.5px] before:border-l-[1.5px] before:border-composer-line">
       <Link
@@ -114,7 +117,8 @@ function HelpersLine({
         to={`/bots/${botId}/threads/${threadId}`}
         draggable={false}
         state={{ helpers: true }}
-        className="flex h-8 items-center gap-2 rounded-lg px-2 text-[13px] text-muted hover:bg-field"
+        aria-current={selected ? 'page' : undefined}
+        className={`flex h-8 items-center gap-2 rounded-lg px-2 text-[13px] text-muted ${selected ? 'bg-selected' : 'hover:bg-field'}`}
       >
         <span aria-hidden="true" className="flex flex-none items-center -space-x-1">
           {workers.slice(0, 3).map((w) => (
@@ -283,6 +287,7 @@ export function ThreadSection({
                   botId={ownerId}
                   threadId={thread.id}
                   workers={workers.get(thread.id)!}
+                  openThreadId={openThreadId}
                 />
               )}
             </Fragment>
