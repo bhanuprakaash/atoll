@@ -162,12 +162,14 @@ function MessageLine({
   from,
   footer,
   resend,
+  onOpenPR,
 }: {
   message: Message;
   threadId: string;
   from?: Bots[string];
   footer?: ReactNode;
   resend: (message: Message) => Promise<void>;
+  onOpenPR?: (url: string) => void;
 }) {
   const [resendError, setResendError] = useState<unknown>(null);
   const time = (
@@ -194,7 +196,9 @@ function MessageLine({
           {from?.name ?? 'Helper'}
         </span>
         <Clamp className={`self-stretch ${chatText}`}>
-          <Markdown threadId={threadId}>{message.text}</Markdown>
+          <Markdown threadId={threadId} onOpenPR={onOpenPR}>
+            {message.text}
+          </Markdown>
         </Clamp>
         {time}
       </article>
@@ -260,7 +264,9 @@ function MessageLine({
   return (
     <div data-testid="message" className="flex flex-col gap-6">
       <div className={chatText}>
-        <Markdown threadId={threadId}>{message.text}</Markdown>
+        <Markdown threadId={threadId} onOpenPR={onOpenPR}>
+          {message.text}
+        </Markdown>
       </div>
       {footer}
     </div>
@@ -422,6 +428,7 @@ export function ThreadView({
   lostRepo,
   afterRun,
   signedOut,
+  onOpenPR,
 }: {
   threadId: string;
   botId: string;
@@ -433,6 +440,7 @@ export function ThreadView({
   lostRepo?: string;
   afterRun?: (runId: string) => ReactNode;
   signedOut?: (provider: Run['provider']) => ReactNode;
+  onOpenPR?: (url: string) => void;
 }) {
   const navigate = useNavigate();
   const [repoId, setRepoId] = useState('');
@@ -678,6 +686,7 @@ export function ThreadView({
                   threadId={threadId}
                   from={bots[m.from_bot_id ?? '']}
                   resend={(message) => resend([message])}
+                  onOpenPR={onOpenPR}
                   footer={
                     thread &&
                     m.role === 'bot' &&

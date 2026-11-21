@@ -57,6 +57,7 @@ func failCode(w http.ResponseWriter, status int, code, msg string) {
 // to the log, never to the client.
 func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	var rule ruleError
+	var pr *run.PRError
 	switch {
 	case errors.Is(err, store.ErrNotFound), errors.Is(err, run.ErrNotFound),
 		errors.Is(err, memory.ErrNotFound):
@@ -101,6 +102,13 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, store.ErrSecretStore):
 		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
 		failKeychain(w, "Reef couldn't read a secret from the system keychain.")
+	case errors.Is(err, run.ErrNotPull):
+		fail(w, http.StatusBadRequest, "That isn't a GitHub pull request.")
+	case errors.As(err, &pr) && pr.Code == run.PRGitHub:
+		a.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
+		failCode(w, http.StatusBadGateway, pr.Code, pr.Text)
+	case errors.As(err, &pr):
+		failCode(w, http.StatusConflict, pr.Code, pr.Text)
 	case errors.As(err, &rule):
 		fail(w, http.StatusBadRequest, rule.Error())
 	default:

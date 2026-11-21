@@ -55,14 +55,20 @@ type (
 	}
 
 	ghPull struct {
-		State  string `json:"state"`
-		Merged bool   `json:"merged"`
-		Title  string `json:"title"`
-		Body   string `json:"body"`
-		Base   struct {
+		State     string `json:"state"`
+		Merged    bool   `json:"merged"`
+		Draft     bool   `json:"draft"`
+		Mergeable *bool  `json:"mergeable"`
+		Title     string `json:"title"`
+		Body      string `json:"body"`
+		User      struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Base struct {
 			Ref string `json:"ref"`
 		} `json:"base"`
 		Head struct {
+			Ref string `json:"ref"`
 			SHA string `json:"sha"`
 		} `json:"head"`
 	}
@@ -198,26 +204,13 @@ func (m *Manager) readCI(w *watcher, connID, token, api string, wp store.Watched
 		}
 		recheck = true
 	}
+	checks, err := m.readChecks(w, wp.Thread.BotID, connID, token, api, head)
+	if err != nil {
+		return err
+	}
 	res := ciResult{Head: head}
-	for _, route := range []string{"check-runs", "status"} {
-		next := fmt.Sprintf("%s/commits/%s/%s?per_page=100", api, head, route)
-		for next != "" {
-			body, hdr, err := m.githubGet(w, wp.Thread.BotID, connID, token, next, "")
-			if err != nil {
-				return err
-			}
-			var page ghChecks
-			if err := json.Unmarshal(body, &page); err != nil {
-				return fmt.Errorf("decode checks: %w", err)
-			}
-			for _, c := range page.CheckRuns {
-				res.add(c.Name, runOutcome(c.Status, c.Conclusion))
-			}
-			for _, c := range page.Statuses {
-				res.add(c.Context, statusOutcome(c.State))
-			}
-			next = nextLink(hdr.Get("Link"))
-		}
+	for _, c := range checks {
+		res.add(c.Name, c.Result)
 	}
 	enc, err := json.Marshal(res)
 	if err != nil {
@@ -325,21 +318,15 @@ func (m *Manager) update(wp store.WatchedPR, label string, r store.MRRead, note 
 // watchToken is the token of the Bot's first GitHub connection, from the secret store only: none
 // when the Bot has no GitHub connection or it needs sign-in.
 func (m *Manager) watchToken(bot store.Bot) (id, token string, err error) {
-	for _, id := range bot.Connections {
-		c, err := m.cfg.Store.Connection(m.ctx, id)
-		if err != nil || c.Kind != store.KindGitHub {
-			continue
-		}
-		if c.Status != store.ConnectionConnected {
-			return "", "", nil
-		}
-		token, err := m.githubToken(m.ctx, id, bot.ID, _githubRefreshAtExpiry)
-		if err != nil {
-			return "", "", err
-		}
-		return id, token, nil
+	c, ok := m.botGitHub(m.ctx, bot)
+	if !ok || c.Status != store.ConnectionConnected {
+		return "", "", nil
 	}
-	return "", "", nil
+	token, err = m.githubToken(m.ctx, c.ID, bot.ID, _githubRefreshAtExpiry)
+	if err != nil {
+		return "", "", err
+	}
+	return c.ID, token, nil
 }
 
 // githubGet reads one GitHub API URL. A 304 returns a nil body. A 401 marks the connection
@@ -375,7 +362,7 @@ func (m *Manager) githubGet(w *watcher, botID, connID, token, rawURL, etag strin
 			w.paused[connID] = pauseUntil(h)
 		}
 	}
-	return nil, nil, fmt.Errorf("GitHub HTTP status %d for %s", resp.StatusCode, rawURL)
+	return nil, nil, &githubStatusError{Status: resp.StatusCode, URL: rawURL}
 }
 
 func pauseUntil(h http.Header) time.Time {

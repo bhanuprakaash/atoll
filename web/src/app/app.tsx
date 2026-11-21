@@ -7,10 +7,11 @@ import {
   RouterProvider,
   Routes,
   useNavigate,
+  useOutletContext,
   useParams,
   useSearchParams,
 } from 'react-router';
-import { BotPage, LatestThread } from '@/app/bot-page';
+import { BotPage, LatestThread, type OpenPR } from '@/app/bot-page';
 import {
   ConnectionsPage,
   McpServersPage,
@@ -94,6 +95,7 @@ function NewBotPage() {
 
 function ThreadPage() {
   const { threadId = '', botId = '' } = useParams();
+  const openPR = useOutletContext<OpenPR>();
   const { data: thread, error } = useThread(threadId);
   const { data: threads } = useThreads(botId);
   const { data: repos = [] } = useRepos();
@@ -130,6 +132,7 @@ function ThreadPage() {
       bot={withConnectionNames(bot, connections)}
       lostRepo={lostRepo}
       signedOut={(provider) => <SignInExpired provider={provider} />}
+      onOpenPR={(url) => openPR(threadId, url)}
       afterRun={(runId) => (
         <>
           <PlatformChanges
