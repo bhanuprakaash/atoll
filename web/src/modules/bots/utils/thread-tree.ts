@@ -9,15 +9,16 @@ const hasNoRow = (t: SidebarThread) => t.parent_thread_id !== '' && t.state !== 
 const sectionLabels = ['Needs you', 'Running', 'Threads'] as const;
 
 const sectionOf = (t: SidebarThread) =>
-  t.state === 'needs_you' || t.state === 'failed'
+  t.state === 'needs_you' || (t.state === 'failed' && t.parent_thread_id === '')
     ? 'Needs you'
     : t.state === 'running'
       ? 'Running'
       : 'Threads';
 
 // threadSections splits a Bot's threads into the pane's sections, keeping the server's order except
-// that pinned threads come first under Threads, and leaving out the empty ones. The open thread is never Replied; a helper thread is no row unless its run failed (while it runs,
-// its boss thread's helper line shows it, with its Needs you).
+// that pinned threads come first under Threads, and leaving out the empty ones. The open thread is
+// never Replied; a helper thread is no row (while it runs, its boss thread's helper line shows it,
+// with its Needs you) unless its run failed: then it is a row under Threads.
 export function threadSections(all: SidebarThread[], openId: string | undefined) {
   const threads = all
     .filter((t) => !hasNoRow(t))
@@ -42,12 +43,25 @@ const nowLabels = [
   ['Replied', ['new']],
 ] as const;
 
+// helperAsks is true when a live helper of the thread needs the person and the thread has no
+// ask or failure of its own: the thread then sits under Needs you for it.
+const helperAsks = (t: SidebarThread, workers?: Worker[]) =>
+  !!workers?.[0].needsYou && t.state !== 'needs_you' && t.state !== 'failed';
+
 // nowSections splits every Bot's threads into Now's sections, newest activity first, leaving out
-// the empty ones. A helper thread is no row of its own unless its run failed (while it runs, its
-// boss thread's helper line shows it), a merged thread the watcher hides is none, and the open thread is never Replied.
-export function nowSections(all: SidebarThread[], openId: string | undefined) {
+// the empty ones. A helper thread is no row of its own (its boss thread shows it, under Needs you
+// while the helper asks), not even a failed one (the boss's report carries the failure); a merged
+// thread the watcher hides is none, and the open thread is never Replied.
+export function nowSections(
+  all: SidebarThread[],
+  openId: string | undefined,
+  workers: Map<string, Worker[]>,
+) {
   const threads = all
-    .filter((t) => !hasNoRow(t) && !t.hidden && !(t.id === openId && t.state === 'new'))
+    .filter(
+      (t) => t.parent_thread_id === '' && !t.hidden && !(t.id === openId && t.state === 'new'),
+    )
+    .map((t) => (helperAsks(t, workers.get(t.id)) ? { ...t, state: 'needs_you' as const } : t))
     .sort((a, b) => Date.parse(b.last_activity) - Date.parse(a.last_activity));
   return nowLabels
     .map(([label, states]) => ({
@@ -106,10 +120,12 @@ export const workerNote = (w: Worker) =>
   w.needsYou ? w.ask : [w.wake, w.step].filter(Boolean).join(' · ') || 'Working';
 
 // threadNote is the second line of a row that asks something of the person: what a needs-you thread
-// asks, or when a failed run failed. A running boss thread names its first helper and its note.
+// asks, or when a failed run failed. A boss thread with a running or asking helper names its first
+// helper and its note.
 export function threadNote(t: SidebarThread, workers?: Worker[]) {
   if (t.state === 'needs_you') return t.activity ?? '';
   if (t.state === 'failed') return `Run failed · ${relativeTime(t.last_activity)}`;
-  if (t.state === 'running' && workers) return `${workers[0].bot.name}: ${workerNote(workers[0])}`;
+  if (workers && (t.state === 'running' || helperAsks(t, workers)))
+    return `${workers[0].bot.name}: ${workerNote(workers[0])}`;
   return t.activity ?? '';
 }

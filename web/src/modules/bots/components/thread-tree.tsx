@@ -56,26 +56,27 @@ function Pin() {
 const outUntil = (thread: SidebarThread) =>
   thread.resets_at ? `Out until ${clockTime(thread.resets_at)}` : 'Out';
 
-function ThreadMarker({ thread }: { thread: SidebarThread }) {
+function ThreadMarker({ thread, showPin }: { thread: SidebarThread; showPin: boolean }) {
+  const pinned = thread.pinned && showPin;
   if (thread.state === 'needs_you') return <Dot className="bg-accent" />;
   if (thread.state === 'failed') return <Dot className="bg-danger" />;
   if (thread.state === 'limited')
     return (
       <>
-        {thread.pinned && <Pin />}
+        {pinned && <Pin />}
         <span className="flex-none text-xs text-muted">{outUntil(thread)}</span>
       </>
     );
   if (thread.state === 'new')
     return (
       <>
-        {thread.pinned && <Pin />}
+        {pinned && <Pin />}
         <Dot className="bg-kind" />
         <span className="sr-only">Replied</span>
       </>
     );
   if (thread.state === 'running') return <Wave label="Working" />;
-  if (thread.pinned && thread.state === '') return <Pin />;
+  if (pinned && thread.state === '') return <Pin />;
   return null;
 }
 
@@ -245,7 +246,7 @@ export function ThreadSection({
                     <span
                       className={`pointer-events-none flex flex-none items-center gap-2 pr-2 ${thread.helper ? '' : 'group-focus-within:hidden group-hover:hidden'}`}
                     >
-                      <ThreadMarker thread={thread} />
+                      <ThreadMarker thread={thread} showPin={!owner} />
                     </span>
                     {!thread.helper && onPinThread && onCloseThread && (
                       <span className="relative z-10 mr-2 hidden flex-none items-center gap-1 group-focus-within:flex group-hover:flex">

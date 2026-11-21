@@ -100,6 +100,7 @@ function NowPane({ bots, openThreadId }: { bots: Bot[]; openThreadId?: string })
   const sections = nowSections(
     threads.map(({ t }) => t),
     openThreadId,
+    workers,
   );
   return (
     <>

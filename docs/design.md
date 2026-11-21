@@ -1775,10 +1775,12 @@ Voice
     thread panel open.
   - A helper thread is never a row in its own Bot's pane, running, needing you or finished; only
     the boss thread's helper line shows a running one (with `Needs you`), and its boss thread
-    holds a finished one. A failed helper's run is the exception: it stays a row. A merged thread
-    the watcher hides (`hidden`) is still a row under Threads. *The finished helper threads piled
-    up in the helper Bot's pane, where the person cannot close them; the boss thread already
-    holds that work.*
+    holds a finished one. A failed helper thread is the exception: a row under Threads with the
+    red dot, not under Needs you. A merged thread the watcher hides (`hidden`) is still a row under
+    Threads. *The finished helper threads piled up in the helper Bot's pane, where the person
+    cannot close them; the boss thread already holds that work. A restart fails every running
+    helper at once; the person never asked to see helper threads, and the boss's wake already
+    reports the failure.*
   - Width: the pane is 284 px by default, dragged on its right edge between 240 px and 420 px;
     double-click on the edge resets it; Left and Right arrows on the focused edge move it 16 px.
     Kept in the web view's `localStorage` (`atoll.sidebarWidth`), clamped when read. The rail never
@@ -1789,16 +1791,20 @@ Voice
   a live thread its `activity` (Now's note: the live verb or the waiting ask), and each Bot's open
   threads with their marker on `GET /api/bots`; the client builds the sections.*
 - Now: the first rail item, a view across every Bot, never a forced landing. Its pane lists Needs
-  you (threads that need you and failed threads), Running and Replied threads; a row is the Bot's
+  you (threads that need you and failed threads, but not a failed helper thread), Running and
+  Replied threads; a row is the Bot's
   22 px creature, the title and, under it, "Bot · note" (the waiting ask, `Run failed · 3:02 PM`,
   the live verb, else the time), with 8 px above and below and 10 px from the edge to the creature,
   and one marker at its right end: the light dot (Needs you), the red dot (failed), the blue dot
-  (Replied) or wave dots (running). The words "Needs you" show only in the heading. A boss
+  (Replied) or wave dots (running), never a pin. The words "Needs you" show only in the heading. A boss
   thread's row has no helper line; its note names the helper that acted last and its step
-  (`Poteto · Tester: Running make check`), or the helper that needs the person and its ask. On the
-  rail Now is the count of threads in Needs you or failed (a live helper thread is not counted, as
-  Now lists none), on the light accent, with no icon and no badge; with
-  none it rests as a grey mark. A hairline separates it from Chief. Opening a thread from Now keeps the pane on Now
+  (`Poteto · Tester: Running make check`), or the helper that needs the person and its ask. A
+  helper's ask counts on its boss thread's row: the boss sits under Needs you with the light dot
+  and the note `Boss · Helper: Wants to …`, so the one pending item shows in Now, on the rail and
+  on the boss row, and clears in all when the person answers. On the rail Now is the count of
+  rows under Needs you (a live or failed helper thread is not counted, as Now lists none; the boss
+  is, and its report carries a helper's failure), on
+  the light accent, with no icon and no badge; with none it rests as a grey mark. A hairline separates it from Chief. Opening a thread from Now keeps the pane on Now
   and selects that row. With nothing waiting, running or replied it reads "Nothing needs you".
 - Selected row: the sidebar marks where you are once. With a thread open, only that thread's row
   has the selected fill and `aria-current="page"`, in the Bot's pane or in Now. On the New thread
