@@ -2306,6 +2306,10 @@ Voice
   - Plans only: Reef's providers run on the user's subscriptions, so a dollar figure is what the
     tokens would cost at API prices, labelled `at API prices`. Codex has no price table: its tokens
     count and its cost is `—`, never `$0`; the total cost counts Claude only.
+  - `GET /api/usage?range=24h|7d|30d|all&tz_offset=<minutes east of UTC>` answers `{total:
+    {cost_usd, tokens, runs}, days: [{day, cost_usd, tokens}], bots: [{id, name, runs, tokens,
+    cost_usd}], models: [{model, tokens, cost_usd}]}`. A `cost_usd` is `null` when no run in its
+    group had a price. Any other `range` is a 400.
   - Tokens are input + output + cache read + cache write. A run with no `usage` counts nowhere.
   - The range switch (24h / 7 days / 30 days / All, default 7 days) changes every number. Days are
     the viewer's local days; a day with no runs is drawn empty.
