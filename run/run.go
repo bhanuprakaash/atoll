@@ -230,6 +230,7 @@ type (
 		Tool          string          `json:"tool"`
 		Input         json.RawMessage `json:"input"`
 		AllowInThread bool            `json:"allow_in_thread"`
+		Words         string          `json:"words,omitempty"`
 	}
 
 	// ApprovalClosed says an approval is no longer open.
@@ -842,9 +843,16 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	res.Usage, res.SessionCostUSD = a.usageResult()
 	var wake func(store.Wake) string
 	if !quiet {
-		wake = func(w store.Wake) string {
-			return WakeText(context.Background(), w, "", m.cfg.IdleLimit)
+		var git GitState
+		if res.ErrorKind == store.ErrorStuck {
+			w, ok, err := m.cfg.Store.HelperWake(context.Background(), a.run.ID)
+			if err != nil {
+				m.cfg.Log.Error("read wake", "run_id", a.run.ID, "error", err)
+			} else if ok {
+				git = readGit(context.Background(), w)
+			}
 		}
+		wake = func(w store.Wake) string { return WakeText(w, git, "", m.cfg.IdleLimit) }
 	}
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {
@@ -1325,7 +1333,7 @@ func (m *Manager) approve(
 	}
 	id := randHex(8)
 	answer := make(chan Decision, 1) // Answer must not wait for the run to read
-	ap := Approval{RunID: a.run.ID, ID: id, Tool: tool, Input: input}
+	ap := Approval{RunID: a.run.ID, ID: id, Tool: tool, Input: input, Words: ToolWords(tool)}
 	if isCommand {
 		if thread, err := m.cfg.Store.Thread(ctx, a.threadID); err == nil {
 			ap.AllowInThread = canAllowInThread(command, allowRoots(thread))
@@ -1616,6 +1624,19 @@ func ToolVerb(name, kind string) string {
 	default:
 		return "Thinking"
 	}
+}
+
+// ToolWords reads an MCP tool name, mcp__server__tool, as "Server: tool"; any other tool gives "".
+func ToolWords(tool string) string {
+	rest, ok := strings.CutPrefix(tool, "mcp__")
+	server, name, found := strings.Cut(rest, "__")
+	if !ok || !found {
+		return ""
+	}
+	if server == provider.GitHubMCPServer {
+		server = "GitHub"
+	}
+	return server + ": " + strings.ReplaceAll(name, "_", " ")
 }
 
 // ToolKind classifies a provider tool and extracts its target.

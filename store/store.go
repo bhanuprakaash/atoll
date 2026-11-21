@@ -1820,9 +1820,7 @@ func (s *Store) FailUnfinished(
 	var ids []string
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		var err error
-		ids, err = query(ctx, tx, "SELECT id FROM runs WHERE status IN (?, ?) ORDER BY rowid",
-			func(r *sql.Rows) (id string, err error) { return id, r.Scan(&id) },
-			StatusRunning, StatusWaiting)
+		ids, err = unfinishedIDs(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -1879,6 +1877,39 @@ func (s *Store) FailUnfinished(
 	return ids, nil
 }
 
+// HelperWake reads the wake of a helper run outside a transaction, so the caller can read what the
+// wake text needs (git) before FinishRun opens one. ok is false for a run that is not a helper's.
+func (s *Store) HelperWake(ctx context.Context, runID string) (w Wake, ok bool, err error) {
+	h, ok, err := readWake(ctx, s.db, runID)
+	return h.Wake, ok, err
+}
+
+// UnfinishedWakes reads the wakes of the helper runs FailUnfinished would fail, outside a
+// transaction.
+func (s *Store) UnfinishedWakes(ctx context.Context) ([]Wake, error) {
+	ids, err := unfinishedIDs(ctx, s.db)
+	if err != nil {
+		return nil, err
+	}
+	var ws []Wake
+	for _, id := range ids {
+		h, ok, err := readWake(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			ws = append(ws, h.Wake)
+		}
+	}
+	return ws, nil
+}
+
+func unfinishedIDs(ctx context.Context, q queryer) ([]string, error) {
+	return query(ctx, q, "SELECT id FROM runs WHERE status IN (?, ?) ORDER BY rowid",
+		func(r *sql.Rows) (id string, err error) { return id, r.Scan(&id) },
+		StatusRunning, StatusWaiting)
+}
+
 type heldWake struct {
 	Wake
 	botID, bossID string
@@ -1900,9 +1931,9 @@ func enqueueWake(ctx context.Context, tx *sql.Tx, runID string, wake func(Wake) 
 }
 
 // readWake reads the wake of a helper run; ok is false for a run that is not a helper's.
-func readWake(ctx context.Context, tx *sql.Tx, runID string) (w heldWake, ok bool, err error) {
+func readWake(ctx context.Context, q rowQueryer, runID string) (w heldWake, ok bool, err error) {
 	w.Run.ID = runID
-	err = tx.QueryRowContext(ctx,
+	err = q.QueryRowContext(ctx,
 		`SELECT b.id, b.name, t.id, t.branch, p.id, p.branch, r.status, r.reply, r.error, r.error_kind, r.resets_at, r.provider,
 		   coalesce(rp.path, ''), t.worktree, t.worktree_git_dir,
 		   coalesce((SELECT q.error_kind = 'stuck' FROM runs q WHERE q.thread_id = r.thread_id AND q.rowid < r.rowid
@@ -2299,6 +2330,10 @@ func scanConnection(r *sql.Rows) (c Connection, err error) {
 		c.SignedOutAt = &when
 	}
 	return c, nil
+}
+
+type rowQueryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 type queryer interface {

@@ -22,19 +22,21 @@ function approvalLead(tool: string) {
   return isCommand(tool) ? 'Wants to run' : 'Wants to use';
 }
 
-export function approvalVerb(tool: string) {
-  return isEdit(tool) || isCommand(tool) ? approvalLead(tool) : `Wants to use ${tool}`;
+export function approvalVerb(tool: string, words?: string) {
+  return isEdit(tool) || isCommand(tool) ? approvalLead(tool) : `Wants to use ${words ?? tool}`;
 }
 
 export function ApprovalCard({
   id,
   tool,
+  words,
   input,
   by,
   allow_in_thread,
 }: {
   id: string;
   tool: string;
+  words?: string;
   input: unknown;
   by?: ReactNode;
   allow_in_thread?: boolean;
@@ -49,7 +51,7 @@ export function ApprovalCard({
   const target =
     isEdit(tool) || isCommand(tool)
       ? approvalTarget(input)
-      : [tool, approvalTarget(input)].filter(Boolean).join(' ');
+      : [words ?? tool, approvalTarget(input)].filter(Boolean).join(' ');
   const details = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   const changes = Array.isArray(details.changes)
     ? (details.changes as Record<string, unknown>[])

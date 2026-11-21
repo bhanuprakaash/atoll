@@ -261,8 +261,27 @@ func asNotices(thread store.Thread, items []store.InboxItem) ([]store.InboxItem,
 	return out, all
 }
 
+// GitState is where a helper's work stands: commits ahead of its boss's branch and uncommitted
+// changes. It is read before the transaction that stores a wake, never inside one.
+type GitState struct {
+	Ahead int
+	Dirty bool
+}
+
+func readGit(ctx context.Context, w store.Wake) GitState {
+	var g GitState
+	if w.Branch == "" {
+		return g
+	}
+	if w.BossBranch != "" && w.RepoPath != "" {
+		g.Ahead = repo.Ahead(ctx, w.RepoPath, w.BossBranch, w.Branch)
+	}
+	g.Dirty = w.Worktree != "" && repo.Dirty(ctx, w.RepoPath, w.Worktree, w.WorktreeGitDir)
+	return g
+}
+
 // WakeText is the message that tells a boss its helper's run ended; helpers is the helpers line.
-func WakeText(ctx context.Context, w store.Wake, helpers string, idle time.Duration) string {
+func WakeText(w store.Wake, g GitState, helpers string, idle time.Duration) string {
 	helper, threadID, run := w.Helper, w.ThreadID, w.Run
 	merge := ""
 	if w.BossBranch != "" && isHelperBranch(w.BossBranch, w.Branch) {
@@ -283,7 +302,7 @@ func WakeText(ctx context.Context, w store.Wake, helpers string, idle time.Durat
 		if w.StuckBefore && w.Branch != "" {
 			third = "Stuck twice in a row. Start a new helper from branch " + w.Branch + "."
 		}
-		return stoppedBlock(ctx, w, "no progress for "+shortDuration(idle)) + "\n" + third + "\n\n" + helpers
+		return stoppedBlock(w, g, "no progress for "+shortDuration(idle)) + "\n" + third + "\n\n" + helpers
 	case store.NoticeHelperLimited:
 		until := "its Claude limit resets"
 		if run.Provider == "codex" {
@@ -299,21 +318,17 @@ func WakeText(ctx context.Context, w store.Wake, helpers string, idle time.Durat
 
 // stoppedBlock is a helper's block of a wake that says why its run stopped, then where its work
 // stands: its branch, commits ahead of the boss's and uncommitted changes, or that it has no branch.
-func stoppedBlock(ctx context.Context, w store.Wake, reason string) string {
+func stoppedBlock(w store.Wake, g GitState, reason string) string {
 	head := fmt.Sprintf("%s stopped: %s.\n", w.Helper, reason)
 	if w.Branch == "" {
 		return fmt.Sprintf("%sNo branch yet. (thread %s)", head, w.ThreadID)
 	}
-	ahead := 0
-	if w.BossBranch != "" && w.RepoPath != "" {
-		ahead = repo.Ahead(ctx, w.RepoPath, w.BossBranch, w.Branch)
-	}
-	line := fmt.Sprintf("Branch %s, %d commit", w.Branch, ahead)
-	if ahead != 1 {
+	line := fmt.Sprintf("Branch %s, %d commit", w.Branch, g.Ahead)
+	if g.Ahead != 1 {
 		line += "s"
 	}
 	line += " ahead"
-	if w.Worktree != "" && repo.Dirty(ctx, w.RepoPath, w.Worktree, w.WorktreeGitDir) {
+	if g.Dirty {
 		line += ", uncommitted changes"
 	}
 	return fmt.Sprintf("%s%s. (thread %s)", head, line, w.ThreadID)
@@ -347,10 +362,27 @@ func plainDuration(d time.Duration) string {
 	return fmt.Sprintf("%d %s", n, unit)
 }
 
-// RestartWakeText is the message that tells a boss the restart interrupted its helpers' runs.
-func RestartWakeText(ctx context.Context, ws []store.Wake) string {
+// FailUnfinished fails the runs a restart cut short and holds a wake for the bosses of the helper
+// ones. It reads their git state first: the store's transaction only formats the text.
+func FailUnfinished(ctx context.Context, st *store.Store, reason string) ([]string, error) {
+	ws, err := st.UnfinishedWakes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	git := make(map[string]GitState, len(ws))
+	for _, w := range ws {
+		git[w.Run.ID] = readGit(ctx, w)
+	}
+	return st.FailUnfinished(ctx, reason, func(ws []store.Wake) string {
+		return restartWakeText(ws, git)
+	})
+}
+
+// restartWakeText is the message that tells a boss the restart interrupted its helpers' runs; git
+// is the state of each helper's work by run id.
+func restartWakeText(ws []store.Wake, git map[string]GitState) string {
 	helpers := HelpersLine(nil)
-	block := func(w store.Wake) string { return stoppedBlock(ctx, w, w.Run.Error) }
+	block := func(w store.Wake) string { return stoppedBlock(w, git[w.Run.ID], w.Run.Error) }
 	if len(ws) == 1 {
 		return block(ws[0]) + "\n" + _continueIt + "\n\n" + helpers
 	}

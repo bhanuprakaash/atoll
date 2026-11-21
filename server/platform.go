@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -169,7 +170,7 @@ func needsYou(ap run.Approval) string {
 	case "read", "search":
 		return strings.TrimSpace("Wants to " + kind + " " + target)
 	}
-	return strings.TrimSpace("Wants to use " + ap.Tool + " " + target)
+	return strings.TrimSpace("Wants to use " + cmp.Or(run.ToolWords(ap.Tool), ap.Tool) + " " + target)
 }
 
 const _previewLen = 60

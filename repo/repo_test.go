@@ -261,3 +261,47 @@ func TestSave_RepoFilters(t *testing.T) {
 		})
 	}
 }
+
+func TestDirty(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	t.Setenv("GIT_AUTHOR_NAME", "t")
+	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
+	main := t.TempDir()
+	linked := filepath.Join(t.TempDir(), "linked")
+	git := func(dir string, args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git(main, "init", "-q", "-b", "main")
+	git(main, "commit", "-q", "--allow-empty", "-m", "init")
+	git(main, "worktree", "add", "-q", "-b", "helper", linked)
+
+	tests := []struct {
+		name, dir, id string
+	}{
+		{"the repo's own checkout", main, ""},
+		{"a linked worktree", linked, "linked"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if Dirty(ctx, main, tt.dir, tt.id) {
+				t.Error("Dirty of a clean checkout = true")
+			}
+			if err := os.WriteFile(filepath.Join(tt.dir, "new.txt"), []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if !Dirty(ctx, main, tt.dir, tt.id) {
+				t.Error("Dirty of a checkout with an untracked file = false")
+			}
+		})
+	}
+	if Dirty(ctx, main, filepath.Join(t.TempDir(), "gone"), "") {
+		t.Error("Dirty of a missing folder = true")
+	}
+}

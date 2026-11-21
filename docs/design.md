@@ -2019,7 +2019,8 @@ Voice
     together, in order, with their images.
   - Both are `POST /api/runs/{id}/continue`, which answers `202 {"run": {...}}`; the server picks
     Continue or Retry from the run. It answers `409` when the run did not fail, is not its thread's
-    newest, or has no message of the person's.
+    newest, or has no message of the person's; `409 busy` when a run is going in the thread; `409
+    closed` when the thread is closed.
   - A turn killed mid-run keeps its finished steps in the Claude and Codex session files, so a
     resume sees them (spiked on Claude 2.1.325 and Codex 0.165.0).
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `· Stopped
@@ -2127,7 +2128,9 @@ Voice
 - Approval card: one quiet row in a group named Approval, no fill or border of its own. A one-line
   command is `Wants to run` (muted) and the command in a code line (`code`), then Allow and Deny on
   that row, at most 72 px tall at 1280x800. A tool that is not a command shows its tool and target
-  in the same code line; an edit shows its file there and keeps its Show diff / Hide diff toggle. A
+  in the same code line; an MCP tool reads as its server and tool in words, `mcp__github__create_issue`
+  as `GitHub: create issue` (the server sends it as the approval's `words`; the row and Now use the
+  same words). An edit shows its file there and keeps its Show diff / Hide diff toggle. A
   command or path longer than 2 lines is clamped to 2 inside the code line with Show all / Show less
   in the card; the toggle never changes what Allow answers. Allow is the light pill, Deny an outline
   pill that turns red on hover and keyboard focus only (the island and its list too). The waiting
@@ -2172,6 +2175,10 @@ Voice
   starters; a starter sends its text as the first message. A send that fails, the first message of a
   thread included, puts its text and images back in the box with the error under it; text typed
   meanwhile stays, on a new line after the restored text.
+- Unsent text stays in the composer when the person leaves and comes back, and after a reload or
+  restart. It is kept per thread on this device (browser storage keyed by thread id; a Bot's New
+  thread screen is keyed by Bot), never sent to the server. Sending, or clearing the box by hand,
+  removes it. Attachments are not kept.
 - Thread labels. A thread shows one label, the first that holds: Needs you (an approval is open,
   until answered); Working (a run is going); Run failed (a run failed since the person last opened the
   thread, until opened); `Out until 3 PM` (the provider's usage limit, until its reset time);

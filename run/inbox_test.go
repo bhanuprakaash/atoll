@@ -3,6 +3,7 @@ package run
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"atoll/store"
 )
@@ -123,11 +124,95 @@ func TestContinueNotice_ReasonIsTheRunLines(t *testing.T) {
 		{"", "claude exited: exit status 1", "something went wrong"},
 		{store.ErrorRestarted, "Reef restarted", "Reef restarted"},
 		{store.ErrorStuck, "Stopped: no progress for 15 minutes.", "no progress for 15 minutes"},
+		{store.ErrorRateLimited, "Stopped: limit.", "something went wrong"},
 	} {
 		want := "Your last run stopped before it finished (" + c.reason + "). Continue from where you stopped. " +
 			"Check what already happened before you repeat a step."
 		if got := continueNotice(store.Run{ErrorKind: c.kind, Error: c.err}); got != want {
 			t.Errorf("%q: notice %q, want %q", c.kind, got, want)
+		}
+	}
+}
+
+func TestStoppedBlock(t *testing.T) {
+	tests := []struct {
+		name string
+		w    store.Wake
+		g    GitState
+		want string
+	}{
+		{
+			"branch, ahead and dirty",
+			store.Wake{Helper: "Tester", ThreadID: "t1", Branch: "feat/x"}, GitState{Ahead: 3, Dirty: true},
+			"Tester stopped: no progress for 15m.\nBranch feat/x, 3 commits ahead, uncommitted changes. (thread t1)",
+		},
+		{
+			"one commit",
+			store.Wake{Helper: "Tester", ThreadID: "t1", Branch: "feat/x"}, GitState{Ahead: 1},
+			"Tester stopped: no progress for 15m.\nBranch feat/x, 1 commit ahead. (thread t1)",
+		},
+		{
+			"no commits",
+			store.Wake{Helper: "Tester", ThreadID: "t1", Branch: "feat/x"}, GitState{},
+			"Tester stopped: no progress for 15m.\nBranch feat/x, 0 commits ahead. (thread t1)",
+		},
+		{
+			"dirty, nothing ahead",
+			store.Wake{Helper: "Tester", ThreadID: "t1", Branch: "feat/x"}, GitState{Dirty: true},
+			"Tester stopped: no progress for 15m.\nBranch feat/x, 0 commits ahead, uncommitted changes. (thread t1)",
+		},
+		{
+			"no branch",
+			store.Wake{Helper: "Tester", ThreadID: "t1"}, GitState{Ahead: 2, Dirty: true},
+			"Tester stopped: no progress for 15m.\nNo branch yet. (thread t1)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := stoppedBlock(tt.w, tt.g, "no progress for 15m"); got != tt.want {
+				t.Errorf("stoppedBlock = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShortDuration(t *testing.T) {
+	tests := []struct {
+		give time.Duration
+		want string
+	}{
+		{15 * time.Minute, "15m"},
+		{2 * time.Hour, "2h"},
+		{time.Hour + 10*time.Minute, "1h10m"},
+		{time.Hour + 5*time.Second, "1h0m5s"},
+		{90 * time.Second, "1m30s"},
+		{30 * time.Second, "30s"},
+		{100 * time.Millisecond, "100ms"},
+	}
+	for _, tt := range tests {
+		if got := shortDuration(tt.give); got != tt.want {
+			t.Errorf("shortDuration(%v) = %q, want %q", tt.give, got, tt.want)
+		}
+	}
+}
+
+func TestPlainDuration(t *testing.T) {
+	tests := []struct {
+		give time.Duration
+		want string
+	}{
+		{time.Second, "1 second"},
+		{2 * time.Second, "2 seconds"},
+		{90 * time.Second, "90 seconds"},
+		{time.Minute, "1 minute"},
+		{15 * time.Minute, "15 minutes"},
+		{90 * time.Minute, "90 minutes"},
+		{time.Hour, "1 hour"},
+		{2 * time.Hour, "2 hours"},
+	}
+	for _, tt := range tests {
+		if got := plainDuration(tt.give); got != tt.want {
+			t.Errorf("plainDuration(%v) = %q, want %q", tt.give, got, tt.want)
 		}
 	}
 }

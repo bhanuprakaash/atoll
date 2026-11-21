@@ -188,6 +188,7 @@ func TestRun_Finish(t *testing.T) {
 		wantReply  string
 		wantError  string
 		wantKind   string
+		streamed   bool // the run streamed model output: a text or a tool call
 		stopped    bool // the run is stopped while the provider fails
 		wantEvents []string
 		provider   string
@@ -205,6 +206,7 @@ func TestRun_Finish(t *testing.T) {
 				{Kind: provider.KindToolCall, ID: "c4", Name: "mcp__atoll__remember"},
 				turnEnd,
 			}},
+			streamed:   true,
 			wantStatus: store.StatusDone,
 			wantTools:  map[string]int{"memory": 2, "other": 2},
 			wantEvents: []string{EventPrompt, EventToolCall, EventToolCall, EventToolCall,
@@ -217,6 +219,7 @@ func TestRun_Finish(t *testing.T) {
 				{Kind: provider.KindText, Text: "hi"}, end("hi"),
 			}},
 			provider: "codex", session: "old-session", owner: "claude",
+			streamed:   true,
 			wantStatus: store.StatusDone,
 			wantReply:  "Provider changed to codex; starting a fresh session.\n\nhi",
 			wantEvents: []string{EventPrompt, EventText, EventText, EventRunFinished},
@@ -227,6 +230,7 @@ func TestRun_Finish(t *testing.T) {
 				{Kind: provider.KindText, Text: "hi"}, end("hi"),
 			}},
 			session: "old-session", owner: "claude", wantResume: "old-session",
+			streamed:   true,
 			wantStatus: store.StatusDone, wantReply: "hi",
 			wantEvents: []string{EventPrompt, EventText, EventRunFinished},
 		},
@@ -236,6 +240,7 @@ func TestRun_Finish(t *testing.T) {
 				{Kind: provider.KindText, Text: "hi"}, end("hi"),
 			}},
 			session: "old-session", owner: "codex",
+			streamed:   true,
 			wantStatus: store.StatusDone,
 			wantReply:  "Provider changed to claude; starting a fresh session.\n\nhi",
 			wantEvents: []string{EventPrompt, EventText, EventText, EventRunFinished},
@@ -246,6 +251,7 @@ func TestRun_Finish(t *testing.T) {
 				{Kind: provider.KindText, Text: "hi"}, end("hi"),
 			}},
 			session:    "old-session",
+			streamed:   true,
 			wantStatus: store.StatusDone,
 			wantReply:  "Provider changed to claude; starting a fresh session.\n\nhi",
 			wantEvents: []string{EventPrompt, EventText, EventText, EventRunFinished},
@@ -257,6 +263,7 @@ func TestRun_Finish(t *testing.T) {
 				{Kind: provider.KindToolCall, ID: "c1", Name: "Bash"},
 				{Kind: provider.KindText, Text: " two\n"}, end("two"),
 			}},
+			streamed:   true,
 			wantStatus: store.StatusDone,
 			wantReply:  "two",
 			wantEvents: []string{EventPrompt, EventText, EventToolCall, EventText, EventRunFinished},
@@ -266,6 +273,7 @@ func TestRun_Finish(t *testing.T) {
 			give: &fakeSession{script: []provider.Event{
 				{Kind: provider.KindText, Text: "hi"}, end(""),
 			}},
+			streamed:   true,
 			wantStatus: store.StatusDone,
 			wantEvents: []string{EventPrompt, EventText, EventRunFinished},
 		},
@@ -301,6 +309,36 @@ func TestRun_Finish(t *testing.T) {
 			wantStatus: store.StatusFailed,
 			wantError:  "provider exited before the turn ended",
 			wantEvents: []string{EventPrompt, EventRunFinished},
+		},
+		{
+			name: "init and usage only, then the provider exits",
+			give: &fakeSession{end: true, script: []provider.Event{
+				{Kind: provider.KindSession, SessionID: "new-session"},
+				{Kind: provider.KindUsage},
+			}},
+			wantStatus: store.StatusFailed,
+			wantError:  "provider exited before the turn ended",
+			wantEvents: []string{EventPrompt, EventRunFinished},
+		},
+		{
+			name: "text, then the provider exits",
+			give: &fakeSession{end: true, script: []provider.Event{
+				{Kind: provider.KindText, Text: "hi"},
+			}},
+			streamed:   true,
+			wantStatus: store.StatusFailed,
+			wantError:  "provider exited before the turn ended",
+			wantEvents: []string{EventPrompt, EventText, EventRunFinished},
+		},
+		{
+			name: "a tool call, then the provider exits",
+			give: &fakeSession{end: true, script: []provider.Event{
+				{Kind: provider.KindToolCall, ID: "c1", Name: "Bash"},
+			}},
+			streamed:   true,
+			wantStatus: store.StatusFailed,
+			wantError:  "provider exited before the turn ended",
+			wantEvents: []string{EventPrompt, EventToolCall, EventRunFinished},
 		},
 	}
 	for _, tt := range tests {
@@ -341,6 +379,9 @@ func TestRun_Finish(t *testing.T) {
 				got.Error != tt.wantError || got.ErrorKind != tt.wantKind {
 				t.Errorf("run_finished %+v, stored %+v; want %s, reply %q, error %q, kind %q",
 					fin, got, tt.wantStatus, tt.wantReply, tt.wantError, tt.wantKind)
+			}
+			if got.Streamed != tt.streamed {
+				t.Errorf("stored streamed = %v, want %v", got.Streamed, tt.streamed)
 			}
 			if len(tt.give.prompts) != 1 {
 				t.Errorf("%d prompts sent, want 1: nothing is sent after the request", len(tt.give.prompts))
@@ -1136,6 +1177,20 @@ func TestToolKind(t *testing.T) {
 				t.Errorf("ToolKind(%q, %s) = %q, %q, want %q, %q", tt.tool, tt.input, kind, target, tt.kind, tt.target)
 			}
 		})
+	}
+}
+
+func TestToolWords(t *testing.T) {
+	tests := []struct{ tool, want string }{
+		{"mcp__github__create_issue", "GitHub: create issue"},
+		{"mcp__docs-local__search", "docs-local: search"},
+		{"Bash", ""},
+		{"mcp__github", ""},
+	}
+	for _, tt := range tests {
+		if got := ToolWords(tt.tool); got != tt.want {
+			t.Errorf("ToolWords(%q) = %q, want %q", tt.tool, got, tt.want)
+		}
 	}
 }
 
