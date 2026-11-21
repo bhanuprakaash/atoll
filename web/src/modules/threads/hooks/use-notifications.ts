@@ -11,7 +11,7 @@ type About = {
   title: string;
 };
 type Notice<T> = About & { data: T };
-export type ApprovalNotice = About & { id: string; tool: string; input: unknown };
+export type ApprovalNotice = About & { id: string; tool: string; words?: string; input: unknown };
 export type EarlierNotice = About & {
   id: number;
   at: number;
@@ -116,10 +116,12 @@ export function useNotifications(): Notifications {
           }),
       );
     });
-    on<{ id: string; tool: string; input: unknown }>('approval', ({ data, ...about }) =>
-      setApprovals((prev) =>
-        prev.some((a) => a.id === data.id) ? prev : [{ ...about, ...data }, ...prev],
-      ),
+    on<{ id: string; tool: string; words?: string; input: unknown }>(
+      'approval',
+      ({ data, ...about }) =>
+        setApprovals((prev) =>
+          prev.some((a) => a.id === data.id) ? prev : [{ ...about, ...data }, ...prev],
+        ),
     );
     on<unknown>('thread_read', ({ thread_id }) =>
       setEarlier((prev) => prev.filter((n) => !isRun(n, thread_id))),

@@ -1139,6 +1139,20 @@ func TestToolKind(t *testing.T) {
 	}
 }
 
+func TestToolWords(t *testing.T) {
+	tests := []struct{ tool, want string }{
+		{"mcp__github__create_issue", "GitHub: create issue"},
+		{"mcp__docs-local__search", "docs-local: search"},
+		{"Bash", ""},
+		{"mcp__github", ""},
+	}
+	for _, tt := range tests {
+		if got := ToolWords(tt.tool); got != tt.want {
+			t.Errorf("ToolWords(%q) = %q, want %q", tt.tool, got, tt.want)
+		}
+	}
+}
+
 func TestShortMemory(t *testing.T) {
 	tests := []struct{ name, body, want string }{
 		{name: "whitespace", body: "first\n  second", want: "first second"},

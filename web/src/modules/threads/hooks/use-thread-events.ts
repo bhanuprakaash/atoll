@@ -10,7 +10,13 @@ export type LivePart = { text: string } | { step: string };
 export type LiveRun = {
   parts: LivePart[];
   tool?: { kind: ToolKind; target: string; name: string; verb: string };
-  approvals: { id: string; tool: string; input: unknown; allow_in_thread?: boolean }[];
+  approvals: {
+    id: string;
+    tool: string;
+    words?: string;
+    input: unknown;
+    allow_in_thread?: boolean;
+  }[];
   finished?: { status: string; error: string };
   settled?: boolean;
 };
