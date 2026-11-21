@@ -2117,7 +2117,9 @@ Voice
 - Approval card: one quiet row in a group named Approval, no fill or border of its own. A one-line
   command is `Wants to run` (muted) and the command in a code line (`code`), then Allow and Deny on
   that row, at most 72 px tall at 1280x800. A tool that is not a command shows its tool and target
-  in the same code line; an edit shows its file there and keeps its Show diff / Hide diff toggle. A
+  in the same code line; an MCP tool reads as its server and tool in words, `mcp__github__create_issue`
+  as `GitHub: create issue` (the server sends it as the approval's `words`; the row and Now use the
+  same words). An edit shows its file there and keeps its Show diff / Hide diff toggle. A
   command or path longer than 2 lines is clamped to 2 inside the code line with Show all / Show less
   in the card; the toggle never changes what Allow answers. Allow is the light pill, Deny an outline
   pill that turns red on hover and keyboard focus only (the island and its list too). The waiting
