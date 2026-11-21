@@ -337,3 +337,31 @@ test('a boss thread’s row in Now has no helper line; its note names the helper
   await expect(row).not.toContainText('Needs you');
   await expect(now.locator('[data-line="helpers"]')).toHaveCount(0);
 });
+
+test('a pinned thread that replied shows only the blue dot in Now, and the pin beside the dot in its Bot pane', async ({
+  page,
+}) => {
+  const bot = await newBotAPI(m, 'Newsy');
+  const replied = await openThreadAPI(m, bot.id, prompts.keep);
+  await waitStatus(m, replied.id, 'done');
+  await api(m, 'POST', `/api/threads/${replied.id}/pin`);
+
+  await page.goto(`${m.url}/settings`);
+  const now = await nowPane(page);
+  await away(page);
+  const inNow = rowOf(section(now, 'Replied'), replied.id);
+  await expect(inNow).toHaveCount(1);
+  await oneMarkAtEnd(inNow, 'blue');
+  await expect(inNow.getByRole('img', { name: 'Pinned' })).toHaveCount(0);
+
+  const pane = await showPane(page, m, bot.id, 'Newsy');
+  await away(page);
+  const inPane = rowOf(section(pane, 'Threads'), replied.id);
+  await oneMarkAtEnd(inPane, 'blue');
+  const pin = inPane.getByRole('img', { name: 'Pinned', exact: true });
+  await expect(pin).toBeVisible();
+  const [dot] = await marks(inPane);
+  const pinBox = await box(pin);
+  expect(pinBox.x + pinBox.width).toBeLessThanOrEqual(dot.x);
+  expect(pinBox.x).toBeGreaterThan((await box(inPane.getByRole('link'))).x);
+});
