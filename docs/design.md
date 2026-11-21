@@ -1774,7 +1774,10 @@ Voice
     that needs the person first with its name and `Needs you`. Clicking it opens the boss thread with its
     thread panel open.
   - In the helper Bot's own pane a running helper thread has no row; only the boss thread's helper
-    line shows it (with `Needs you`). A finished helper thread and a merged thread the watcher hides (`hidden`) are rows under Threads.
+    line shows it (with `Needs you`). A finished helper thread, a failed one (with the red dot,
+    not under Needs you) and a merged thread the watcher hides (`hidden`) are rows under Threads.
+    *A restart fails every running helper at once; the person never asked to see helper threads,
+    and the boss's wake already reports the failure.*
     *Every open thread has a row; the hiding existed to save the 3 slots.*
   - Width: the pane is 284 px by default, dragged on its right edge between 240 px and 420 px;
     double-click on the edge resets it; Left and Right arrows on the focused edge move it 16 px.
@@ -1786,7 +1789,8 @@ Voice
   a live thread its `activity` (Now's note: the live verb or the waiting ask), and each Bot's open
   threads with their marker on `GET /api/bots`; the client builds the sections.*
 - Now: the first rail item, a view across every Bot, never a forced landing. Its pane lists Needs
-  you (threads that need you and failed threads), Running and Replied threads; a row is the Bot's
+  you (threads that need you and failed threads, but not a failed helper thread), Running and
+  Replied threads; a row is the Bot's
   22 px creature, the title and, under it, "Bot · note" (the waiting ask, `Run failed · 3:02 PM`,
   the live verb, else the time), with 8 px above and below and 10 px from the edge to the creature,
   and one marker at its right end: the light dot (Needs you), the red dot (failed), the blue dot
@@ -1796,7 +1800,8 @@ Voice
   helper's ask counts on its boss thread's row: the boss sits under Needs you with the light dot
   and the note `Boss · Helper: Wants to …`, so the one pending item shows in Now, on the rail and
   on the boss row, and clears in all when the person answers. On the rail Now is the count of
-  rows under Needs you (a live helper thread is not counted, as Now lists none; its boss is), on
+  rows under Needs you (a live or failed helper thread is not counted, as Now lists none; the boss
+  is, and its report carries a helper's failure), on
   the light accent, with no icon and no badge; with none it rests as a grey mark. A hairline separates it from Chief. Opening a thread from Now keeps the pane on Now
   and selects that row. With nothing waiting, running or replied it reads "Nothing needs you".
 - Selected row: the sidebar marks where you are once. With a thread open, only that thread's row
