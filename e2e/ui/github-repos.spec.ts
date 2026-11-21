@@ -206,7 +206,10 @@ test("a thread shows the pull request a Bot opened with gh: link and number", as
     timeout: 30_000,
   });
   await expect(context).toContainText(prTitle);
-  await expect(log.getByRole("link", { name: /^PR 1\b/ })).toHaveCount(0);
+  await expect(log.getByRole("link", { name: /^PR 1\b/ })).toHaveAttribute(
+    "href",
+    `${githubURL}/octo/hello/pull/1`,
+  );
   await expect(context).toContainText("scratch-pr");
   await expect(context).toContainText("fix/seeded-bug");
   await expect(context).toContainText("PR 1");
