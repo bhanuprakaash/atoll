@@ -227,10 +227,17 @@ func (p *providers) Limits(ctx context.Context, name string) (provider.Limits, e
 	}
 	bin, dir, err := a.prepare(ctx, p.pathOverride(name))
 	if err != nil {
-		return provider.Limits{}, err
+		return provider.Limits{}, _errNoProgram
 	}
 	return a.limits(ctx, bin, dir)
 }
+
+// _errNoProgram is in plain words for the person, who sees it on Settings › Usage.
+const _errNoProgram = plainError("Reef could not find the provider's program or folder.")
+
+type plainError string
+
+func (e plainError) Error() string { return string(e) }
 
 // view is what the last check found for a, with the stored switch and path override. It waits for
 // the start-up check.
