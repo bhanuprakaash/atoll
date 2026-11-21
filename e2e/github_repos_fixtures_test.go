@@ -72,7 +72,9 @@ type githubRepoFixture struct {
 	root string
 }
 
-func newGitHubRepoFixture(t *testing.T, provider string) *githubRepoFixture {
+// newGitHubRepoFixture serves Atoll with env after the machine's own, so ATOLL_REPO_POLL_INTERVAL
+// can be set again.
+func newGitHubRepoFixture(t *testing.T, provider string, env ...string) *githubRepoFixture {
 	t.Helper()
 	requireSecretStore(t)
 	m := newLoginsMachine(t, provider, false)
@@ -83,6 +85,7 @@ func newGitHubRepoFixture(t *testing.T, provider string) *githubRepoFixture {
 	}
 	gh := newFakeGitHub(t)
 	m.env = append(m.env, "ATOLL_GITHUB_URL="+gh.URL, "ATOLL_GITHUB_MCP_URL="+gh.URL+"/mcp/", "ATOLL_REPO_POLL_INTERVAL=100ms")
+	m.env = append(m.env, env...)
 	writeFile(t, filepath.Join(m.bin, "github-url"), gh.URL)
 	f := &githubRepoFixture{githubFixture: &githubFixture{m: m, s: m.serve(t), gh: gh}, root: t.TempDir()}
 	f.s.do(t, "PUT", "/api/settings", map[string]string{"worktree_root": f.root}, nil, 204)

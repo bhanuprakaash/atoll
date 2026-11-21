@@ -95,6 +95,7 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 	mux.HandleFunc("GET /repos/{owner}/{repo}/pulls/{number}", g.getPull)
 	mux.HandleFunc("PATCH /repos/{owner}/{repo}/pulls/{number}", g.editPull)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/pulls/{number}/files", g.pullFiles)
+	mux.HandleFunc("PUT /repos/{owner}/{repo}/pulls/{number}/merge", g.mergePull)
 	mux.HandleFunc("GET /repos/{owner}/{repo}", g.getRepo)
 	mux.HandleFunc("POST /graphql", g.graphQL)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/issues/{number}", g.getIssue)

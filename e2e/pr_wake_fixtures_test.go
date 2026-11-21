@@ -23,6 +23,8 @@ type prFixture struct {
 	body   string
 	head   string // empty: headSHA(n)
 	ref    string // the head branch
+	// conflicts makes GitHub say mergeable false and refuse the merge.
+	conflicts bool
 }
 
 // issueFixture is what the fake GitHub says about an issue: open until a test closes it.
@@ -47,6 +49,7 @@ type prWatch struct {
 	issues   map[int]*issueFixture
 	issueGet map[int]int
 	issue304 map[int]int
+	merges   []fakeMerge // every PUT .../merge GitHub got, in order
 }
 
 // headOf is the head commit of the pull request: its own once a test pushed, else headSHA.
@@ -218,7 +221,7 @@ func (g *fakeGitHub) getPull(w http.ResponseWriter, r *http.Request) {
 		if pr := g.pr(n); pr != nil {
 			body, _ = json.Marshal(map[string]any{"number": n, "state": pr.state, "merged": pr.merged, "title": pr.title,
 				"draft": pr.draft, "body": pr.body, "base": map[string]string{"ref": pr.base},
-				"user": map[string]string{"login": _fakePRAuthor}, "mergeable": true,
+				"user": map[string]string{"login": _fakePRAuthor}, "mergeable": !pr.conflicts,
 				"head": map[string]string{"sha": pr.headOf(n), "ref": pr.ref}})
 		}
 	})
@@ -350,9 +353,9 @@ type prWakeFixture struct {
 	repo     githubRepo
 }
 
-func newPRWakeFixture(t *testing.T, provider string) *prWakeFixture {
+func newPRWakeFixture(t *testing.T, provider string, env ...string) *prWakeFixture {
 	t.Helper()
-	f := &prWakeFixture{githubRepoFixture: newGitHubRepoFixture(t, provider), provider: provider}
+	f := &prWakeFixture{githubRepoFixture: newGitHubRepoFixture(t, provider, env...), provider: provider}
 	f.repo = f.register(t, "octo-hello", f.hello(t))
 	f.boss = f.bot(t, provider, []string{f.connect(t)})
 	return f
