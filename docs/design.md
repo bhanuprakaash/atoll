@@ -1773,9 +1773,12 @@ Voice
     creatures, then the name and step of the one that acted last only (never cut), or the one
     that needs the person first with its name and `Needs you`. Clicking it opens the boss thread with its
     thread panel open.
-  - In the helper Bot's own pane a running helper thread has no row; only the boss thread's helper
-    line shows it (with `Needs you`). A finished helper thread and a merged thread the watcher hides (`hidden`) are rows under Threads.
-    *Every open thread has a row; the hiding existed to save the 3 slots.*
+  - A helper thread is never a row in its own Bot's pane, running, needing you or finished; only
+    the boss thread's helper line shows a running one (with `Needs you`), and its boss thread
+    holds a finished one. A failed helper's run is the exception: it stays a row. A merged thread
+    the watcher hides (`hidden`) is still a row under Threads. *The finished helper threads piled
+    up in the helper Bot's pane, where the person cannot close them; the boss thread already
+    holds that work.*
   - Width: the pane is 284 px by default, dragged on its right edge between 240 px and 420 px;
     double-click on the edge resets it; Left and Right arrows on the focused edge move it 16 px.
     Kept in the web view's `localStorage` (`atoll.sidebarWidth`), clamped when read. The rail never
@@ -1802,8 +1805,9 @@ Voice
   screen no row is selected; the rail bar alone marks the Bot. Never two selected rows. A running
   helper thread has no row, so while one is open the sidebar stays with its boss: the rail bar on
   the boss Bot, the boss's pane, and the selected fill and `aria-current="page"` on the boss
-  thread's helper line, not on the boss thread's row. A finished helper thread is a row in its own
-  Bot's pane, so the rail bar and pane are that Bot's, as for any thread. Opened from Now, a helper
+  thread's helper line, not on the boss thread's row. A finished helper thread has no row either, so
+  the sidebar stays with its boss the same way, and the selected fill and `aria-current="page"` are
+  on the boss thread's row, since the helper line is gone. Opened from Now, a helper
   thread keeps the pane on Now. *The rail followed the helper Bot in the URL, whose pane has no row
   for a running helper: the sidebar marked a place where the open thread was not.*
 - Narrow windows: below 900 px (inner width; 900 itself is wide) the rail stays docked and the

@@ -9,7 +9,7 @@ import {
 } from 'react-router';
 import { useBots } from '@/modules/bots/api/bots';
 import { BotRail } from '@/modules/bots/components/bot-rail';
-import { bossBotId } from '@/modules/bots/utils/thread-tree';
+import { helperBoss } from '@/modules/bots/utils/thread-tree';
 import { Menu } from '@/components/menu';
 import { Switcher } from '@/app/switcher';
 import { ThreadPane, usePaneWidth } from '@/app/thread-pane';
@@ -71,7 +71,8 @@ export function Shell() {
   const urlBotId = botMatch === 'new' ? undefined : botMatch;
   const threadId = useMatch('/bots/:botId/threads/:threadId')?.params.threadId;
   const { data: bots = [] } = useBots();
-  const botId = urlBotId && bossBotId(bots, urlBotId, threadId);
+  const boss = helperBoss(bots, threadId);
+  const botId = urlBotId && (boss?.botId ?? urlBotId);
   const inSettings = useMatch('/settings/*') !== null;
   const [settingsHidesPane, setSettingsHidesPane] = useState(inSettings);
   useEffect(() => setSettingsHidesPane(inSettings), [inSettings]);
@@ -196,7 +197,7 @@ export function Shell() {
         {view && !settingsHidesPane && (narrow ? paneOpen : !paneHidden) && (
           <ThreadPane
             view={view}
-            openThreadId={threadId}
+            openThreadId={boss && !boss.live && view !== 'now' ? boss.threadId : threadId}
             width={paneWidth}
             onWidth={narrow ? undefined : setPaneWidth}
             onNewGroup={(id) => setCreatingGroup({ botId: id })}
