@@ -55,6 +55,16 @@ export function nowSections(all: SidebarThread[], openId: string | undefined) {
     .filter((section) => section.threads.length > 0);
 }
 
+// bossBotId is the Bot whose pane shows the open thread: for a live helper thread, which has no row
+// of its own, the Bot of its boss thread; else the Bot in the URL.
+export function bossBotId(bots: Bot[], openBotId: string, threadId: string | undefined) {
+  const helper = bots.flatMap((bot) => bot.threads ?? []).find((t) => t.id === threadId);
+  if (!helper || !isLiveHelper(helper)) return openBotId;
+  return (
+    bots.find((bot) => bot.threads?.some((t) => t.id === helper.parent_thread_id))?.id ?? openBotId
+  );
+}
+
 export type Worker = {
   id: string;
   bot: Bot;

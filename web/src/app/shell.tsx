@@ -7,7 +7,9 @@ import {
   useNavigate,
   useNavigationType,
 } from 'react-router';
+import { useBots } from '@/modules/bots/api/bots';
 import { BotRail } from '@/modules/bots/components/bot-rail';
+import { bossBotId } from '@/modules/bots/utils/thread-tree';
 import { Menu } from '@/components/menu';
 import { Switcher } from '@/app/switcher';
 import { ThreadPane, usePaneWidth } from '@/app/thread-pane';
@@ -66,8 +68,10 @@ export function Shell() {
   const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
   const [creatingGroup, setCreatingGroup] = useState<{ botId?: string } | null>(null);
   const botMatch = useMatch('/bots/:botId/*')?.params.botId;
-  const botId = botMatch === 'new' ? undefined : botMatch;
+  const urlBotId = botMatch === 'new' ? undefined : botMatch;
   const threadId = useMatch('/bots/:botId/threads/:threadId')?.params.threadId;
+  const { data: bots = [] } = useBots();
+  const botId = urlBotId && bossBotId(bots, urlBotId, threadId);
   const inSettings = useMatch('/settings/*') !== null;
   const [settingsHidesPane, setSettingsHidesPane] = useState(inSettings);
   useEffect(() => setSettingsHidesPane(inSettings), [inSettings]);
@@ -93,13 +97,13 @@ export function Shell() {
   });
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!botId || !event.metaKey || event.key !== 'n') return;
+      if (!urlBotId || !event.metaKey || event.key !== 'n') return;
       event.preventDefault();
-      navigate(`/bots/${botId}/new`);
+      navigate(`/bots/${urlBotId}/new`);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [botId, navigate]);
+  }, [urlBotId, navigate]);
   const [switching, setSwitching] = useState(false);
   useTypeToCompose();
   useEffect(() => {
