@@ -17,7 +17,7 @@ import {
 import { BotMenu } from '@/modules/bots/components/bot-menu';
 import { GroupNameField } from '@/modules/bots/components/group-name-field';
 import { sidebarOrder } from '@/modules/bots/utils/sidebar-order';
-import { isLiveHelper } from '@/modules/bots/utils/thread-tree';
+import { nowSections, workersByBoss } from '@/modules/bots/utils/thread-tree';
 
 const botDragType = 'application/x-reef-bot';
 const groupDragType = 'application/x-reef-group';
@@ -305,14 +305,12 @@ export function BotRail({
   const moveGroup = useMoveGroup();
   const [dragging, setDragging] = useState(false);
   const { top, inGroup, ungrouped } = sidebarOrder(bots, groups);
-  const waiting = bots.reduce(
-    (n, bot) =>
-      n +
-      (bot.threads ?? []).filter(
-        (t) => (t.state === 'needs_you' || t.state === 'failed') && !isLiveHelper(t),
-      ).length,
-    0,
-  );
+  const waiting =
+    nowSections(
+      bots.flatMap((bot) => bot.threads ?? []),
+      undefined,
+      workersByBoss(bots),
+    ).find((section) => section.label === 'Needs you')?.threads.length ?? 0;
   const scroller = useRef<HTMLDivElement>(null);
   const [overflows, setOverflows] = useState(false);
   const [below, setBelow] = useState(0);
