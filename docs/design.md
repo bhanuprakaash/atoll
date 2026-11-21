@@ -2248,9 +2248,9 @@ Voice
   ask Chief instead. Wide windows show a live card and sidebar row preview on the right. Create
   opens the new Bot's empty thread.
 - Settings: General (name, worktree folder, and in the desktop app the Software update group),
-  Providers, Connections, Skills, MCP servers, Repos, Memory, Usage, one list each. Content right
-  of the section navigation is centred, 720px at most. Add repo opens a dialog (name, path, Choose…
-  for the native folder picker, which the Go sidecar opens with `osascript` on macOS and `zenity` on Linux,
+  Providers, Connections, Skills, MCP servers, Repos, Memory, Usage, one list each. Content right of the
+  section navigation is centred, 720px at most. Add repo opens a dialog (name, path, Choose… for the
+  native folder picker, which the Go sidecar opens with `osascript` on macOS and `zenity` on Linux,
   so the UI still talks to Go over HTTP only; with no `zenity` it answers `501` and the dialog says
   to type the path); with no repos yet the same form shows inline. New skill opens an empty editor;
   Create makes it. A skill opens in a wide right panel: name, its files (`SKILL.md` first, then by
