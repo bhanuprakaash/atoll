@@ -1792,10 +1792,12 @@ Voice
   and one marker at its right end: the light dot (Needs you), the red dot (failed), the blue dot
   (Replied) or wave dots (running). The words "Needs you" show only in the heading. A boss
   thread's row has no helper line; its note names the helper that acted last and its step
-  (`Poteto · Tester: Running make check`), or the helper that needs the person and its ask. On the
-  rail Now is the count of threads in Needs you or failed (a live helper thread is not counted, as
-  Now lists none), on the light accent, with no icon and no badge; with
-  none it rests as a grey mark. A hairline separates it from Chief. Opening a thread from Now keeps the pane on Now
+  (`Poteto · Tester: Running make check`), or the helper that needs the person and its ask. A
+  helper's ask counts on its boss thread's row: the boss sits under Needs you with the light dot
+  and the note `Boss · Helper: Wants to …`, so the one pending item shows in Now, on the rail and
+  on the boss row, and clears in all when the person answers. On the rail Now is the count of
+  rows under Needs you (a live helper thread is not counted, as Now lists none; its boss is), on
+  the light accent, with no icon and no badge; with none it rests as a grey mark. A hairline separates it from Chief. Opening a thread from Now keeps the pane on Now
   and selects that row. With nothing waiting, running or replied it reads "Nothing needs you".
 - Selected row: the sidebar marks where you are once. With a thread open, only that thread's row
   has the selected fill and `aria-current="page"`, in the Bot's pane or in Now. On the New thread
