@@ -219,6 +219,19 @@ func (p *providers) Cached(ctx context.Context) []server.Provider {
 	return list
 }
 
+// Limits reads the plan limits of the provider name from the provider itself.
+func (p *providers) Limits(ctx context.Context, name string) (provider.Limits, error) {
+	a := p.adapter(name)
+	if a == nil {
+		return provider.Limits{}, fmt.Errorf("unknown provider %q", name)
+	}
+	bin, dir, err := a.prepare(ctx, p.pathOverride(name))
+	if err != nil {
+		return provider.Limits{}, err
+	}
+	return a.limits(ctx, bin, dir)
+}
+
 // view is what the last check found for a, with the stored switch and path override. It waits for
 // the start-up check.
 func (p *providers) view(ctx context.Context, a adapter) providerInfo {

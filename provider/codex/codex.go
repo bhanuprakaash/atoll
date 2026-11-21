@@ -36,7 +36,18 @@ const (
 	_tailKeep  = 4 << 10
 
 	_messageBreak = "\n\n"
+
+	_limitsTimeout = 15 * time.Second
+	// _sessionMax is the longest window, in minutes, that Limits calls the session.
+	_sessionMax = 24 * 60
 )
+
+// _errLimits is an error in plain words for the person: it holds no text of Codex's.
+const _errLimits = limitsError("Codex did not report its plan limits.")
+
+type limitsError string
+
+func (e limitsError) Error() string { return string(e) }
 
 type (
 	// Session is one codex app-server process holding one thread. Use New.
@@ -117,8 +128,9 @@ type (
 	}
 
 	limitWindow struct {
-		UsedPercent float64 `json:"usedPercent"`
-		ResetsAt    int64   `json:"resetsAt"`
+		UsedPercent        float64 `json:"usedPercent"`
+		WindowDurationMins int     `json:"windowDurationMins"`
+		ResetsAt           int64   `json:"resetsAt"`
 	}
 
 	// tail is an io.Writer that keeps the last 4 KB written to it.
@@ -152,6 +164,56 @@ func SignedIn(ctx context.Context, bin, dir string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// Limits reads the plan limits of the Codex sign-in in dir from `codex app-server`. A window of a day
+// or less is the session, a longer one the weekly: a free plan reports one long window as primary.
+func Limits(ctx context.Context, bin, dir string) (provider.Limits, error) {
+	ctx, cancel := context.WithTimeout(ctx, _limitsTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, "app-server")
+	cmd.Env = env(dir)
+	cmd.WaitDelay = _waitDelay
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return provider.Limits{}, _errLimits
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return provider.Limits{}, _errLimits
+	}
+	if err := cmd.Start(); err != nil {
+		return provider.Limits{}, _errLimits
+	}
+	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+	s := &Session{stdin: stdin, stdout: bufio.NewReader(stdout)}
+	clientInfo := map[string]any{"name": "atoll", "title": nil, "version": "0"}
+	if _, err := s.call("initialize", map[string]any{"clientInfo": clientInfo}); err != nil {
+		return provider.Limits{}, _errLimits
+	}
+	if err := s.write(map[string]any{"method": "initialized"}); err != nil {
+		return provider.Limits{}, _errLimits
+	}
+	res, err := s.call("account/rateLimits/read", nil)
+	var got body
+	if err != nil || json.Unmarshal(res, &got) != nil {
+		return provider.Limits{}, _errLimits
+	}
+	var limits provider.Limits
+	for _, w := range []*limitWindow{got.RateLimits.Primary, got.RateLimits.Secondary} {
+		if w == nil || w.ResetsAt <= 0 {
+			continue
+		}
+		window := &provider.Window{
+			UsedPercent: w.UsedPercent, ResetsAt: time.Unix(w.ResetsAt, 0).UTC(), WindowMinutes: w.WindowDurationMins,
+		}
+		if w.WindowDurationMins <= _sessionMax {
+			limits.Session = window
+		} else {
+			limits.Weekly = window
+		}
+	}
+	return limits, nil
 }
 
 // Own names the MCP servers and skills of the user's own Codex setup under home.
