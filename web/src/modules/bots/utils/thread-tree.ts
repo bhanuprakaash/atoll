@@ -7,7 +7,7 @@ export const isLiveHelper = (t: SidebarThread) =>
 const sectionLabels = ['Needs you', 'Running', 'Threads'] as const;
 
 const sectionOf = (t: SidebarThread) =>
-  t.state === 'needs_you' || t.state === 'failed'
+  t.state === 'needs_you' || (t.state === 'failed' && t.parent_thread_id === '')
     ? 'Needs you'
     : t.state === 'running'
       ? 'Running'
@@ -16,7 +16,7 @@ const sectionOf = (t: SidebarThread) =>
 // threadSections splits a Bot's threads into the pane's sections, keeping the server's order except
 // that pinned threads come first under Threads, and leaving out the empty ones. The open thread is
 // never Replied; a live helper thread is no row (its boss thread's helper line shows it, with its
-// Needs you).
+// Needs you); a failed helper thread is a row under Threads.
 export function threadSections(all: SidebarThread[], openId: string | undefined) {
   const threads = all
     .filter((t) => !isLiveHelper(t))
@@ -48,15 +48,21 @@ const helperAsks = (t: SidebarThread, workers?: Worker[]) =>
 
 // nowSections splits every Bot's threads into Now's sections, newest activity first, leaving out
 // the empty ones. A live helper thread is no row of its own (its boss thread shows it, under Needs
-// you while the helper asks), a merged thread the watcher hides is none, and the open thread is
-// never Replied.
+// you while the helper asks), nor is a failed one (the boss's report carries the failure); a merged
+// thread the watcher hides is none, and the open thread is never Replied.
 export function nowSections(
   all: SidebarThread[],
   openId: string | undefined,
   workers: Map<string, Worker[]>,
 ) {
   const threads = all
-    .filter((t) => !isLiveHelper(t) && !t.hidden && !(t.id === openId && t.state === 'new'))
+    .filter(
+      (t) =>
+        !isLiveHelper(t) &&
+        !(t.parent_thread_id !== '' && t.state === 'failed') &&
+        !t.hidden &&
+        !(t.id === openId && t.state === 'new'),
+    )
     .map((t) => (helperAsks(t, workers.get(t.id)) ? { ...t, state: 'needs_you' as const } : t))
     .sort((a, b) => Date.parse(b.last_activity) - Date.parse(a.last_activity));
   return nowLabels
