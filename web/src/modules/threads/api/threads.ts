@@ -35,7 +35,13 @@ export type Thread = {
   run_error_kind: string;
   holds_reports: boolean;
   reports_waiting: number;
-  approval: { id: string; tool: string; input: unknown; allow_in_thread?: boolean } | null;
+  approval: {
+    id: string;
+    tool: string;
+    words?: string;
+    input: unknown;
+    allow_in_thread?: boolean;
+  } | null;
 };
 
 export const getThread = (threadId: string) =>
@@ -47,6 +53,7 @@ export const getThread = (threadId: string) =>
         run_id: string;
         id: string;
         tool: string;
+        words?: string;
         input: unknown;
         allow_in_thread?: boolean;
       }[];

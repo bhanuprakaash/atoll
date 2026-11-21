@@ -20,7 +20,7 @@ func TestNeedsYou(t *testing.T) {
 		{"claude bash with description", "Bash", `{"command":"make check","description":"Run the checks"}`, "Wants to run make check"},
 		{"codex read", "commandExecution", `{"commandActions":[{"type":"read","path":"/w/x"}]}`, "Wants to read x"},
 		{"codex search", "commandExecution", `{"commandActions":[{"type":"search","query":"TODO"}]}`, "Wants to search TODO"},
-		{"mcp tool", "mcp__srv__tool", `{}`, "Wants to use mcp__srv__tool"},
+		{"mcp tool", "mcp__github__create_issue", `{}`, "Wants to use GitHub: create issue"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

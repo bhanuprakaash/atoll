@@ -53,7 +53,9 @@ export function ApprovalDrop({ approval, look }: { approval: ApprovalNotice; loo
             <span className="truncate font-medium">{approval.bot_name}</span>
             <span className="truncate text-muted">· {approval.title}</span>
           </div>
-          <div className="text-[13px] text-muted">{approvalVerb(approval.tool)}</div>
+          <div className="text-[13px] text-muted">
+            {approvalVerb(approval.tool, approval.words)}
+          </div>
         </div>
       </div>
       <div className="max-h-28 overflow-y-auto rounded-xl bg-card px-3 py-2 font-mono text-[12.5px] [overflow-wrap:anywhere]">
