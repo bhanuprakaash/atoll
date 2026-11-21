@@ -2009,7 +2009,8 @@ Voice
     together, in order, with their images.
   - Both are `POST /api/runs/{id}/continue`, which answers `202 {"run": {...}}`; the server picks
     Continue or Retry from the run. It answers `409` when the run did not fail, is not its thread's
-    newest, or has no message of the person's.
+    newest, or has no message of the person's; `409 busy` when a run is going in the thread; `409
+    closed` when the thread is closed.
   - A turn killed mid-run keeps its finished steps in the Claude and Codex session files, so a
     resume sees them (spiked on Claude 2.1.325 and Codex 0.165.0).
 - A run ends with one footer under the reply: `3:02 PM · Worked 20s · ran 1 command` (or `· Stopped
