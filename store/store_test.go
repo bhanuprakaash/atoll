@@ -1782,3 +1782,25 @@ func TestStore_RerunInheritsStreamed(t *testing.T) {
 		run = next
 	}
 }
+
+func TestWake_Notice(t *testing.T) {
+	tests := []struct {
+		name string
+		give store.Run
+		want string
+	}{
+		{"done", store.Run{Status: store.StatusDone}, store.NoticeHelperDone},
+		{"stopped", store.Run{Status: store.StatusStopped}, store.NoticeHelperStopped},
+		{"rate limited", store.Run{Status: store.StatusFailed, ErrorKind: store.ErrorRateLimited}, store.NoticeHelperLimited},
+		{"stuck", store.Run{Status: store.StatusFailed, ErrorKind: store.ErrorStuck}, store.NoticeHelperStuck},
+		{"failed", store.Run{Status: store.StatusFailed}, store.NoticeHelperFailed},
+		{"failed for another reason", store.Run{Status: store.StatusFailed, ErrorKind: store.ErrorRestarted}, store.NoticeHelperFailed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := (store.Wake{Run: tt.give}).Notice(); got != tt.want {
+				t.Errorf("Notice() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
