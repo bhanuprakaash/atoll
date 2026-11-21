@@ -326,9 +326,9 @@ counts a Bot that is already gone as removed.
     turn: ignored; `total` is thread-wide): `input_tokens` is `inputTokens` minus
     `cachedInputTokens`, `cache_read_tokens` is `cachedInputTokens`, `cache_write_tokens` is
     `cacheWriteInputTokens`. No `cost_usd` (no Codex prices).
-  - Cost is recorded but not shown: the run footer reads "Opus 5.5, 19 calls" and `GET /api/bots`
-    has no cost, until the usage and analytics page. `cost_usd` per run and
-    `threads.session_cost_usd` are kept for it.
+  - Cost is not shown on a run or a Bot: the run footer reads "Opus 5.5, 19 calls" and `GET
+    /api/bots` has no cost. It shows only on Settings > Usage (App and UI). `cost_usd` per run and
+    `threads.session_cost_usd` are kept.
 - Claude cancels an MCP tool call after 60 s unless `MCP_TOOL_TIMEOUT` says otherwise, and the
   permission prompt is one. Every Claude run sets `MCP_TOOL_TIMEOUT=1800000` (30 minutes). *It
   covers every MCP server of the run: Claude Code has no per-server timeout, so a hung user tool
@@ -2248,9 +2248,9 @@ Voice
   ask Chief instead. Wide windows show a live card and sidebar row preview on the right. Create
   opens the new Bot's empty thread.
 - Settings: General (name, worktree folder, and in the desktop app the Software update group),
-  Providers, Connections, Skills, MCP servers, Repos, Memory, one list each. Content right of the
-  section navigation is centred, 720px at most. Add repo opens a dialog (name, path, Choose… for the
-  native folder picker, which the Go sidecar opens with `osascript` on macOS and `zenity` on Linux,
+  Providers, Connections, Skills, MCP servers, Repos, Memory, Usage, one list each. Content right
+  of the section navigation is centred, 720px at most. Add repo opens a dialog (name, path, Choose…
+  for the native folder picker, which the Go sidecar opens with `osascript` on macOS and `zenity` on Linux,
   so the UI still talks to Go over HTTP only; with no `zenity` it answers `501` and the dialog says
   to type the path); with no repos yet the same form shows inline. New skill opens an empty editor;
   Create makes it. A skill opens in a wide right panel: name, its files (`SKILL.md` first, then by
@@ -2265,6 +2265,63 @@ Voice
   own MCP servers and skills, marked as not used by Bots. Sign in runs the provider's own login
   (`claude auth login`, `codex login`) in Reef's folder, opens the URL it prints in the browser and
   updates when it finishes; no Terminal.
+- Settings > Usage (`/settings/usage`, last in the nav) shows what Bots used and how much of each
+  plan is left. Design canvas: https://claude.ai/artifact/7CfREnbH2tmqZJk1TnuzFV (#404).
+
+  ```text
+  Usage
+  What your Bots used, and how much of each plan is left.
+
+  Plan limits
+    [Claude logo] Claude   Session  ████░░░░  34%  Resets 3:00 PM
+                           Weekly   ██████░░  61%  Resets Mon
+    [Codex logo]  Codex    Session  ████████  92%  Resets 5:40 PM      (amber: 90% or more)
+                           Weekly   ████░░░░  40%  Resets Thu
+    [Claude logo] Claude   Not available right now.  > Details
+    Read from each provider when this page opens. Amber at 90% or more; never red.
+
+  What Bots used                             [ 24h | 7 days | 30 days | All ]
+    $235.32                    713.7M                  583
+    at API prices · Claude only  tokens · all providers  runs
+
+    Per day, at API prices
+    ▂ ▄ _ ▃ █ ▅
+    12 Nov … 17 Nov                                    (a day with no runs: an empty bar)
+
+    By Bot · its own runs only                                       8 Bots
+    Bot              Runs    Tokens     Cost
+    ● Lead            299    357.7M  $118.10
+    ● Poteto           83     95.2M   $39.96
+    …
+
+    By model
+    Model            Tokens     Cost
+    Opus 5.5         481.6M  $176.09
+    gpt-6.1-sol       55.5M        —
+
+  Cost is what the tokens would cost at API prices; your plan is not billed per token. Codex has
+  no prices, so it shows tokens only.
+  ```
+
+  - Plans only: Reef's providers run on the user's subscriptions, so a dollar figure is what the
+    tokens would cost at API prices, labelled `at API prices`. Codex has no price table: its tokens
+    count and its cost is `—`, never `$0`; the total cost counts Claude only.
+  - Tokens are input + output + cache read + cache write. A run with no `usage` counts nowhere.
+  - The range switch (24h / 7 days / 30 days / All, default 7 days) changes every number. Days are
+    the viewer's local days; a day with no runs is drawn empty.
+  - Each Bot counts only its own runs: a helper thread's run counts under the helper Bot, not its
+    boss, so the By Bot rows add up to the total. By Bot lists every Bot with runs in the range,
+    highest cost first, with its colour dot; a long list scrolls in its own box under a fixed
+    header. By model names a Claude id as on the run footer (`claude-opus-5-5` is `Opus 5.5`).
+  - A range with no runs shows one plain line, not empty tables. At phone width the nav is a row at
+    the top and the tables scroll sideways in their own box; the page never does.
+  - Plan limits: a row per signed-in provider with its logo, Session and Weekly bars, the
+    percentage and `Resets <time>`. Read from the provider when the page opens, nothing cached, no
+    polling. A bar at 90% or more is amber, never red (a limit is not a failure). A failed read
+    (signed out, network, an unexpected answer) shows `Not available right now.` with the reason
+    under Details; the rest of the page works.
+  - Left out on purpose: a thread list, context fill, budgets and alerts. *Reporting only; the
+    owner wanted one place for what Reef costs, not another thing that asks for attention.*
 - First run is three steps over drifting creatures: the user's name; the providers found, with Sign
   in; Meet Chief with example asks, each opening Chief's thread with that message sent.
 - The Go server serves the UI at `/` and the API under `/api/`, one address. Vite builds `web/` into
