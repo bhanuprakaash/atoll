@@ -842,9 +842,16 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	res.Usage, res.SessionCostUSD = a.usageResult()
 	var wake func(store.Wake) string
 	if !quiet {
-		wake = func(w store.Wake) string {
-			return WakeText(context.Background(), w, "", m.cfg.IdleLimit)
+		var git GitState
+		if res.ErrorKind == store.ErrorStuck {
+			w, ok, err := m.cfg.Store.HelperWake(context.Background(), a.run.ID)
+			if err != nil {
+				m.cfg.Log.Error("read wake", "run_id", a.run.ID, "error", err)
+			} else if ok {
+				git = readGit(context.Background(), w)
+			}
 		}
+		wake = func(w store.Wake) string { return WakeText(w, git, "", m.cfg.IdleLimit) }
 	}
 	// A background context: FinishRun must outlive Close's cancel.
 	for range 2 {

@@ -98,9 +98,7 @@ func serve(ctx context.Context, token string, args []string, w io.Writer) error 
 	if err != nil {
 		return err
 	}
-	failed, err := st.FailUnfinished(ctx, _restartReason, func(ws []store.Wake) string {
-		return threadrun.RestartWakeText(ctx, ws)
-	})
+	failed, err := threadrun.FailUnfinished(ctx, st, _restartReason)
 	if err != nil {
 		return err
 	}
