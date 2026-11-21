@@ -321,6 +321,7 @@ test.describe('with many Bots', () => {
       let box = t.parentElement!;
       while (!['auto', 'scroll'].includes(getComputedStyle(box).overflowY))
         box = box.parentElement!;
+      box.scrollIntoView({ block: 'end' });
       const scrolls = box.scrollHeight > box.clientHeight;
       box.scrollTop = box.scrollHeight;
       return {
