@@ -891,6 +891,31 @@ Follow-ups:
     #n." with Retry and Open on GitHub; anything else is `502 github` "Couldn't load PR #n." with
     Retry, Open on GitHub and Details. A GitHub `401` marks the connection `needs_sign_in`, as in
     the poll. A PR with no files says "This PR has no file changes."
+- Merge from the PR panel (#603). Merge is the person's click only: Bots get no merge tool and
+  "Never merge" stays in their prompt. An open or draft PR shows, at the bottom of the panel,
+  "Merges <head> into <base> at <short sha>, the commit shown here" and one button named after the
+  method: the first the repo allows, in this order: merge commit ("Merge"), squash ("Squash and
+  merge"), rebase ("Rebase and merge"). No picker. A merged or closed PR shows no button.
+  - The first click turns the button into "Confirm merge?"; it resets after 3 seconds, on Esc
+    (which then leaves the panel open) or on a click elsewhere. The second click merges and shows
+    "Merging…". No dialog.
+  - `POST /api/threads/{id}/pr/merge {url, sha}` (`run.MergePR`, beside the poll; `server/` only
+    routes) reads `GET /repos/{o}/{r}` for the method and sends
+    `PUT /repos/{o}/{r}/pulls/{n}/merge {sha, merge_method}` with the thread Bot's first GitHub
+    connection, the read's rule. *`sha` is the head the panel loaded, so GitHub merges only the
+    commit the person looked at, never one pushed since* (there is no `finish_run` sha: Threads and
+    runs). Answers `200 {"state":"merged"}`.
+  - After a merge the server runs that thread's check of the PR at once (the poll's `check`, whose
+    store write is a compare-and-set on the previous state, so the poll cannot wake twice): the
+    thread's merged line ("PR #n merged into main at …") shows without waiting for the next poll,
+    and the Bot wakes as if the PR were merged on GitHub. A PR the thread does not track is not
+    checked. The panel then reads again and shows Merged.
+  - Refusals, never raw JSON: GitHub `409` (the head moved) is `409 head_moved` "New commits were
+    pushed since you opened this PR. Nothing was merged." with Reload; GitHub `403`, `405` or
+    `422` (branch rules, no write access, not mergeable) is `409 refused` with GitHub's `message`
+    as one plain sentence, Details tucked away; anything else `502 github` "Couldn't merge PR #n.".
+    `mergeable: false` shows "Has conflicts with <base>." and disables Merge; failed or running
+    checks keep their line above and leave Merge enabled.
 - Fixtures (what the poll reads; GitHub base is the API base `CheckGitHubToken` uses, so
   `ATOLL_GITHUB_URL` with the routes appended):
   - `GET /repos/{owner}/{repo}/pulls/{n}`: `state` (`open` or `closed`), `merged` (bool), `title`,

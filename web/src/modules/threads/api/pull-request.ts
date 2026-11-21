@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
 export type PullRequestDetail = {
@@ -27,5 +27,23 @@ export function usePullRequest(threadId: string, url: string) {
     retry: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+  });
+}
+
+// useMergePR merges at the head sha the panel loaded, then reads the PR and the thread again.
+export function useMergePR(threadId: string, url: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sha: string) =>
+      api<{ state: 'merged' }>(`/threads/${threadId}/pr/merge`, {
+        method: 'POST',
+        body: { url, sha },
+      }),
+    onSuccess: () =>
+      Promise.all(
+        [['pull-request', threadId, url], ['thread', threadId], ['bots']].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      ),
   });
 }
