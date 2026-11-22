@@ -129,6 +129,16 @@ func helperRunning(t *testing.T, s *server, threadID string) string {
 	return th.RunID
 }
 
+// helperStored waits for the helper thread's stored session. A run is `running` before its provider
+// has said its session id, and a restart before that leaves a thread with no session to resume.
+func helperStored(t *testing.T, m *machine, threadID string) {
+	t.Helper()
+	eventually(t, 30*time.Second, "helper thread "+threadID+" has a stored session", func() bool {
+		rows := dbRows(t, m, "SELECT session FROM threads WHERE id = ?", threadID)
+		return len(rows) == 1 && rows[0][0] != ""
+	})
+}
+
 func holdsAll(t *testing.T, what, text string, want ...string) {
 	t.Helper()
 	for _, w := range want {
@@ -394,6 +404,7 @@ func TestWake_SurvivesRestart(t *testing.T) {
 
 			hung := delegated(t, useAtoll(t, s, boss, s.events(t, boss), delegateCall("Tester", _hangPrompt, ""))[0])
 			run := helperRunning(t, s, hung)
+			helperStored(t, m, hung)
 
 			s.kill()
 			s = m.serve(t)
