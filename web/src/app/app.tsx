@@ -11,7 +11,7 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router';
-import { BotPage, LatestThread, type OpenPR } from '@/app/bot-page';
+import { BotPage, LatestThread, type OpenFile, type OpenPR } from '@/app/bot-page';
 import {
   ConnectionsPage,
   McpServersPage,
@@ -96,7 +96,7 @@ function NewBotPage() {
 
 function ThreadPage() {
   const { threadId = '', botId = '' } = useParams();
-  const openPR = useOutletContext<OpenPR>();
+  const { openPR, openFile } = useOutletContext<{ openPR: OpenPR; openFile: OpenFile }>();
   const { data: thread, error } = useThread(threadId);
   const { data: threads } = useThreads(botId);
   const { data: repos = [] } = useRepos();
@@ -134,6 +134,11 @@ function ThreadPage() {
       lostRepo={lostRepo}
       signedOut={(provider) => <SignInExpired provider={provider} />}
       onOpenPR={(url) => openPR(threadId, url)}
+      onOpenFile={
+        thread?.repo_id && !thread.closed && !thread.worktree_removed
+          ? (file) => openFile(threadId, file)
+          : undefined
+      }
       afterRun={(runId) => (
         <>
           <PlatformChanges
