@@ -20,8 +20,22 @@ function asTyped(this: { data: () => { micromarkExtensions?: unknown[] } }) {
 const _richPlugins: Options['remarkPlugins'] = [remarkGfm, remarkBreaks];
 const _typedPlugins = [remarkGfm, asTyped] as Options['remarkPlugins'];
 
-const _typedLook =
-  '[&_:is(ul,ol)]:whitespace-normal [&_li]:whitespace-pre-wrap [&_[data-component=code]]:text-ink';
+type Node = { type: string; tagName?: string; value?: string; children?: Node[] };
+const isBlock = (n?: Node) =>
+  n?.type === 'element' && /^(p|ul|ol|li|pre|blockquote)$/.test(n.tagName ?? '');
+
+// dropGaps removes the newlines between blocks, which a message's kept spaces would show as blank
+// lines.
+function dropGaps(node: Node) {
+  if (!node.children) return;
+  node.children = node.children.filter(
+    (c, i, all) =>
+      !(c.type === 'text' && !c.value?.trim() && (isBlock(all[i - 1]) || isBlock(all[i + 1]))),
+  );
+  node.children.forEach(dropGaps);
+}
+
+const _typedRehype = [() => dropGaps] as Options['rehypePlugins'];
 
 function Fence({ lang, source, plain }: { lang: string; source: string; plain?: boolean }) {
   if (!plain) {
@@ -55,10 +69,11 @@ export function Markdown({
 }) {
   return (
     <div
-      className={`${typed ? _typedLook : ''} flex flex-col gap-3 break-words [&_li+li]:mt-1 [&_li>:is(ul,ol)]:mt-1 [&>:is(h1,h2,h3,h4)]:-mb-1.5 [&>:is(h1,h2,h3,h4)]:mt-2 [&>:is(h1,h2,h3,h4):first-child]:mt-0 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_pre]:overflow-auto`}
+      className={`${typed ? 'whitespace-pre-wrap [&_[data-component=code]]:text-ink' : ''} flex flex-col gap-3 break-words [&_li+li]:mt-1 [&_li>:is(ul,ol)]:mt-1 [&>:is(h1,h2,h3,h4)]:-mb-1.5 [&>:is(h1,h2,h3,h4)]:mt-2 [&>:is(h1,h2,h3,h4):first-child]:mt-0 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_pre]:overflow-auto`}
     >
       <ReactMarkdown
         remarkPlugins={typed ? _typedPlugins : _richPlugins}
+        rehypePlugins={typed ? _typedRehype : undefined}
         urlTransform={(url, key) => (key === 'src' ? url : defaultUrlTransform(url))}
         components={{
           pre: ({ node }) => {
