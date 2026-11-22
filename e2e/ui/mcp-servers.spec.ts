@@ -192,7 +192,11 @@ test("Bot settings lists MCP servers as switches; a call to a picked user-added 
   };
   const use = `Use MCP tools. [{"server":"docs-local","tool":"answer","args":{}}]`;
   await send(use);
-  await expect(page.getByText(/Wants to use.*docs-local/)).toBeVisible();
+  await expect(
+    messages
+      .getByRole("group", { name: "Approval" })
+      .getByText(/Wants to use.*docs-local/),
+  ).toBeVisible();
   await expect(messages.getByText("stdio-answer-42")).toHaveCount(0);
   await page.getByRole("button", { name: "Allow", exact: true }).click();
   await expect(
