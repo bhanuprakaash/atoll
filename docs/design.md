@@ -938,7 +938,9 @@ Follow-ups:
     here (over 1 MB).". Images are served as before.
   - Panel: one resizable right panel (`SidePanel`) shared by the PR panel and the file panel,
     with a drag handle on its left edge: default 520px, at least 360px, at most 60% of the window,
-    and the chat never narrower than 480px. The width is shared and kept in `localStorage`. One
+    and dragging it wider stops where the chat would go under 480px (it always opens at its default
+    or last dragged width, never shrunk for the chat). The width is shared and kept in
+    `localStorage`. One
     panel at a time: a file replaces a PR and the reverse; opening one closes Thread details and
     Bot settings; the open state is local to the page and ends when another thread opens; Esc and ×
     close it. Bot settings keeps its own panel.

@@ -1,16 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode, type PointerEvent } from 'react';
+import { useEffect, useState, type ReactNode, type PointerEvent } from 'react';
 
 const _key = 'side-panel-width';
 const _default = 520;
 const _min = 360;
 const _chat = 480;
-
-// clampWidth keeps the panel within 360px and 60% of the window, and the chat at 480px or more:
-// room is the width the chat and the panel share.
-function clampWidth(w: number, room: number) {
-  const max = Math.min(window.innerWidth * 0.6, room - _chat);
-  return Math.round(Math.max(_min, Math.min(w, max)));
-}
 
 function savedWidth() {
   try {
@@ -21,8 +14,8 @@ function savedWidth() {
   }
 }
 
-// SidePanel docks on the right of the bot page: one panel at a time, resized from its left edge,
-// its width shared by every panel and kept. Esc and × close it.
+// SidePanel docks on the right of the bot page: one panel at a time, resized from its left edge
+// within 360px and 60% of the window, its width shared by every panel and kept. Esc and × close it.
 export function SidePanel({
   label,
   header,
@@ -39,8 +32,6 @@ export function SidePanel({
   children: ReactNode;
 }) {
   const [width, setWidth] = useState(savedWidth);
-  const [room, setRoom] = useState(window.innerWidth);
-  const panel = useRef<HTMLElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -50,20 +41,20 @@ export function SidePanel({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  useEffect(() => {
-    const parent = panel.current!.parentElement!;
-    const observer = new ResizeObserver(() => setRoom(parent.clientWidth));
-    observer.observe(parent);
-    return () => observer.disconnect();
-  }, []);
   const drag = (e: PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
-    const right = handle.parentElement!.getBoundingClientRect().right;
+    const aside = handle.parentElement!;
+    const { right, width: start } = aside.getBoundingClientRect();
+    // Dragging wider stops where the chat would go under 480px; opening never shrinks the panel.
+    const max = Math.max(
+      start,
+      Math.min(window.innerWidth * 0.6, aside.parentElement!.clientWidth - _chat),
+    );
     let next = width;
     const move = (ev: globalThis.PointerEvent) => {
-      next = clampWidth(right - ev.clientX, room);
+      next = Math.round(Math.max(_min, Math.min(right - ev.clientX, max)));
       setWidth(next);
     };
     const up = () => {
@@ -80,9 +71,8 @@ export function SidePanel({
   };
   return (
     <aside
-      ref={panel}
       aria-label={label}
-      style={{ width: clampWidth(width, room) }}
+      style={{ width, minWidth: _min, maxWidth: '60vw' }}
       className="relative flex min-h-0 flex-none flex-col border-l border-line bg-bg"
     >
       <div
