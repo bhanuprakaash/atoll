@@ -34,7 +34,9 @@ function Code({
   end,
 }: { source: string; path: string } & Omit<FileRef, 'path'>) {
   const first = useRef<HTMLDivElement>(null);
-  useEffect(() => first.current?.scrollIntoView({ block: 'center' }), [source, start]);
+  useEffect(() => {
+    first.current?.scrollIntoView({ block: 'center' });
+  }, [source, start]);
   const lang = path.slice(path.lastIndexOf('.') + 1);
   return (
     <pre className="min-w-max pb-4 font-mono text-[12.5px] leading-[1.6]">
