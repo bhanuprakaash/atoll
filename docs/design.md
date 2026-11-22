@@ -131,7 +131,9 @@ Known gap): `PUT` and its own `edit_bot` refuse to give it repos, its Bot settin
 offer none, a launch moves an older install's Chief to none. It does no code work. The "Can manage
 the platform" switch is on: tools to create and edit Bots (including model, look, colour, Mode and
 delegates), skills and repos, and to attach connections, served as Reef's own MCP tools. Read tools
-list Bots, skills, connections, repos, MCP servers and signed-in models and record no change.
+list Bots, skills, connections, repos, MCP servers and signed-in models and record no change;
+`get_skill(id)` reads one skill with its files. `create_skill` and `edit_skill` take the skill's
+files too (Connections and skills), so Chief writes a script itself.
 
 - Tools on Claude: only Reef's MCP tools, no shell, no file tools. Chief runs with `--tools ""`
   next to its MCP config, in every Mode. *A prompt without the repos does not stop a Bash call from
@@ -1368,7 +1370,11 @@ Follow-ups:
   relative path, content, executable), and keeps the folder it was imported from. Paths are
   relative, clean, inside the folder; content is UTF-8 text. Imports skip symlinks and need SKILL.md
   to be a regular file. No binaries. `PUT /api/skills/{id}` with `files` replaces the whole set in
-  one transaction; without `files` it keeps them. Each run gets read-only copies of its Bot's
+  one transaction; without `files` it keeps them. Chief's `create_skill` and `edit_skill` take the
+  same `files` (`path`, `content`, `executable`) under the same rules, with the same effect: an
+  edit with `files` replaces the set, without keeps it. `get_skill(id)` is a read tool (no change
+  recorded) that answers what `GET /api/skills/{id}` does: id, name, content and every file with its
+  executable flag; an unknown id is a tool error. Each run gets read-only copies of its Bot's
   skills (scripts 0555, the rest 0444) in its own folder under the provider's Atoll folder
   (`runs/<run id>`), removed when the run ends: Claude through `--add-dir` (copies in
   `.claude/skills`), Codex through `skills/extraRoots/set` before the thread starts. Every copy
@@ -1382,7 +1388,11 @@ Follow-ups:
 - Home paths in imported skills. Files may point at the owner's home (poteto-mode's scripts call
   `~/.claude/skills/poteto-mode/scripts/...`); left alone, a Bot would run the owner's real files.
   Import and Re-import (`import_skill`, `POST /api/skills/{id}/reimport`, same code) scan `SKILL.md`
-  and every other stored text file, and never write the source folder.
+  and every other stored text file, and never write the source folder. Chief's `create_skill` and
+  `edit_skill` run the same scan over `SKILL.md` and every file, with no rewrite: a home reference
+  is refused as a tool error naming each `<file>:<line> <ref>`, and nothing is stored or recorded.
+  Chief writes its own folder as `{{ATOLL_SKILL_DIR}}`, which holds no home reference. `PUT` and
+  `POST /api/skills` (Settings) have no home check.
   - Home reference: `~/` (not preceded by a letter, digit, `.`, `_`, `-`, `/` or `~`, so
     `https://x/~/y` and `a~/b` do not count), `$HOME` or `${HOME}` (with or without a following
     `/`), and the server's own home directory as an absolute path (`/Users/<name>`, `/home/<name>`).
@@ -1640,7 +1650,9 @@ Follow-ups:
   reads an agent file. For a Bot from an agent file, Chief calls `import_agent`, imports each skill
   it names, attaches them through `create_bot`, and keeps `~/.claude` paths out of the persona.
   *Reopened "importing a local skill needs no new tool": passing every file through `create_skill`
-  costs tokens and loses the executable bit.*
+  costs tokens and loses the executable bit.* That holds for imports, which stay on `import_skill`.
+  Files Chief writes itself go through `create_skill` and `edit_skill` with `files`, and
+  `executable` keeps the bit.
 - `import_skill` takes text files, skips binaries and `.git` and reports them; it never writes the
   source folder. Home-path rewrite and refusal: Connections and skills (Home paths in imported
   skills). It matches an existing skill by source folder, else a same-named skill made in Reef, and
@@ -1736,13 +1748,13 @@ Reef guide
 - Register repos once; a thread works in one, in its own worktree.
 - Providers: Claude Code and Codex, signed in at Settings > Providers.
 - Connections are signed-in services (GitLab, GitHub); Reef gives tokens to a Bot's CLI or MCP. MCP supplies tools: Reef serves memory and platform tools. Bots get only selected MCP servers. No MCP import.
-- A skill is a folder (SKILL.md plus text files) in one library, picked per Bot.
+- A skill is a folder (SKILL.md plus text files) in one library, picked per Bot. Write its files in files (scripts executable); cite as {{ATOLL_SKILL_DIR}}/<path>, never ~/.
 - Memory: decisions and findings Bots save, per user, repo or Bot.
 - Sign-ins are the user's. Never attach an unsigned connection; point to Settings > Connections.
 
 Ask first
 - To create a Bot or skill, ask in ONE message for each missing item, with a default. Put the full proposal for each Bot (model, skills, repo access, connections) in the reply; the user sees nothing else. Create nothing in that run. "ok" means the defaults. This overrides "Ask only when two readings are both real".
-- Small edits (rename, persona, look) need no question.
+- Small edits (rename, persona, look) need no question; scripts do.
 
 Import a local skill
 - Import skills with import_skill(path). A Bot from an agent file (~/.claude/agents/<name>.md): import_agent(path), import each skill it names, attach the ids in create_bot. Ask first applies.
@@ -2184,11 +2196,13 @@ Voice
   folded by default, not remembered. A line is one grey 13.5 px row: up to 3 small creatures for new
   Bots, a pencil for other changes, a bookmark for memory, a summary, the main action in muted text,
   then `›`. `Created 2 Bots: Poteto Agent, Comment Sicko · Undo all ›`, `Edited Poteto: persona,
-  delegates · Undo ›`, `Saved 2 memories: a finding, a decision ›` (one memory: `Saved a memory:
+  delegates · Undo ›` (`Edited ro-sql: files · Undo ›` when a skill edit changes its files),
+  `Saved 2 memories: a finding, a decision ›` (one memory: `Saved a memory:
   <first words> ›`). The action (Undo, Undo all) sits outside the toggle, works while folded, then
   shows Undone. Clicking the line opens today's card in place; again folds it. A new Bot's card
   shows creature, name, provider · model · skills · repos, Open and Undo per row (the line's own
-  Undo hides while it is open for one Bot). An edit opens as Before / After per field. A saved
+  Undo hides while it is open for one Bot). An edit opens as Before / After per field; a skill's files show as the added, changed and
+  removed paths, never their content. A saved
   memory opens as two lines of its text, then kind, why and source as plain muted text, with Details
   (scope, what it replaced) and Retire. A retired item leaves the thread. Two or more other changes
   of one kind show as one line ("Created 5 skills: teach, tdd, …") with Undo all and nothing to
@@ -2302,7 +2316,7 @@ Voice
   writes a file shows "Running cat" (`e() { gh pr view "$1"; }; e a`, `for n in a b; do gh pr view
   $n; done` and `timeout 400 gh pr checks 168 --watch` all show "Running gh pr"). Other words:
   "Waiting on a background task" for a command that reads a task's output file, "Looking around" for
-  Chief's `list_*` tools, "Handing off" (no target) for `delegate` and `continue`, "Needs you" with
+  Chief's `list_*` tools and `get_skill`, "Handing off" (no target) for `delegate` and `continue`, "Needs you" with
   an open approval, else "Working". Time: `42s`, `3m`, `1h 5m` since the helper thread was created,
   counting while its run goes. A helper thread that tracks a PR or MR shows its reference (`#7`,
   `!7`) as a link, with the Pull requests row's state dot and, while open, its CI as a word: `running`

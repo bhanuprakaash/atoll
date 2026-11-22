@@ -1602,7 +1602,8 @@ func ToolVerb(name, kind string) string {
 		case provider.ToolDelegate, provider.ToolContinue, provider.ToolStopHelper, provider.ToolHelpers:
 			return "Handing off"
 		}
-		if kind == "platform" && strings.HasPrefix(strings.TrimPrefix(name, _atollTools), "list_") {
+		if tool := strings.TrimPrefix(name, _atollTools); kind == "platform" &&
+			(strings.HasPrefix(tool, "list_") || tool == provider.ToolGetSkill) {
 			return "Looking around"
 		}
 	}

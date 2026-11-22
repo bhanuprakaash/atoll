@@ -31,7 +31,7 @@ func PlatformStep(c *MCP, mode, prompt string, before func(string, json.RawMessa
 		return "", fmt.Errorf("atoll MCP server absent")
 	}
 	if mode == "denied" {
-		for _, name := range append(PlatformTools(), ReadTools()...) {
+		for _, name := range append(append(PlatformTools(), ReadTools()...), "get_skill") {
 			if c.Tools[name] {
 				return "", fmt.Errorf("non-platform Bot received %s", name)
 			}

@@ -314,6 +314,19 @@ func startsWord(s string, i int) bool {
 	return i == 0 || strings.IndexByte(_pathChars, s[i-1]) < 0
 }
 
+// HomeRefs lists the home references in sk's SKILL.md and files.
+func HomeRefs(sk store.Skill) ([]HomeRef, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	refs := homeRefs("SKILL.md", sk.Content, home)
+	for _, f := range sk.Files {
+		refs = append(refs, homeRefs(f.Path, f.Content, home)...)
+	}
+	return refs, nil
+}
+
 // homeRefs lists the home references left in content, in order of line, then position.
 func homeRefs(file, content, home string) []HomeRef {
 	var refs []HomeRef

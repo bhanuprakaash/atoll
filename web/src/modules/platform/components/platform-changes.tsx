@@ -2,7 +2,12 @@ import { Link } from 'react-router';
 import { quiet } from '@/components/button';
 import { Creature, type Appearance } from '@/components/creature';
 import { Fold } from '@/components/fold';
-import { type PlatformChange, useChanges, useUndoChange } from '@/modules/platform/api/changes';
+import {
+  type PlatformChange,
+  type SkillFile,
+  useChanges,
+  useUndoChange,
+} from '@/modules/platform/api/changes';
 import { ErrorNotice } from '@/components/error-notice';
 
 const providerLabel = (provider?: string) =>
@@ -37,7 +42,24 @@ const fields = [
   'repo_access',
   'delegates',
   'content',
+  'files',
 ] as const;
+
+const filePaths = (before: SkillFile[] = [], after: SkillFile[] = []) => {
+  const old = new Map(before.map((file) => [file.path, file]));
+  const next = new Set(after.map((file) => file.path));
+  return [
+    ['Added', after.filter((file) => !old.has(file.path))],
+    [
+      'Changed',
+      after.filter((file) => {
+        const was = old.get(file.path);
+        return was && (was.content !== file.content || was.executable !== file.executable);
+      }),
+    ],
+    ['Removed', before.filter((file) => !next.has(file.path))],
+  ].filter(([, list]) => list.length > 0) as [string, SkillFile[]][];
+};
 
 type Names = {
   bots: { id: string; name: string }[];
@@ -260,6 +282,7 @@ function Change({
             (key) => JSON.stringify(change.before?.[key]) !== JSON.stringify(change.after?.[key]),
           )
           .map((key) => ({
+            key,
             label: key.replace('_', ' '),
             before: display(change.before?.[key], key),
             after: display(change.after?.[key], key),
@@ -298,26 +321,44 @@ function Change({
       >
         {edits.length > 0 && (
           <div className="flex flex-col gap-2">
-            {edits.map((e) => (
-              <div
-                key={e.label}
-                className="grid grid-cols-2 gap-3 rounded-2xl border border-sidebar-line p-3 text-[13px]"
-              >
-                {[
-                  ['Before', e.before],
-                  ['After', e.after],
-                ].map(([label, value]) => (
-                  <div key={label} className="min-w-0">
-                    <div className="text-xs text-label">
-                      {label} · {e.label}
+            {edits.map((e) =>
+              e.key === 'files' ? (
+                <div
+                  key={e.label}
+                  className="flex flex-col gap-2 rounded-2xl border border-sidebar-line p-3 text-[13px]"
+                >
+                  {filePaths(change.before?.files, change.after?.files).map(([label, list]) => (
+                    <div key={label} className="min-w-0">
+                      <div className="text-xs text-label">{label} · files</div>
+                      {list.map((file) => (
+                        <p key={file.path} className="text-ink/80 [overflow-wrap:anywhere]">
+                          {file.path}
+                        </p>
+                      ))}
                     </div>
-                    <p className="whitespace-pre-wrap text-ink/80 [overflow-wrap:anywhere]">
-                      {value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ))}
+                  ))}
+                </div>
+              ) : (
+                <div
+                  key={e.label}
+                  className="grid grid-cols-2 gap-3 rounded-2xl border border-sidebar-line p-3 text-[13px]"
+                >
+                  {[
+                    ['Before', e.before],
+                    ['After', e.after],
+                  ].map(([label, value]) => (
+                    <div key={label} className="min-w-0">
+                      <div className="text-xs text-label">
+                        {label} · {e.label}
+                      </div>
+                      <p className="whitespace-pre-wrap text-ink/80 [overflow-wrap:anywhere]">
+                        {value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ),
+            )}
           </div>
         )}
       </Fold>
