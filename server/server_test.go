@@ -359,6 +359,10 @@ func (p *lockProbe) Cached(ctx context.Context) []Provider {
 	return nil
 }
 
+func (*lockProbe) Limits(context.Context, string) (provider.Limits, error) {
+	return provider.Limits{}, nil
+}
+
 func TestBotWrites_ReadProvidersOutsideTransaction(t *testing.T) {
 	probe := &lockProbe{errs: make(chan error, 1)}
 	h, st := newHandlerWith(t, probe)

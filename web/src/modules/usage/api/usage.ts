@@ -10,6 +10,24 @@ export type Usage = {
   models: { model: string; tokens: number; cost_usd: number | null }[];
 };
 
+export type LimitWindow = { used_percent: number; resets_at: string; window_minutes: number };
+
+// A provider's entry has either its windows or an error.
+export type ProviderLimits = {
+  provider: 'claude' | 'codex';
+  session?: LimitWindow | null;
+  weekly?: LimitWindow | null;
+  error?: string;
+};
+
+export function useLimits() {
+  return useQuery({
+    queryKey: ['usage-limits'],
+    queryFn: () => api<ProviderLimits[]>('/usage/limits'),
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useUsage(range: UsageRange) {
   const offset = -new Date().getTimezoneOffset();
   return useQuery({

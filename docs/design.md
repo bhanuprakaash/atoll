@@ -2324,6 +2324,23 @@ Voice
     polling. A bar at 90% or more is amber, never red (a limit is not a failure). A failed read
     (signed out, network, an unexpected answer) shows `Not available right now.` with the reason
     under Details; the rest of the page works.
+  - `GET /api/usage/limits` answers an array, Claude then Codex, only signed-in providers, read from
+    the provider on every call: `{provider, session, weekly}` or `{provider, error}`. Each window is
+    `{used_percent, resets_at (RFC 3339), window_minutes}` or `null`; `error` is a plain sentence.
+    Claude: `GET $ATOLL_CLAUDE_USAGE_URL` (default `https://api.anthropic.com/api/oauth/usage`) with
+    the sign-in's access token as `Authorization: Bearer` and `anthropic-beta: oauth-2025-04-20`;
+    `five_hour` is the session (300 minutes), `seven_day` the weekly (10080). Codex: app-server
+    `account/rateLimits/read`; a window of a day or less is the session, a longer one the weekly. The
+    token is read in `provider/claude`, never refreshed by Reef, and never logged or sent on.
+  - Plan limits spike, 2026-11-21, real CLIs signed in (claude 2.1.322, codex-cli 0.167.0). Claude's
+    endpoint answered 200 with `five_hour {utilization 52.0, resets_at}` and `seven_day
+    {utilization 9.0, ...}` among many undocumented keys. It is not a documented API and may
+    change. The token had expired; `claude auth status` refreshed it without a model call, so Reef
+    runs that once when `expiresAt` has passed and reads again. Codex `account/rateLimits/read` on a
+    free plan answered `primary {usedPercent 0, windowDurationMins 43200, resetsAt}` and
+    `secondary null`, so windows are placed by length, not by primary or secondary. On macOS the CLI
+    keeps the token in the Keychain (service `Claude Code-credentials-<first 8 hex of sha256 of the
+    config folder path>`); that name comes from the CLI's source and was not tried on a Mac.
   - Left out on purpose: a thread list, context fill, budgets and alerts. *Reporting only; the
     owner wanted one place for what Reef costs, not another thing that asks for attention.*
 - First run is three steps over drifting creatures: the user's name; the providers found, with Sign

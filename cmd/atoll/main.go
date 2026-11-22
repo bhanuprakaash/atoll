@@ -28,6 +28,7 @@ type adapter struct {
 	name     string
 	new      func() provider.Session
 	signedIn func(ctx context.Context, bin, dir string) (bool, error)
+	limits   func(ctx context.Context, bin, dir string) (provider.Limits, error)
 	login    func(ctx context.Context, bin, dir string) *exec.Cmd
 	own      func(home string) provider.Own
 }
@@ -37,6 +38,7 @@ var _adapters = []adapter{
 		name:     "claude",
 		new:      func() provider.Session { return claude.New() },
 		signedIn: claude.SignedIn,
+		limits:   claude.Limits,
 		login:    claude.Login,
 		own:      claude.Own,
 	},
@@ -44,6 +46,7 @@ var _adapters = []adapter{
 		name:     "codex",
 		new:      func() provider.Session { return codex.New() },
 		signedIn: codex.SignedIn,
+		limits:   codex.Limits,
 		login:    codex.Login,
 		own:      codex.Own,
 	},

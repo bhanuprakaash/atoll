@@ -2,11 +2,16 @@ package server
 
 import (
 	"cmp"
+	"context"
+	"errors"
 	"maps"
 	"net/http"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
+
+	"atoll/provider"
 )
 
 // usageSum counts runs. A nil cost means no run had a price, never 0.
@@ -52,6 +57,60 @@ type (
 		CostUSD *float64 `json:"cost_usd"`
 	}
 )
+
+type (
+	planWindow struct {
+		UsedPercent   float64   `json:"used_percent"`
+		ResetsAt      time.Time `json:"resets_at"`
+		WindowMinutes int       `json:"window_minutes"`
+	}
+	planLimits struct {
+		Provider string      `json:"provider"`
+		Session  *planWindow `json:"session"`
+		Weekly   *planWindow `json:"weekly"`
+	}
+	planFailure struct {
+		Provider string `json:"provider"`
+		Error    string `json:"error"`
+	}
+)
+
+// getUsageLimits reads each signed-in provider's plan limits from the provider, on every call.
+func (a *api) getUsageLimits(w http.ResponseWriter, r *http.Request) {
+	var signed []Provider
+	if a.providers != nil {
+		for _, p := range a.providers.Cached(r.Context()) {
+			if p.SignedIn && p.Enabled {
+				signed = append(signed, p)
+			}
+		}
+	}
+	out := make([]any, len(signed))
+	var wg sync.WaitGroup
+	for i, p := range signed {
+		wg.Go(func() { out[i] = a.readLimits(r.Context(), p) })
+	}
+	wg.Wait()
+	write(w, http.StatusOK, out)
+}
+
+func (a *api) readLimits(ctx context.Context, p Provider) any {
+	limits, err := a.providers.Limits(ctx, p.Name)
+	if err == nil && limits.Session == nil && limits.Weekly == nil {
+		err = errors.New(p.Label + " reported no plan limits.")
+	}
+	if err != nil {
+		return planFailure{Provider: p.Name, Error: err.Error()}
+	}
+	return planLimits{Provider: p.Name, Session: planOf(limits.Session), Weekly: planOf(limits.Weekly)}
+}
+
+func planOf(w *provider.Window) *planWindow {
+	if w == nil {
+		return nil
+	}
+	return &planWindow{UsedPercent: w.UsedPercent, ResetsAt: w.ResetsAt, WindowMinutes: w.WindowMinutes}
+}
 
 func (a *api) getUsage(w http.ResponseWriter, r *http.Request) {
 	var since time.Time

@@ -449,6 +449,8 @@ const _platformTools = `[
 type Providers interface {
 	http.Handler
 	Cached(ctx context.Context) []Provider
+	// Limits reads how much of the plan of the provider name is used.
+	Limits(ctx context.Context, name string) (provider.Limits, error)
 }
 
 // Provider is what GET /api/providers lists for a provider that Chief's tools need.

@@ -3,6 +3,7 @@ import { ErrorNotice } from '@/components/error-notice';
 import { Segmented } from '@/components/segmented';
 import { SectionHead } from '@/components/settings-ui';
 import { cost, modelName } from '@/utils/usage';
+import { PlanLimits } from '@/modules/usage/components/plan-limits';
 import { type Usage, type UsageRange, useUsage } from '@/modules/usage/api/usage';
 
 const ranges = [
@@ -183,7 +184,8 @@ export function UsageSettings({ colours }: { colours: Record<string, string> }) 
   const { data, error, refetch } = useUsage(range);
   return (
     <>
-      <SectionHead title="Usage" lead="What your Bots used." />
+      <SectionHead title="Usage" lead="What your Bots used, and how much of each plan is left." />
+      <PlanLimits />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-[15px] font-normal">What Bots used</h3>
         <Segmented
