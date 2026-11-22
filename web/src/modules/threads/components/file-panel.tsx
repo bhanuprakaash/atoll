@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ErrorNotice } from '@/components/error-notice';
 import { SidePanel } from '@/components/side-panel';
+import { ApiError } from '@/lib/api-client';
 import { highlight, type Token, type TokenKind } from '@/utils/highlight';
 import type { FileRef } from '@/utils/file-ref';
 import { useThreadFile } from '@/modules/threads/api/thread-file';
@@ -11,6 +12,12 @@ const _colour: Record<TokenKind, string> = {
   string: 'text-syn-string',
   number: 'text-syn-number',
   keyword: 'text-syn-keyword',
+};
+// Refusals are normal answers, not failures: one muted line each.
+const refusals: Record<string, string> = {
+  not_found: "Not in this thread's checkout.",
+  binary: 'This is a binary file.',
+  too_large: 'Too large to show here (over 1 MB).',
 };
 const action =
   'h-8 rounded-full border border-outline px-3 text-[13px] text-ink disabled:opacity-50';
@@ -111,9 +118,7 @@ export function FilePanel({
       }
     >
       {image && broken ? (
-        <div className="px-6 py-2">
-          <ErrorNotice title="Not in this thread's checkout." next="" details="" />
-        </div>
+        <p className="px-6 py-2 text-[13.5px] text-muted">{refusals.not_found}</p>
       ) : image ? (
         <img
           onError={() => setBroken(true)}
@@ -121,6 +126,8 @@ export function FilePanel({
           alt={path}
           className="max-w-full px-6"
         />
+      ) : error instanceof ApiError && refusals[error.code] ? (
+        <p className="px-6 py-2 text-[13.5px] text-muted">{refusals[error.code]}</p>
       ) : error ? (
         <div className="px-6 py-2">
           <ErrorNotice error={error} next="" details="" />
