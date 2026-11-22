@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DiffView } from '@/components/diff-view';
 import { ErrorNotice } from '@/components/error-notice';
 import { Markdown } from '@/components/markdown';
 import { pullNumber } from '@/components/pr-chip';
 import { ApiError } from '@/lib/api-client';
-import { usePullRequest, type PullRequestDetail } from '@/modules/threads/api/pull-request';
+import {
+  useMergePR,
+  usePullRequest,
+  type PullRequestDetail,
+} from '@/modules/threads/api/pull-request';
 
 const states: Record<PullRequestDetail['state'], [string, string]> = {
   open: ['Open', 'bg-ok-bg text-ok'],
@@ -140,6 +144,80 @@ function Details({ pr }: { pr: PullRequestDetail }) {
   );
 }
 
+const methods = { merge: 'Merge', squash: 'Squash and merge', rebase: 'Rebase and merge' } as const;
+
+// Merge is the person's merge: a first click asks "Confirm merge?", which resets after 3 seconds,
+// on Esc or on a click elsewhere; the second merges at the head sha the panel loaded.
+function Merge({ threadId, pr }: { threadId: string; pr: PullRequestDetail }) {
+  const [confirming, setConfirming] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const merge = useMergePR(threadId, pr.url);
+  const { reset } = merge;
+  useEffect(() => reset(), [reset, pr.head_sha]);
+  useEffect(() => {
+    if (!confirming) return;
+    const timer = setTimeout(() => setConfirming(false), 3000);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setConfirming(false);
+    };
+    const onDown = (e: PointerEvent) => {
+      if (!button.current?.contains(e.target as Node)) setConfirming(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('pointerdown', onDown, true);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('pointerdown', onDown, true);
+    };
+  }, [confirming]);
+  const conflicts = pr.mergeable === false;
+  const code = merge.error instanceof ApiError ? merge.error.code : '';
+  const label = merge.isPending
+    ? 'Merging…'
+    : confirming
+      ? 'Confirm merge?'
+      : pr.merge_method
+        ? methods[pr.merge_method]
+        : 'Merge';
+  return (
+    <div className="flex flex-col gap-2">
+      {merge.error ? (
+        code === 'head_moved' ? (
+          <ErrorNotice error={merge.error} next="" details="" />
+        ) : (
+          <ErrorNotice error={merge.error} next={code === 'refused' ? '' : undefined} />
+        )
+      ) : conflicts ? (
+        <p className="text-[13px] text-ink">Has conflicts with {pr.base}.</p>
+      ) : (
+        <p className="text-[13px] text-muted">
+          {`Merges ${pr.head} into ${pr.base} at ${pr.head_sha.slice(0, 7)}, the commit shown here`}
+        </p>
+      )}
+      <button
+        ref={button}
+        type="button"
+        disabled={conflicts || !pr.merge_method || merge.isPending}
+        onClick={() => {
+          if (!confirming) {
+            merge.reset();
+            setConfirming(true);
+            return;
+          }
+          setConfirming(false);
+          merge.mutate(pr.head_sha);
+        }}
+        className="h-8 self-end rounded-full bg-accent px-4 text-[13.5px] text-accent-ink disabled:opacity-50"
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+
 function Failure({ error, url, retry }: { error: unknown; url: string; retry: () => void }) {
   const code = error instanceof ApiError ? error.code : '';
   if (code === 'no_github' || code === 'github_sign_in')
@@ -225,12 +303,13 @@ export function PRPanel({
         )}
       </div>
       {pr && (
-        <div className="flex flex-none items-center gap-3 border-t border-line px-6 py-3">
+        <div className="flex flex-none flex-col gap-3 border-t border-line px-6 py-3">
+          {(pr.state === 'open' || pr.state === 'draft') && <Merge threadId={threadId} pr={pr} />}
           <button
             type="button"
             disabled={isFetching}
             onClick={() => void refetch()}
-            className={action}
+            className={`${action} self-start`}
           >
             Reload
           </button>

@@ -146,6 +146,7 @@ func New(
 	mux.HandleFunc("POST /api/island/dismiss", a.dismissIsland)
 	mux.HandleFunc("GET /api/threads/{id}/file", a.threadFile)
 	mux.HandleFunc("GET /api/threads/{id}/pr", a.readPR)
+	mux.HandleFunc("POST /api/threads/{id}/pr/merge", a.mergePR)
 	mux.HandleFunc("GET /api/attachments/{id}", a.getAttachment)
 	mux.HandleFunc("GET /api/runs/{id}", a.getRun)
 	mux.HandleFunc("POST /api/runs/{id}/stop", a.stopRun)
@@ -508,6 +509,25 @@ func (a *api) readPR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, http.StatusOK, pr)
+}
+
+// mergePR merges a GitHub pull request at the head sha the PR panel loaded.
+func (a *api) mergePR(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		URL string `json:"url"`
+		SHA string `json:"sha"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.SHA == "" {
+		fail(w, http.StatusBadRequest, "Give the pull request's URL and the head commit to merge.")
+		return
+	}
+	if err := a.runs.MergePR(r.Context(), r.PathValue("id"), body.URL, body.SHA); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusOK, struct {
+		State string `json:"state"`
+	}{State: "merged"})
 }
 
 func (a *api) getThread(w http.ResponseWriter, r *http.Request) {

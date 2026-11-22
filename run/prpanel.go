@@ -1,14 +1,19 @@
 package run
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"atoll/connection"
 	"atoll/store"
@@ -47,7 +52,7 @@ type (
 		Patch     string `json:"patch,omitempty"`
 	}
 
-	// PRError is a PR read Reef could not do. Code names the cause for the UI; Text is the
+	// PRError is a PR read or merge Reef could not do. Code names the cause for the UI; Text is the
 	// sentence for the person.
 	PRError struct {
 		Code string
@@ -70,11 +75,15 @@ type (
 
 // Codes of PRError.
 const (
-	PRNoGitHub = "no_github"
-	PRSignIn   = "github_sign_in"
-	PRCantSee  = "cant_see"
-	PRGitHub   = "github"
+	PRNoGitHub  = "no_github"
+	PRSignIn    = "github_sign_in"
+	PRCantSee   = "cant_see"
+	PRGitHub    = "github"
+	PRHeadMoved = "head_moved"
+	PRRefused   = "refused"
 )
+
+const _messageCut = 200
 
 // ErrNotPull is returned for a URL that is not a pull request on GitHub's host.
 var ErrNotPull = errors.New("not a GitHub pull request URL")
@@ -274,4 +283,111 @@ func pullOnGitHub(raw string) (owner, name string, n int, err error) {
 		return "", "", 0, ErrNotPull
 	}
 	return owner, name, n, nil
+}
+
+// MergePR merges the pull request at rawURL with the thread Bot's first GitHub connection, only at
+// sha, the head the panel showed, and with the first method the repo allows. It then runs the
+// thread's check of that PR at once, so the merge shows and wakes as one merged on GitHub.
+func (m *Manager) MergePR(ctx context.Context, threadID, rawURL, sha string) error {
+	owner, name, n, err := pullOnGitHub(rawURL)
+	if err != nil {
+		return err
+	}
+	t, err := m.cfg.Store.Thread(ctx, threadID)
+	if err != nil {
+		return err
+	}
+	bot, err := m.cfg.Store.Bot(ctx, t.BotID)
+	if err != nil {
+		return err
+	}
+	connID, token, err := m.panelToken(ctx, bot, n)
+	if err != nil {
+		return err
+	}
+	w := &watcher{prs: map[string]*watched{}, paused: map[string]time.Time{}}
+	api := fmt.Sprintf("%s/repos/%s/%s", connection.GitHubAPI(), owner, name)
+	body, _, err := m.githubGet(w, bot.ID, connID, token, api, "")
+	if err != nil {
+		return panelError(bot, n, err)
+	}
+	var r ghRepo
+	if err := json.Unmarshal(body, &r); err != nil {
+		return panelError(bot, n, fmt.Errorf("decode repo: %w", err))
+	}
+	if err := m.githubMerge(ctx, bot, connID, token, fmt.Sprintf("%s/pulls/%d/merge", api, n), n, sha, r.mergeMethod()); err != nil {
+		return err
+	}
+	prs, err := m.cfg.Store.Watched(ctx)
+	if err != nil {
+		m.cfg.Log.Warn("list watched PRs after merge", "error", err)
+		return nil
+	}
+	for _, wp := range prs {
+		if wp.Thread.ID != threadID || wp.PR.URL != rawURL {
+			continue
+		}
+		if err := m.check(w, wp); err != nil {
+			m.cfg.Log.Warn("check MR after merge", "thread_id", threadID, "url", rawURL, "error", err)
+		}
+		return nil
+	}
+	return nil
+}
+
+// githubMerge sends the merge. GitHub's 409 is a head that moved since sha; another refusal
+// carries GitHub's own message.
+func (m *Manager) githubMerge(ctx context.Context, bot store.Bot, connID, token, rawURL string, n int, sha, method string) error {
+	payload, err := json.Marshal(struct {
+		SHA         string `json:"sha"`
+		MergeMethod string `json:"merge_method"`
+	}{SHA: sha, MergeMethod: method})
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, _readTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, rawURL, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("create GitHub request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return panelError(bot, n, fmt.Errorf("send GitHub request: %w", err))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var answer struct {
+		Message string `json:"message"`
+	}
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&answer)
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusUnauthorized:
+		return panelError(bot, n, m.githubSignInLost(m.ctx, connID, bot.ID, connection.RejectedBy(rawURL, resp)))
+	case http.StatusConflict:
+		return &PRError{Code: PRHeadMoved, Text: "New commits were pushed since you opened this PR. Nothing was merged."}
+	case http.StatusForbidden, http.StatusMethodNotAllowed, http.StatusUnprocessableEntity:
+		if text := plainMessage(answer.Message); text != "" {
+			return &PRError{Code: PRRefused, Text: text, Err: &githubStatusError{Status: resp.StatusCode, URL: rawURL}}
+		}
+	}
+	return &PRError{Code: PRGitHub, Text: fmt.Sprintf("Couldn't merge PR #%d.", n), Err: &githubStatusError{Status: resp.StatusCode, URL: rawURL}}
+}
+
+// plainMessage is GitHub's refusal as one line: control characters dropped, cut.
+func plainMessage(s string) string {
+	s = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s))
+	if utf8.RuneCountInString(s) > _messageCut {
+		s = string([]rune(s)[:_messageCut]) + "…"
+	}
+	return s
 }

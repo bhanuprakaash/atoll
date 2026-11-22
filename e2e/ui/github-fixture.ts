@@ -17,7 +17,11 @@ export type ChangedFile = {
   patch?: string;
 };
 
-export type FakeCheck = { name: string; status: string; conclusion: string | null };
+export type FakeCheck = {
+  name: string;
+  status: string;
+  conclusion: string | null;
+};
 
 export type PullDetails = {
   author?: string;
@@ -26,6 +30,10 @@ export type PullDetails = {
   draft?: boolean;
   mergeable?: boolean | null;
 };
+
+// MergeRequest is a PUT .../merge the fake got: the sha and merge_method of its body, and whether
+// it merged.
+export type MergeRequest = { sha: string; method: string; merged: boolean };
 
 export type GitHubFake = {
   url: string;
@@ -48,12 +56,22 @@ export type GitHubFake = {
   hide: (n: number, hidden: boolean) => void;
   // fail makes pull request n answer 500.
   fail: (n: number, failing: boolean) => void;
+  // pushHead moves the head of pull request n to a new commit, as a push to its branch does, and
+  // returns the new sha.
+  pushHead: (n: number) => string;
+  // setMergeMethods sets what the repo allows; every method is allowed until a test says.
+  setMergeMethods: (allowed: { merge: boolean; squash: boolean; rebase: boolean }) => void;
+  // merges is every merge request the fake got for pull request n, in order. The fake merges the
+  // pull request only when sha is its head and it is mergeable (describe mergeable false), else
+  // answers 409 and 405 as GitHub does.
+  merges: (n: number) => MergeRequest[];
   // reads is how many times the server asked about pull request n.
   reads: (n: number) => number;
   close: () => void;
 };
 
 const sha = (n: number) => `head${n}`.padEnd(40, '0');
+export const headSha = sha;
 
 export async function startGitHub(): Promise<GitHubFake> {
   const pulls: { title: string; state: string; merged: boolean }[] = [];
@@ -64,6 +82,10 @@ export async function startGitHub(): Promise<GitHubFake> {
   const files = new Map<number, ChangedFile[]>();
   const hidden = new Set<number>();
   const failing = new Set<number>();
+  const heads = new Map<number, string>();
+  const headOf = (n: number) => heads.get(n) ?? sha(n);
+  const merges = new Map<number, MergeRequest[]>();
+  let methods = { merge: true, squash: true, rebase: true };
   let token = '';
   let url = '';
   const server: Server = createServer((req, res) => {
@@ -71,7 +93,10 @@ export async function startGitHub(): Promise<GitHubFake> {
     req.on('data', (c) => (body += c));
     req.on('end', () => {
       const json = (status: number, value: unknown, headers: Record<string, string> = {}) => {
-        res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
+        res.writeHead(status, {
+          'Content-Type': 'application/json',
+          ...headers,
+        });
         res.end(JSON.stringify(value));
       };
       const path = req.url ?? '';
@@ -107,9 +132,37 @@ export async function startGitHub(): Promise<GitHubFake> {
       } else if (req.method === 'GET' && route === '/repos/octo/hello') {
         json(200, {
           full_name: 'octo/hello',
-          allow_merge_commit: true,
-          allow_squash_merge: true,
-          allow_rebase_merge: true,
+          allow_merge_commit: methods.merge,
+          allow_squash_merge: methods.squash,
+          allow_rebase_merge: methods.rebase,
+        });
+      } else if (
+        req.method === 'PUT' &&
+        (match = route.match(/^\/repos\/octo\/hello\/pulls\/(\d+)\/merge$/))
+      ) {
+        const n = Number(match[1]);
+        const pull = pulls[n - 1];
+        if (!pull || hidden.has(n)) return json(404, { message: 'Not Found' });
+        const asked = JSON.parse(body) as { sha: string; merge_method: string };
+        const request = {
+          sha: asked.sha,
+          method: asked.merge_method,
+          merged: false,
+        };
+        merges.set(n, [...(merges.get(n) ?? []), request]);
+        if (asked.sha !== headOf(n))
+          return json(409, {
+            message: 'Head branch was modified. Review and try the merge again.',
+          });
+        if (details.get(n)?.mergeable === false)
+          return json(405, { message: 'Pull Request is not mergeable' });
+        pull.state = 'closed';
+        pull.merged = true;
+        request.merged = true;
+        json(200, {
+          sha: sha(n + 2000),
+          merged: true,
+          message: 'Pull Request successfully merged',
         });
       } else if ((match = route.match(/^\/repos\/octo\/hello\/pulls\/(\d+)\/files$/))) {
         const n = Number(match[1]);
@@ -122,7 +175,15 @@ export async function startGitHub(): Promise<GitHubFake> {
           headers.Link = `<${url}/repos/octo/hello/pulls/${n}/files?per_page=100&page=${page + 1}>; rel="next"`;
         json(
           200,
-          file ? [{ ...file, status: 'modified', changes: file.additions + file.deletions }] : [],
+          file
+            ? [
+                {
+                  ...file,
+                  status: 'modified',
+                  changes: file.additions + file.deletions,
+                },
+              ]
+            : [],
           headers,
         );
       } else if ((match = path.match(/^\/repos\/octo\/hello\/pulls\/(\d+)$/))) {
@@ -140,7 +201,7 @@ export async function startGitHub(): Promise<GitHubFake> {
           mergeable: d.mergeable === undefined ? true : d.mergeable,
           user: { login: d.author ?? 'reef-fixture' },
           base: { ref: 'main' },
-          head: { sha: sha(n), ref: d.head ?? `fix/pr-${n}` },
+          head: { sha: headOf(n), ref: d.head ?? `fix/pr-${n}` },
         });
         const etag = `"${createHash('sha256').update(payload).digest('hex').slice(0, 16)}"`;
         if (req.headers['if-none-match'] === etag) {
@@ -149,8 +210,8 @@ export async function startGitHub(): Promise<GitHubFake> {
         }
         res.writeHead(200, { 'Content-Type': 'application/json', ETag: etag });
         res.end(payload);
-      } else if ((match = path.match(/^\/repos\/octo\/hello\/commits\/head(\d+)0*\/check-runs/))) {
-        const n = pulls.findIndex((_, i) => path.includes(`/commits/${sha(i + 1)}/`)) + 1;
+      } else if (/^\/repos\/octo\/hello\/commits\/[0-9a-z]+\/check-runs/.test(path)) {
+        const n = pulls.findIndex((_, i) => path.includes(`/commits/${headOf(i + 1)}/`)) + 1;
         const state = ci.get(n);
         const runs: FakeCheck[] = (checks.get(n) ??
           (state
@@ -205,6 +266,15 @@ export async function startGitHub(): Promise<GitHubFake> {
       if (on) failing.add(n);
       else failing.delete(n);
     },
+    pushHead: (n) => {
+      const moved = `moved${n}`.padEnd(40, '0');
+      heads.set(n, moved);
+      return moved;
+    },
+    setMergeMethods: (allowed) => {
+      methods = allowed;
+    },
+    merges: (n) => (merges.get(n) ?? []).map((r) => ({ ...r })),
     reads: (n) => reads.get(n) ?? 0,
     close: () => {
       server.close();
