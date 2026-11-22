@@ -9,6 +9,7 @@ import { ProvidersSettings } from '@/modules/providers/components/providers-sett
 import { useRepos } from '@/modules/repos/api/repos';
 import { useSkills } from '@/modules/skills/api/skills';
 import { SkillsSettings } from '@/modules/skills/components/skills-settings';
+import { UsageSettings } from '@/modules/usage/components/usage-settings';
 
 export function ProvidersPage() {
   const { data: bots = [] } = useBots();
@@ -40,6 +41,11 @@ export function MemoryPage() {
   );
 }
 
+export function UsagePage() {
+  const { data: bots = [] } = useBots();
+  return <UsageSettings colours={Object.fromEntries(bots.map((b) => [b.id, b.colour]))} />;
+}
+
 export function SettingsPage() {
   const { data: providers = [] } = useProviders();
   const { data: skills = [] } = useSkills();
@@ -54,14 +60,18 @@ export function SettingsPage() {
     ['mcp-servers', 'MCP servers', ''],
     ['repos', 'Repos', repos.length || ''],
     ['memory', 'Memory', memory.filter((m) => m.status !== 'retired').length || ''],
+    ['usage', 'Usage', ''],
   ] as const;
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="flex min-h-0 flex-1 max-[899.98px]:flex-col">
       <nav
         aria-label="Settings"
-        className="flex w-55 shrink-0 flex-col gap-0.5 border-r border-line px-3 py-6 max-[899.98px]:pt-16"
+        className="flex w-55 shrink-0 flex-col gap-0.5 border-r border-line px-3 py-6 max-[899.98px]:w-auto max-[899.98px]:flex-row max-[899.98px]:items-center max-[899.98px]:overflow-x-auto max-[899.98px]:border-r-0 max-[899.98px]:border-b max-[899.98px]:pt-16 max-[899.98px]:pb-3"
       >
-        <h1 data-tauri-drag-region="deep" className="px-3 pb-3 text-base font-normal">
+        <h1
+          data-tauri-drag-region="deep"
+          className="px-3 pb-3 text-base font-normal max-[899.98px]:pb-0"
+        >
           Settings
         </h1>
         {sections.map(([path, label, note]) => (
@@ -69,7 +79,7 @@ export function SettingsPage() {
             key={path}
             to={`/settings/${path}`}
             className={({ isActive }) =>
-              `flex h-[38px] items-center gap-2.5 rounded-xl px-3 text-sm ${isActive ? 'bg-line text-ink' : 'text-ink/80'}`
+              `flex h-[38px] flex-none items-center gap-2.5 whitespace-nowrap rounded-xl px-3 text-sm ${isActive ? 'bg-line text-ink' : 'text-ink/80'}`
             }
           >
             {label}
@@ -81,7 +91,7 @@ export function SettingsPage() {
           </NavLink>
         ))}
       </nav>
-      <div className="min-w-0 flex-1 overflow-auto px-10 pb-12 pt-8">
+      <div className="min-w-0 flex-1 overflow-auto px-10 pb-12 pt-8 max-[899.98px]:px-5">
         <div className="mx-auto flex max-w-180 flex-col gap-4.5">
           <Outlet />
         </div>
