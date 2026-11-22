@@ -552,29 +552,34 @@ func (s *Store) Bots(ctx context.Context) ([]Bot, error) {
 		scanBot)
 }
 
-// BotCosts24h is what each Bot's runs that ended in the last 24 hours cost, by Bot id; a Bot with
-// no priced run is absent.
-func (s *Store) BotCosts24h(ctx context.Context) (map[string]float64, error) {
-	rows, err := query(ctx, s.db,
-		`SELECT t.bot_id, sum(r.cost_usd) FROM runs r JOIN threads t ON t.id = r.thread_id
-		 WHERE r.cost_usd IS NOT NULL AND r.finished_at >= ? GROUP BY t.bot_id`,
-		func(r *sql.Rows) (botCost, error) {
-			var c botCost
-			return c, r.Scan(&c.id, &c.usd)
-		}, time.Now().Add(-24*time.Hour).UnixMicro())
-	if err != nil {
-		return nil, fmt.Errorf("read bot costs: %w", err)
-	}
-	costs := make(map[string]float64, len(rows))
-	for _, c := range rows {
-		costs[c.id] = c.usd
-	}
-	return costs, nil
+// UsedRun is what one run used, with the Bot of its thread, removed or not.
+type UsedRun struct {
+	BotID      string
+	BotName    string
+	FinishedAt time.Time
+	Usage      Usage
 }
 
-type botCost struct {
-	id  string
-	usd float64
+// Usage lists the runs that reported usage and ended at or after since.
+func (s *Store) Usage(ctx context.Context, since time.Time) ([]UsedRun, error) {
+	runs, err := query(ctx, s.db,
+		`SELECT t.bot_id, b.name, r.finished_at, r.usage FROM runs r
+		 JOIN threads t ON t.id = r.thread_id JOIN bots b ON b.id = t.bot_id
+		 WHERE r.usage IS NOT NULL AND r.finished_at >= ?`,
+		func(r *sql.Rows) (UsedRun, error) {
+			var u UsedRun
+			var finished int64
+			var usage string
+			if err := r.Scan(&u.BotID, &u.BotName, &finished, &usage); err != nil {
+				return UsedRun{}, err
+			}
+			u.FinishedAt = time.UnixMicro(finished).UTC()
+			return u, json.Unmarshal([]byte(usage), &u.Usage)
+		}, since.UnixMicro())
+	if err != nil {
+		return nil, fmt.Errorf("read usage: %w", err)
+	}
+	return runs, nil
 }
 
 // SetPinned pins the Bot with id, or unpins it. Pinning puts it last in Pinned; pinning a pinned
