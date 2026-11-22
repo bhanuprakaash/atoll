@@ -298,7 +298,7 @@ func WakeText(w store.Wake, g GitState, helpers string, idle time.Duration) stri
 	case store.NoticeHelperStopped:
 		return fmt.Sprintf("The user stopped %s\n(thread %s)\n\n%s", helper, threadID, helpers)
 	case store.NoticeHelperStuck:
-		third := _continueIt
+		third := continueLine(w)
 		if w.StuckBefore && w.Branch != "" {
 			third = "Stuck twice in a row. Start a new helper from branch " + w.Branch + "."
 		}
@@ -334,7 +334,18 @@ func stoppedBlock(w store.Wake, g GitState, reason string) string {
 	return fmt.Sprintf("%s%s. (thread %s)", head, line, w.ThreadID)
 }
 
-const _continueIt = "Continue it to pick up where it stopped."
+const (
+	_continueIt = "Continue it to pick up where it stopped."
+	_noSession  = "No session yet: a continue starts it fresh."
+)
+
+// continueLine tells the boss what a continue does for the helper.
+func continueLine(w store.Wake) string {
+	if w.NoSession {
+		return _noSession
+	}
+	return _continueIt
+}
 
 // shortDuration is d as a Go duration without its zero tails: 15m, not 15m0s.
 func shortDuration(d time.Duration) string {
@@ -382,9 +393,15 @@ func FailUnfinished(ctx context.Context, st *store.Store, reason string) ([]stri
 // is the state of each helper's work by run id.
 func restartWakeText(ws []store.Wake, git map[string]GitState) string {
 	helpers := HelpersLine(nil)
-	block := func(w store.Wake) string { return stoppedBlock(w, git[w.Run.ID], w.Run.Error) }
+	block := func(w store.Wake) string {
+		b := stoppedBlock(w, git[w.Run.ID], w.Run.Error)
+		if w.NoSession {
+			b += "\n" + _noSession
+		}
+		return b
+	}
 	if len(ws) == 1 {
-		return block(ws[0]) + "\n" + _continueIt + "\n\n" + helpers
+		return stoppedBlock(ws[0], git[ws[0].Run.ID], ws[0].Run.Error) + "\n" + continueLine(ws[0]) + "\n\n" + helpers
 	}
 	parts := []string{fmt.Sprintf(
 		"A restart interrupted %d helper runs. Continue a helper to pick up where it stopped.", len(ws))}

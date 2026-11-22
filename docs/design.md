@@ -551,7 +551,9 @@ Follow-ups:
     stucks: when the same helper is stuck a second time in a row, the third line reads instead
     `Stuck twice in a row. Start a new helper from branch fix/x.` *A `continue` resumes the same
     session and worktree, so the helper keeps its context and its uncommitted edits; a new delegate
-    would start over.*
+    would start over.* A helper thread with no stored session (the idle limit landed before the
+    provider's `init` event) gets `No session yet: a continue starts it fresh.` as the third line
+    instead; `Stuck twice in a row…` still wins over it.
   - stopped by a provider usage limit (`rate_limited`, see App and UI): `{Helper} is out until
     {time}.` and `Do not send it work until then.`, never the provider's text; `{time}` is
     `resets_at` in UTC, `2026-11-11T15:42:00Z`, or `its {provider} limit resets` with no
@@ -591,7 +593,9 @@ Follow-ups:
   ```
 
   For N = 1 it is that helper's message: its two lines, then `Continue it to pick up where it
-  stopped.` and the helpers line. It is stored in the transaction that marks the runs failed, so it
+  stopped.` and the helpers line. A helper with no stored session (the restart landed before the
+  provider's `init` event, so a `continue` starts it fresh) gets `No session yet: a continue starts
+  it fresh.` instead of that line for N = 1, and as the third line of its block for N > 1. It is stored in the transaction that marks the runs failed, so it
   cannot repeat or be lost.
 - Background runs. A run that starts only with Reef notices (a helper finished, a PR merged, CI
   finished, a ticket closed) is a background run, for every Bot not in a helper thread. Its final

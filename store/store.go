@@ -1727,7 +1727,9 @@ type Wake struct {
 	RepoPath, Worktree, WorktreeGitDir string
 	// StuckBefore: the helper thread's run before this one was stuck too.
 	StuckBefore bool
-	Run         Run
+	// NoSession: the helper thread has no stored session, so a continue starts it fresh.
+	NoSession bool
+	Run       Run
 }
 
 // Notice is the notice kind of the wake: how the helper's run ended.
@@ -1942,7 +1944,8 @@ func readWake(ctx context.Context, q rowQueryer, runID string) (w heldWake, ok b
 		`SELECT b.id, b.name, t.id, t.branch, p.id, p.branch, r.status, r.reply, r.error, r.error_kind, r.resets_at, r.provider,
 		   coalesce(rp.path, ''), t.worktree, t.worktree_git_dir,
 		   coalesce((SELECT q.error_kind = 'stuck' FROM runs q WHERE q.thread_id = r.thread_id AND q.rowid < r.rowid
-		     ORDER BY q.rowid DESC LIMIT 1), 0)
+		     ORDER BY q.rowid DESC LIMIT 1), 0),
+		   t.session = ''
 		 FROM runs r JOIN threads t ON t.id = r.thread_id
 		 LEFT JOIN repos rp ON rp.id = t.repo_id
 		 JOIN bots b ON b.id = t.bot_id AND b.removed = 0
@@ -1950,7 +1953,7 @@ func readWake(ctx context.Context, q rowQueryer, runID string) (w heldWake, ok b
 		 WHERE r.id = ?`, runID).
 		Scan(&w.botID, &w.Helper, &w.ThreadID, &w.Branch, &w.bossID, &w.BossBranch,
 			&w.Run.Status, &w.Run.Reply, &w.Run.Error, &w.Run.ErrorKind, &w.Run.ResetsAt, &w.Run.Provider,
-			&w.RepoPath, &w.Worktree, &w.WorktreeGitDir, &w.StuckBefore)
+			&w.RepoPath, &w.Worktree, &w.WorktreeGitDir, &w.StuckBefore, &w.NoSession)
 	if errors.Is(err, sql.ErrNoRows) {
 		return w, false, nil
 	}
