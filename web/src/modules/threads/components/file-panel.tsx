@@ -81,6 +81,7 @@ export function FilePanel({
   onClose: () => void;
 }) {
   const [picked, setPicked] = useState('');
+  const [broken, setBroken] = useState(false);
   const path = picked || file.path;
   const image = _images.test(path);
   const { data, error, refetch, isFetching } = useThreadFile(threadId, path, !image);
@@ -109,12 +110,21 @@ export function FilePanel({
         )
       }
     >
-      {image ? (
+      {image && broken ? (
+        <div className="px-6 py-2">
+          <ErrorNotice title="Not in this thread's checkout." next="" details="" />
+        </div>
+      ) : image ? (
         <img
+          onError={() => setBroken(true)}
           src={`/api/threads/${threadId}/file?path=${encodeURIComponent(path)}`}
           alt={path}
           className="max-w-full px-6"
         />
+      ) : error ? (
+        <div className="px-6 py-2">
+          <ErrorNotice error={error} next="" details="" />
+        </div>
       ) : data?.matches ? (
         <div className="flex flex-col gap-2 px-6 py-2 text-[13.5px]">
           <p className="text-muted">
@@ -136,10 +146,6 @@ export function FilePanel({
         </div>
       ) : data?.text !== undefined ? (
         <Code source={data.text} path={shown} start={file.start} end={file.end} />
-      ) : error ? (
-        <div className="px-6 py-2">
-          <ErrorNotice error={error} next="" details="" />
-        </div>
       ) : (
         <p className="px-6 py-2 text-[13.5px] text-muted">Loading {path}…</p>
       )}

@@ -17,7 +17,7 @@ export function useThreadFile(threadId: string, path: string, enabled: boolean) 
     queryFn: () => api<ThreadFile>(`/threads/${threadId}/file?path=${encodeURIComponent(path)}`),
     enabled,
     retry: false,
-    staleTime: Infinity,
+    gcTime: 0,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });

@@ -1,13 +1,14 @@
-import { useEffect, useState, type ReactNode, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type PointerEvent } from 'react';
 
 const _key = 'side-panel-width';
 const _default = 520;
 const _min = 360;
 const _chat = 480;
 
-// clampWidth keeps the panel within 360px and 60% of the window, and the chat at 480px or more.
-function clampWidth(w: number) {
-  const max = Math.min(window.innerWidth * 0.6, window.innerWidth - _chat);
+// clampWidth keeps the panel within 360px and 60% of the window, and the chat at 480px or more:
+// room is the width the chat and the panel share.
+function clampWidth(w: number, room: number) {
+  const max = Math.min(window.innerWidth * 0.6, room - _chat);
   return Math.round(Math.max(_min, Math.min(w, max)));
 }
 
@@ -38,21 +39,23 @@ export function SidePanel({
   children: ReactNode;
 }) {
   const [width, setWidth] = useState(savedWidth);
-  const [, setWindowWidth] = useState(window.innerWidth);
+  const [room, setRoom] = useState(window.innerWidth);
+  const panel = useRef<HTMLElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       e.preventDefault();
       onClose();
     };
-    const onResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('keydown', onKey);
-    window.addEventListener('resize', onResize);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', onResize);
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+  useEffect(() => {
+    const parent = panel.current!.parentElement!;
+    const observer = new ResizeObserver(() => setRoom(parent.clientWidth));
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, []);
   const drag = (e: PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const handle = e.currentTarget;
@@ -60,7 +63,7 @@ export function SidePanel({
     const right = handle.parentElement!.getBoundingClientRect().right;
     let next = width;
     const move = (ev: globalThis.PointerEvent) => {
-      next = clampWidth(right - ev.clientX);
+      next = clampWidth(right - ev.clientX, room);
       setWidth(next);
     };
     const up = () => {
@@ -77,8 +80,9 @@ export function SidePanel({
   };
   return (
     <aside
+      ref={panel}
       aria-label={label}
-      style={{ width: clampWidth(width) }}
+      style={{ width: clampWidth(width, room) }}
       className="relative flex min-h-0 flex-none flex-col border-l border-line bg-bg"
     >
       <div

@@ -1,7 +1,7 @@
 const _extensions = new Set(
   (
     'go ts tsx js jsx mjs cjs md mdx json yaml yml toml sql css scss html sh bash zsh py rs rb java ' +
-    'kt swift c h cc cpp hpp cs php lua txt mod sum lock xml svg proto graphql ini cfg conf env ' +
+    'kt swift cpp hpp php lua txt mod sum lock xml svg proto graphql ini cfg conf ' +
     'png jpg jpeg gif webp'
   ).split(' '),
 );
