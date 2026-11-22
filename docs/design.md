@@ -1712,13 +1712,13 @@ Reef guide
 - Register repos once; a thread works in one, in its own worktree.
 - Providers: Claude Code and Codex, signed in at Settings > Providers.
 - Connections are signed-in services (GitLab, GitHub); Reef gives tokens to a Bot's CLI or MCP. MCP supplies tools: Reef serves memory and platform tools. Bots get only selected MCP servers. No MCP import.
-- A skill is a folder (SKILL.md plus text files) in one library, picked per Bot.
+- A skill is a folder (SKILL.md plus text files) in one library, picked per Bot. Write its files in files (scripts executable); cite as {{ATOLL_SKILL_DIR}}/<path>, never ~/.
 - Memory: decisions and findings Bots save, per user, repo or Bot.
 - Sign-ins are the user's. Never attach an unsigned connection; point to Settings > Connections.
 
 Ask first
 - To create a Bot or skill, ask in ONE message for each missing item, with a default. Put the full proposal for each Bot (model, skills, repo access, connections) in the reply; the user sees nothing else. Create nothing in that run. "ok" means the defaults. This overrides "Ask only when two readings are both real".
-- Small edits (rename, persona, look) need no question.
+- Small edits (rename, persona, look) need no question; scripts do.
 
 Import a local skill
 - Import skills with import_skill(path). A Bot from an agent file (~/.claude/agents/<name>.md): import_agent(path), import each skill it names, attach the ids in create_bot. Ask first applies.
