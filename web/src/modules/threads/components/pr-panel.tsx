@@ -3,6 +3,7 @@ import { DiffView } from '@/components/diff-view';
 import { ErrorNotice } from '@/components/error-notice';
 import { Markdown } from '@/components/markdown';
 import { pullNumber } from '@/components/pr-chip';
+import { SidePanel } from '@/components/side-panel';
 import { ApiError } from '@/lib/api-client';
 import {
   useMergePR,
@@ -249,72 +250,45 @@ export function PRPanel({
   onClose: () => void;
 }) {
   const { data: pr, error, refetch, isFetching } = usePullRequest(threadId, url);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
-      e.preventDefault();
-      onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
   const n = pullNumber(url);
   return (
-    <aside
-      aria-label="Pull request"
-      className="flex min-h-0 min-w-0 max-w-130 flex-[1_1_520px] flex-col border-l border-line bg-bg"
-    >
-      <div className="flex flex-none items-center gap-2 px-6 pt-5 pb-3 text-[13.5px]">
-        {pr && <span className="text-muted">{pr.repo}</span>}
-        <a href={url} target="_blank" rel="noreferrer" className="text-ink hover:underline">
-          #{n}
-          <span aria-hidden="true"> ↗</span>
-        </a>
-        <span className="flex-1" />
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={onClose}
-          className="-mr-2 flex size-9 items-center justify-center rounded-[10px] text-muted hover:bg-tile hover:text-ink"
-        >
-          <svg
-            aria-hidden="true"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          >
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {pr ? (
-          <Details pr={pr} />
-        ) : error ? (
-          <div className="px-6 py-2">
-            <Failure error={error} url={url} retry={() => void refetch()} />
+    <SidePanel
+      label="Pull request"
+      onClose={onClose}
+      header={
+        <>
+          {pr && <span className="text-muted">{pr.repo}</span>}
+          <a href={url} target="_blank" rel="noreferrer" className="text-ink hover:underline">
+            #{n}
+            <span aria-hidden="true"> ↗</span>
+          </a>
+        </>
+      }
+      footer={
+        pr && (
+          <div className="flex flex-none flex-col gap-3 border-t border-line px-6 py-3">
+            {(pr.state === 'open' || pr.state === 'draft') && <Merge threadId={threadId} pr={pr} />}
+            <button
+              type="button"
+              disabled={isFetching}
+              onClick={() => void refetch()}
+              className={`${action} self-start`}
+            >
+              Reload
+            </button>
           </div>
-        ) : (
-          <p className="px-6 py-2 text-[13.5px] text-muted">Loading PR #{n}…</p>
-        )}
-      </div>
-      {pr && (
-        <div className="flex flex-none flex-col gap-3 border-t border-line px-6 py-3">
-          {(pr.state === 'open' || pr.state === 'draft') && <Merge threadId={threadId} pr={pr} />}
-          <button
-            type="button"
-            disabled={isFetching}
-            onClick={() => void refetch()}
-            className={`${action} self-start`}
-          >
-            Reload
-          </button>
+        )
+      }
+    >
+      {pr ? (
+        <Details pr={pr} />
+      ) : error ? (
+        <div className="px-6 py-2">
+          <Failure error={error} url={url} retry={() => void refetch()} />
         </div>
+      ) : (
+        <p className="px-6 py-2 text-[13.5px] text-muted">Loading PR #{n}…</p>
       )}
-    </aside>
+    </SidePanel>
   );
 }

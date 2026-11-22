@@ -24,6 +24,7 @@ import { useRepos } from '@/modules/repos/api/repos';
 import { useSkills } from '@/modules/skills/api/skills';
 import { useThread, useThreads, type Thread } from '@/modules/threads/api/threads';
 import { HelperCreature } from '@/modules/threads/components/helper-creature';
+import { FilePanel } from '@/modules/threads/components/file-panel';
 import { PRPanel } from '@/modules/threads/components/pr-panel';
 import { ThreadPanel } from '@/modules/threads/components/thread-panel';
 import {
@@ -39,9 +40,12 @@ import {
   type HelperState,
 } from '@/modules/threads/utils/helper-state';
 import { headPR } from '@/modules/threads/utils/mr-ref';
+import type { FileRef } from '@/utils/file-ref';
 
 // OpenPR opens a GitHub pull request in the PR panel, read with the given thread's Bot.
 export type OpenPR = (threadId: string, url: string) => void;
+// OpenFile opens a file of the given thread's checkout in the file panel.
+export type OpenFile = (threadId: string, file: FileRef) => void;
 
 const prTone: Record<string, string> = {
   opened: 'text-ok',
@@ -263,13 +267,17 @@ function BotFrame() {
   const navigate = useNavigate();
   const { data: openThread } = useThread(threadId);
   const [detailsFor, setDetailsFor] = useState('');
-  const [openedPR, setOpenedPR] = useState<{ from: string; threadId: string; url: string }>();
-  const shownPR = openedPR?.from === threadId ? openedPR : undefined;
-  const openPR: OpenPR = (prThread, url) => {
-    setOpenedPR({ from: threadId, threadId: prThread, url });
+  const [opened, setOpened] = useState<
+    { from: string; threadId: string } & ({ url: string } | { file: FileRef })
+  >();
+  const shown = opened?.from === threadId ? opened : undefined;
+  const open = (panel: { threadId: string } & ({ url: string } | { file: FileRef })) => {
+    setOpened({ from: threadId, ...panel });
     setDetailsFor('');
     if (settingsOpen) setSettingsOpen(false);
   };
+  const openPR: OpenPR = (prThread, url) => open({ threadId: prThread, url });
+  const openFile: OpenFile = (fileThread, file) => open({ threadId: fileThread, file });
   const headPull = headPR(openThread?.prs ?? []);
   const headWord = headPull ? ciWord(headPull) : '';
   const detailsOpen = !!openThread && detailsFor === threadId;
@@ -347,7 +355,7 @@ function BotFrame() {
         <BotHeader
           bot={bot}
           onSettings={() => {
-            setOpenedPR(undefined);
+            setOpened(undefined);
             setSettingsOpen(true);
           }}
           onNotifications={() => setList(!list)}
@@ -394,7 +402,7 @@ function BotFrame() {
             widened && <FinishedNotice notice={widened} look={looks[widened.bot_id]} />
           )}
         </BotHeader>
-        <Outlet context={openPR} />
+        <Outlet context={{ openPR, openFile }} />
         {detailsOpen && (
           <ThreadPanel
             thread={openThread}
@@ -404,12 +412,20 @@ function BotFrame() {
           />
         )}
       </div>
-      {shownPR && (
+      {shown && 'url' in shown && (
         <PRPanel
-          key={shownPR.threadId + shownPR.url}
-          threadId={shownPR.threadId}
-          url={shownPR.url}
-          onClose={() => setOpenedPR(undefined)}
+          key={shown.threadId + shown.url}
+          threadId={shown.threadId}
+          url={shown.url}
+          onClose={() => setOpened(undefined)}
+        />
+      )}
+      {shown && 'file' in shown && (
+        <FilePanel
+          key={shown.threadId + JSON.stringify(shown.file)}
+          threadId={shown.threadId}
+          file={shown.file}
+          onClose={() => setOpened(undefined)}
         />
       )}
       {settingsOpen && bot && (

@@ -458,9 +458,9 @@ Follow-ups:
   the text item first, then one `{"type":"image","url":"data:<mime>;base64,..."}` per image.
 - `GET /api/threads/{id}/file?path=<p>` serves an image file (png, jpg, jpeg, gif, webp) of the
   thread's work folder (its worktree, else its own checkout), so a Bot's reply can show a saved
-  screenshot. A relative `p` resolves against that folder, symlinks resolved; a path outside it, a
-  non-image or a missing file answers `404`. The UI turns a reply's Markdown image with a relative
-  `src` into this route.
+  screenshot. A relative `p` resolves against that folder, symlinks resolved; a path outside it or
+  a missing file answers `404`. The UI turns a reply's Markdown image with a relative `src` into
+  this route. Any other path is read as text for the file panel (File panel (#408)).
 - The composer takes images by paste and drop; the desktop webview turns its own drag-and-drop
   handler off so drop events reach the page.
 
@@ -916,6 +916,36 @@ Follow-ups:
     as one plain sentence, Details tucked away; anything else `502 github` "Couldn't merge PR #n.".
     `mergeable: false` shows "Has conflicts with <base>." and disables Merge; failed or running
     checks keep their line above and leave Merge enabled.
+- File panel (#408). A file path a Bot writes as inline code (`run/prompt.go:23`) is a link that
+  opens the file, read-only, in the right panel. No prompt change.
+  - Link rule: only inline code, never a fenced block. Its last part has a common code, doc or image
+    extension (`go ts tsx js jsx md json yaml yml toml sql css html sh py rs txt mod sum png`, …,
+    the list in `web/src/utils/file-ref.ts`) or is `Makefile` / `Dockerfile`; no spaces, `{`, `*`
+    or `://`. An optional `:line`, `:start-end` or `:line:col` follows (the column is ignored). So
+    `m.mu`, `e.g.`, `origin/main` and `/api/threads/{id}/file` are not links. A thread with no
+    repo, a closed thread and one whose worktree was removed show no links.
+  - Path resolution (`run.ReadFile`): the thread's own work folder, its worktree else its read-only
+    checkout, so a helper thread reads the helper's. A relative path joins the folder; an absolute
+    one must point inside it; symlinks are resolved and anything outside is refused. A path not
+    found that has no folder (`thread-panel.tsx`) is looked up among the tracked files with that
+    base name (`git ls-files`, `repo.Tracked`): one match is read, several come back as `matches`
+    and the panel shows a pick list.
+  - Endpoint: `GET /api/threads/{id}/file?path=<p>` answers a non-image path
+    `200 {"path", "text", "branch"}` (`"commit"`, the short commit, in place of `branch` on a
+    checkout with no branch), or `200 {"matches": [...]}`. Designed answers: `404 not_found`
+    "Not in this thread's checkout." (missing and outside give the same answer), `415 binary`
+    "This is a binary file." (a NUL byte in the first 8 KB), `413 too_large` "Too large to show
+    here (over 1 MB).". Images are served as before.
+  - Panel: one resizable right panel (`SidePanel`) shared by the PR panel and the file panel,
+    with a drag handle on its left edge: default 520px, at least 360px, at most 60% of the window,
+    and the chat never narrower than 480px. The width is shared and kept in `localStorage`. One
+    panel at a time: a file replaces a PR and the reverse; opening one closes Thread details and
+    Bot settings; the open state is local to the page and ends when another thread opens; Esc and ×
+    close it. Bot settings keeps its own panel.
+  - Header: the path, then the branch, or `at <short commit>` on a read-only checkout, then Reload
+    and ×. Body: the whole file with line numbers in the existing highlighter; `:74` tints that
+    line, `:12-20` the range, and the first tinted line is scrolled to the centre. An image path
+    shows the image. The file is read when the panel opens and on Reload: the file as it is now.
 - Fixtures (what the poll reads; GitHub base is the API base `CheckGitHubToken` uses, so
   `ATOLL_GITHUB_URL` with the routes appended):
   - `GET /repos/{owner}/{repo}/pulls/{n}`: `state` (`open` or `closed`), `merged` (bool), `title`,

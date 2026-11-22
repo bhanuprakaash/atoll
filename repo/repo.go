@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -512,4 +513,28 @@ func pinFilters(ctx context.Context, base, env []string) ([]string, error) {
 		pins = append(pins, "GIT_CONFIG_KEY_"+strconv.Itoa(i)+"="+key, "GIT_CONFIG_VALUE_"+strconv.Itoa(i)+"="+val)
 	}
 	return append(pins, "GIT_CONFIG_COUNT="+strconv.Itoa(len(repoKeys))), nil
+}
+
+// Tracked lists the tracked files of the checkout at dir whose base name is name, repo-relative.
+func Tracked(ctx context.Context, dir, name string) ([]string, error) {
+	out, err := git(ctx, dir, nil, "ls-files", "-z")
+	if err != nil {
+		return nil, err
+	}
+	var found []string
+	for _, p := range strings.Split(out, "\x00") {
+		if path.Base(p) == name {
+			found = append(found, p)
+		}
+	}
+	return found, nil
+}
+
+// Head is the branch checked out at dir, else its short commit when HEAD is detached.
+func Head(ctx context.Context, dir string) (branch, commit string) {
+	if b, err := git(ctx, dir, nil, "symbolic-ref", "--short", "-q", "HEAD"); err == nil {
+		return b, ""
+	}
+	c, _ := git(ctx, dir, nil, "rev-parse", "--short", "HEAD")
+	return "", c
 }
