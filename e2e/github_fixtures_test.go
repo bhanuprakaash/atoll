@@ -50,6 +50,7 @@ type fakeGitHub struct {
 	pushAuth   []string // "user:password" of every git request GitHub accepted
 	pulls      []githubPull
 	watch      prWatch
+	read       prRead
 
 	// slowDownNext answers the next token request slow_down, as github.com does for a poll that
 	// came too early. From then on, like github.com, a poll sooner than interval after the
@@ -93,6 +94,8 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 	mux.HandleFunc("POST /repos/{owner}/{repo}/pulls", g.createPull)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/pulls/{number}", g.getPull)
 	mux.HandleFunc("PATCH /repos/{owner}/{repo}/pulls/{number}", g.editPull)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/pulls/{number}/files", g.pullFiles)
+	mux.HandleFunc("GET /repos/{owner}/{repo}", g.getRepo)
 	mux.HandleFunc("POST /graphql", g.graphQL)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/issues/{number}", g.getIssue)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/commits/{sha}/check-runs", g.checkRuns)

@@ -26,7 +26,7 @@ const button =
   'h-8 rounded-full border border-outline px-4 text-[13.5px] text-ink disabled:opacity-50';
 
 // An action is a button, or a link when it goes somewhere.
-type Action = { label: string; onClick?: () => void; to?: string };
+type Action = { label: string; onClick?: () => void; to?: string; href?: string };
 
 // ErrorNotice is every failure a person can cause: a plain title, what to do next, an action
 // when there is one, and the raw text behind Details. Give it the error of a request, or a title
@@ -101,7 +101,17 @@ export function ErrorNotice({
       </div>
       <div className="flex flex-wrap items-center gap-3 pl-6.5">
         {acts?.map((act) =>
-          act.to ? (
+          act.href ? (
+            <a
+              key={act.label}
+              href={act.href}
+              target="_blank"
+              rel="noreferrer"
+              className={`${button} inline-flex items-center`}
+            >
+              {act.label}
+            </a>
+          ) : act.to ? (
             <Link key={act.label} to={act.to} className={`${button} inline-flex items-center`}>
               {act.label}
             </Link>

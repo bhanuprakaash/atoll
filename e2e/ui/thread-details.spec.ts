@@ -2,7 +2,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, type Locator, test } from '@playwright/test';
 import { api, type Machine, newBotAPI, prompts, startAtoll, waitStatus } from './atoll';
 import { githubEnv, type GitHubFake, seedRepo, startGitHub, trackPR } from './github-fixture';
 import {
@@ -127,15 +127,15 @@ test('Pull requests is a list with the tracked reference, title, state dot and o
   expect(t.prs).toHaveLength(1);
   expect(pr.url).toBe(`${github.url}/octo/hello/pull/1`);
   await page.goto(`${m.url}/bots/${bot.id}/threads/${t.id}`);
-  await expect(composerArea(page).getByRole('link', { name: /#1/ })).toHaveCount(0);
+  await expect(composerArea(page).getByRole('link', { name: /^PR 1\b/ })).toHaveCount(0);
   github.setCI(1, 'running');
   const panel = await openDetails(page);
   await expect(panel.getByText('Pull requests', { exact: true })).toBeVisible();
-  const row = panel.getByRole('listitem').filter({ hasText: '#1' });
+  const row = panel.getByRole('listitem').filter({ hasText: 'PR 1' });
   await expect(row).toHaveCount(1);
   await expect(row).toContainText(pr.title);
   await expect(row.getByText('running', { exact: true })).toBeVisible();
-  const link = row.getByRole('link', { name: /#1/ });
+  const link = row.getByRole('link', { name: /^PR 1\b/ });
   await expect(link).toHaveAttribute('href', pr.url);
   const dot = link.locator('[aria-hidden="true"]').first();
   await expect(dot).toBeVisible();
@@ -145,19 +145,17 @@ test('Pull requests is a list with the tracked reference, title, state dot and o
   github.setCI(1, 'failed');
   await expect(row.getByText('failed', { exact: true })).toBeVisible();
   const popup = page.waitForEvent('popup');
-  await link.click();
+  await link.click({ modifiers: ['Meta'] });
   const opened = await popup;
   try {
     await expect(opened).toHaveURL(pr.url);
   } finally {
     await opened.close();
   }
-  const color = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const color = await colours(link);
   github.merge(1);
   await expect(row.getByText('failed', { exact: true })).toHaveCount(0);
-  await expect
-    .poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor))
-    .not.toBe(color);
+  await expect.poll(() => colours(link)).not.toBe(color);
 });
 
 test('Pull requests lists every tracked PR: open ones first, then merged and closed, each group newest first', async ({
@@ -191,12 +189,12 @@ test('Pull requests lists every tracked PR: open ones first, then merged and clo
 
   await page.goto(`${m.url}/bots/${bot.id}/threads/${t.id}`);
   const panel = await openDetails(page);
-  const rows = panel.getByRole('listitem').filter({ hasText: /#\d/ });
+  const rows = panel.getByRole('listitem').filter({ hasText: /PR \d/ });
   await expect(rows).toHaveCount(5);
-  const order = (await rows.allTextContents()).map((x) => /#(\d+)/.exec(x)?.[1]);
+  const order = (await rows.allTextContents()).map((x) => /PR (\d+)/.exec(x)?.[1]);
   expect(order).toEqual(['5', '3', '1', '4', '2']);
   for (const n of [1, 2, 3, 4, 5])
-    await expect(panel.getByRole('link', { name: new RegExp(`#${n}\\b`) })).toHaveAttribute(
+    await expect(panel.getByRole('link', { name: new RegExp(`^PR ${n}\\b`) })).toHaveAttribute(
       'href',
       `${github.url}/octo/hello/pull/${n}`,
     );
@@ -220,6 +218,17 @@ test('at 420px Thread details fits the thread column minus 32px without sideways
   expect(p.x + p.width).toBeLessThanOrEqual(420);
 });
 
+// colours is the state colour the chip carries, wherever it sits: the chip, its icon or its dot.
+const colours = (chip: Locator) =>
+  chip.evaluate((el) =>
+    [el, ...el.querySelectorAll('[aria-hidden="true"]')]
+      .map((e) => {
+        const s = getComputedStyle(e);
+        return [s.color, s.backgroundColor, s.stroke, s.fill].join('/');
+      })
+      .join('|'),
+  );
+
 const prStates = async (threadID: string) =>
   Object.fromEntries(
     ((await api(m, 'GET', `/api/threads/${threadID}`)).prs as { url: string; state: string }[]).map(
@@ -229,8 +238,8 @@ const prStates = async (threadID: string) =>
 
 // numbers lists the PR numbers of the rows in the panel's order.
 const numbers = async (panel: ReturnType<typeof details>) =>
-  (await panel.getByRole('listitem').filter({ hasText: /#\d/ }).allTextContents()).map(
-    (x) => /#(\d+)/.exec(x)?.[1],
+  (await panel.getByRole('listitem').filter({ hasText: /PR \d/ }).allTextContents()).map(
+    (x) => /PR (\d+)/.exec(x)?.[1],
   );
 
 const section = (panel: ReturnType<typeof details>, title: string) =>

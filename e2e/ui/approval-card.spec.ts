@@ -361,7 +361,7 @@ test('a closed MR is not red', async ({ page }) => {
   await page.getByRole('button', { name: 'Thread details', exact: true }).click();
   const chip = page
     .getByRole('dialog', { name: 'Thread details' })
-    .getByRole('link', { name: /#12/ });
+    .getByRole('link', { name: /^PR 12\b/ });
   await expect(chip).toBeVisible();
   await page.mouse.move(0, 0);
   expect(await reds(page.locator('body'))).toEqual([]);

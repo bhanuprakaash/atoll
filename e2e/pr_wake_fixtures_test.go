@@ -22,6 +22,7 @@ type prFixture struct {
 	base   string
 	body   string
 	head   string // empty: headSHA(n)
+	ref    string // the head branch
 }
 
 // issueFixture is what the fake GitHub says about an issue: open until a test closes it.
@@ -185,7 +186,7 @@ func (g *fakeGitHub) pr(n int) *prFixture {
 			return nil
 		}
 		p := g.pulls[n-1]
-		g.watch.prs[n] = &prFixture{state: "open", title: p.Title, draft: g.watch.drafts[n], base: p.Base, body: p.Body}
+		g.watch.prs[n] = &prFixture{state: "open", title: p.Title, draft: g.watch.drafts[n], base: p.Base, body: p.Body, ref: p.Head}
 	}
 	return g.watch.prs[n]
 }
@@ -201,7 +202,7 @@ func (g *fakeGitHub) reject(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// getPull is GET /repos/{owner}/{repo}/pulls/{number}: state, merged, title and head.sha, with an
+// getPull is GET /repos/{owner}/{repo}/pulls/{number}: state, merged, title, user, head and mergeable, with an
 // ETag, and 304 for a request whose If-None-Match is that ETag.
 func (g *fakeGitHub) getPull(w http.ResponseWriter, r *http.Request) {
 	if g.reject(w, r) {
@@ -217,7 +218,8 @@ func (g *fakeGitHub) getPull(w http.ResponseWriter, r *http.Request) {
 		if pr := g.pr(n); pr != nil {
 			body, _ = json.Marshal(map[string]any{"number": n, "state": pr.state, "merged": pr.merged, "title": pr.title,
 				"draft": pr.draft, "body": pr.body, "base": map[string]string{"ref": pr.base},
-				"head": map[string]string{"sha": pr.headOf(n)}})
+				"user": map[string]string{"login": _fakePRAuthor}, "mergeable": true,
+				"head": map[string]string{"sha": pr.headOf(n), "ref": pr.ref}})
 		}
 	})
 	w.Header().Set("Content-Type", "application/json")

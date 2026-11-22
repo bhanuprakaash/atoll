@@ -145,6 +145,7 @@ func New(
 	mux.HandleFunc("POST /api/island/seen", a.markIslandSeen)
 	mux.HandleFunc("POST /api/island/dismiss", a.dismissIsland)
 	mux.HandleFunc("GET /api/threads/{id}/file", a.threadFile)
+	mux.HandleFunc("GET /api/threads/{id}/pr", a.readPR)
 	mux.HandleFunc("GET /api/attachments/{id}", a.getAttachment)
 	mux.HandleFunc("GET /api/runs/{id}", a.getRun)
 	mux.HandleFunc("POST /api/runs/{id}/stop", a.stopRun)
@@ -497,6 +498,16 @@ func (a *api) listThreads(w http.ResponseWriter, r *http.Request) {
 		summaries = append(summaries, summary)
 	}
 	write(w, http.StatusOK, summaries)
+}
+
+// readPR is the PR panel's read of a GitHub pull request, with the thread Bot's connection.
+func (a *api) readPR(w http.ResponseWriter, r *http.Request) {
+	pr, err := a.runs.ReadPR(r.Context(), r.PathValue("id"), r.URL.Query().Get("url"))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	write(w, http.StatusOK, pr)
 }
 
 func (a *api) getThread(w http.ResponseWriter, r *http.Request) {

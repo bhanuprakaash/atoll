@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -302,6 +303,7 @@ func (p *player) play(lines []string) error {
 		encoded, _ := json.Marshal(repoReply)
 		s = strings.ReplaceAll(s, "$REPO_REPLY", string(encoded[1:len(encoded)-1]))
 		s = strings.ReplaceAll(s, "$COMMAND_UUID", p.commandUUID)
+		s = strings.ReplaceAll(s, "$GITHUB_URL", githubURL())
 		var m map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(s), &m); err != nil {
 			return err
@@ -585,4 +587,15 @@ func values(args []string, name string) []string {
 		}
 	}
 	return slices.Clip(out)
+}
+
+// githubURL is the fake GitHub's URL, in the github-url file beside the executable; empty when the
+// test has no fake GitHub.
+func githubURL() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	b, _ := os.ReadFile(filepath.Join(filepath.Dir(exe), "github-url"))
+	return strings.TrimSpace(string(b))
 }

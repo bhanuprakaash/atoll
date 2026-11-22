@@ -11,6 +11,7 @@ import {
 } from 'react-router';
 import { Creature, type Appearance } from '@/components/creature';
 import { Gone } from '@/components/gone';
+import { PRChip, pullNumber } from '@/components/pr-chip';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import { BotMemory } from '@/modules/memory/components/bot-memory';
 import { BotSettings } from '@/modules/bots/components/bot-settings';
@@ -23,6 +24,7 @@ import { useRepos } from '@/modules/repos/api/repos';
 import { useSkills } from '@/modules/skills/api/skills';
 import { useThread, useThreads, type Thread } from '@/modules/threads/api/threads';
 import { HelperCreature } from '@/modules/threads/components/helper-creature';
+import { PRPanel } from '@/modules/threads/components/pr-panel';
 import { ThreadPanel } from '@/modules/threads/components/thread-panel';
 import {
   ApprovalDrop,
@@ -30,7 +32,27 @@ import {
   NotificationList,
 } from '@/modules/threads/components/notifications';
 import type { Notifications } from '@/modules/threads/hooks/use-notifications';
-import { helperState, isLiveHelper, type HelperState } from '@/modules/threads/utils/helper-state';
+import {
+  ciWord,
+  helperState,
+  isLiveHelper,
+  type HelperState,
+} from '@/modules/threads/utils/helper-state';
+import { headPR } from '@/modules/threads/utils/mr-ref';
+
+// OpenPR opens a GitHub pull request in the PR panel, read with the given thread's Bot.
+export type OpenPR = (threadId: string, url: string) => void;
+
+const prTone: Record<string, string> = {
+  opened: 'text-ok',
+  merged: 'text-kind',
+  closed: 'text-muted',
+};
+const ciTone: Record<string, string> = {
+  running: 'text-muted',
+  passed: 'text-ok',
+  failed: 'text-danger',
+};
 
 export function BotHeader({
   bot,
@@ -42,6 +64,7 @@ export function BotHeader({
   onNotifications,
   onSettings,
   details,
+  pullRequest,
   children,
 }: {
   bot?: Bot;
@@ -53,6 +76,7 @@ export function BotHeader({
   onNotifications?: () => void;
   onSettings?: () => void;
   details?: { open: boolean; toggle: () => void };
+  pullRequest?: ReactNode;
   children?: ReactNode;
 }) {
   const title = thread?.title;
@@ -106,6 +130,11 @@ export function BotHeader({
                 )}
               </div>
             </>
+          )}
+          {pullRequest && (
+            <span className="relative z-10 flex items-center gap-1.5 text-[13px]">
+              {pullRequest}
+            </span>
           )}
           {helpers.length > 0 && (
             <div className="flex items-center gap-1">
@@ -234,6 +263,15 @@ function BotFrame() {
   const navigate = useNavigate();
   const { data: openThread } = useThread(threadId);
   const [detailsFor, setDetailsFor] = useState('');
+  const [openedPR, setOpenedPR] = useState<{ from: string; threadId: string; url: string }>();
+  const shownPR = openedPR?.from === threadId ? openedPR : undefined;
+  const openPR: OpenPR = (prThread, url) => {
+    setOpenedPR({ from: threadId, threadId: prThread, url });
+    setDetailsFor('');
+    if (settingsOpen) setSettingsOpen(false);
+  };
+  const headPull = headPR(openThread?.prs ?? []);
+  const headWord = headPull ? ciWord(headPull) : '';
   const detailsOpen = !!openThread && detailsFor === threadId;
   useEffect(() => setDetailsFor(''), [threadId]);
   useEffect(() => {
@@ -308,7 +346,10 @@ function BotFrame() {
       <div className="relative flex min-h-0 min-w-0 flex-[999_1_400px] flex-col">
         <BotHeader
           bot={bot}
-          onSettings={() => setSettingsOpen(true)}
+          onSettings={() => {
+            setOpenedPR(undefined);
+            setSettingsOpen(true);
+          }}
           onNotifications={() => setList(!list)}
           details={
             openThread && {
@@ -327,6 +368,19 @@ function BotFrame() {
           }
           helpers={helpers}
           waiting={notifications.needs.length}
+          pullRequest={
+            headPull &&
+            pullNumber(headPull.url) && (
+              <>
+                <PRChip
+                  url={headPull.url}
+                  onOpen={(url) => openPR(threadId, url)}
+                  tone={prTone[headPull.state]}
+                />{' '}
+                {headWord && <span className={`text-xs ${ciTone[headWord]}`}>{headWord}</span>}
+              </>
+            )
+          }
         >
           {list ? (
             <NotificationList
@@ -340,15 +394,24 @@ function BotFrame() {
             widened && <FinishedNotice notice={widened} look={looks[widened.bot_id]} />
           )}
         </BotHeader>
-        <Outlet />
+        <Outlet context={openPR} />
         {detailsOpen && (
           <ThreadPanel
             thread={openThread}
             repoName={repos.find((r) => r.id === openThread.repo_id)?.name}
             bots={Object.fromEntries(bots.map((b) => [b.id, { name: b.name, look: b }]))}
+            onOpenPR={openPR}
           />
         )}
       </div>
+      {shownPR && (
+        <PRPanel
+          key={shownPR.threadId + shownPR.url}
+          threadId={shownPR.threadId}
+          url={shownPR.url}
+          onClose={() => setOpenedPR(undefined)}
+        />
+      )}
       {settingsOpen && bot && (
         <BotSettings
           key={bot.id}

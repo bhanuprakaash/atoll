@@ -5,6 +5,7 @@ import { Checklist, isTaskList } from '@/components/checklist';
 import { CodeBox } from '@/components/code-box';
 import { KeyValue, Metrics, parseKv, parseMetrics } from '@/components/data-cards';
 import { DiffView } from '@/components/diff-view';
+import { PRChip, pullNumber } from '@/components/pr-chip';
 import { SortTable } from '@/components/sort-table';
 import { ZoomImage } from '@/components/zoom-image';
 
@@ -23,7 +24,16 @@ function Fence({ lang, source }: { lang: string; source: string }) {
   );
 }
 
-export function Markdown({ children, threadId }: { children: string; threadId?: string }) {
+// onOpenPR, when given, turns a link to a GitHub pull request into a chip that opens the PR panel.
+export function Markdown({
+  children,
+  threadId,
+  onOpenPR,
+}: {
+  children: string;
+  threadId?: string;
+  onOpenPR?: (url: string) => void;
+}) {
   return (
     <div className="flex flex-col gap-3 break-words [&_li+li]:mt-1 [&_li>:is(ul,ol)]:mt-1 [&>:is(h1,h2,h3,h4)]:-mb-1.5 [&>:is(h1,h2,h3,h4)]:mt-2 [&>:is(h1,h2,h3,h4):first-child]:mt-0 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_pre]:overflow-auto">
       <ReactMarkdown
@@ -64,11 +74,14 @@ export function Markdown({ children, threadId }: { children: string; threadId?: 
               </a>
             );
           },
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noreferrer">
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) =>
+            onOpenPR && href && pullNumber(href) ? (
+              <PRChip url={href} onOpen={onOpenPR} />
+            ) : (
+              <a href={href} target="_blank" rel="noreferrer">
+                {children}
+              </a>
+            ),
         }}
       >
         {children}

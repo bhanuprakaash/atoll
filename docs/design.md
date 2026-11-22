@@ -724,8 +724,8 @@ Follow-ups:
   without one is a tool error, "give this Bot the GitHub connection", with no worktree made, so the
   user never meets a git auth error. A question needs no connection.
 - `track_mr` takes the full http(s) URL of the MR; another scheme or no host is a tool error. For
-  GitHub it takes the PR URL (`<github>/<owner>/<repo>/pull/<n>`); the thread shows `#<n>` where an
-  MR shows `!<iid>`.
+  GitHub it takes the PR URL (`<github>/<owner>/<repo>/pull/<n>`); the thread shows the chip
+  `PR <n>` (PR panel, below) where an MR shows `!<iid>`.
 - One watcher runs inside the server and resumes after a restart. Every minute
   (`ATOLL_REPO_POLL_INTERVAL`, a Go duration, the poll interval below) it reads every `opened` PR
   or MR of the threads that are not closed (`Store.Watched` lists PRs, not threads; a thread
@@ -857,6 +857,40 @@ Follow-ups:
 - Known gap: a stopped thread hears a PR or CI wake only when its next run ends (helper reports
   wait for the person, and a stopped helper's messages for its boss's next `continue`:
   Delegation), and a merged GitLab MR's worktree can be released before that wake is delivered.
+- PR panel (#602). Every mention of a GitHub PR is one chip, a pull-request icon and `PR <n>`: a
+  link in a Bot reply (any `<host>/<owner>/<repo>/pull/<n>` URL; the chip replaces the link text),
+  the thread header (the head PR, newest open else newest, with its state colour and CI word), the
+  Thread details rows and each helper's PR there (tracked chips keep state dot and CI word). A click
+  opens the panel; Cmd- or Ctrl-click follows the link to GitHub. No hover cards. A GitLab MR stays
+  a link out (`!<iid>`).
+  - The panel docks on the right of the bot page like Bot settings, about 520px; opening it closes
+    the Thread details popover and Bot settings, opening another PR replaces it, Esc or × closes it.
+    Its open state is local to the page (not the URL) and ends when another thread opens. No tabs.
+  - One scrolling view: repo, `#n ↗` (GitHub), title, author, `base ← head`, state (Open, Draft,
+    Merged, Closed); checks, failed first, then running, then passed, with one plain line naming
+    the failed ones (`2 checks failed: test-guard, check`), no check name special-cased; the PR
+    body as markdown; files with +/- counts, each diff collapsed and opened in `DiffView`; a file
+    GitHub sends no `patch` for shows "Too large to show here" and a link to the PR's files on
+    GitHub. Reload reads again. No polling: it reads when opened and on Reload only (the poll above
+    keeps state and CI). No comments, reviews, timeline or editing.
+  - `GET /api/threads/{id}/pr?url=<pull url>` reads in `run/` (`ReadPR`, beside the poll, sharing
+    `githubGet` and the check reads); `server/` only routes. The URL must be a pull request on
+    `GitHubURL()`'s host, else `400`. It reads with the thread Bot's first GitHub connection, the
+    poll's rule: never unauthenticated, never the server's own token. A helper's chip reads with
+    the helper thread, so the helper Bot's connection. The web app never calls GitHub.
+  - Reads: `GET /repos/{o}/{r}/pulls/{n}` (`title`, `user.login`, `base.ref`, `head.ref`,
+    `head.sha`, `state`, `merged`, `draft`, `body`, `mergeable`: true, false or null while GitHub
+    computes it), `GET /repos/{o}/{r}/pulls/{n}/files?per_page=100` following `Link` (`filename`,
+    `additions`, `deletions`, `patch` optional; GitHub lists at most 3000 files),
+    `GET /repos/{o}/{r}` (`allow_merge_commit`, `allow_squash_merge`, `allow_rebase_merge`, for
+    Merge; GitHub shows them only to a token with write access, so a missing one counts as allowed,
+    GitHub's default), and the poll's check-runs and status reads of the head commit.
+  - Designed answers (`{"error", "code"}`): `409 no_github` "{Bot} has no GitHub connection." and
+    `409 github_sign_in` "{Bot}'s GitHub connection needs sign-in.", both with a link to Settings ›
+    Connections; a GitHub `404` or `403` is `409 cant_see` "{Bot}'s GitHub connection can't see PR
+    #n." with Retry and Open on GitHub; anything else is `502 github` "Couldn't load PR #n." with
+    Retry, Open on GitHub and Details. A GitHub `401` marks the connection `needs_sign_in`, as in
+    the poll. A PR with no files says "This PR has no file changes."
 - Fixtures (what the poll reads; GitHub base is the API base `CheckGitHubToken` uses, so
   `ATOLL_GITHUB_URL` with the routes appended):
   - `GET /repos/{owner}/{repo}/pulls/{n}`: `state` (`open` or `closed`), `merged` (bool), `title`,

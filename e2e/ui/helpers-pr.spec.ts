@@ -215,13 +215,13 @@ test('a helper row shows its PR and CI as the watcher read them; a helper with n
   const rows = details(page).getByRole('listitem');
   const row = (name: string) => rows.filter({ hasText: name });
   const link = (name: string) =>
-    row(name).getByRole('link', { name: `#${prOf[name]}`, exact: true });
+    row(name).getByRole('link', { name: new RegExp(`^PR ${prOf[name]}\\b`) });
 
   for (const name of ['Tester', 'Builder']) {
     await expect(link(name)).toHaveAttribute('href', `${githubURL}/octo/hello/pull/${prOf[name]}`);
     await expect(row(name).getByText('running', { exact: true })).toHaveCount(0);
   }
-  await expect(row('Reviewer').getByRole('link', { name: /^[#!]\d+$/ })).toHaveCount(0);
+  await expect(row('Reviewer').getByRole('link', { name: /^(PR \d+|!\d+)\b/ })).toHaveCount(0);
   await expect(row('Reviewer')).not.toContainText(/running|passed|failed|merged|closed/);
 
   const running: Check[] = [

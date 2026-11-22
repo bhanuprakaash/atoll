@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { Appearance } from '@/components/creature';
+import { openOnClick, PullIcon, pullNumber } from '@/components/pr-chip';
 import { useStopRun } from '@/modules/threads/api/runs';
 import type { PullRequest, Thread } from '@/modules/threads/api/threads';
 import { HelperCreature } from '@/modules/threads/components/helper-creature';
@@ -120,7 +121,19 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Pull({ pr }: { pr?: PullRequest }) {
+// Ref is how a PR is named: PR 7 with the pull request icon on GitHub, !7 on GitLab.
+const Ref = ({ url }: { url: string }) => {
+  const n = pullNumber(url);
+  if (!n) return <>{mrRef(url)}</>;
+  return (
+    <>
+      <PullIcon className="text-muted" />
+      PR {n}
+    </>
+  );
+};
+
+function Pull({ pr, onOpen }: { pr?: PullRequest; onOpen?: (url: string) => void }) {
   const ref = mrRef(pr?.url);
   if (!pr || !ref) return null;
   const word = pr.state === 'opened' ? ciWord(pr) : pr.state;
@@ -131,11 +144,12 @@ function Pull({ pr }: { pr?: PullRequest }) {
         target="_blank"
         rel="noreferrer"
         title={pr.title || ref}
+        onClick={pullNumber(pr.url) ? openOnClick(pr.url, onOpen) : undefined}
         className="inline-flex items-center gap-1.25 text-ink"
       >
         <Dot state={pr.state} />
-        {ref}
-      </a>
+        <Ref url={pr.url} />
+      </a>{' '}
       {word && <span className={`text-xs ${ciStyle[word] ?? 'text-muted'}`}>{word}</span>}
     </span>
   );
@@ -146,11 +160,13 @@ function Row({
   bot,
   state,
   now,
+  onOpenPR,
 }: {
   helper: Thread;
   bot?: Bots[string];
   state: HelperState;
   now: number;
+  onOpenPR?: (threadId: string, url: string) => void;
 }) {
   const navigate = useNavigate();
   const stop = useStopRun();
@@ -189,7 +205,7 @@ function Row({
                 ? 'Needs you'
                 : [helper.wake, helper.step].filter(Boolean).join(' · ') || 'Working'}
           </span>{' '}
-          <Pull pr={headPR(helper.prs)} />{' '}
+          <Pull pr={headPR(helper.prs)} onOpen={onOpenPR && ((url) => onOpenPR(helper.id, url))} />{' '}
           {live && (
             <button
               type="button"
@@ -240,10 +256,12 @@ export function ThreadPanel({
   thread,
   repoName,
   bots,
+  onOpenPR,
 }: {
   thread: Thread;
   repoName?: string;
   bots: Bots;
+  onOpenPR?: (threadId: string, url: string) => void;
 }) {
   const card = useRef<HTMLDivElement>(null);
   const [allDone, setAllDone] = useState(false);
@@ -290,7 +308,14 @@ export function ThreadPanel({
   const group = (list: Thread[]) => (
     <ul>
       {list.map((h) => (
-        <Row key={h.id} helper={h} bot={bots[h.bot_id]} state={helperState(h)} now={now} />
+        <Row
+          key={h.id}
+          helper={h}
+          bot={bots[h.bot_id]}
+          state={helperState(h)}
+          now={now}
+          onOpenPR={onOpenPR}
+        />
       ))}
     </ul>
   );
@@ -332,10 +357,22 @@ export function ThreadPanel({
           <ul>
             {prs.map((pr) => (
               <li key={pr.url}>
-                <a href={pr.url} target="_blank" rel="noreferrer" className={rowClass}>
+                <a
+                  href={pr.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={
+                    pullNumber(pr.url)
+                      ? openOnClick(pr.url, onOpenPR && ((url) => onOpenPR(thread.id, url)))
+                      : undefined
+                  }
+                  className={rowClass}
+                >
                   <Dot state={pr.state} />
-                  <span className="flex-none text-ink">{mrRef(pr.url)}</span>
-                  <span className="min-w-0 flex-1 truncate text-muted">{pr.title}</span>
+                  <span className="flex flex-none items-center gap-1.25 text-ink">
+                    <Ref url={pr.url} />
+                  </span>{' '}
+                  <span className="min-w-0 flex-1 truncate text-muted">{pr.title}</span>{' '}
                   {pr.state === 'opened' && (
                     <span className={`text-xs ${ciStyle[ciWord(pr)] ?? 'text-muted'}`}>
                       {ciWord(pr)}
