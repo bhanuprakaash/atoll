@@ -595,8 +595,8 @@ Follow-ups:
   For N = 1 it is that helper's message: its two lines, then `Continue it to pick up where it
   stopped.` and the helpers line. A helper with no stored session (the restart landed before the
   provider's `init` event, so a `continue` starts it fresh) gets `No session yet: a continue starts
-  it fresh.` instead of that line for N = 1, and as the third line of its block for N > 1. It is stored in the transaction that marks the runs failed, so it
-  cannot repeat or be lost.
+  it fresh.` instead of that line for N = 1, and as the third line of its block for N > 1. It is
+  stored in the transaction that marks the runs failed, so it cannot repeat or be lost.
 - Background runs. A run that starts only with Reef notices (a helper finished, a PR merged, CI
   finished, a ticket closed) is a background run, for every Bot not in a helper thread. Its final
   message is never a chat message, does not make the thread Replied and shows nowhere (App and
