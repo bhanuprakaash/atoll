@@ -148,18 +148,23 @@ func SkillsReply(skills []SkillCopy) (string, error) {
 	return "Skills: " + strings.Join(names, ", ") + ". No reef-greeting skill available.", nil
 }
 
-// _scriptRe finds the script a prompt names: "the poteto-mode script <path>", scripts/check when none.
-var _scriptRe = regexp.MustCompile(`the poteto-mode script (\S+?)\.?(?:\s|$)`)
+// _scriptRe finds the skill and script a prompt names: "the <skill> script <path>"; poteto-mode's
+// scripts/check when none.
+var _scriptRe = regexp.MustCompile(`the (\S+) script (\S+?)\.?(?:\s|$)`)
 
-// SkillsRun runs a script of the discovered poteto-mode skill, scripts/check unless the prompt names
-// another ("the poteto-mode script scripts/hello"), in the folder the provider found it in, and
+// SkillsRun runs a script of a discovered skill, poteto-mode's scripts/check unless the prompt names
+// another ("the ro-sql script scripts/ro-sql"), in the folder the provider found it in, and
 // names that folder in its reply. A prompt with "Wait, then" holds after
 // discovery as HoldSkills does and logs the folder again once released, so a test sees what the
 // live run still had.
 func SkillsRun(skills []SkillCopy, prompt string) (string, error) {
-	i := slices.IndexFunc(skills, func(s SkillCopy) bool { return s.Name == "poteto-mode" })
+	name, rel := "poteto-mode", "scripts/check"
+	if m := _scriptRe.FindStringSubmatch(prompt); m != nil {
+		name, rel = m[1], m[2]
+	}
+	i := slices.IndexFunc(skills, func(s SkillCopy) bool { return s.Name == name })
 	if i < 0 {
-		return "", fmt.Errorf("poteto-mode not discovered: %+v", skills)
+		return "", fmt.Errorf("%s not discovered: %+v", name, skills)
 	}
 	dir := filepath.Dir(skills[i].Path)
 	if strings.Contains(prompt, "Wait, then") {
@@ -174,10 +179,6 @@ func SkillsRun(skills []SkillCopy, prompt string) (string, error) {
 		if err := LogSkills(skills); err != nil {
 			return "", err
 		}
-	}
-	rel := "scripts/check"
-	if m := _scriptRe.FindStringSubmatch(prompt); m != nil {
-		rel = m[1]
 	}
 	script := filepath.Join(dir, filepath.FromSlash(rel))
 	cmd := exec.Command(script)
