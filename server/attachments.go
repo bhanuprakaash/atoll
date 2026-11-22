@@ -2,12 +2,14 @@ package server
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"atoll/run"
 	"atoll/store"
 )
 
@@ -70,7 +72,8 @@ func (a *api) getAttachment(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(att.Data)
 }
 
-// threadFile serves an image file from inside the thread's work folder.
+// threadFile serves an image file from inside the thread's work folder as it is, and any other
+// file of the thread's checkout as text.
 func (a *api) threadFile(w http.ResponseWriter, r *http.Request) {
 	t, err := a.st.Thread(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -80,24 +83,11 @@ func (a *api) threadFile(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Query().Get("path")
 	mime, ok := _imageMimes[strings.ToLower(filepath.Ext(p))]
 	if !ok {
-		http.NotFound(w, r)
+		a.threadText(w, r, t, p)
 		return
 	}
-	root, err := filepath.EvalSymlinks(a.runs.WorkDir(t))
+	full, err := a.runs.ThreadPath(t, p)
 	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	if !filepath.IsAbs(p) {
-		p = filepath.Join(root, p)
-	}
-	full, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	if rel, err := filepath.Rel(root, full); err != nil || rel == ".." ||
-		strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -108,4 +98,20 @@ func (a *api) threadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", mime)
 	_, _ = w.Write(data)
+}
+
+func (a *api) threadText(w http.ResponseWriter, r *http.Request, t store.Thread, p string) {
+	f, err := a.runs.ReadFile(r.Context(), t, p)
+	switch {
+	case errors.Is(err, run.ErrNotFound):
+		failCode(w, http.StatusNotFound, "not_found", "Not in this thread's checkout.")
+	case errors.Is(err, run.ErrBinary):
+		failCode(w, http.StatusUnsupportedMediaType, "binary", "This is a binary file.")
+	case errors.Is(err, run.ErrTooLarge):
+		failCode(w, http.StatusRequestEntityTooLarge, "too_large", "Too large to show here (over 1 MB).")
+	case err != nil:
+		a.fail(w, r, err)
+	default:
+		write(w, http.StatusOK, f)
+	}
 }

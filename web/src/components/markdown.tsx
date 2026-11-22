@@ -8,6 +8,7 @@ import { DiffView } from '@/components/diff-view';
 import { PRChip, pullNumber } from '@/components/pr-chip';
 import { SortTable } from '@/components/sort-table';
 import { ZoomImage } from '@/components/zoom-image';
+import { fileRef, type FileRef } from '@/utils/file-ref';
 
 // asTyped keeps constructs a person rarely means in chat (and pasted logs are full of) as plain text.
 function asTyped(this: { data: () => { micromarkExtensions?: unknown[] } }) {
@@ -54,17 +55,20 @@ function Fence({ lang, source, plain }: { lang: string; source: string; plain?: 
   );
 }
 
-// onOpenPR, when given, turns a link to a GitHub pull request into a chip that opens the PR panel.
+// onOpenPR, when given, turns a link to a GitHub pull request into a chip that opens the PR panel;
+// onOpenFile turns inline code that names a file into a link that opens the file panel.
 // typed renders a person's own message: a short set, no rich blocks or images, spaces kept.
 export function Markdown({
   children,
   threadId,
   onOpenPR,
+  onOpenFile,
   typed,
 }: {
   children: string;
   threadId?: string;
   onOpenPR?: (url: string) => void;
+  onOpenFile?: (file: FileRef) => void;
   typed?: boolean;
 }) {
   return (
@@ -84,13 +88,28 @@ export function Markdown({
             const source = code.children.map((c) => (c.type === 'text' ? c.value : '')).join('');
             return <Fence lang={lang} source={source.replace(/\n$/, '')} plain={typed} />;
           },
-          code: ({ children }) => (
-            <code
-              className={`rounded-control px-1 text-[0.88em] ${typed ? 'bg-accent-ink/10' : 'bg-tile'}`}
-            >
-              {children}
-            </code>
-          ),
+          code: ({ children }) => {
+            const file = onOpenFile && typeof children === 'string' ? fileRef(children) : undefined;
+            const code = (
+              <code
+                className={`rounded-control px-1 text-[0.88em] ${typed ? 'bg-accent-ink/10' : 'bg-tile'}`}
+              >
+                {children}
+              </code>
+            );
+            return file ? (
+              <button
+                type="button"
+                data-file-link
+                onClick={() => onOpenFile!(file)}
+                className="cursor-pointer underline decoration-label underline-offset-2 hover:decoration-ink"
+              >
+                {code}
+              </button>
+            ) : (
+              code
+            );
+          },
           table: ({ node, children }) => <SortTable node={node!}>{children}</SortTable>,
           ul: ({ node, children, className }) =>
             node && isTaskList(node) ? (

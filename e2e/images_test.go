@@ -313,7 +313,7 @@ func TestImages_ThreadFile(t *testing.T) {
 	f.s.wantImage(t, file("shot.png"), "image/png", red)
 	f.s.wantImage(t, file(filepath.Join(work, "shot.png")), "image/png", red)
 	f.s.wantImage(t, file("docs/pic.jpeg"), "image/jpeg", tinyJPEG(t))
-	for _, p := range []string{"../outside.png", outside, "link.png", "answer.txt", "missing.png"} {
+	for _, p := range []string{"../outside.png", outside, "link.png", "missing.png"} {
 		if status, _, _ := f.s.get(t, file(p)); status != http.StatusNotFound {
 			t.Errorf("GET thread file %q: status %d, want 404", p, status)
 		}

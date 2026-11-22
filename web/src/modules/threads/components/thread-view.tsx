@@ -26,6 +26,7 @@ import { chatText, LiveRun } from '@/modules/threads/components/live-run';
 import { HelperNotices } from '@/modules/threads/components/helper-notices';
 import { useThreadEvents } from '@/modules/threads/hooks/use-thread-events';
 import { headPR, mrRef } from '@/modules/threads/utils/mr-ref';
+import type { FileRef } from '@/utils/file-ref';
 import { clockTime, messageTime } from '@/utils/time';
 import { usageLine } from '@/utils/usage';
 
@@ -163,6 +164,7 @@ function MessageLine({
   footer,
   resend,
   onOpenPR,
+  onOpenFile,
 }: {
   message: Message;
   threadId: string;
@@ -170,6 +172,7 @@ function MessageLine({
   footer?: ReactNode;
   resend: (message: Message) => Promise<void>;
   onOpenPR?: (url: string) => void;
+  onOpenFile?: (file: FileRef) => void;
 }) {
   const [resendError, setResendError] = useState<unknown>(null);
   const time = (
@@ -196,7 +199,7 @@ function MessageLine({
           {from?.name ?? 'Helper'}
         </span>
         <Clamp className={`self-stretch ${chatText}`}>
-          <Markdown threadId={threadId} onOpenPR={onOpenPR}>
+          <Markdown threadId={threadId} onOpenPR={onOpenPR} onOpenFile={onOpenFile}>
             {message.text}
           </Markdown>
         </Clamp>
@@ -264,7 +267,7 @@ function MessageLine({
   return (
     <div data-testid="message" className="flex flex-col gap-6">
       <div className={chatText}>
-        <Markdown threadId={threadId} onOpenPR={onOpenPR}>
+        <Markdown threadId={threadId} onOpenPR={onOpenPR} onOpenFile={onOpenFile}>
           {message.text}
         </Markdown>
       </div>
@@ -429,6 +432,7 @@ export function ThreadView({
   afterRun,
   signedOut,
   onOpenPR,
+  onOpenFile,
 }: {
   threadId: string;
   botId: string;
@@ -441,6 +445,7 @@ export function ThreadView({
   afterRun?: (runId: string) => ReactNode;
   signedOut?: (provider: Run['provider']) => ReactNode;
   onOpenPR?: (url: string) => void;
+  onOpenFile?: (file: FileRef) => void;
 }) {
   const navigate = useNavigate();
   const [repoId, setRepoId] = useState('');
@@ -687,6 +692,7 @@ export function ThreadView({
                   from={bots[m.from_bot_id ?? '']}
                   resend={(message) => resend([message])}
                   onOpenPR={onOpenPR}
+                  onOpenFile={onOpenFile}
                   footer={
                     thread &&
                     m.role === 'bot' &&
