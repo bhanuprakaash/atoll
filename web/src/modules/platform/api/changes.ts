@@ -2,11 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreatureLook } from '@/components/creature';
 import { api } from '@/lib/api-client';
 
+export type SkillFile = { path: string; content: string; executable: boolean };
+
 type ChangeSnapshot = {
   name?: string;
   path?: string;
   command?: string;
   content?: string;
+  files?: SkillFile[];
   look?: CreatureLook;
   colour?: string;
   provider?: 'claude' | 'codex';

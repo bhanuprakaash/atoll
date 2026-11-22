@@ -431,14 +431,15 @@ func (a *api) listChanges(w http.ResponseWriter, r *http.Request) {
 const _platformTools = `[
 {"name":"create_bot","description":"Create a Bot.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string","enum":["jellyfish","octopus","whale","starfish","sponge","coral","turtle","clam","seal"]},"colour":{"type":"string","enum":["brown","orange","amber","green","teal","sky","blue","purple","pink"]},"mode":{"type":"string","enum":["auto","ask","full"]},"delegates":{"type":"array","items":{"type":"string"}}},"required":["name","provider"]}},
 {"name":"edit_bot","description":"Edit a Bot.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"persona":{"type":"string"},"provider":{"type":"string","enum":["claude","codex"]},"skills":{"type":"array","items":{"type":"string"}},"repo_access":{"type":["array","null"],"items":{"type":"string"}},"connections":{"type":"array","items":{"type":"string"}},"mcp_servers":{"type":"array","items":{"type":"string"}},"model":{"type":"string"},"look":{"type":"string","enum":["jellyfish","octopus","whale","starfish","sponge","coral","turtle","clam","seal"]},"colour":{"type":"string","enum":["brown","orange","amber","green","teal","sky","blue","purple","pink"]},"mode":{"type":"string","enum":["auto","ask","full"]},"delegates":{"type":"array","items":{"type":"string"}}},"required":["id"]}},
-{"name":"create_skill","description":"Create a skill.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"}},"required":["name","content"]}},
-{"name":"edit_skill","description":"Edit a skill.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"content":{"type":"string"}},"required":["id"]}},
+{"name":"create_skill","description":"Create a skill.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"},"files":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"},"executable":{"type":"boolean"}},"required":["path","content"]}}},"required":["name","content"]}},
+{"name":"edit_skill","description":"Edit a skill. Given files replaces all of them; left out keeps them.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"content":{"type":"string"},"files":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"},"executable":{"type":"boolean"}},"required":["path","content"]}}},"required":["id"]}},
 {"name":"import_skill","description":"Import a local skill folder (SKILL.md and its text files), or update the skill imported from it. Returns what it added, changed, removed and skipped.","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"replace":{"type":"boolean","description":"Overwrite edits made in Reef. Only after the user agreed."}},"required":["path"]}},
 {"name":"import_agent","description":"Read an agent file from ~/.claude/agents.","inputSchema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}},
 {"name":"register_repo","description":"Register a local Git repository.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"path":{"type":"string"}},"required":["name","path"]}},
 {"name":"attach_connection","description":"Attach a connected account to a Bot.","inputSchema":{"type":"object","properties":{"bot_id":{"type":"string"},"connection_id":{"type":"string"}},"required":["bot_id","connection_id"]}},
 {"name":"list_bots","description":"List every Bot.","inputSchema":{"type":"object","properties":{}}},
 {"name":"list_skills","description":"List the skills in the library, without their content.","inputSchema":{"type":"object","properties":{}}},
+{"name":"get_skill","description":"Read a skill: its name, content and every file with its executable flag.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}},
 {"name":"list_mcp_servers","description":"List the MCP servers in the library: the catalog and the user's own, without their secrets.","inputSchema":{"type":"object","properties":{}}},
 {"name":"list_connections","description":"List the connected accounts.","inputSchema":{"type":"object","properties":{}}},
 {"name":"list_repos","description":"List the registered repos.","inputSchema":{"type":"object","properties":{}}},
@@ -469,8 +470,9 @@ type Model struct {
 }
 
 var _readTools = []string{
-	provider.ToolListBots, provider.ToolListSkills, provider.ToolListConnections,
-	provider.ToolListRepos, provider.ToolListModels, provider.ToolListMCPServers,
+	provider.ToolListBots, provider.ToolListSkills, provider.ToolGetSkill,
+	provider.ToolListConnections, provider.ToolListRepos, provider.ToolListModels,
+	provider.ToolListMCPServers,
 }
 
 func isPlatformTool(name string) bool {
@@ -481,7 +483,7 @@ func isPlatformTool(name string) bool {
 	}, name)
 }
 
-func (a *api) readCall(ctx context.Context, name string) (any, *rpcError) {
+func (a *api) readCall(ctx context.Context, name string, args json.RawMessage) (any, *rpcError) {
 	var v any
 	var err error
 	switch name {
@@ -500,6 +502,14 @@ func (a *api) readCall(ctx context.Context, name string) (any, *rpcError) {
 			items[i].ID, items[i].Name = sk.ID, sk.Name
 		}
 		v = items
+	case provider.ToolGetSkill:
+		var in struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(args, &in) != nil || in.ID == "" {
+			return nil, &rpcError{Code: _invalidParams, Message: "invalid skill id"}
+		}
+		v, err = a.st.Skill(ctx, in.ID)
 	case provider.ToolListConnections:
 		var conns []store.Connection
 		conns, err = a.st.Connections(ctx)
@@ -562,7 +572,7 @@ func (a *api) platformCall(
 		return a.jsonText(result)
 	}
 	if slices.Contains(_readTools, name) {
-		return a.readCall(ctx, name)
+		return a.readCall(ctx, name, args)
 	}
 	var providers []Provider
 	var rp store.Repo
@@ -651,6 +661,9 @@ func (a *api) platformCall(
 		if derr := decodeSkill(args, &sk); derr != nil {
 			return nil, &rpcError{Code: _invalidParams, Message: derr.Error()}
 		}
+		if rerr := a.homeRefError(sk); rerr != nil {
+			return nil, rerr
+		}
 		sk, err = st.CreateSkill(ctx, sk)
 		after, entity, id, action = sk, store.EntitySkill, sk.ID, store.ActionCreate
 	case provider.ToolEditSkill:
@@ -666,6 +679,9 @@ func (a *api) platformCall(
 			before = sk
 			if derr := decodeSkill(args, &sk); derr != nil {
 				return nil, &rpcError{Code: _invalidParams, Message: derr.Error()}
+			}
+			if rerr := a.homeRefError(sk); rerr != nil {
+				return nil, rerr
 			}
 			sk.ID = in.ID
 			sk, err = st.UpdateSkill(ctx, sk)
@@ -1045,6 +1061,18 @@ func refusal(imp skill.Import) *refusedImport {
 		Reason: fmt.Sprintf("skill %q refers to files in your home folder that a Bot cannot use: %s",
 			imp.Skill.Name, strings.Join(list, ", ")),
 	}
+}
+
+// homeRefError refuses a skill Chief writes whose files refer to the owner's home folder, or nil.
+func (a *api) homeRefError(sk store.Skill) *rpcError {
+	refs, err := skill.HomeRefs(sk)
+	if err != nil {
+		return a.toolError(err)
+	}
+	if refused := refusal(skill.Import{Skill: sk, Refs: refs}); refused != nil {
+		return &rpcError{Code: _invalidParams, Message: refused.Reason}
+	}
+	return nil
 }
 
 // importSkill puts the skill folder read by readImport into the library. It updates the skill

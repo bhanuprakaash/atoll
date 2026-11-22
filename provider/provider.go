@@ -45,6 +45,7 @@ const (
 	ToolAttachConnection = "attach_connection"
 	ToolListBots         = "list_bots"
 	ToolListSkills       = "list_skills"
+	ToolGetSkill         = "get_skill"
 	ToolListConnections  = "list_connections"
 	ToolListRepos        = "list_repos"
 	ToolListModels       = "list_models"
