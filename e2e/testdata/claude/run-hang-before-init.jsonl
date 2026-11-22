@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"Wait for the queue to drain."},"session_id":"","parent_tool_use_id":null,"uuid":"bd0d088a-3238-4928-a86f-bb6d2e15e7a9","timestamp":"2026-11-04T11:02:23.932Z","isReplay":true}
+{"fake":"hang"}
