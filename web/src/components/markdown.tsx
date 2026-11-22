@@ -1,4 +1,4 @@
-import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform, type Options } from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { Checklist, isTaskList } from '@/components/checklist';
@@ -9,15 +9,31 @@ import { PRChip, pullNumber } from '@/components/pr-chip';
 import { SortTable } from '@/components/sort-table';
 import { ZoomImage } from '@/components/zoom-image';
 
-function Fence({ lang, source }: { lang: string; source: string }) {
-  if (lang === 'diff') return <DiffView source={source} />;
-  if (lang === 'reef-metrics') {
-    const items = parseMetrics(source);
-    if (items) return <Metrics items={items} />;
-  }
-  if (lang === 'reef-kv') {
-    const pairs = parseKv(source);
-    if (pairs) return <KeyValue pairs={pairs} />;
+// asTyped keeps constructs a person rarely means in chat (and pasted logs are full of) as plain text.
+function asTyped(this: { data: () => { micromarkExtensions?: unknown[] } }) {
+  const data = this.data();
+  (data.micromarkExtensions ??= []).push({
+    disable: { null: ['headingAtx', 'setextUnderline', 'thematicBreak', 'codeIndented', 'table'] },
+  });
+}
+
+const _richPlugins: Options['remarkPlugins'] = [remarkGfm, remarkBreaks];
+const _typedPlugins = [remarkGfm, asTyped] as Options['remarkPlugins'];
+
+const _typedLook =
+  '[&_:is(ul,ol)]:whitespace-normal [&_li]:whitespace-pre-wrap [&_[data-component=code]]:text-ink';
+
+function Fence({ lang, source, plain }: { lang: string; source: string; plain?: boolean }) {
+  if (!plain) {
+    if (lang === 'diff') return <DiffView source={source} />;
+    if (lang === 'reef-metrics') {
+      const items = parseMetrics(source);
+      if (items) return <Metrics items={items} />;
+    }
+    if (lang === 'reef-kv') {
+      const pairs = parseKv(source);
+      if (pairs) return <KeyValue pairs={pairs} />;
+    }
   }
   return (
     <CodeBox source={source} lang={lang.startsWith('reef-') ? undefined : lang || undefined} />
@@ -25,19 +41,24 @@ function Fence({ lang, source }: { lang: string; source: string }) {
 }
 
 // onOpenPR, when given, turns a link to a GitHub pull request into a chip that opens the PR panel.
+// typed renders a person's own message: a short set, no rich blocks or images, spaces kept.
 export function Markdown({
   children,
   threadId,
   onOpenPR,
+  typed,
 }: {
   children: string;
   threadId?: string;
   onOpenPR?: (url: string) => void;
+  typed?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-3 break-words [&_li+li]:mt-1 [&_li>:is(ul,ol)]:mt-1 [&>:is(h1,h2,h3,h4)]:-mb-1.5 [&>:is(h1,h2,h3,h4)]:mt-2 [&>:is(h1,h2,h3,h4):first-child]:mt-0 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_pre]:overflow-auto">
+    <div
+      className={`${typed ? _typedLook : ''} flex flex-col gap-3 break-words [&_li+li]:mt-1 [&_li>:is(ul,ol)]:mt-1 [&>:is(h1,h2,h3,h4)]:-mb-1.5 [&>:is(h1,h2,h3,h4)]:mt-2 [&>:is(h1,h2,h3,h4):first-child]:mt-0 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_pre]:overflow-auto`}
+    >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkBreaks]}
+        remarkPlugins={typed ? _typedPlugins : _richPlugins}
         urlTransform={(url, key) => (key === 'src' ? url : defaultUrlTransform(url))}
         components={{
           pre: ({ node }) => {
@@ -46,10 +67,14 @@ export function Markdown({
             const cls = code.properties.className;
             const lang = Array.isArray(cls) ? String(cls[0] ?? '').replace(/^language-/, '') : '';
             const source = code.children.map((c) => (c.type === 'text' ? c.value : '')).join('');
-            return <Fence lang={lang} source={source.replace(/\n$/, '')} />;
+            return <Fence lang={lang} source={source.replace(/\n$/, '')} plain={typed} />;
           },
           code: ({ children }) => (
-            <code className="rounded-control bg-tile px-1 text-[0.88em]">{children}</code>
+            <code
+              className={`rounded-control px-1 text-[0.88em] ${typed ? 'bg-accent-ink/10' : 'bg-tile'}`}
+            >
+              {children}
+            </code>
           ),
           table: ({ node, children }) => <SortTable node={node!}>{children}</SortTable>,
           ul: ({ node, children, className }) =>
@@ -60,7 +85,7 @@ export function Markdown({
             ),
           img: ({ src = '', alt }) => {
             const data = /^data:/i.test(src);
-            if (data || (threadId && !/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(src)))
+            if ((data && !typed) || (threadId && !/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(src)))
               return (
                 <ZoomImage
                   src={data ? src : `/api/threads/${threadId}/file?path=${encodeURIComponent(src)}`}

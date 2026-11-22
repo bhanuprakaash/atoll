@@ -2238,6 +2238,15 @@ Voice
   restart. It is kept per thread on this device (browser storage keyed by thread id; a Bot's New
   thread screen is keyed by Bot), never sent to the server. Sending, or clearing the box by hand,
   removes it. Attachments are not kept.
+- Typing structure in the main composer (the queued-message edit box keeps plain keys). Shift+Enter
+  on a list line starts the next item with the line's indent: `- `, `* `, `+ ` repeat, `1. ` gives
+  `2. `, `1) ` gives `2) `, `- [ ] ` and `- [x] ` give `- [ ] `; text after the caret moves into the
+  new item; later numbers are not renumbered. Shift+Enter on an empty item removes its marker and
+  leaves a plain line. The marker goes in as typed text, so one undo removes only it. The caret is
+  in an open code block when an odd number of lines before it start with ```` ``` ```` or `~~~`;
+  there Enter and Shift+Enter add a line, and after the closing fence Enter sends again. Send still
+  sends an unclosed block. Enter on any other line sends. No toolbar, shortcuts or rich-text
+  editor: the Bot reads raw Markdown.
 - Thread labels. A thread shows one label, the first that holds: Needs you (an approval is open,
   until answered); Working (a run is going); Run failed (a run failed since the person last opened the
   thread, until opened); `Out until 3 PM` (the provider's usage limit, until its reset time);
@@ -2513,6 +2522,13 @@ message and the boss's brief all render alike.
   chat. A Bot writing a PR, issue or comment with `gh` or `glab` therefore uses Markdown tables and
   code only.
 - Components read the theme tokens, never a literal colour (App and UI, Colour).
+- Your own message (its bubble, and the queued bubble) is the one exception: it renders a short
+  set, because it is often a pasted log. Paragraphs, lists, task lists, ```` ``` ```` and `~~~` code
+  blocks (the plain `code` box, never `diff` or a `reef-` component), inline code, bold, italic and
+  links render. Headings (`#` and a line over `---`), `---` rules, 4-space indented code and tables
+  are off in the parser and stay as typed; spaces are kept. No images, no PR chips. The code box
+  stays dark inside the light bubble; inline code takes a light dark tint. The Bot gets the raw
+  text.
 
 ## Testing
 

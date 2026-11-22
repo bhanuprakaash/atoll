@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { quiet } from '@/components/button';
 import { ErrorNotice } from '@/components/error-notice';
+import { Markdown } from '@/components/markdown';
 import { TextArea } from '@/components/text-field';
 import { ZoomImage } from '@/components/zoom-image';
 import { useChangeQueued, type Message } from '@/modules/threads/api/messages';
@@ -42,7 +43,7 @@ export function QueuedMessage({
             <div
               className={`rounded-[22px] bg-accent px-[18px] py-2.5 ${chatText} whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]`}
             >
-              {message.text}
+              <Markdown typed>{message.text}</Markdown>
             </div>
           )
         ) : (
