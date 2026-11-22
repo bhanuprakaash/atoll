@@ -24,6 +24,30 @@ const maxImages = 10;
 
 type Attachment = ImageInput & { id: number; url: string };
 
+const listItem = /^(\s*)(?:[-*+]|(\d+)([.)]))( \[[ xX]\])? /;
+
+// inFence is true when the caret sits in a ``` or ~~~ block that is not closed yet.
+const inFence = (before: string) =>
+  before.split('\n').filter((l) => /^\s*(```|~~~)/.test(l)).length % 2 === 1;
+
+// continueList types the next list marker, or clears an empty item, the way the browser inserts
+// typed text, so one undo takes back only that.
+function continueList(el: HTMLTextAreaElement) {
+  const caret = el.selectionStart;
+  const start = el.value.lastIndexOf('\n', caret - 1) + 1;
+  const end = el.value.indexOf('\n', caret);
+  const line = el.value.slice(start, end === -1 ? undefined : end);
+  const m = listItem.exec(el.value.slice(start, caret));
+  if (!m || el.selectionEnd !== caret) return false;
+  if (line === m[0]) {
+    el.setSelectionRange(start, start + line.length);
+    return document.execCommand('delete');
+  }
+  const [marker, indent, num, delim, task] = m;
+  const next = num ? `${Number(num) + 1}${delim}` : marker.trimStart()[0];
+  return document.execCommand('insertText', false, `\n${indent}${next}${task ? ' [ ]' : ''} `);
+}
+
 const readImage = (file: File, id: number) =>
   new Promise<Attachment>((resolve, reject) => {
     const reader = new FileReader();
@@ -147,10 +171,13 @@ export function Composer({
       onChange={(e) => setText(e.target.value)}
       onPaste={onPaste}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+        if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+        const el = e.currentTarget;
+        if (inFence(el.value.slice(0, el.selectionStart))) return;
+        if (!e.shiftKey) {
           e.preventDefault();
           submit();
-        }
+        } else if (continueList(el)) e.preventDefault();
       }}
       className="block max-h-[194px] overflow-y-auto py-2.25 text-[15px] leading-[22px]"
     />

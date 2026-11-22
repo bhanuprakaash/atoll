@@ -67,8 +67,9 @@ test('a long user message clamps at 8 lines with Show more and Show less', async
   const log = page.getByRole('log', { name: 'Messages' });
   const bubble = log.getByRole('article', { name: 'You' });
   await expect(bubble).toBeVisible();
-  const clamped = bubble.getByText('line 30');
-  const lineHeight = await clamped.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+  const line = bubble.getByText('line 30');
+  const lineHeight = await line.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+  const clamped = bubble.locator('div:has(+ button)');
   expect(Math.abs((await clamped.boundingBox())!.height - lineHeight * 8)).toBeLessThanOrEqual(1);
   expect((await bubble.boundingBox())!.height).toBeLessThan(lineHeight * 10);
   await log.getByRole('button', { name: 'Show more' }).click();

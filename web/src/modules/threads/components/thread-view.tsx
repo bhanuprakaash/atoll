@@ -229,7 +229,7 @@ function MessageLine({
               className={`rounded-[22px] bg-accent px-[18px] py-2.5 ${chatText} whitespace-pre-wrap text-accent-ink [overflow-wrap:anywhere]`}
             >
               <Clamp toggle="text-[13px] text-accent-ink/60 hover:text-accent-ink">
-                {message.text}
+                <Markdown typed>{message.text}</Markdown>
               </Clamp>
             </div>
           )}
