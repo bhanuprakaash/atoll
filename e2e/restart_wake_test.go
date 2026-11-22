@@ -22,6 +22,9 @@ const (
 	_hangSession = "5a14034e-0f32-46ec-8e71-6dcf5e32cf31"
 	_continueAll = "Continue a helper to pick up where it stopped."
 	_continueOne = "Continue it to pick up where it stopped."
+	_noSession   = "No session yet: a continue starts it fresh."
+	// _hangBeforeInit is the prompt of run-hang-before-init: the provider hangs before its init line.
+	_hangBeforeInit = "Wait for the queue to drain."
 )
 
 // restartedRun is a run as the API stores it.
@@ -206,12 +209,7 @@ func newCutHelpers(t *testing.T, p string, names []string, ahead []int) *cutHelp
 		c.ids = append(c.ids, h.ThreadID)
 		c.branch = append(c.branch, h.Branch)
 		c.runs = append(c.runs, helperRunning(t, s, h.ThreadID))
-		// The run is `running` before its provider has said its session id, and a restart before
-		// that leaves a thread with no session to resume.
-		eventually(t, 30*time.Second, "helper thread "+h.ThreadID+" has a stored session", func() bool {
-			rows := dbRows(t, f.m, "SELECT session FROM threads WHERE id = ?", h.ThreadID)
-			return len(rows) == 1 && rows[0][0] != ""
-		})
+		helperStored(t, f.m, h.ThreadID)
 	}
 	for i := range names {
 		path := worktreeOf(t, f.repo.Path, c.branch[i])
@@ -341,6 +339,7 @@ func TestRestartWake_NoBranchYet(t *testing.T) {
 			boss := s.newThread(t, poteto)
 			ids, bossRun := delegateTester(t, s, boss, s.events(t, boss), _hangPrompt)
 			helperRunning(t, s, ids[0])
+			helperStored(t, m, ids[0])
 
 			s.kill()
 			s = m.serve(t)
@@ -351,6 +350,42 @@ func TestRestartWake_NoBranchYet(t *testing.T) {
 				t.Fatalf("%d restart messages, boss run %q; want one, done: %+v", len(msgs), wake.Status, msgs)
 			}
 			want := "Tester stopped: " + _restarted + ".\nNo branch yet. (thread " + ids[0] + ")\n" + _continueOne + "\n\n" + helpersLine()
+			if got := strings.TrimPrefix(msgs[0].Text, "Reef: "); got != want {
+				t.Errorf("restart message:\n%s\nwant:\n%s", got, want)
+			}
+		})
+	}
+}
+
+// TestRestartWake_NoSessionYet: a helper whose run was cut short by a restart before its provider
+// said its session id has no session to resume, so its wake line reads `No session yet: a continue
+// starts it fresh.` and not `Continue it to pick up where it stopped.`
+func TestRestartWake_NoSessionYet(t *testing.T) {
+	t.Parallel()
+	for _, p := range _oneProvider {
+		t.Run(p, func(t *testing.T) {
+			m, s := start(t, p)
+			poteto, tester := s.newBot(t, "Poteto", p), s.newBot(t, "Tester", p)
+			setDelegates(t, s, poteto, tester)
+			boss := s.newThread(t, poteto)
+			ids, bossRun := delegateTester(t, s, boss, s.events(t, boss), _hangBeforeInit)
+			helperRunning(t, s, ids[0])
+			eventually(t, 30*time.Second, "the provider got the helper's prompt", func() bool {
+				return len(promptsWith(t, m, p, _hangBeforeInit)) > 0
+			})
+			if rows := dbRows(t, m, "SELECT session FROM threads WHERE id = ?", ids[0]); len(rows) != 1 || rows[0][0] != "" {
+				t.Fatalf("helper thread %s before the restart: session rows %v, want one empty session", ids[0], rows)
+			}
+
+			s.kill()
+			s = m.serve(t)
+
+			wake := nextBossRun(t, s, boss.ID, bossRun)
+			msgs := restartMessages(t, s, boss.ID)
+			if len(msgs) != 1 || wake.Status != "done" {
+				t.Fatalf("%d restart messages, boss run %q; want one, done: %+v", len(msgs), wake.Status, msgs)
+			}
+			want := "Tester stopped: " + _restarted + ".\nNo branch yet. (thread " + ids[0] + ")\n" + _noSession + "\n\n" + helpersLine()
 			if got := strings.TrimPrefix(msgs[0].Text, "Reef: "); got != want {
 				t.Errorf("restart message:\n%s\nwant:\n%s", got, want)
 			}

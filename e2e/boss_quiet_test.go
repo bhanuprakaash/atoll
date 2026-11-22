@@ -316,6 +316,7 @@ func TestBossQuiet_RestartWakesOnce(t *testing.T) {
 			runs := map[string]string{}
 			for _, h := range ids {
 				runs[h] = helperRunning(t, s, h)
+				helperStored(t, m, h)
 			}
 
 			s.kill()
