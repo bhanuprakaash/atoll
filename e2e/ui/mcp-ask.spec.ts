@@ -21,6 +21,8 @@ test.afterEach(() => m?.stop());
 
 const prompt = 'Open an issue on GitHub.';
 const ask = 'Wants to use GitHub: create issue';
+// A time today: the locale's clock, `6:21 AM` or `18:21`.
+const clock = /^\d{1,2}:\d{2}(\s?[AP]M)?$/;
 
 const rowOf = (pane: Locator, id: string) =>
   pane.getByRole('listitem').filter({ has: pane.page().locator(`a[href$="/threads/${id}"]`) });
@@ -38,7 +40,9 @@ test('an approval for mcp__github__create_issue reads Wants to use GitHub: creat
   await waiting('Asker');
   await page.goto(`${m.url}/settings`);
   await page.mouse.move(1270, 5);
-  await expect.poll(() => lines(sidebarRow(page, 'Asker'))).toEqual(['Asker', ask]);
+  await expect
+    .poll(() => lines(sidebarRow(page, 'Asker')))
+    .toEqual(['Asker', expect.stringMatching(clock), ask]);
 });
 
 test('the same approval reads Asker · Wants to use GitHub: create issue in Now', async ({
@@ -58,9 +62,7 @@ test('the same approval reads Wants to use GitHub: create issue on the approval 
 }) => {
   const { bot, thread } = await waiting('Asker');
   await page.goto(`${m.url}/bots/${bot.id}/threads/${thread.id}`);
-  const card = page
-    .getByRole('log', { name: 'Messages' })
-    .getByRole('group', { name: 'Approval' });
+  const card = page.getByRole('log', { name: 'Messages' }).getByRole('group', { name: 'Approval' });
   await expect(card).toHaveCount(1);
   await expect(card).toContainText(ask);
 });

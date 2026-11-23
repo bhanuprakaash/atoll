@@ -77,7 +77,7 @@ const waves = (el: Locator) =>
         .filter((a) => (a as CSSAnimation).animationName === 'wave').length,
   );
 
-test('the creature follows the runs; the row never shows a reply, Stopped or the words Needs you', async ({
+test('the creature follows the runs; the row shows the last reply, Stopped after a stop, the ask when waiting, never the words Needs you', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -90,7 +90,7 @@ test('the creature follows the runs; the row never shows a reply, Stopped or the
   const row = sidebarRow(page, 'Calm');
   const idle = row.getByRole('img', { name: 'Whale, idle', exact: true });
   await expect(idle).toBeVisible();
-  await expect(row).not.toContainText(replied);
+  await expect(row).toContainText(replied);
   expect(await waves(row)).toBe(0);
 
   const busy = await openThreadAPI(m, bot.id, prompts.hang);
@@ -100,17 +100,19 @@ test('the creature follows the runs; the row never shows a reply, Stopped or the
   await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
   await waitStatus(m, busy.id, 'stopped');
   await expect(idle).toBeVisible();
-  await expect(row).not.toContainText('Stopped');
+  await expect(row).toContainText('Stopped');
 
   const asking = await openThreadAPI(m, bot.id, prompts.write);
   await waitStatus(m, asking.id, 'waiting');
   await expect(row.getByRole('img', { name: 'Whale, needs you', exact: true })).toBeVisible();
+  await expect(row).toContainText('Wants to edit hello.txt');
   await expect(row).not.toContainText('Needs you');
   const { approval } = await api(m, 'GET', `/api/threads/${asking.id}`);
   await api(m, 'POST', `/api/approvals/${approval.id}`, { approve: true });
   await waitStatus(m, asking.id, 'done');
   await expect(idle).toBeVisible();
-  await expect(row).not.toContainText((await api(m, 'GET', `/api/bots/${bot.id}`)).activity);
+  await expect(row).toContainText((await api(m, 'GET', `/api/bots/${bot.id}`)).activity);
+  await expect(row).not.toContainText('Wants to edit');
 });
 
 test('a running older thread keeps the Bot working when a newer thread has finished', async ({
