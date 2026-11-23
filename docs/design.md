@@ -1874,7 +1874,8 @@ Voice
     shows on its sidebar row and in Now, not on the tab.
   - Clicking a tab opens that thread; the open tab is `aria-selected`. Hover or keyboard focus
     swaps the marker for Close (Close thread, saving unfinished work); right-click has Rename,
-    Pin or Unpin, and Close. Pinning a 4th thread asks which pin to replace.
+    Pin or Unpin, and Close. Closing the open thread opens the tab to its right, else to its left,
+    else New thread. Pinning a 4th thread asks which pin to replace.
   - After the tabs, `N more` opens the dialog Other threads: a search field on top (title, branch
     and MR reference, `#92`, `!7`), the Bot's other open threads, newest activity first, and at the
     bottom `Closed · N`, folded; open, it shows the latest few closed threads and "Search closed
