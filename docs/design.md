@@ -1848,7 +1848,7 @@ Voice
   *The server sends each thread's `parent_thread_id` and, for a live helper, its `step`, and for
   a live thread its `activity` (Now's note: the live verb or the waiting ask), and each Bot's open
   threads with their marker on `GET /api/bots`; the client builds the rows, tabs and lists.*
-- Thread tabs: under the header band, above the chat, a `tablist` named Threads. It holds a tab
+- Thread tabs: in the header row, left of the icons, a `tablist` named Threads. It holds a tab
   for the open thread (a closed one too, opened from Closed), then for the Bot's open threads that
   need the person (and failed ones), run or are pinned. A helper thread has no tab, except a failed
   one.
@@ -1979,12 +1979,14 @@ Voice
     is a Bot id in the target section, null for last). `POST /api/groups/{id}/move {before}` (a
     group id, null for last) moves a group.
   *Move up and Move down took one step per click; dragging is how a list is reordered.*
-- Bot header: a solid band in the main background, 72 px tall, with a 24 px fade below it.
-  Messages scroll under the band and fade out; no text shows above its bottom edge. It holds only
-  Thread details and Bot settings, at the right. The thread's title and run state are its tab; its
+- Bot header: one row in the main background, 56 px tall, with a 24 px fade below it. Messages
+  scroll under it and fade out; no text shows above its bottom edge. It holds the thread tabs at
+  the left (after the `Sidebar` button below 900 px) and Thread details and Bot settings at the
+  right; the tabs scroll sideways and never push the icons. Empty space in the row drags the
+  window. The thread's title and run state are its tab; its
   PRs, CI and helpers are in the thread panel; approvals are answered in the thread. *The header
   island is gone: the Bot list, the tab dots and Now show everything waiting; the island repeated
-  it.*
+  it. With the island gone the band held only two icons, so the tabs moved up into it.*
 - Thread titles: the first six words of the first message (a helper's brief), stored when sent,
   trailing `.,;:!?` stripped from the last word. After the thread's first reply, Reef asks the Bot's
   provider for a better one: its own session on the cheapest model (Claude Code `haiku`, Codex

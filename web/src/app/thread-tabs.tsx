@@ -253,7 +253,7 @@ export function ThreadTabs({ bot, openThreadId }: { bot: Bot; openThreadId?: str
     );
   return (
     <>
-      <div className="relative z-20 flex h-10 flex-none items-center gap-1 bg-bg px-4 pb-2">
+      <div className="flex min-w-0 items-center gap-1">
         <div
           role="tablist"
           aria-label="Threads"
@@ -319,7 +319,7 @@ export function ThreadTabs({ bot, openThreadId }: { bot: Bot; openThreadId?: str
         </button>
       </div>
       {pin.isError && !isPinLimit(pin.error) && (
-        <ErrorNotice error={pin.error} className="px-4 pb-2" />
+        <ErrorNotice error={pin.error} className="absolute top-full left-4 z-20" />
       )}
       {more && (
         <OtherThreads

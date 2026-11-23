@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Navigate, Outlet, useLocation, useParams, useSearchParams } from 'react-router';
 import { ThreadTabs } from '@/app/thread-tabs';
 import { Gone } from '@/components/gone';
@@ -27,16 +27,19 @@ export type OpenFile = (threadId: string, file: FileRef) => void;
 export function BotHeader({
   onSettings,
   details,
+  children,
 }: {
   onSettings?: () => void;
   details?: { open: boolean; toggle: () => void };
+  children?: ReactNode;
 }) {
   return (
     <header
       data-tauri-drag-region="deep"
-      className="relative z-10 grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5"
+      className="relative z-10 flex h-14 flex-none items-center gap-2 bg-bg pr-4 pl-4 max-[899.98px]:pl-13"
     >
-      <div className="col-start-3 mt-1.5 mr-4 flex items-center gap-1 justify-self-end">
+      <div className="flex min-w-0 flex-1 items-center">{children}</div>
+      <div className="flex flex-none items-center gap-1">
         {details && (
           <button
             type="button"
@@ -167,8 +170,11 @@ function BotFrame() {
               toggle: () => setDetailsFor(detailsOpen ? '' : threadId),
             }
           }
-        />
-        {tabBot && <ThreadTabs bot={tabBot} openThreadId={tabBoss ? tabBoss.threadId : threadId} />}
+        >
+          {tabBot && (
+            <ThreadTabs bot={tabBot} openThreadId={tabBoss ? tabBoss.threadId : threadId} />
+          )}
+        </BotHeader>
         <Outlet context={{ openPR, openFile }} />
         {detailsOpen && (
           <ThreadPanel

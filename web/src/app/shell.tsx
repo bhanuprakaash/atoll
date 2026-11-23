@@ -102,7 +102,7 @@ export function Shell() {
           aria-label="Sidebar"
           aria-expanded={floating}
           onClick={(event) => (floating ? closeSidebar() : openSidebar(event.currentTarget))}
-          className="fixed top-3.5 left-3 z-20 flex size-8 items-center justify-center rounded-lg text-muted"
+          className="fixed top-3 left-3 z-20 flex size-8 items-center justify-center rounded-lg text-muted"
         >
           <svg
             aria-hidden="true"
