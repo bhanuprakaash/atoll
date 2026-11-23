@@ -50,7 +50,7 @@ function Pin() {
   );
 }
 
-const outUntil = (thread: SidebarThread) =>
+export const outUntil = (thread: SidebarThread) =>
   thread.resets_at ? `Out until ${clockTime(thread.resets_at)}` : 'Out';
 
 export function ThreadMarker({ thread, showPin }: { thread: SidebarThread; showPin: boolean }) {

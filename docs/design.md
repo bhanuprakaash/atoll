@@ -1818,11 +1818,17 @@ Voice
     only when a group exists); at the bottom `+` (New Bot, New group) and the user's row, their
     avatar and name (Settings). The sidebar stays in Settings. No logo, no search field, no group
     chats. The Bots scroll beneath Now, with a thin scrollbar.
-  - A Bot row is the Bot's 28 px creature and its name; no group name, cost or time. A second line
-    shows only while the Bot works (the live verb and three wave dots), waits on the person (what
-    it asks, `Wants to run make check`, with the light dot, `--color-accent`) or failed (its
-    newest run failed and that thread is still unread: `Run failed · 3:02 PM`, with the red dot,
-    `--color-danger`). Needs you wins when a Bot has both.
+  - A Bot row is the Bot's 36 px creature, its name, on the name's right the time of its last
+    activity (the clock today, the weekday this week, else the date) and a second line, always;
+    no group name or cost. The second line, the first that holds: waits on the person (what it
+    asks, `Wants to run make check`, with the light dot, `--color-accent`), failed (its newest run
+    failed and that thread is still unread: `Run failed`, with the red dot, `--color-danger`),
+    works (the live verb and three wave dots), a thread at the provider's usage limit (`Out until
+    3:00 PM`), else the first line of the last reply (`Stopped` after a run the person stopped,
+    `No reply` when the last run left none, `No messages yet` and no time for a Bot that never
+    ran). It is muted, and ink while a thread has a reply the person has not opened. *A row that
+    was only a name said nothing about what the Bot last did; the list now reads like a chat
+    list. The poll already sent the reply's first line and the time.*
   - Clicking a row opens the Bot's latest thread. Right-click opens the Bot menu (New thread, Pin
     to sidebar, Move to group, Bot settings). Chief cannot be pinned.
   - Selected row: the sidebar marks where you are once. The open Bot's row has the selected fill
@@ -1925,7 +1931,8 @@ Voice
     gave no time) and a run that ends `done` clears it. A run that ends `done` with no reply, or
     stopped by the user, sets only `last_activity`, which still orders the rows. *Columns, not a scan of the runs since the last
     open, so the poll stays one row read.*
-  - A run the user stopped gets no sidebar label: they stopped it, so nothing is waiting for them.
+  - A run the user stopped gets no dot or marker: they stopped it, so nothing is waiting for them.
+    The Bot row's second line reads `Stopped`.
   - Known gap: the live scan reads the whole `runs` table each poll, so it grows with run history;
     an index on `runs.status` would fix it.
 - New thread: the tab bar's `+`, the Bot menu (right-click on a Bot row), or `⌘N` for the

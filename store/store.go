@@ -994,7 +994,8 @@ func (s *Store) LatestRun(ctx context.Context, threadID string) (string, error) 
 
 // ThreadRun is a thread with the status and the reply of its newest run. Status is empty for a
 // thread with no run, and, in a poll, for a thread that has no live run and is not its Bot's
-// newest with a run; Reply is only its first 300 characters: enough for a one-line preview.
+// newest with a run; Reply is the run's newest message in the chat (not a status line), only its
+// first 300 characters: enough for a one-line preview.
 // Unseen is set when the thread was heard from after the user last opened it and has no live run:
 // a reply, a tell_user message or a guard post sets the thread's last heard; a run that ends done
 // with no reply, a stop and a quiet background run do not. Failed is set when a run failed after the
@@ -1033,7 +1034,9 @@ func latestRun(threadID string) string {
 func (s *Store) ThreadRuns(ctx context.Context, botID string) ([]ThreadRun, error) {
 	return s.threadRuns(ctx,
 		`polled AS MATERIALIZED (
-		   SELECT t.id AS thread_id, r.status, substr(r.reply, 1, 300) AS reply FROM threads t
+		   SELECT t.id AS thread_id, r.status, coalesce((SELECT substr(m.text, 1, 300) FROM messages m
+		     WHERE m.thread_id = r.thread_id AND m.run_id = r.id AND m.role = 'bot'
+		     ORDER BY m.rowid DESC LIMIT 1), '') AS reply FROM threads t
 		   JOIN runs r ON r.rowid = `+latestRun("t.id")+`)`,
 		"? = '' OR t.bot_id = ?", botID, botID)
 }
@@ -1047,7 +1050,9 @@ func (s *Store) PollThreadRuns(ctx context.Context) ([]ThreadRun, error) {
 	return s.threadRuns(ctx,
 		`live AS MATERIALIZED (SELECT thread_id FROM runs WHERE status IN ('running', 'waiting')),
 		 polled AS MATERIALIZED (
-		   SELECT n.thread_id, r.status, substr(r.reply, 1, 300) AS reply
+		   SELECT n.thread_id, r.status, coalesce((SELECT substr(m.text, 1, 300) FROM messages m
+		     WHERE m.thread_id = r.thread_id AND m.run_id = r.id AND m.role = 'bot'
+		     ORDER BY m.rowid DESC LIMIT 1), '') AS reply
 		   FROM (SELECT thread_id FROM live
 		         UNION SELECT (SELECT t2.id FROM threads t2
 		                       WHERE t2.bot_id = b.id AND EXISTS (SELECT 1 FROM runs WHERE thread_id = t2.id)
