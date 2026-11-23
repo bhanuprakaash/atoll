@@ -31,7 +31,7 @@ export function ReplacePin({
       >
         <h2 className="mb-1 text-base">Replace which pin?</h2>
         <p className="mb-3 text-[13px] text-muted">
-          Three threads fit in the sidebar. Pick the one to unpin.
+          Three threads can stay pinned. Pick the one to unpin.
         </p>
         <div className="flex flex-col gap-1">
           {pins.map((t) => (

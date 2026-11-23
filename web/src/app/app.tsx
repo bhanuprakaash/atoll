@@ -21,6 +21,7 @@ import {
   SkillsPage,
   UsagePage,
 } from '@/app/settings-page';
+import { NowPage } from '@/app/now-page';
 import { Shell } from '@/app/shell';
 import { ReconnectingNotice } from '@/components/reconnecting-notice';
 import { Gone } from '@/components/gone';
@@ -219,6 +220,7 @@ function AppRoutes() {
     <Routes>
       <Route element={<Shell />}>
         <Route index element={<StartPage />} />
+        <Route path="now" element={<NowPage />} />
         <Route path="settings" element={<SettingsPage />}>
           <Route index element={<Navigate to="general" replace />} />
           <Route path="general" element={<GeneralSettings />} />
