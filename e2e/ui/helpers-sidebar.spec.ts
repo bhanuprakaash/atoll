@@ -76,6 +76,16 @@ test('one helper: Thread details shows it; its thread is no tab of the boss, nor
   expect(sidebar.find((t) => t.id === boss)?.parent_thread_id ?? '').toBe('');
 });
 
+test('a Bot whose only thread is a helper opens on its new thread, not the boss', async ({
+  page,
+}) => {
+  const { bots } = await bossHandsOff(m, page, [['Tester', prompts.hang]]);
+
+  await sidebarRow(page, 'Tester').click();
+  await expect(page).toHaveURL(`${m.url}/bots/${bots.Tester.id}/new`);
+  await expect(sidebarRow(page, 'Tester')).toHaveAttribute('aria-current', 'page');
+});
+
 test('two helpers: Thread details shows both; neither thread is a tab', async ({ page }) => {
   const { bots, thread } = await bossHandsOff(m, page, [
     ['Tester', prompts.hang],

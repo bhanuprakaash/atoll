@@ -1829,8 +1829,9 @@ Voice
     ran). It is muted, and ink while a thread has a reply the person has not opened. *A row that
     was only a name said nothing about what the Bot last did; the list now reads like a chat
     list. The poll already sent the reply's first line and the time.*
-  - Clicking a row opens the Bot's latest thread. Right-click opens the Bot menu (New thread, Pin
-    to sidebar, Move to group, Bot settings). Chief cannot be pinned.
+  - Clicking a row opens the Bot's latest thread that is not a helper's (a helper thread shows
+    under its boss's Bot), or its New thread screen when it has none. Right-click opens the Bot menu
+    (New thread, Pin to sidebar, Move to group, Bot settings). Chief cannot be pinned.
   - Selected row: the sidebar marks where you are once. The open Bot's row has the selected fill
     and `aria-current="page"`; no other row does. In Now the Now row has them, and in Settings or
     on the new-Bot form no row does. While a helper thread with no tab of its own is open, the
