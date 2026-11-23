@@ -1823,8 +1823,9 @@ Voice
     it asks, `Wants to run make check`, with the light dot, `--color-accent`) or failed (its
     newest run failed and that thread is still unread: `Run failed · 3:02 PM`, with the red dot,
     `--color-danger`). Needs you wins when a Bot has both.
-  - Clicking a row opens the Bot's latest thread. Right-click opens the Bot menu (New thread, Pin
-    to sidebar, Move to group, Bot settings). Chief cannot be pinned.
+  - Clicking a row opens the Bot's latest thread that is not a helper's (a helper thread shows
+    under its boss's Bot), or its New thread screen when it has none. Right-click opens the Bot menu
+    (New thread, Pin to sidebar, Move to group, Bot settings). Chief cannot be pinned.
   - Selected row: the sidebar marks where you are once. The open Bot's row has the selected fill
     and `aria-current="page"`; no other row does. In Now the Now row has them, and in Settings or
     on the new-Bot form no row does. While a helper thread with no tab of its own is open, the
