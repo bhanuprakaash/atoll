@@ -43,14 +43,14 @@ thought would happen; a difference is a finding even when nothing crashed.
   approvals pairing, provider argv/env isolation per provider and mode, skill placement/removal, log errors,
   leftovers, memory pressure.
 - ui: own headless browser (non-GET blocked). Two halves, both required:
-  1. Truth: Helpers region, handoff lines, helper reports, helper threads, island notifications, sidebar tree
+  1. Truth: Helpers region, handoff lines, helper reports, helper threads, sidebar tree
      (N more, popup), New markers, PR chips, status words; compare each screen with the runs/*.jsonl and DB at the
      same moment.
   2. Product design, as a user and a designer, not as a spec checker. docs/design.md is the current answer, not the
      limit: challenge it where the product would be better. Use Reef for real (read long threads, follow parallel
      helpers, answer approvals, browse memory and skills) and judge how it feels: chat layout and reading width,
      message density and rhythm, typography and alignment, streaming and perceived speed (does text appear while a
-     Bot works?), cards (approval, change, memory, PR), empty, loading and error states, sidebar and island
+     Bot works?), cards (approval, change, memory, PR), empty, loading and error states, sidebar and thread tabs
      at scale, keyboard flow, motion, dark/light, narrow widths, microcopy. Compare with the best chat and agent UIs
      you know (Claude.ai, ChatGPT, Cursor, Linear, Slack) and say what they do better or worse. For each idea: the
      screenshot of today, the problem in one sentence, the proposal, and where it pays off; build a small HTML mockup
