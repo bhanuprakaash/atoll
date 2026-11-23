@@ -1,19 +1,21 @@
-// A Bot's threads in its thread pane: one marker each, new threads from the face's menu or ⌘N,
-// closing or renaming from the thread row.
+// A Bot's threads as tabs above its chat: one marker each, new threads from the Bot row's menu or
+// ⌘N, closing or renaming from the tab.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, test } from '@playwright/test';
 import {
   api,
   type Machine,
+  marks,
   newBotAPI,
+  openThread,
   openThreadAPI,
   prompts,
-  showPane,
   sidebarRow,
   startAtoll,
-  threadPane,
+  threadTab,
+  threadTabs,
   threadTitle,
   waitStatus,
 } from './atoll';
@@ -24,90 +26,91 @@ test.beforeEach(async () => {
 });
 test.afterEach(() => m?.stop());
 
-// visit opens a thread in the page, so it counts as seen.
-async function visit(page: Page, botID: string, threadID: string) {
-  await page.goto(`${m.url}/bots/${botID}/threads/${threadID}`);
-  await expect(
-    page.getByRole('log', { name: 'Messages' }).getByRole('article').first(),
-  ).toBeVisible();
+const colours = async (el: Locator) => (await marks(el)).map((d) => d.colour);
+
+// base makes a done thread of the Bot titled title, to open so its tabs show without reading the
+// thread under test.
+async function base(botID: string, title = 'Base notes') {
+  const t = await openThreadAPI(m, botID, prompts.pong);
+  await waitStatus(m, t.id, 'done');
+  await api(m, 'PATCH', `/api/threads/${t.id}`, { title });
+  return t;
 }
 
-const row = (page: Page, bot: string, title: string) =>
-  threadPane(page, bot).getByRole('listitem').filter({ hasText: title });
-
-test('a thread waiting on an approval shows in its Bot pane as Needs you; answering removes it', async ({
+test('a thread waiting on an approval gets a tab with the light dot; answering clears it', async ({
   page,
 }) => {
   const bot = await newBotAPI(m, 'Asker');
-  const tree = await showPane(page, m, bot.id, 'Asker');
+  const open = await base(bot.id);
+  await openThread(page, m, bot.id, open.id);
   const waiting = await openThreadAPI(m, bot.id, prompts.write);
   await waitStatus(m, waiting.id, 'waiting');
 
-  const asking = row(page, 'Asker', threadTitle(prompts.write));
-  await expect(asking).toHaveAttribute('data-marker', 'needs-you');
+  const asking = threadTab(page, threadTitle(prompts.write));
+  await expect.poll(() => colours(asking)).toEqual(['light']);
   await expect(asking).not.toContainText('Needs you');
 
-  await asking.getByRole('link').click();
+  await asking.click();
   await expect(page).toHaveURL(`${m.url}/bots/${bot.id}/threads/${waiting.id}`);
+  await expect(asking).toHaveAttribute('aria-selected', 'true');
   await page
     .getByRole('log', { name: 'Messages' })
     .getByRole('button', { name: 'Allow', exact: true })
     .click();
   await waitStatus(m, waiting.id, 'done');
-  await expect(tree.locator('[data-marker="needs-you"]')).toHaveCount(0);
-  await expect(tree).not.toContainText('Needs you');
+  await expect.poll(() => colours(threadTabs(page))).toEqual([]);
+  await expect(threadTabs(page)).not.toContainText('Needs you');
 });
 
-test('a run ending in an unseen thread shows it as Replied; opening it clears Replied, also after a restart', async ({
+test('a pinned thread that replied while unseen shows the blue dot and a bold title on its tab; opening it clears Replied, also after a restart', async ({
   page,
 }) => {
   const bot = await newBotAPI(m, 'Newsy');
+  const open = await base(bot.id);
   const seen = await openThreadAPI(m, bot.id, prompts.pong);
   const unseen = await openThreadAPI(m, bot.id, prompts.keep);
   await waitStatus(m, seen.id, 'done');
   await waitStatus(m, unseen.id, 'done');
+  for (const t of [seen, unseen]) await api(m, 'POST', `/api/threads/${t.id}/pin`);
 
-  const tree = await showPane(page, m, bot.id, 'Newsy');
+  await openThread(page, m, bot.id, open.id);
   for (const prompt of [prompts.pong, prompts.keep]) {
-    const fresh = row(page, 'Newsy', threadTitle(prompt));
-    await expect(fresh).toHaveAttribute('data-marker', 'new');
-    await expect(fresh).toContainText('Replied');
+    const fresh = threadTab(page, threadTitle(prompt));
+    await expect.poll(() => colours(fresh)).toEqual(['blue']);
+    await expect(fresh.getByRole('img', { name: 'Pinned', exact: true })).toBeVisible();
     const weight = await fresh
       .getByText(threadTitle(prompt), { exact: true })
       .evaluate((el) => Number(getComputedStyle(el).fontWeight));
     expect(weight).toBeGreaterThanOrEqual(600);
   }
 
-  await row(page, 'Newsy', threadTitle(prompts.pong)).getByRole('link').click();
+  await threadTab(page, threadTitle(prompts.pong)).click();
   await expect(page).toHaveURL(`${m.url}/bots/${bot.id}/threads/${seen.id}`);
-  await expect(row(page, 'Newsy', threadTitle(prompts.pong))).not.toHaveAttribute(
-    'data-marker',
-    'new',
-  );
+  await expect.poll(() => colours(threadTab(page, threadTitle(prompts.pong)))).toEqual([]);
 
   m.kill();
   await m.restart();
-  await showPane(page, m, bot.id, 'Newsy');
-  const fresh = tree.locator('[data-marker="new"]');
-  await expect(fresh).toHaveCount(1);
-  await expect(fresh).toContainText(threadTitle(prompts.keep));
+  await openThread(page, m, bot.id, open.id);
+  await expect.poll(() => colours(threadTab(page, threadTitle(prompts.keep)))).toEqual(['blue']);
+  await expect.poll(() => colours(threadTab(page, threadTitle(prompts.pong)))).toEqual([]);
 });
 
-test('a running thread shows wave dots; no spinner ring on any creature or thread', async ({
+test('a running thread shows wave dots on its tab; no spinner ring on any creature or thread', async ({
   page,
 }) => {
   const bot = await newBotAPI(m, 'Drummer', 'claude', { look: 'whale' });
-  await showPane(page, m, bot.id, 'Drummer');
+  const open = await base(bot.id);
+  await openThread(page, m, bot.id, open.id);
   const busy = await openThreadAPI(m, bot.id, prompts.hang);
   await waitStatus(m, busy.id, 'running');
 
-  const working = row(page, 'Drummer', threadTitle(prompts.hang));
-  await expect(working).toHaveAttribute('data-marker', 'running');
+  const working = threadTab(page, threadTitle(prompts.hang));
+  await expect(working.getByRole('img', { name: 'Working', exact: true })).toBeVisible();
   await expect(working).not.toContainText('Needs you');
   await expect(working).not.toContainText('Replied');
   await sidebarRow(page, 'Drummer').click();
   await expect(page).toHaveURL(`${m.url}/bots/${bot.id}/threads/${busy.id}`);
-  await expect(working).toHaveAttribute('data-marker', 'running');
+  await expect(working.getByRole('img', { name: 'Working', exact: true })).toBeVisible();
 
   const spinning = await page.evaluate(
     () =>
@@ -128,23 +131,38 @@ test('a running thread shows wave dots; no spinner ring on any creature or threa
   await api(m, 'POST', `/api/runs/${busy.run.id}/stop`);
 });
 
-test('two threads needing approval both show first, beside three running', async ({ page }) => {
+test('two threads needing approval and three running each get a tab with their marker', async ({
+  page,
+}) => {
   const bot = await newBotAPI(m, 'Pair');
+  const open = await base(bot.id);
   const busy = [];
   for (let i = 0; i < 3; i++) busy.push(await openThreadAPI(m, bot.id, prompts.hang));
   const asking = [];
   for (let i = 0; i < 2; i++) asking.push(await openThreadAPI(m, bot.id, prompts.write));
-  for (const t of busy) await waitStatus(m, t.id, 'running');
-  for (const t of asking) await waitStatus(m, t.id, 'waiting');
-  const tree = await showPane(page, m, bot.id, 'Pair');
-  const needs = tree.locator('[data-marker="needs-you"]');
-  await expect(needs).toHaveCount(2);
-  for (let i = 0; i < 2; i++) {
-    await expect(needs.nth(i)).toBeVisible();
-    await expect(needs.nth(i)).not.toContainText('Needs you');
-    await expect(tree.getByRole('listitem').nth(i)).toHaveAttribute('data-marker', 'needs-you');
+  try {
+    for (const t of busy) await waitStatus(m, t.id, 'running');
+    for (const t of asking) await waitStatus(m, t.id, 'waiting');
+    for (const [i, t] of busy.entries())
+      await api(m, 'PATCH', `/api/threads/${t.id}`, { title: `Run ${i + 1}` });
+    for (const [i, t] of asking.entries())
+      await api(m, 'PATCH', `/api/threads/${t.id}`, { title: `Ask ${i + 1}` });
+    await openThread(page, m, bot.id, open.id);
+
+    await expect(threadTabs(page).getByRole('tab')).toHaveCount(6);
+    for (const title of ['Ask 1', 'Ask 2']) {
+      await expect
+        .poll(() => colours(threadTab(page, title)), { message: title })
+        .toEqual(['light']);
+      await expect(threadTab(page, title)).not.toContainText('Needs you');
+    }
+    for (const title of ['Run 1', 'Run 2', 'Run 3'])
+      await expect(
+        threadTab(page, title).getByRole('img', { name: 'Working', exact: true }),
+      ).toBeVisible();
+  } finally {
+    for (const t of busy) await api(m, 'POST', `/api/runs/${t.run.id}/stop`);
   }
-  for (const t of busy) await api(m, 'POST', `/api/runs/${t.run.id}/stop`);
 });
 
 test('clicking a Bot opens its latest thread', async ({ page }) => {
@@ -179,13 +197,15 @@ test('⌘N starts a new thread with the open Bot', async ({ page }) => {
   const bot = await newBotAPI(m, 'Keyer');
   const thread = await openThreadAPI(m, bot.id, prompts.pong);
   await waitStatus(m, thread.id, 'done');
-  await visit(page, bot.id, thread.id);
+  await openThread(page, m, bot.id, thread.id);
   await page.keyboard.press('Meta+n');
   await expect(page.getByRole('heading', { name: 'What should Keyer work on?' })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/bots/${bot.id}/`));
 });
 
-test('thread hover × closes the thread and saves its unfinished work', async ({ page }) => {
+test('Close thread on a hovered tab closes the thread and saves its unfinished work', async ({
+  page,
+}) => {
   const path = join(m.dir, 'seeded');
   mkdirSync(path);
   writeFileSync(join(path, 'answer.txt'), '41\n');
@@ -213,11 +233,11 @@ test('thread hover × closes the thread and saves its unfinished work', async ({
     repo_id: repo.id,
   });
   await waitStatus(m, thread.id, 'done');
-  await showPane(page, m, bot.id, 'Closer');
+  await openThread(page, m, bot.id, thread.id);
 
-  const closing = row(page, 'Closer', threadTitle(unfinished));
+  const closing = threadTab(page, threadTitle(unfinished));
   await closing.hover();
-  await closing.getByRole('button', { name: 'Close thread' }).click();
+  await page.getByRole('button', { name: 'Close thread' }).click();
   await expect(closing).toHaveCount(0);
   await expect
     .poll(async () => (await api(m, 'GET', `/api/threads/${thread.id}`)).closed)
@@ -227,21 +247,22 @@ test('thread hover × closes the thread and saves its unfinished work', async ({
   expect(git('show', `${ref}:unfinished.txt`)).toBe('keep this untracked work\n');
 });
 
-test('thread right-click › Rename renames it', async ({ page }) => {
+test('tab right-click › Rename renames the thread', async ({ page }) => {
   const bot = await newBotAPI(m, 'Namer');
   const thread = await openThreadAPI(m, bot.id, prompts.pong);
   await waitStatus(m, thread.id, 'done');
-  await showPane(page, m, bot.id, 'Namer');
+  await openThread(page, m, bot.id, thread.id);
 
-  await row(page, 'Namer', threadTitle(prompts.pong)).click({ button: 'right' });
+  await threadTab(page, threadTitle(prompts.pong)).click({ button: 'right' });
   const menu = page.getByRole('menu');
   await expect(menu.getByRole('menuitem', { name: 'Close', exact: true })).toBeVisible();
   await menu.getByRole('menuitem', { name: 'Rename' }).click();
   const title = page.getByRole('textbox', { name: 'Thread title' });
   await title.fill('Lantern notes');
   await title.press('Enter');
-  await expect(row(page, 'Namer', 'Lantern notes')).toHaveCount(1);
+  await expect(threadTab(page, 'Lantern notes')).toHaveCount(1);
   await page.reload();
-  await expect(row(page, 'Namer', 'Lantern notes')).toHaveCount(1);
-  await expect(row(page, 'Namer', threadTitle(prompts.pong))).toHaveCount(0);
+  await expect(threadTab(page, 'Lantern notes')).toHaveCount(1);
+  await expect(threadTab(page, threadTitle(prompts.pong))).toHaveCount(0);
+  expect((await api(m, 'GET', `/api/threads/${thread.id}`)).title).toBe('Lantern notes');
 });

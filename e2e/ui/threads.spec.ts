@@ -1,15 +1,17 @@
-// Threads that need the user: a thread waiting on an approval shows in its Bot pane as Needs you and
-// in the island's notification list with what it waits for, and the island counts it.
+// Threads that need the user: a thread waiting on an approval gets a tab with the light dot and
+// shows in the island's notification list with what it waits for, and the island counts it.
 import { expect, test } from '@playwright/test';
 import {
   api,
   type Machine,
+  marks,
+  moreButton,
   newBotAPI,
   openThreadAPI,
   prompts,
   sidebarRow,
   startAtoll,
-  threadPane,
+  threadTab,
   threadTitle,
   waitStatus,
 } from './atoll';
@@ -33,11 +35,10 @@ test('Needs you lists the waiting thread and what it waits for; the island count
   await waitStatus(m, waiting.id, 'waiting');
 
   await page.goto(`${m.url}/bots/${tide.id}/threads/${recent.id}`);
-  const tree = threadPane(page, 'Tide');
-  await expect(tree.locator('[data-marker="needs-you"]')).toContainText(threadTitle(prompts.write));
-  await expect(
-    tree.getByRole('listitem').filter({ hasText: threadTitle(prompts.keep) }),
-  ).toHaveCount(0);
+  const asking = threadTab(page, threadTitle(prompts.write));
+  await expect.poll(async () => (await marks(asking)).map((d) => d.colour)).toEqual(['light']);
+  await expect(threadTab(page, threadTitle(prompts.keep))).toHaveCount(0);
+  await expect(moreButton(page)).toHaveCount(0);
   await page.keyboard.press('Escape');
   const island = page
     .locator('header')
@@ -56,5 +57,5 @@ test('Needs you lists the waiting thread and what it waits for; the island count
   await expect(
     page.locator('header').getByRole('button', { name: 'Notifications', exact: true }),
   ).toBeVisible();
-  await expect(sidebarRow(page, 'Tide')).not.toHaveAttribute('data-marker', 'needs-you');
+  await expect(sidebarRow(page, 'Tide')).not.toContainText('Wants to');
 });

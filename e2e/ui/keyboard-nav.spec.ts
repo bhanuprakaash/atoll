@@ -1,6 +1,6 @@
 // Keyboard: the composer has focus when a thread opens, a printable key with nothing focused
 // types into it, Ctrl+K (⌘K on macOS) opens a switcher over the Bots and the open threads of
-// every Bot. The thread pane's search is in sidebar-rail.spec.ts.
+// every Bot. The search in a Bot's `N more` list is in thread-tabs.spec.ts.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -10,10 +10,10 @@ import {
   type Machine,
   newBotAPI,
   openThreadAPI,
+  otherThreads,
   prompts,
   sidebarRow,
   startAtoll,
-  threadPane,
   waitStatus,
 } from "./atoll";
 
@@ -138,7 +138,7 @@ test("opening a thread, or the New thread screen, focuses its composer", async (
   await page.goto(threadURL("Beacon", "Delta notes"));
   await expect(composer(page, "Beacon")).toBeFocused();
 
-  await threadPane(page, "Beacon")
+  await (await otherThreads(page))
     .getByRole("link", { name: "Atlassian migration" })
     .click();
   await expect(page).toHaveURL(threadURL("Beacon", "Atlassian migration"));
@@ -180,8 +180,8 @@ test("a printable key with nothing focused types into the composer; other fields
   await page.keyboard.press("Alt+x");
   await expect(box).toHaveValue("hi");
 
-  await threadPane(page, "Atlas")
-    .getByRole("textbox", { name: "Search threads" })
+  await (await otherThreads(page))
+    .getByRole("searchbox", { name: "Search threads" })
     .fill("zz");
   await expect(box).toHaveValue("hi");
 });

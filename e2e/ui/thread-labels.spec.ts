@@ -1,16 +1,17 @@
 // Thread labels and quiet background runs: a thread shows one label (Needs you, Working, Failed,
 // Out until <time>, Replied), a run only Reef's notices started adds no chat message and shows its
 // final message nowhere in the thread, and nothing waits on the person as a card.
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
   api,
   type Machine,
   newBotAPI,
+  openThread,
   openThreadAPI,
   prompts,
-  showPane,
+  sidebarRow,
   startAtoll,
-  threadPane,
+  threadTab,
   threadTitle,
   waitStatus,
 } from './atoll';
@@ -47,40 +48,36 @@ async function hasStatusLine(threadID: string) {
   return 'status_line' in (await api(m, 'GET', `/api/threads/${threadID}`));
 }
 
-const row = (page: Page, bot: string, title: string) =>
-  threadPane(page, bot).getByRole('listitem').filter({ hasText: title });
-
-test('a failed run shows Run failed on its row until the thread is opened', async ({ page }) => {
+test('a failed run shows Run failed on its Bot row until the thread is opened', async ({
+  page,
+}) => {
   const bot = await newBotAPI(m, 'Failer');
-  await showPane(page, m, bot.id, 'Failer');
+  await page.goto(`${m.url}/settings`);
   const failed = await openThreadAPI(m, bot.id, prompts.none);
   await waitStatus(m, failed.id, 'failed');
 
-  const failing = row(page, 'Failer', threadTitle(prompts.none));
+  const failing = sidebarRow(page, 'Failer');
   await expect(failing).toContainText('Run failed');
   await expect(failing).not.toContainText('Replied');
 
-  await failing.getByRole('link').click();
+  await failing.click();
   await expect(page).toHaveURL(`${m.url}/bots/${bot.id}/threads/${failed.id}`);
-  await showPane(page, m, bot.id, 'Failer');
-  await expect(row(page, 'Failer', threadTitle(prompts.none))).not.toContainText('Run failed');
+  await expect(failing).not.toContainText('Run failed');
 });
 
-test('a thread of a provider at its usage limit reads Out until the reset time', async ({ page }) => {
+test('a thread of a provider at its usage limit reads Out until the reset time', async ({
+  page,
+}) => {
   const bot = await newBotAPI(m, 'Limited');
   m.limit('claude', new Date(Date.now() + 2 * 60 * 60 * 1000));
   const limited = await openThreadAPI(m, bot.id, prompts.keep);
   await waitStatus(m, limited.id, 'failed');
-  await page.goto(`${m.url}/bots/${bot.id}/threads/${limited.id}`);
-  await expect(
-    page.getByRole('log', { name: 'Messages' }).getByRole('article').first(),
-  ).toBeVisible();
-  await showPane(page, m, bot.id, 'Limited');
+  await openThread(page, m, bot.id, limited.id);
 
-  const limitedRow = row(page, 'Limited', threadTitle(prompts.keep));
-  await expect(limitedRow).toContainText(/Out until \d/);
-  await expect(limitedRow).not.toContainText('Run failed');
-  await expect(limitedRow).not.toContainText('Replied');
+  const tab = threadTab(page, threadTitle(prompts.keep));
+  await expect(tab).toContainText(/Out until \d/);
+  await expect(tab).not.toContainText('Run failed');
+  await expect(tab).not.toContainText('Replied');
 });
 
 // The boss hands its work to Tester, which answers at once; the boss's run for Reef's notice calls

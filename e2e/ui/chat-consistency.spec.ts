@@ -1,5 +1,5 @@
 // One rule per message kind: the run footer, the handoff line, clamps, Close thread on the thread
-// row and a window that never scrolls.
+// tab and a window that never scrolls.
 import { expect, test } from '@playwright/test';
 import {
   api,
@@ -9,8 +9,8 @@ import {
   prompts,
   sendMessageAPI,
   startAtoll,
+  threadTab,
   threadTitle,
-  threadPane,
 } from './atoll';
 
 let m: Machine;
@@ -79,7 +79,7 @@ test('a long user message clamps at 8 lines with Show more and Show less', async
   expect((await bubble.boundingBox())!.height).toBeLessThan(lineHeight * 10);
 });
 
-test('Close thread lives on the thread row: hover × for this thread and others', async ({
+test('Close thread lives on the thread tab: right-click Close for another thread, hover × for this one', async ({
   page,
 }) => {
   const bot = await newBotAPI(m, 'Closer');
@@ -91,20 +91,21 @@ test('Close thread lives on the thread row: hover × for this thread and others'
     await expect
       .poll(async () => (await api(m, 'GET', `/api/threads/${id}`)).run_status)
       .not.toBe('running');
+  await api(m, 'POST', `/api/threads/${otherID}/pin`);
   await page.goto(`${m.url}/bots/${bot.id}/threads/${currentID}`);
   await expect(page.getByRole('log', { name: 'Messages' })).toBeVisible();
   await expect(page.locator('header').getByRole('button', { name: 'Close thread' })).toHaveCount(0);
 
-  const tree = threadPane(page, 'Closer');
-  const here = tree.getByRole('listitem').filter({ hasText: threadTitle(prompts.keep) });
-  const row = tree.getByRole('listitem').filter({ hasText: threadTitle(prompts.pong) });
-  await expect(row).toHaveCount(1);
-  await row.hover();
-  await row.getByRole('button', { name: 'Close thread' }).click();
+  const here = threadTab(page, threadTitle(prompts.keep));
+  const tab = threadTab(page, threadTitle(prompts.pong));
+  await expect(tab).toHaveCount(1);
+  await tab.click({ button: 'right' });
+  await page.getByRole('menu').getByRole('menuitem', { name: 'Close', exact: true }).click();
   await expect.poll(async () => (await api(m, 'GET', `/api/threads/${otherID}`)).closed).toBe(true);
+  await expect(tab).toHaveCount(0);
 
   await here.hover();
-  await here.getByRole('button', { name: 'Close thread' }).click();
+  await page.getByRole('button', { name: 'Close thread' }).click();
   await expect
     .poll(async () => (await api(m, 'GET', `/api/threads/${currentID}`)).closed)
     .toBe(true);

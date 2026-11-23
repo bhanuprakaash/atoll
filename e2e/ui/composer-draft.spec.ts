@@ -2,13 +2,14 @@
 // reload; sending or clearing it by hand removes it. A Bot's New thread screen keeps its own draft.
 import { expect, type Page, test } from "@playwright/test";
 import {
+  api,
   type Machine,
   newBotAPI,
   openThreadAPI,
   prompts,
   sidebarRow,
   startAtoll,
-  threadPane,
+  threadTab,
   threadTitle,
   waitStatus,
 } from "./atoll";
@@ -34,15 +35,13 @@ async function bot(name: string, ...first: string[]) {
   return { id: b.id as string, threads };
 }
 
-// via opens a thread through the pane's link, as a user switching threads does, without a reload.
-async function via(page: Page, name: string, prompt: string, id: string) {
-  await threadPane(page, name)
-    .getByRole("link", { name: threadTitle(prompt) })
-    .click();
+// via opens a thread through its tab, as a user switching threads does, without a reload.
+async function via(page: Page, prompt: string, id: string) {
+  await threadTab(page, threadTitle(prompt)).click();
   await expect(page).toHaveURL(new RegExp(`/threads/${id}$`));
 }
 
-async function onRail(page: Page, name: string, id: string) {
+async function onRow(page: Page, name: string, id: string) {
   await sidebarRow(page, name).click();
   await expect(page).toHaveURL(new RegExp(`/threads/${id}$`));
 }
@@ -59,26 +58,27 @@ test("text typed in a thread stays when the user opens another Bot's thread and 
   await page.goto(`${m.url}/bots/${a.id}/threads/${a.threads[0]}`);
   await box(page, "Drafty").fill(draft);
 
-  await onRail(page, "Elsewhere", other.threads[0]);
+  await onRow(page, "Elsewhere", other.threads[0]);
   await expect(box(page, "Elsewhere")).toHaveValue("");
-  await onRail(page, "Drafty", a.threads[0]);
+  await onRow(page, "Drafty", a.threads[0]);
   await expect(box(page, "Drafty")).toHaveValue(draft);
 });
 
 test("each thread of a Bot keeps its own draft", async ({ page }) => {
   const b = await bot("Pairs", prompts.pong, prompts.keep);
   const [one, two] = b.threads;
+  for (const id of b.threads) await api(m, "POST", `/api/threads/${id}/pin`);
 
   await page.goto(`${m.url}/bots/${b.id}/threads/${one}`);
   await box(page, "Pairs").fill("draft for one");
 
-  await via(page, "Pairs", prompts.keep, two);
+  await via(page, prompts.keep, two);
   await expect(box(page, "Pairs")).toHaveValue("");
   await box(page, "Pairs").fill("draft for two");
 
-  await via(page, "Pairs", prompts.pong, one);
+  await via(page, prompts.pong, one);
   await expect(box(page, "Pairs")).toHaveValue("draft for one");
-  await via(page, "Pairs", prompts.keep, two);
+  await via(page, prompts.keep, two);
   await expect(box(page, "Pairs")).toHaveValue("draft for two");
 });
 
@@ -104,8 +104,8 @@ test("sending clears the draft for good", async ({ page }) => {
   await expect(log.getByText("kestrel", { exact: true })).toBeVisible();
   await waitStatus(m, b.threads[0], "done");
 
-  await onRail(page, "Stranger", other.threads[0]);
-  await onRail(page, "Sender", b.threads[0]);
+  await onRow(page, "Stranger", other.threads[0]);
+  await onRow(page, "Sender", b.threads[0]);
   await expect(box(page, "Sender")).toHaveValue("");
   await page.reload();
   await expect(box(page, "Sender")).toHaveValue("");
@@ -117,13 +117,13 @@ test("a draft cleared by hand does not come back", async ({ page }) => {
 
   await page.goto(`${m.url}/bots/${b.id}/threads/${b.threads[0]}`);
   await box(page, "Eraser").fill(draft);
-  await onRail(page, "Passerby", other.threads[0]);
-  await onRail(page, "Eraser", b.threads[0]);
+  await onRow(page, "Passerby", other.threads[0]);
+  await onRow(page, "Eraser", b.threads[0]);
   await expect(box(page, "Eraser")).toHaveValue(draft);
 
   await box(page, "Eraser").fill("");
-  await onRail(page, "Passerby", other.threads[0]);
-  await onRail(page, "Eraser", b.threads[0]);
+  await onRow(page, "Passerby", other.threads[0]);
+  await onRow(page, "Eraser", b.threads[0]);
   await expect(box(page, "Eraser")).toHaveValue("");
   await page.reload();
   await expect(box(page, "Eraser")).toHaveValue("");
@@ -135,9 +135,7 @@ test("a Bot's New thread screen keeps its draft until it is sent", async ({
   const b = await bot("Starter", prompts.keep);
   const other = await bot("Visitor", prompts.pong);
   const newThread = () =>
-    threadPane(page, "Starter")
-      .getByRole("button", { name: "New thread" })
-      .click();
+    page.getByRole("button", { name: "New thread", exact: true }).click();
   const heading = page.getByRole("heading", {
     name: "What should Starter work on?",
   });
@@ -146,7 +144,7 @@ test("a Bot's New thread screen keeps its draft until it is sent", async ({
   await expect(heading).toBeVisible();
   await box(page, "Starter").fill(draft);
 
-  await onRail(page, "Visitor", other.threads[0]);
+  await onRow(page, "Visitor", other.threads[0]);
   await sidebarRow(page, "Starter").click();
   await newThread();
   await expect(heading).toBeVisible();
@@ -157,7 +155,7 @@ test("a Bot's New thread screen keeps its draft until it is sent", async ({
 
   await box(page, "Starter").press("Enter");
   await expect(page).toHaveURL(new RegExp(`/bots/${b.id}/threads/`));
-  await onRail(page, "Visitor", other.threads[0]);
+  await onRow(page, "Visitor", other.threads[0]);
   await sidebarRow(page, "Starter").click();
   await newThread();
   await expect(heading).toBeVisible();

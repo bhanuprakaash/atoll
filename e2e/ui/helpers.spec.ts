@@ -1,7 +1,7 @@
 // Helpers in the boss's thread: Thread details, the header island, and a read-only
 // helper thread.
 import { expect, test } from '@playwright/test';
-import { api, type Machine, prompts, sidebarRow, startAtoll, threadPane } from './atoll';
+import { api, type Machine, prompts, sidebarRow, startAtoll, threadTab, threadTabs } from './atoll';
 import {
   box,
   openDetails,
@@ -94,7 +94,7 @@ test('a helper approval shows under its line and Allow works there; the helperâ€
   await expect(page.getByRole('button', { name: /^Notifications/ })).toHaveAccessibleName(
     /^Notifications\b.*\b1\b/,
   );
-  await expect(sidebarRow(page, 'Poteto')).toHaveAttribute('data-marker', 'needs-you');
+  await expect(sidebarRow(page, 'Poteto')).toContainText('Wants to run make check');
 
   const helperPage = await context.newPage();
   await helperPage.goto(`${m.url}/bots/${bots.Tester.id}/threads/${thread('Tester')}`);
@@ -124,7 +124,7 @@ test('a helper approval shows under its line and Allow works there; the helperâ€
   );
 });
 
-test('the helper thread is not a row of the boss pane and is read-only; Allow there leaves the boss thread', async ({
+test('the helper thread is not a tab of the boss Bot and is read-only; Allow there leaves the boss thread', async ({
   page,
   context,
 }) => {
@@ -140,10 +140,9 @@ test('the helper thread is not a row of the boss pane and is read-only; Allow th
   await expect(
     sidebarRow(helperPage, 'Tester').getByRole('img', { name: /^Octopus\b/ }),
   ).toBeVisible();
-  await expect(threadPane(helperPage, 'Poteto')).toBeVisible();
-  await expect(
-    threadPane(helperPage, 'Poteto').locator(`a[href$="/threads/${thread('Tester')}"]`),
-  ).toHaveCount(0);
+  await expect(threadTabs(helperPage)).toBeVisible();
+  const helperTitle: string = (await api(m, 'GET', `/api/threads/${thread('Tester')}`)).title;
+  await expect(threadTab(helperPage, helperTitle)).toHaveCount(0);
   await helperPage.goto(`${m.url}/bots/${bots.Tester.id}/threads/${thread('Tester')}`);
   const helperLog = helperPage.getByRole('log', { name: 'Messages' });
   await expect(helperLog.getByRole('article', { name: 'Poteto' })).toContainText(reportPrompt);

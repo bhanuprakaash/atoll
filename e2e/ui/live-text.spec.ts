@@ -14,7 +14,7 @@ import {
   newBotAPI,
   openThreadAPI,
   prompts,
-  nowPane,
+  openNow,
   sendMessageAPI,
   startAtoll,
 } from "./atoll";
@@ -342,10 +342,12 @@ test("Now's note and the island keep the short verb and never show the text", as
   page,
 }) => {
   const { log, status, thread } = await openRun(page, "Quiet");
-  const now = await nowPane(page);
+  const side = await page.context().newPage();
+  await side.goto(`${m.url}/settings`);
+  const now = await openNow(side);
   const row = now
     .getByRole("listitem")
-    .filter({ has: page.locator(`a[href$="/threads/${thread.id}"]`) });
+    .filter({ has: side.locator(`a[href$="/threads/${thread.id}"]`) });
   const header = page.locator("header");
   await Promise.all(
     [page.getByRole("navigation", { name: "Bots" }), now, header].map((part) =>
@@ -370,9 +372,15 @@ test("Now's note and the island keep the short verb and never show the text", as
   await expect(row).toContainText("Running");
 
   await expect(replies(log)).toHaveCount(1, { timeout: 30_000 });
-  const shown = await page.evaluate(() =>
-    (window as unknown as { __shown: string[] }).__shown.join("\n"),
-  );
+  const shown = (
+    await Promise.all(
+      [page, side].map((p) =>
+        p.evaluate(() =>
+          (window as unknown as { __shown: string[] }).__shown.join("\n"),
+        ),
+      ),
+    )
+  ).join("\n");
   for (const text of [openingStart, opening, closingStart]) {
     expect(shown, `never shows "${text}"`).not.toContain(text);
   }
