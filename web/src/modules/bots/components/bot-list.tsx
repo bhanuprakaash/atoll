@@ -344,9 +344,11 @@ export function BotList({
               }}
             />
           )}
-          <BotGroup name="Ungrouped" heading={groups.length > 0} onDropBot={moveTo(null)}>
-            {ungrouped.map(row)}
-          </BotGroup>
+          {ungrouped.length > 0 && (
+            <BotGroup name="Ungrouped" heading={groups.length > 0} onDropBot={moveTo(null)}>
+              {ungrouped.map(row)}
+            </BotGroup>
+          )}
         </div>
       </div>
     </>

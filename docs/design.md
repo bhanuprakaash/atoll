@@ -1815,7 +1815,7 @@ Voice
   columns (360 px) and hid names; tabs keep threads beside the chat and the sidebar a plain list.*
   - Column, top to bottom: Now, a hairline, Chief, pinned Bots in pinned order (no heading), the
     user's groups in order, each under its name as a text heading, Ungrouped (its heading shows
-    only when a group exists); at the bottom `+` (New Bot, New group) and the user's row, their
+    only when a group exists and a Bot is ungrouped); at the bottom `+` (New Bot, New group) and the user's row, their
     avatar and name (Settings). The sidebar stays in Settings. No logo, no search field, no group
     chats. The Bots scroll beneath Now, with a thin scrollbar.
   - A Bot row is the Bot's 28 px creature and its name; no group name, cost or time. A second line
@@ -1971,7 +1971,9 @@ Voice
     dragging a pinned Bot out unpins it. A row dropped on a group's heading goes last in that group.
   - A group's heading drags the whole group, its Bots with it, to another place among the groups.
   - Chief is not draggable and nothing lands above it; Pinned stays above every group. Ungrouped
-    stays last and does not drag. Threads never drag.
+    stays last and does not drag. Threads never drag. With no Bot ungrouped there is no Ungrouped
+    to drop on: Move to group › No group takes a Bot out. *An empty Ungrouped heading sat at the
+    bottom of every list whose Bots were all grouped.*
   - Each Bot has a position, filled from the old order by a migration (pinned order, then oldest
     first in a group); each section sorts by it. A new Bot, a newly pinned Bot and a Bot moved by
     the menu go last in their section.
