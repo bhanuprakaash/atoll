@@ -115,6 +115,7 @@ function BotRow({
       <Link
         to={`/bots/${bot.id}`}
         aria-current={current ? 'page' : undefined}
+        aria-label={bot.name}
         draggable={bot.id !== 'chief'}
         onDragStart={(event) => {
           event.dataTransfer.setData(botDragType, bot.id);
@@ -145,9 +146,7 @@ function BotRow({
             className={`absolute inset-x-2 h-0.5 rounded-full bg-ink ${dropAt === 'before' ? 'top-0' : 'bottom-0'}`}
           />
         )}
-        <span aria-hidden="true" className="flex-none">
-          <Creature look={bot.look} colour={bot.colour} state={bot.state} size={28} />
-        </span>
+        <Creature look={bot.look} colour={bot.colour} state={bot.state} size={28} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px]">{bot.name}</span>
           <BotNote bot={bot} />
