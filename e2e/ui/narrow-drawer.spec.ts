@@ -202,7 +202,7 @@ test('while a run works the composer placeholder is Working… and fits at 420',
   await api(m, 'POST', `/api/runs/${thread.run.id}/stop`);
 });
 
-test('the island drops the thread title before the helper creatures and the Bot name', async ({
+test('at 420 px the header keeps Sidebar, Thread details and Bot settings in a row, and Thread details shows the helpers', async ({
   page,
 }) => {
   const boss = await newBotAPI(m, 'Poteto', 'claude', { look: 'whale' });
@@ -225,29 +225,27 @@ test('the island drops the thread title before the helper creatures and the Bot 
   );
 
   const header = page.locator('header');
-  const title = header.getByRole('heading', { level: 2 });
-  const name = header.getByRole('heading', { level: 1, name: 'Poteto' });
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await page.goto(`${m.url}/bots/${boss.id}/threads/${thread.id}`);
-  await expect(header.getByLabel('Tester: working', { exact: true })).toBeVisible();
-  await expect(header.getByLabel('Reviewer: working', { exact: true })).toBeVisible();
-  await expect(title).toBeVisible();
-
   await page.setViewportSize({ width: 420, height: 800 });
-  await expect(title).toBeHidden();
-  await expect(name).toBeVisible();
+  await page.goto(`${m.url}/bots/${boss.id}/threads/${thread.id}`);
+  const details = header.getByRole('button', { name: 'Thread details', exact: true });
+  const settings = header.getByRole('button', { name: 'Bot settings', exact: true });
+  await expect(toggle(page)).toBeVisible();
+  await expect(details).toBeVisible();
+  await expect(settings).toBeVisible();
+  const [button, d, s] = [await box(toggle(page)), await box(details), await box(settings)];
+  expect(button.x).toBeGreaterThanOrEqual(0);
+  expect(d.x).toBeGreaterThanOrEqual(button.x + button.width);
+  expect(d.x + d.width).toBeLessThanOrEqual(s.x);
+  expect(s.x + s.width).toBeLessThanOrEqual(420);
+
+  await details.click();
+  const panel = page.getByRole('dialog', { name: 'Thread details' });
   for (const label of ['Tester: working', 'Reviewer: working']) {
-    const creature = header.getByLabel(label, { exact: true });
+    const creature = panel.getByLabel(label, { exact: true });
     await expect(creature).toBeVisible();
     const c = await box(creature);
     expect(c.x).toBeGreaterThanOrEqual(0);
     expect(c.x + c.width).toBeLessThanOrEqual(420);
   }
-  const island = await box(page.locator('[data-island]'));
-  const button = await box(toggle(page));
-  const settings = await box(header.getByRole('button', { name: 'Bot settings' }));
-  expect(island.x).toBeGreaterThanOrEqual(button.x + button.width);
-  expect(island.x + island.width).toBeLessThanOrEqual(settings.x);
-  expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   expect((await sideScroll(page)).page).toBeLessThanOrEqual(0);
 });

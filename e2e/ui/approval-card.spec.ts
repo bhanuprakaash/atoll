@@ -5,11 +5,14 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
   api,
   type Machine,
+  marks,
   newBotAPI,
+  openNow,
   openThreadAPI,
   prompts,
   sidebarRow,
   startAtoll,
+  threadTabs,
   waitStatus,
 } from './atoll';
 
@@ -91,6 +94,10 @@ function reds(root: Locator): Promise<string[]> {
 
 const redIn = async (l: Locator) => (await reds(l)).length > 0;
 
+// openTabDots lists the colours of the dots on the open thread's tab.
+const openTabDots = async (page: Page) =>
+  (await marks(threadTabs(page).locator('[aria-selected="true"]'))).map((d) => d.colour);
+
 test('a one-line command is a compact card: the command in a code line, Allow and Deny on its row', async ({
   page,
 }) => {
@@ -122,7 +129,7 @@ test('a one-line command is a compact card: the command in a code line, Allow an
   });
 });
 
-test('the card is quiet: nothing red at rest, Deny red only on hover and keyboard focus, the thread says Needs you', async ({
+test('the card is quiet: nothing red at rest, Deny red only on hover and keyboard focus, the thread tab has the light dot', async ({
   page,
 }) => {
   await openBot(page, 'Moss');
@@ -134,7 +141,7 @@ test('the card is quiet: nothing red at rest, Deny red only on hover and keyboar
 
   await page.mouse.move(0, 0);
   expect(await reds(log)).toEqual([]);
-  await expect(page.locator('header')).toContainText('Needs you');
+  await expect.poll(() => openTabDots(page)).toEqual(['light']);
   await expect(sidebarRow(page, 'Moss').getByRole('img', { name: /, needs you$/ })).toBeVisible();
 
   await allow.hover();
@@ -274,7 +281,7 @@ test('a helper approval in the boss thread is answered by writing there', async 
   await expect(log.getByText('You replied instead')).toHaveCount(1);
 });
 
-test('while an approval waits nothing on screen is red: thread, sidebar, header, creature', async ({
+test('while an approval waits nothing on screen is red: thread, sidebar, tab, creature', async ({
   page,
 }) => {
   await openBot(page, 'Tide');
@@ -282,34 +289,26 @@ test('while an approval waits nothing on screen is red: thread, sidebar, header,
   await expect(
     page.getByRole('log', { name: 'Messages' }).getByRole('button', { name: 'Deny', exact: true }),
   ).toHaveCount(1);
-  await expect(page.locator('header')).toContainText('Needs you');
+  await expect.poll(() => openTabDots(page)).toEqual(['light']);
   await page.mouse.move(0, 0);
   expect(await reds(page.locator('body'))).toEqual([]);
 });
 
-test('an approval in another thread: the Bot row, the dropped island, its count and the list are not red', async ({
+test('an approval in another thread: the Bot row and its Now row are not red', async ({
   page,
 }) => {
   const asker = await newBotAPI(m, 'Asker', 'claude', { look: 'whale' });
   await openBot(page, 'Elsewhere');
   const waiting = await openThreadAPI(m, asker.id, prompts.write);
   await waitStatus(m, waiting.id, 'waiting');
-  const header = page.locator('header');
   const body = page.locator('body');
 
-  await expect(header.getByRole('button', { name: 'Allow', exact: true })).toBeVisible();
   await expect(sidebarRow(page, 'Asker')).toContainText('Wants to edit hello.txt');
   await page.mouse.move(0, 0);
   expect(await reds(body)).toEqual([]);
 
-  await page.keyboard.press('Escape');
-  await expect(header.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
-  await expect(header.getByRole('button', { name: /^Notifications, 1 waiting/ })).toBeVisible();
-  expect(await reds(body)).toEqual([]);
-
-  await header.getByRole('button', { name: /^Notifications/ }).click();
-  const list = page.getByRole('dialog', { name: 'Notifications' });
-  await expect(list.getByRole('list', { name: 'Needs you' }).getByRole('listitem')).toHaveCount(1);
+  const now = await openNow(page);
+  await expect(now.getByRole('list', { name: 'Needs you' }).getByRole('listitem')).toHaveCount(1);
   await page.mouse.move(0, 0);
   expect(await reds(body)).toEqual([]);
 });

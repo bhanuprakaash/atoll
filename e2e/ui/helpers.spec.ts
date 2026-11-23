@@ -1,9 +1,16 @@
-// Helpers in the boss's thread: Thread details, the header island, and a read-only
+// Helpers in the boss's thread: Thread details, the boss thread tab, and a read-only
 // helper thread.
 import { expect, test } from '@playwright/test';
-import { api, type Machine, prompts, sidebarRow, startAtoll, threadTab, threadTabs } from './atoll';
 import {
-  box,
+  api,
+  type Machine,
+  prompts,
+  sidebarRow,
+  startAtoll,
+  threadTab,
+  threadTabs,
+} from './atoll';
+import {
   openDetails,
   bossHandsOff,
   details,
@@ -19,7 +26,7 @@ test.beforeEach(async () => {
 });
 test.afterEach(() => m?.stop());
 
-test('two helpers: one handoff line, a row each in Thread details and a creature in the island; Stop in the helper thread', async ({
+test('two helpers: one handoff line, a row each in Thread details with its creature; Stop in the helper thread', async ({
   page,
 }) => {
   const { bots, thread } = await bossHandsOff(m, page, [
@@ -44,14 +51,6 @@ test('two helpers: one handoff line, a row each in Thread details and a creature
   const open = details(page).getByRole('link').filter({ hasNotText: /^[#!]/ });
   await expect(open).toHaveCount(2);
   await expect(page.getByText(/Working with/)).toHaveCount(0);
-
-  const header = page.locator('header');
-  const name = await box(header.getByRole('heading', { level: 1, name: 'Poteto' }));
-  for (const label of ['Tester: working', 'Reviewer: working']) {
-    const creature = header.getByLabel(label, { exact: true });
-    await expect(creature).toBeVisible();
-    expect((await box(creature)).x).toBeGreaterThanOrEqual(name.x + name.width);
-  }
 
   await open.and(page.locator(`[href$="/threads/${thread('Tester')}"]`)).click();
   await expect(page).toHaveURL(`${m.url}/bots/${bots.Tester.id}/threads/${thread('Tester')}`);
@@ -89,11 +88,11 @@ test('a helper approval shows under its line and Allow works there; the helperâ€
   await expect(allow).toHaveCount(1);
   await expect(region.getByRole('button', { name: 'Deny', exact: true })).toHaveCount(1);
 
-  const header = page.locator('header');
-  await expect(header.getByLabel('Tester: needs you', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Notifications/ })).toHaveAccessibleName(
-    /^Notifications\b.*\b1\b/,
-  );
+  await expect(
+    (await openDetails(page)).getByLabel('Tester: needs you', { exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(details(page)).toBeHidden();
   await expect(sidebarRow(page, 'Poteto')).toContainText('Wants to run make check');
 
   const helperPage = await context.newPage();
@@ -118,10 +117,10 @@ test('a helper approval shows under its line and Allow works there; the helperâ€
   await expect(log).not.toContainText('Done:');
   await helperPage.reload();
   await expect(helperPage.getByRole('log', { name: 'Messages' })).toContainText(reportReply);
-  await expect(header.getByLabel('Tester: needs you', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /^Notifications/ })).toHaveAccessibleName(
-    'Notifications',
-  );
+  await expect(
+    (await openDetails(page)).getByLabel('Tester: needs you', { exact: true }),
+  ).toHaveCount(0);
+  await expect(sidebarRow(page, 'Poteto')).not.toContainText('Wants to');
 });
 
 test('the helper thread is not a tab of the boss Bot and is read-only; Allow there leaves the boss thread', async ({

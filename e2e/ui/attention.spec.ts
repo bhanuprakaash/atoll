@@ -231,3 +231,46 @@ test('a pinned thread that replied shows only the blue dot in Now, and the blue 
     .evaluate((el) => Number(getComputedStyle(el).fontWeight));
   expect(weight).toBeGreaterThanOrEqual(600);
 });
+
+const summaryJob = 'Run the checks, then summarize the log.';
+
+// waitingHandOff has Poteto hand Tester a job that waits on an approval, allows it, and returns
+// once Poteto's quiet run for Tester's notice has ended.
+async function waitingHandOff(botID: string, preamble: string) {
+  const boss = (await openThreadAPI(m, botID, delegate([['Tester', summaryJob]], preamble))).id;
+  const [helper] = await helperThreads(m, boss, 1);
+  await helperAsks(helper.id);
+  await expect.poll(() => runStatus(m, boss), { timeout: 15_000 }).not.toBe('running');
+  const before = (await api(m, 'GET', `/api/threads/${boss}`)).run_id;
+  const approval = (await api(m, 'GET', `/api/threads/${helper.id}`)).approval.id;
+  await api(m, 'POST', `/api/approvals/${approval}`, { approve: true });
+  await expect
+    .poll(
+      async () => {
+        const thread = await api(m, 'GET', `/api/threads/${boss}`);
+        return thread.run_id !== before && thread.run_status !== 'running';
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+}
+
+// A reply or a failure the person has not read is the thread's newest news. A quiet run after it
+// does not change the thread's place in Now.
+for (const [news, preamble, heading] of [
+  ['reply', '', 'Replied'],
+  ['failure', 'Then fail. ', 'Needs you'],
+] as const) {
+  test(`an unread ${news} followed by a quiet background run keeps its place in Now`, async ({
+    page,
+  }) => {
+    const { poteto } = await makeBoss(m, ['Tester']);
+    await waitingHandOff(poteto.id, preamble);
+
+    await page.goto(`${m.url}/settings`);
+    const now = await openNow(page);
+    await expect(
+      section(now, heading).getByRole('listitem').filter({ hasText: 'Poteto · ' }),
+    ).toHaveCount(1);
+  });
+}

@@ -45,6 +45,12 @@ const button = (panel: Locator, name: string) => panel.getByRole('button', { nam
 const loadedSha = headSha(1);
 const short = loadedSha.slice(0, 7);
 
+// prInDetails opens Thread details and returns its PR 1 row.
+async function prInDetails(page: Page) {
+  await page.getByRole('button', { name: 'Thread details', exact: true }).click();
+  return page.getByRole('dialog', { name: 'Thread details' }).getByRole('link', { name: /^PR 1\b/ });
+}
+
 // openPanel starts a thread whose Bot opened PR 1, opens it and returns the thread and the panel
 // once it has loaded.
 async function openPanel(page: Page) {
@@ -54,10 +60,7 @@ async function openPanel(page: Page) {
   });
   await waitStatus(m, t.id, 'done', 30_000);
   await page.goto(`${m.url}/bots/${bot.id}/threads/${t.id}`);
-  await page
-    .locator('header')
-    .getByRole('link', { name: /^PR 1\b/ })
-    .click();
+  await (await prInDetails(page)).click();
   const panel = aside(page);
   await expect(panel.getByText('Open', { exact: true })).toBeVisible();
   return { id: t.id as string, panel };
@@ -216,10 +219,7 @@ for (const state of ['merged', 'closed'] as const) {
     if (state === 'merged') github.merge(1);
     else github.closePull(1);
     await page.goto(`${m.url}/bots/${bot.id}/threads/${t.id}`);
-    await page
-      .locator('header')
-      .getByRole('link', { name: /^PR 1\b/ })
-      .click();
+    await (await prInDetails(page)).click();
     const panel = aside(page);
     await expect(
       panel.getByText(state === 'merged' ? 'Merged' : 'Closed', {

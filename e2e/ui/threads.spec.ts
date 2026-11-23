@@ -1,5 +1,5 @@
-// Threads that need the user: a thread waiting on an approval gets a tab with the light dot and
-// shows in the island's notification list with what it waits for, and the island counts it.
+// Threads that need the user: a thread waiting on an approval gets a tab with the light dot, its
+// Bot row and a Now row say what it waits for, and the card in the thread answers it.
 import { expect, test } from '@playwright/test';
 import {
   api,
@@ -7,6 +7,7 @@ import {
   marks,
   moreButton,
   newBotAPI,
+  openNow,
   openThreadAPI,
   prompts,
   sidebarRow,
@@ -22,7 +23,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(() => m?.stop());
 
-test('Needs you lists the waiting thread and what it waits for; the island counts it', async ({
+test('Needs you lists the waiting thread and what it waits for; its tab, Bot row and the card in the thread', async ({
   page,
 }) => {
   const tide = await newBotAPI(m, 'Tide');
@@ -39,23 +40,22 @@ test('Needs you lists the waiting thread and what it waits for; the island count
   await expect.poll(async () => (await marks(asking)).map((d) => d.colour)).toEqual(['light']);
   await expect(threadTab(page, threadTitle(prompts.keep))).toHaveCount(0);
   await expect(moreButton(page)).toHaveCount(0);
-  await page.keyboard.press('Escape');
-  const island = page
-    .locator('header')
-    .getByRole('button', { name: 'Notifications, 1 waiting', exact: true });
-  await expect(island).toBeVisible();
+  await expect(sidebarRow(page, 'Tide')).toContainText('Wants to edit hello.txt');
 
-  await island.click();
-  const list = page.getByRole('dialog', { name: 'Notifications' });
-  const needs = list.getByRole('list', { name: 'Needs you' }).getByRole('listitem');
+  const now = await openNow(page);
+  const needs = now.getByRole('list', { name: 'Needs you', exact: true }).getByRole('listitem');
   await expect(needs).toHaveCount(1);
   await expect(needs).toContainText(threadTitle(prompts.write));
   await expect(needs).toContainText('hello.txt');
 
-  await needs.getByRole('button', { name: 'Allow', exact: true }).click();
+  await needs.getByRole('link', { name: threadTitle(prompts.write) }).click();
+  await expect(page).toHaveURL(`${m.url}/bots/${tide.id}/threads/${waiting.id}`);
+  await page
+    .getByRole('log', { name: 'Messages' })
+    .getByRole('group', { name: 'Approval' })
+    .getByRole('button', { name: 'Allow', exact: true })
+    .click();
   await waitStatus(m, waiting.id, 'done');
-  await expect(
-    page.locator('header').getByRole('button', { name: 'Notifications', exact: true }),
-  ).toBeVisible();
   await expect(sidebarRow(page, 'Tide')).not.toContainText('Wants to');
+  await expect.poll(async () => (await marks(asking)).map((d) => d.colour)).not.toContain('light');
 });

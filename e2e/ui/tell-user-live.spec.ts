@@ -1,7 +1,7 @@
 // A tell_user message reaches the person when the Bot sends it, not when its background run ends:
-// in the open chat, and under the island's Earlier list.
+// in the open chat, and in the chat after a reload.
 import { expect, type Page, test } from '@playwright/test';
-import { api, type Machine, newBotAPI, startAtoll } from './atoll';
+import { api, type Machine, startAtoll } from './atoll';
 import { delegate, helperThreads, makeBoss, runStatus, startThread } from './helpers-fixture';
 
 let m: Machine;
@@ -61,29 +61,15 @@ test('a tell_user message shows in the open chat within a second, while the run 
   expect(await runStatus(m, boss)).toBe('running');
 });
 
-test('a tell_user message is under Earlier while the run goes, live and after a reload', async ({
-  page,
-}) => {
+test('a tell_user message is in the chat after a reload, while the run goes', async ({ page }) => {
   await makeBoss(m, ['Tester']);
-  const home = await newBotAPI(m, 'Home');
   const { boss, helper } = await handOff(page);
-  await api(m, 'POST', `/api/threads/${boss}/opened`);
-  await page.goto(`${m.url}/bots/${home.id}`);
-  const island = page.locator('header').getByRole('button', { name: /^Notifications/ });
-  await island.click();
-  const rows = page
-    .getByRole('dialog', { name: 'Notifications' })
-    .getByRole('list', { name: 'Earlier' })
-    .getByRole('listitem')
-    .filter({ hasText: 'Poteto' });
   await approve(helper);
   await told(boss);
 
-  await expect(rows).toHaveCount(1, { timeout: 2_000 });
-  expect(await runStatus(m, boss)).toBe('running');
-
   await page.reload();
-  await island.click();
-  await expect(rows).toHaveCount(1, { timeout: 2_000 });
+  await expect(page.getByRole('log', { name: 'Messages' }).getByText(toldFirst)).toBeVisible({
+    timeout: 2_000,
+  });
   expect(await runStatus(m, boss)).toBe('running');
 });

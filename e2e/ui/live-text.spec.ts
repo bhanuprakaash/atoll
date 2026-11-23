@@ -1,7 +1,7 @@
 // While a Bot works the thread shows one status line beside the creature: the Bot's latest line of
 // text, or the tool step it is on. No step lines, no streamed text block. The reply appears once,
 // as a message, when the run ends; a reload shows the same status line; the sidebar row and the
-// island keep the short verb; a reader scrolled up is not moved.
+// thread tab keep the short verb; a reader scrolled up is not moved.
 import { readFileSync } from "node:fs";
 import { connect, createServer, type Socket } from "node:net";
 import type { AddressInfo } from "node:net";
@@ -338,7 +338,7 @@ test("scrolled up, the status line changing and the run ending do not move the v
   await expect(jump).toBeVisible();
 });
 
-test("Now's note and the island keep the short verb and never show the text", async ({
+test("Now's note and the thread tab keep the short verb and never show the text", async ({
   page,
 }) => {
   const { log, status, thread } = await openRun(page, "Quiet");
@@ -348,9 +348,9 @@ test("Now's note and the island keep the short verb and never show the text", as
   const row = now
     .getByRole("listitem")
     .filter({ has: side.locator(`a[href$="/threads/${thread.id}"]`) });
-  const header = page.locator("header");
+  const tabs = page.getByRole("tablist", { name: "Threads" });
   await Promise.all(
-    [page.getByRole("navigation", { name: "Bots" }), now, header].map((part) =>
+    [page.getByRole("navigation", { name: "Bots" }), now, tabs].map((part) =>
       part.evaluate((el) => {
         const w = window as unknown as { __shown?: string[] };
         const shown = (w.__shown ??= []);
@@ -366,7 +366,11 @@ test("Now's note and the island keep the short verb and never show the text", as
 
   await expect(status).toHaveText(openingStart);
   await expect(row).toContainText("Quiet · Thinking");
-  await expect(header).toContainText("Thinking");
+  await expect(
+    tabs
+      .locator('[aria-selected="true"]')
+      .getByRole("img", { name: "Working", exact: true }),
+  ).toBeVisible();
 
   await expect(status).toHaveText(toolStatus.claude);
   await expect(row).toContainText("Running");
