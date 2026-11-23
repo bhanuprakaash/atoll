@@ -241,7 +241,8 @@ export function LatestThread() {
   const { data: threads } = useThreads(botId);
   const { search } = useLocation();
   if (!threads) return null;
-  const latest = threads[0];
+  // A helper thread shows under its boss's Bot, so a Bot opens on its own newest thread.
+  const latest = threads.find((t) => !t.parent_thread_id);
   return (
     <Navigate
       to={`${latest ? `/bots/${botId}/threads/${latest.id}` : `/bots/${botId}/new`}${search}`}
