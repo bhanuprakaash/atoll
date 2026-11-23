@@ -1863,9 +1863,10 @@ Voice
   need the person (and failed ones), run or are pinned. A helper thread has no tab, except a failed
   one.
   - Order is fixed: a thread that gets a tab goes on the right and keeps its place; a tab never
-    moves when its state changes. A thread that stops needing the person, running or being pinned
-    loses its tab unless it is open. When the tabs do not fit, the bar scrolls sideways. The number
-    of tabs follows thread state, never the window's width.
+    moves when its state changes. Tabs shown at once line up oldest activity first. A thread that
+    stops needing the person, running or being pinned loses its tab unless it is open. When the
+    tabs do not fit, the bar scrolls sideways. The number of tabs follows thread state, never the
+    window's width.
   - A tab is the title and one marker at its right end, the thread's label (Thread labels, below):
     a light dot for Needs you; three wave dots for Working; the red dot for a failed run; `Out
     until 3 PM`, muted; a blue dot and a bold title for Replied; a pin beside the label of a
