@@ -11,6 +11,7 @@ import {
   prompts,
   recordText,
   seenText,
+  sidebarRow,
   sendMessageAPI,
   startAtoll,
   threadTitle,
@@ -295,6 +296,7 @@ test('opening a thread from Now clears both its Replied row and its Earlier row'
   await expect(page).toHaveURL(`${m.url}/bots/${pilot.id}/threads/${a.id}`);
   await openNow(page);
   await expect(section(now, 'Replied')).toHaveCount(1);
+  await sidebarRow(page, 'Home').click();
   await island.click();
   await expect(finished(rows, prompts.keep)).toHaveCount(1);
   await expect(finished(rows, prompts.pong)).toHaveCount(0);

@@ -7,8 +7,7 @@ test("Chief creates a skill and Bot in chat, and Undo removes the Bot", async ({
   await page.goto("/");
   await sidebarRow(page, "Chief").click();
   await page
-    .getByRole("region", { name: "Chief", exact: true })
-    .getByRole("button", { name: "New thread" })
+    .getByRole("button", { name: "New thread", exact: true })
     .click();
   await page
     .getByRole("textbox", { name: "Message" })
@@ -58,8 +57,7 @@ test("a reply that created 2 Bots folds into one line: Undo all works folded, th
   await page.goto("/");
   await sidebarRow(page, "Chief").click();
   await page
-    .getByRole("region", { name: "Chief", exact: true })
-    .getByRole("button", { name: "New thread" })
+    .getByRole("button", { name: "New thread", exact: true })
     .click();
   const create = (name: string) => ({
     tool: "create_bot",

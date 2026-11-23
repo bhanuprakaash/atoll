@@ -58,6 +58,7 @@ test('the header icon is before Bot settings; switching threads closes Thread de
 }) => {
   const first = await thread();
   const second = await thread();
+  await api(m, 'POST', `/api/threads/${second.id}/pin`);
   await page.goto(`${m.url}/bots/${bot.id}/threads/${first.id}`);
   const icon = page.getByRole('button', {
     name: 'Thread details',
