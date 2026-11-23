@@ -22,10 +22,6 @@ function approvalLead(tool: string) {
   return isCommand(tool) ? 'Wants to run' : 'Wants to use';
 }
 
-export function approvalVerb(tool: string, words?: string) {
-  return isEdit(tool) || isCommand(tool) ? approvalLead(tool) : `Wants to use ${words ?? tool}`;
-}
-
 export function ApprovalCard({
   id,
   tool,

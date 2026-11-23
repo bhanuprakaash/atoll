@@ -55,7 +55,6 @@ const (
 	EventApproval    = "approval"        // Approval
 	EventApprovalEnd = "approval_closed" // ApprovalClosed
 	EventRunFinished = "run_finished"    // Finished
-	EventThreadRead  = "thread_read"     // nothing: the user opened the thread
 	EventTold        = "told"            // Told: a tell_user message was stored
 
 	EventWorktreeCreated = "worktree_created" // WorktreeCreated
@@ -144,7 +143,6 @@ type (
 		tokens    map[string]*active                 // by run token
 		approvals map[string]open                    // open approvals, by approval id
 		subs      map[string]map[chan Event]struct{} // by thread id
-		all       map[chan Event]struct{}            // SubscribeAll's subscribers
 	}
 
 	// open is an approval waiting for the user; answer takes its one answer.
@@ -264,9 +262,6 @@ type (
 		RunID  string `json:"run_id"`
 		Status string `json:"status"`
 		Error  string `json:"error"`
-		// quiet marks a background run that ended with nothing posted to the chat: the thread's
-		// own stream gets it, the island's does not.
-		quiet bool
 	}
 
 	eventLine struct {
@@ -288,7 +283,6 @@ func New(cfg Config) *Manager {
 		tokens:    map[string]*active{},
 		approvals: map[string]open{},
 		subs:      map[string]map[chan Event]struct{}{},
-		all:       map[chan Event]struct{}{},
 	}
 }
 
@@ -556,27 +550,6 @@ func (m *Manager) Subscribe(threadID string) (events <-chan Event, cancel func()
 	return ch, cancel
 }
 
-// SubscribeAll streams the notice events of every thread from now on, until cancel is called.
-// approvals holds an approval event for each approval open now; events carries what follows them.
-func (m *Manager) SubscribeAll() (approvals []Event, events <-chan Event, cancel func()) {
-	ch := make(chan Event, _subscriberBuffer)
-	m.mu.Lock()
-	cancel, ok := m.join(m.all, ch)
-	if !ok {
-		m.mu.Unlock()
-		return nil, ch, cancel
-	}
-	for threadID, a := range m.runs {
-		for _, o := range m.approvals {
-			if o.approval.RunID == a.run.ID {
-				approvals = append(approvals, Event{Type: EventApproval, ThreadID: threadID, Data: o.approval})
-			}
-		}
-	}
-	m.mu.Unlock()
-	return approvals, ch, cancel
-}
-
 // join adds ch to subs and returns its cancel. When the Manager is closing it closes ch instead
 // and returns false. The caller holds mu.
 func (m *Manager) join(subs map[chan Event]struct{}, ch chan Event) (cancel func(), ok bool) {
@@ -758,10 +731,6 @@ func (m *Manager) Close() error {
 			close(ch)
 		}
 	}
-	for ch := range m.all {
-		delete(m.all, ch)
-		close(ch)
-	}
 	return nil
 }
 
@@ -821,7 +790,7 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 	}
 	quiet := a.quiet
 	res.StatusLine = a.background && (a.told || !a.guard)
-	told, stopped := a.told, a.stopped
+	stopped := a.stopped
 	m.mu.Unlock()
 	if err != nil && m.ctx.Err() != nil && !stopped {
 		// Shutdown cuts the run as a kill does: it stays going, and the next start fails it with
@@ -869,10 +838,7 @@ func (m *Manager) execute(a *active, text string, images []provider.Image) {
 		"duration", time.Since(start))
 	// Dropped before run_finished: a client may send the next message the moment it sees it.
 	m.drop(a)
-	m.publish(a, EventRunFinished, Finished{
-		RunID: a.run.ID, Status: res.Status, Error: res.Error,
-		quiet: res.Status == store.StatusDone && res.StatusLine && !told,
-	})
+	m.publish(a, EventRunFinished, Finished{RunID: a.run.ID, Status: res.Status, Error: res.Error})
 	if res.Status == store.StatusDone && res.Reply != "" && !res.StatusLine {
 		m.wg.Add(1)
 		go func() {
@@ -1440,23 +1406,12 @@ func (m *Manager) announce(threadID, runID, typ string, data any) {
 	m.deliver(threadID, runID, f, typ, data)
 }
 
-// deliver writes the event to log, when there is one, and sends it to the thread's subscribers
-// and, for a notice, to every SubscribeAll subscriber.
+// deliver writes the event to log, when there is one, and sends it to the thread's subscribers.
 // The caller holds mu.
 func (m *Manager) deliver(threadID, runID string, log *os.File, typ string, data any) {
 	m.writeEvent(runID, log, typ, data)
 	ev := Event{Type: typ, ThreadID: threadID, Data: data}
 	m.fanOut(m.subs[threadID], ev, runID)
-	switch typ {
-	case EventApproval, EventApprovalEnd, EventRunFinished, EventMRUpdated, EventPlatformChanged, EventThreadRead,
-		EventTold:
-	default:
-		return
-	}
-	if f, ok := data.(Finished); ok && f.quiet {
-		return
-	}
-	m.fanOut(m.all, ev, runID)
 }
 
 // fanOut gives ev to each of subs and closes the stream of one whose buffer is full. The caller

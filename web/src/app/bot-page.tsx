@@ -1,18 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import {
-  Navigate,
-  Link,
-  Outlet,
-  useLocation,
-  useOutletContext,
-  useParams,
-  useSearchParams,
-} from 'react-router';
-import { Creature, type Appearance } from '@/components/creature';
+import { useEffect, useState } from 'react';
+import { Navigate, Outlet, useLocation, useParams, useSearchParams } from 'react-router';
 import { ThreadTabs } from '@/app/thread-tabs';
 import { Gone } from '@/components/gone';
-import { PRChip, pullNumber } from '@/components/pr-chip';
-import { useBots, type Bot } from '@/modules/bots/api/bots';
+import { useBots } from '@/modules/bots/api/bots';
 import { helperBoss } from '@/modules/bots/utils/thread-tree';
 import { BotMemory } from '@/modules/memory/components/bot-memory';
 import { BotSettings } from '@/modules/bots/components/bot-settings';
@@ -23,24 +13,10 @@ import { useProviders } from '@/modules/providers/api/providers';
 import { ModelSelect } from '@/modules/providers/components/model-select';
 import { useRepos } from '@/modules/repos/api/repos';
 import { useSkills } from '@/modules/skills/api/skills';
-import { useThread, useThreads, type Thread } from '@/modules/threads/api/threads';
-import { HelperCreature } from '@/modules/threads/components/helper-creature';
+import { useThread, useThreads } from '@/modules/threads/api/threads';
 import { FilePanel } from '@/modules/threads/components/file-panel';
 import { PRPanel } from '@/modules/threads/components/pr-panel';
 import { ThreadPanel } from '@/modules/threads/components/thread-panel';
-import {
-  ApprovalDrop,
-  FinishedNotice,
-  NotificationList,
-} from '@/modules/threads/components/notifications';
-import type { Notifications } from '@/modules/threads/hooks/use-notifications';
-import {
-  ciWord,
-  helperState,
-  isLiveHelper,
-  type HelperState,
-} from '@/modules/threads/utils/helper-state';
-import { headPR } from '@/modules/threads/utils/mr-ref';
 import type { FileRef } from '@/utils/file-ref';
 
 // OpenPR opens a GitHub pull request in the PR panel, read with the given thread's Bot.
@@ -48,145 +24,18 @@ export type OpenPR = (threadId: string, url: string) => void;
 // OpenFile opens a file of the given thread's checkout in the file panel.
 export type OpenFile = (threadId: string, file: FileRef) => void;
 
-const prTone: Record<string, string> = {
-  opened: 'text-ok',
-  merged: 'text-kind',
-  closed: 'text-muted',
-};
-const ciTone: Record<string, string> = {
-  running: 'text-muted',
-  passed: 'text-ok',
-  failed: 'text-danger',
-};
-
 export function BotHeader({
-  bot,
-  thread,
-  boss,
-  helpers = [],
-  waiting = 0,
-  open = false,
-  onNotifications,
   onSettings,
   details,
-  pullRequest,
-  children,
 }: {
-  bot?: Bot;
-  thread?: Thread;
-  boss?: { bot: Bot; threadId: string; title: string };
-  helpers?: { id: string; name: string; look?: Appearance; state: HelperState }[];
-  waiting?: number;
-  open?: boolean;
-  onNotifications?: () => void;
   onSettings?: () => void;
   details?: { open: boolean; toggle: () => void };
-  pullRequest?: ReactNode;
-  children?: ReactNode;
 }) {
-  const title = thread?.title;
   return (
     <header
       data-tauri-drag-region="deep"
-      className="@container relative z-10 grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5"
+      className="relative z-10 grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5"
     >
-      <div
-        data-island
-        className={`relative z-30 col-start-2 flex flex-col overflow-hidden border border-composer-line bg-composer shadow-[0_12px_32px_rgba(0,0,0,.4)] transition-[min-width,max-height,border-radius] duration-420 ease-[cubic-bezier(.32,1.25,.5,1)] motion-reduce:transition-none ${open ? 'max-h-[60vh] min-w-[min(25rem,calc(100cqw-7rem))] max-w-[min(25rem,calc(100cqw-7rem))] rounded-[22px]' : 'max-h-10 min-w-0 rounded-[20px]'}`}
-      >
-        <div className="relative flex h-9.5 flex-none items-center justify-center gap-2.5 px-3 whitespace-nowrap">
-          {boss ? (
-            <nav
-              aria-label="Breadcrumb"
-              className="relative z-10 flex min-w-0 items-center gap-1.5 text-sm"
-            >
-              <Creature
-                look={boss.bot.look}
-                colour={boss.bot.colour}
-                state={boss.bot.state}
-                size={22}
-              />
-              <Link
-                to={`/bots/${boss.bot.id}/threads/${boss.threadId}`}
-                className="max-w-40 truncate text-muted hover:text-ink"
-              >
-                {boss.title}
-              </Link>
-              <span aria-hidden="true" className="text-label">
-                ›
-              </span>
-              {bot && <Creature look={bot.look} colour={bot.colour} state={bot.state} size={18} />}
-              <h1>{bot?.name}</h1>
-            </nav>
-          ) : (
-            <>
-              {bot && <Creature look={bot.look} colour={bot.colour} state={bot.state} size={22} />}
-              <div className="flex min-w-0 items-center gap-1.5">
-                <h1 className="text-sm">{bot?.name}</h1>
-                {title && (
-                  <>
-                    <span aria-hidden="true" className="hidden text-label @min-[32rem]:inline">
-                      ·
-                    </span>
-                    <h2 className="hidden max-w-50 truncate text-sm font-normal text-muted @min-[32rem]:block">
-                      {title}
-                    </h2>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-          {pullRequest && (
-            <span className="relative z-10 flex items-center gap-1.5 text-[13px]">
-              {pullRequest}
-            </span>
-          )}
-          {helpers.length > 0 && (
-            <div className="flex items-center gap-1">
-              {helpers.map((h) => (
-                <HelperCreature key={h.id} name={h.name} creature={h.look} state={h.state} />
-              ))}
-            </div>
-          )}
-          {thread?.approval ? (
-            <span className="text-[13px] text-ink">Needs you</span>
-          ) : thread?.run_status === 'running' ? (
-            <span className="flex h-3.5 items-center gap-0.75">
-              <span className="sr-only">Thinking</span>
-              {[0, 1, 2].map((i) => (
-                <i
-                  key={i}
-                  aria-hidden="true"
-                  style={{ animationDelay: `${i * 0.15}s` }}
-                  className="size-1.25 rounded-full bg-ink motion-safe:animate-wave motion-reduce:opacity-70"
-                />
-              ))}
-            </span>
-          ) : (
-            thread?.run_status === 'failed' &&
-            thread.run_error_kind !== 'secret_store' && (
-              <span className="text-[13px] text-muted">Run failed</span>
-            )
-          )}
-          {waiting > 0 && (
-            <span
-              aria-hidden="true"
-              className="flex items-center gap-1 rounded-full bg-tile px-2 py-px text-xs text-ink"
-            >
-              <span className="size-1.5 rounded-full bg-accent" />
-              {waiting}
-            </span>
-          )}
-          <button
-            type="button"
-            aria-label={waiting ? `Notifications, ${waiting} waiting` : 'Notifications'}
-            aria-haspopup="dialog"
-            onClick={onNotifications}
-            className="absolute inset-0 hover:bg-ink/5"
-          />
-        </div>
-        {children}
-      </div>
       <div className="col-start-3 mt-1.5 mr-4 flex items-center gap-1 justify-self-end">
         {details && (
           <button
@@ -245,7 +94,6 @@ export function BotHeader({
 function BotFrame() {
   const { botId = '', threadId = '' } = useParams();
   const { data: bots = [] } = useBots();
-  const { data: threads = [] } = useThreads(botId);
   const { data: repos = [] } = useRepos();
   const { data: skills = [] } = useSkills();
   const { data: mcpServers = [] } = useMcpServers();
@@ -263,7 +111,6 @@ function BotFrame() {
       },
       { replace: true },
     );
-  const [list, setList] = useState(false);
   const { data: openThread } = useThread(threadId);
   const [detailsFor, setDetailsFor] = useState('');
   const [opened, setOpened] = useState<
@@ -277,8 +124,6 @@ function BotFrame() {
   };
   const openPR: OpenPR = (prThread, url) => open({ threadId: prThread, url });
   const openFile: OpenFile = (fileThread, file) => open({ threadId: fileThread, file });
-  const headPull = headPR(openThread?.prs ?? []);
-  const headWord = headPull ? ciWord(headPull) : '';
   const detailsOpen = !!openThread && detailsFor === threadId;
   useEffect(() => setDetailsFor(''), [threadId]);
   useEffect(() => {
@@ -305,99 +150,24 @@ function BotFrame() {
       window.removeEventListener('pointerdown', onDown);
     };
   }, [detailsOpen, threadId]);
-  const notifications = useOutletContext<Notifications>();
-  const { drop, widened, dismiss, markSeen } = notifications;
-  const expanded = list || !!drop;
-  useEffect(() => (list ? markSeen : undefined), [list, markSeen]);
-  useEffect(() => {
-    if (!expanded) return;
-    const shrink = () => {
-      setList(false);
-      dismiss();
-    };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !e.defaultPrevented && shrink();
-    const onDown = (e: PointerEvent) => !(e.target as Element).closest('[data-island]') && shrink();
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('pointerdown', onDown);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('pointerdown', onDown);
-    };
-  }, [expanded, dismiss]);
   const bot = bots.find((item) => item.id === botId);
-  const looks = Object.fromEntries(bots.map((item) => [item.id, item]));
-  const current = threads.find((thread) => thread.id === threadId);
-  const bossThread = current?.parent_thread_id
-    ? bots
-        .flatMap((b) => (b.threads ?? []).map((t) => ({ bot: b, thread: t })))
-        .find(({ thread }) => thread.id === current.parent_thread_id)
-    : undefined;
   const tabBoss = helperBoss(bots, threadId);
   const tabBot = tabBoss ? bots.find((item) => item.id === tabBoss.botId) : bot;
-  const helpers = (threads.find((thread) => thread.id === threadId)?.helpers ?? [])
-    .filter(isLiveHelper)
-    .map((helper) => {
-      const helperBot = bots.find((item) => item.id === helper.bot_id);
-      return {
-        id: helper.id,
-        name: helperBot?.name ?? 'Helper',
-        look: helperBot,
-        state: helperState(helper),
-      };
-    });
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <div className="relative flex min-h-0 min-w-0 flex-[999_1_400px] flex-col">
         <BotHeader
-          bot={bot}
           onSettings={() => {
             setOpened(undefined);
             setSettingsOpen(true);
           }}
-          onNotifications={() => setList(!list)}
           details={
             openThread && {
               open: detailsOpen,
               toggle: () => setDetailsFor(detailsOpen ? '' : threadId),
             }
           }
-          open={expanded || !!widened}
-          thread={threads.find((thread) => thread.id === threadId)}
-          boss={
-            bossThread && {
-              bot: bossThread.bot,
-              threadId: bossThread.thread.id,
-              title: bossThread.thread.title,
-            }
-          }
-          helpers={helpers}
-          waiting={notifications.needs.length}
-          pullRequest={
-            headPull &&
-            pullNumber(headPull.url) && (
-              <>
-                <PRChip
-                  url={headPull.url}
-                  onOpen={(url) => openPR(threadId, url)}
-                  tone={prTone[headPull.state]}
-                />{' '}
-                {headWord && <span className={`text-xs ${ciTone[headWord]}`}>{headWord}</span>}
-              </>
-            )
-          }
-        >
-          {list ? (
-            <NotificationList
-              notifications={notifications}
-              looks={looks}
-              onClose={() => setList(false)}
-            />
-          ) : drop ? (
-            <ApprovalDrop approval={drop} look={looks[drop.bot_id]} />
-          ) : (
-            widened && <FinishedNotice notice={widened} look={looks[widened.bot_id]} />
-          )}
-        </BotHeader>
+        />
         {tabBot && <ThreadTabs bot={tabBot} openThreadId={tabBoss ? tabBoss.threadId : threadId} />}
         <Outlet context={{ openPR, openFile }} />
         {detailsOpen && (
