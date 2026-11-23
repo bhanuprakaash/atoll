@@ -112,3 +112,26 @@ test('Delete group moves its Bots to Ungrouped', async ({ page }) => {
     ).toBeVisible();
   await expect(group(page, 'Frontend').getByRole('link', { name: /\bElm\b/ })).toBeVisible();
 });
+
+test('the Ungrouped heading shows only while a Bot is ungrouped', async ({ page }) => {
+  for (const name of ['Ivy', 'Oak']) await newBotAPI(m, name);
+  await page.goto(m.url);
+  await expect(group(page, 'Ungrouped').getByRole('link', { name: /\bIvy\b/ })).toBeVisible();
+  await expect(line(page, 'Ungrouped')).toHaveCount(0);
+
+  await newGroup(page, 'Backend');
+  await expect(line(page, 'Ungrouped')).toBeVisible();
+  await moveToGroup(page, 'Ivy', 'Backend');
+  await expect(line(page, 'Ungrouped')).toBeVisible();
+
+  await moveToGroup(page, 'Oak', 'Backend');
+  await expect(group(page, 'Backend').getByRole('link')).toHaveCount(2);
+  await expect(line(page, 'Ungrouped')).toHaveCount(0);
+  await expect(group(page, 'Ungrouped')).toHaveCount(0);
+  await expect.poll(() => order(page)).toEqual(['Backend']);
+
+  await moveToGroup(page, 'Oak', 'No group');
+  await expect(group(page, 'Ungrouped').getByRole('link', { name: /\bOak\b/ })).toBeVisible();
+  await expect(line(page, 'Ungrouped')).toBeVisible();
+  await expect.poll(() => order(page)).toEqual(['Backend', 'Ungrouped']);
+});
