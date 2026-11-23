@@ -6,7 +6,7 @@ import { expect, type Page, test } from '@playwright/test';
 
 const home = '/bots/chief/new';
 const sidebar = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
-const handle = (page: Page) => page.getByRole('separator', { name: 'Resize thread pane' });
+const handle = (page: Page) => page.getByRole('separator', { name: 'Resize sidebar' });
 
 async function expectWidth(page: Page, px: number) {
   await expect
