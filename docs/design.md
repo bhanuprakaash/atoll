@@ -1826,7 +1826,9 @@ Voice
     works (the live verb and three wave dots), a thread at the provider's usage limit (`Out until
     3:00 PM`), else the first line of the last reply (`Stopped` after a run the person stopped,
     `No reply` when the last run left none, `No messages yet` and no time for a Bot that never
-    ran). It is muted, and ink while a thread has a reply the person has not opened. *A row that
+    ran). The failed state, the reply and the time come from the Bot's newest thread that is not
+    a helper's, the one a click opens. It is muted, and ink while a thread has a reply the person
+    has not opened. *A row that
     was only a name said nothing about what the Bot last did; the list now reads like a chat
     list. The poll already sent the reply's first line and the time.*
   - Clicking a row opens the Bot's latest thread that is not a helper's (a helper thread shows

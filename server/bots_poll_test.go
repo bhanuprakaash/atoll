@@ -287,6 +287,58 @@ func TestBotsPoll_FailedBot(t *testing.T) {
 	}
 }
 
+// TestBotsPoll_OwnThreadPreview proves a Bot's activity is its own newest thread's reply, not a
+// newer reply in a thread where it helps another Bot: clicking the row opens its own thread.
+func TestBotsPoll_OwnThreadPreview(t *testing.T) {
+	ctx := t.Context()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := New(st, nil, run.New(run.Config{Store: st, Log: log}), log, nil, "")
+	boss, _ := st.CreateBot(ctx, store.Bot{Name: "boss", Persona: "p", Provider: "claude"})
+	helper, _ := st.CreateBot(ctx, store.Bot{Name: "helper", Persona: "p", Provider: "claude"})
+	bossThread, _ := st.CreateThread(ctx, boss.ID, "")
+	own, _ := st.CreateThread(ctx, helper.ID, "")
+	helping, _ := st.CreateHelperThread(ctx, bossThread.ID, helper.ID, "")
+	for _, r := range []struct{ thread, reply string }{{own.ID, "mine"}, {helping.ID, "for the boss"}} {
+		_, ru, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: r.thread, Text: "hi"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.FinishRun(ctx, ru.ID, store.RunResult{Status: store.StatusDone, Reply: r.reply}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{"/api/bots", "/api/bots/" + helper.ID} {
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+		req.Host = "127.0.0.1:4317"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		body := rec.Body.Bytes()
+		if path == "/api/bots" {
+			var all []json.RawMessage
+			if err := json.Unmarshal(body, &all); err != nil {
+				t.Fatal(err)
+			}
+			for _, b := range all {
+				if strings.Contains(string(b), `"id":"`+helper.ID+`"`) {
+					body = b
+				}
+			}
+		}
+		var one struct{ Activity string }
+		if err := json.Unmarshal(body, &one); err != nil {
+			t.Fatal(err)
+		}
+		if one.Activity != "mine" {
+			t.Errorf("%s: activity %q, want mine", path, one.Activity)
+		}
+	}
+}
+
 // TestBotsPoll_ClosedThreadApproval proves the poll still shows an approval that waits on a closed
 // thread: closed alone, as a closed helper of an open boss, and as a closed helper of a closed
 // boss. A person must never miss an approval.
