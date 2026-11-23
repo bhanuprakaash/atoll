@@ -1,12 +1,12 @@
-// Drag to reorder Bots and groups on the rail (#246): native HTML5 drag and drop. A face dropped on
-// the top half of another face lands before it, on the bottom half after it; a face dropped on a
-// group's line goes last in that group; a group's line dropped on another group's line lands before
-// that group. The API and the upgrade are in
+// Drag to reorder Bots and groups in the sidebar (#246): native HTML5 drag and drop. A Bot row
+// dropped on the top half of another row lands before it, on the bottom half after it; a row dropped
+// on a group's line goes last in that group; a group's line dropped on another group's line lands
+// before that group. The API and the upgrade are in
 // e2e/sidebar_place_test.go.
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { api, type Machine, newBotAPI, showPane, sidebarRow, startAtoll } from './atoll';
+import { api, type Machine, newBotAPI, sidebarRow, startAtoll, threadTabs } from './atoll';
 
-// Every face must be in view at once: a drag cannot scroll the rail between pressing and dropping.
+// Every row must be in view at once: a drag cannot scroll the sidebar between pressing and dropping.
 test.use({ viewport: { width: 1280, height: 1100 } });
 
 let m: Machine;
@@ -26,8 +26,8 @@ test.beforeEach(async () => {
 });
 test.afterEach(() => m?.stop());
 
-const rail = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
-const group = (page: Page, name: string) => rail(page).getByRole('group', { name, exact: true });
+const sidebar = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
+const group = (page: Page, name: string) => sidebar(page).getByRole('group', { name, exact: true });
 const groupLine = (page: Page, name: string) =>
   group(page, name).getByRole('button', { name, exact: true });
 
@@ -38,16 +38,16 @@ async function drop(source: Locator, target: Locator, where: 'before' | 'after' 
   await source.dragTo(target, { targetPosition: { x: b.width / 2, y } });
 }
 
-// names is the Bot ids of the faces in a group, top to bottom.
+// names is the Bot ids of the rows in a group, top to bottom.
 const names = (l: Locator) =>
   l
     .locator('a[href^="/bots/"]')
     .evaluateAll((els) => els.map((el) => el.getAttribute('href')!.split('/').pop()!));
 const byID = (want: string[]) => want.map((n) => ids[n]);
 
-// pinned is the ids of the faces between Chief and the first group, top to bottom.
+// pinned is the ids of the rows between Chief and the first group, top to bottom.
 const pinned = (page: Page) =>
-  rail(page)
+  sidebar(page)
     .locator('a[href^="/bots/"]')
     .evaluateAll((els) =>
       els
@@ -57,7 +57,7 @@ const pinned = (page: Page) =>
     );
 
 const groupOrder = (page: Page) =>
-  rail(page)
+  sidebar(page)
     .getByRole('group')
     .evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
 
@@ -105,7 +105,7 @@ test('dragging Bot Elm between two Bots of a group puts it there, also after a r
   await expect.poll(() => names(group(page, 'Platform'))).toEqual(want);
 });
 
-test("dropping a face on a group's line puts the Bot last in that group", async ({ page }) => {
+test("dropping a Bot row on a group's line puts the Bot last in that group", async ({ page }) => {
   await page.goto(`${m.url}/settings`);
   await drop(sidebarRow(page, 'Elm'), groupLine(page, 'Platform'));
   await expect
@@ -145,7 +145,7 @@ test('Chief has no drag and nothing lands above it; Ungrouped stays last and doe
   await expect(groupLine(page, 'Platform')).toHaveAttribute('draggable', 'true');
   await expect(groupLine(page, 'Ungrouped')).not.toHaveAttribute('draggable', 'true');
 
-  const first = () => rail(page).locator('a[href^="/bots/"]').first().getAttribute('href');
+  const first = () => sidebar(page).locator('a[href^="/bots/"]').first().getAttribute('href');
   await drop(sidebarRow(page, 'Elm'), chief, 'before');
   await expect.poll(first).toBe('/bots/chief');
   await drop(sidebarRow(page, 'Fir'), chief, 'before');
@@ -160,13 +160,19 @@ test('Chief has no drag and nothing lands above it; Ungrouped stays last and doe
   await expect.poll(() => groupOrder(page)).toEqual(['Platform', 'Frontend', 'Ungrouped']);
 });
 
-test('thread rows are not draggable', async ({ page }) => {
-  for (let i = 0; i < 2; i++) await api(m, 'POST', `/api/bots/${ids.Elm}/threads`, {});
-  const pane = await showPane(page, m, ids.Elm, 'Elm');
-  const links = pane.getByRole('listitem').getByRole('link');
-  await expect(links).toHaveCount(2);
-  for (const link of await links.all()) await expect(link).toHaveAttribute('draggable', 'false');
-  const before = await pane.getByRole('listitem').allTextContents();
-  await drop(links.nth(1), links.nth(0), 'before');
-  expect(await pane.getByRole('listitem').allTextContents()).toEqual(before);
+test('thread tabs do not drag', async ({ page }) => {
+  const threads: { id: string }[] = [];
+  for (const title of ['One notes', 'Two notes']) {
+    const t = await api(m, 'POST', `/api/bots/${ids.Elm}/threads`, {});
+    await api(m, 'PATCH', `/api/threads/${t.id}`, { title });
+    await api(m, 'POST', `/api/threads/${t.id}/pin`);
+    threads.push(t);
+  }
+  await page.goto(`${m.url}/bots/${ids.Elm}/threads/${threads[0].id}`);
+  const tabs = threadTabs(page).getByRole('tab');
+  await expect(tabs).toHaveCount(2);
+  for (const tab of await tabs.all()) await expect(tab).not.toHaveAttribute('draggable', 'true');
+  const before = await tabs.allTextContents();
+  await drop(tabs.nth(1), tabs.nth(0), 'before');
+  expect(await tabs.allTextContents()).toEqual(before);
 });
