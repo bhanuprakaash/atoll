@@ -134,9 +134,6 @@ const (
 	ConnectionNeedsSignIn = "needs_sign_in"
 )
 
-// _islandSeenKey is the setting that holds the island's seen time, in microseconds.
-const _islandSeenKey = "island_seen_at"
-
 // _titlesCleanedKey is the setting that marks the one cleaning of the titles stored before it.
 const _titlesCleanedKey = "titles_cleaned"
 
@@ -705,100 +702,6 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 		return fmt.Errorf("set setting %s: %w", key, err)
 	}
 	return nil
-}
-
-// IslandSeenAt is when the user last read the island's Earlier list. Migration 022 starts it at the
-// time the file first ran that version.
-func (s *Store) IslandSeenAt(ctx context.Context) (time.Time, error) {
-	value, err := s.Setting(ctx, _islandSeenKey)
-	if err != nil {
-		return time.Time{}, err
-	}
-	micros, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("read setting %s: %w", _islandSeenKey, err)
-	}
-	return time.UnixMicro(micros).UTC(), nil
-}
-
-// MarkIslandSeen sets the island's seen time to now.
-func (s *Store) MarkIslandSeen(ctx context.Context) error {
-	return s.SetSetting(ctx, _islandSeenKey, strconv.FormatInt(time.Now().UTC().UnixMicro(), 10))
-}
-
-// ThreadEvent is something that happened to a thread at At: a run that ended (RunID, Status,
-// Error), or an MR that opened (URL, Title).
-type ThreadEvent struct {
-	ThreadID string
-	RunID    string
-	At       time.Time
-	Status   string
-	Error    string
-	URL      string
-	Title    string
-}
-
-// FinishedRunsSince lists, for each thread that is still open, its newest ended run when it ended
-// after since and after the user last opened the thread.
-func (s *Store) FinishedRunsSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
-	return query(ctx, s.db,
-		`SELECT r.thread_id, r.id, r.finished_at, r.status, r.error
-		 FROM runs r JOIN threads t ON t.id = r.thread_id
-		 WHERE r.finished_at > ? AND r.finished_at > t.last_opened_at AND t.closed = 0
-		   AND r.rowid = (SELECT r2.rowid FROM runs r2
-		                  WHERE r2.thread_id = r.thread_id AND r2.status IN (?, ?, ?)
-		                    AND (r2.status != ? OR EXISTS (SELECT 1 FROM messages m
-		                         WHERE m.thread_id = r2.thread_id AND m.run_id = r2.id AND m.role = ?))
-		                  ORDER BY r2.finished_at DESC, r2.rowid DESC LIMIT 1)`,
-		func(r *sql.Rows) (e ThreadEvent, err error) {
-			var at int64
-			err = r.Scan(&e.ThreadID, &e.RunID, &at, &e.Status, &e.Error)
-			e.At = time.UnixMicro(at).UTC()
-			return e, err
-		}, since.UnixMicro(), StatusDone, StatusFailed, StatusStopped, StatusDone, RoleBot)
-}
-
-// ToldSince lists, for each open thread whose run goes on, that run when it stored a message of the
-// Bot after since and after the user last opened the thread, with the time of the newest.
-func (s *Store) ToldSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
-	return query(ctx, s.db,
-		`SELECT r.thread_id, r.id, max(m.created)
-		 FROM runs r JOIN threads t ON t.id = r.thread_id JOIN messages m ON m.run_id = r.id AND m.role = ?
-		 WHERE r.status IN (?, ?) AND t.closed = 0 AND m.created > ? AND m.created > t.last_opened_at
-		 GROUP BY r.id`,
-		func(r *sql.Rows) (e ThreadEvent, err error) {
-			var at int64
-			err = r.Scan(&e.ThreadID, &e.RunID, &at)
-			e.At = time.UnixMicro(at).UTC()
-			return e, err
-		}, RoleBot, StatusRunning, StatusWaiting, since.UnixMicro())
-}
-
-// OpenedMRsSince lists the PRs that are open, became so after since and have not been dismissed
-// from the island since.
-func (s *Store) OpenedMRsSince(ctx context.Context, since time.Time) ([]ThreadEvent, error) {
-	return query(ctx, s.db,
-		`SELECT p.thread_id, p.changed_at, p.url, p.title FROM thread_prs p
-		 LEFT JOIN pr_dismissals d ON d.thread_id = p.thread_id AND d.url = p.url
-		 WHERE p.state = 'opened' AND p.changed_at > ? AND p.changed_at > coalesce(d.dismissed_at, 0)`,
-		func(r *sql.Rows) (e ThreadEvent, err error) {
-			var at int64
-			err = r.Scan(&e.ThreadID, &at, &e.URL, &e.Title)
-			e.At = time.UnixMicro(at).UTC()
-			return e, err
-		}, since.UnixMicro())
-}
-
-// DismissMR hides the PR at url from the island until the PR changes again.
-func (s *Store) DismissMR(ctx context.Context, url string) error {
-	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO pr_dismissals (thread_id, url, dismissed_at) SELECT thread_id, url, ? FROM thread_prs WHERE url = ?
-		 ON CONFLICT (thread_id, url) DO UPDATE SET dismissed_at = excluded.dismissed_at`,
-		time.Now().UTC().UnixMicro(), url)
-	if err != nil {
-		return fmt.Errorf("dismiss mr: %w", err)
-	}
-	return found(res, "PR", url)
 }
 
 // CreateConnection stores a new pending connection of kind to instanceURL.

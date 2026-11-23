@@ -1,16 +1,13 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
-	"atoll/run"
 	"atoll/store"
 )
 
@@ -33,16 +30,6 @@ type sidebarThread struct {
 	LastActivity   time.Time   `json:"last_activity"`
 	// ResetsAt is when the provider's usage limit ends, for a limited thread.
 	ResetsAt string `json:"resets_at,omitempty"`
-}
-
-// notice is one /api/events payload: an event of a thread with the thread's Bot and title.
-type notice struct {
-	ThreadID       string `json:"thread_id"`
-	ParentThreadID string `json:"parent_thread_id"`
-	BotID          string `json:"bot_id"`
-	BotName        string `json:"bot_name"`
-	Title          string `json:"title"`
-	Data           any    `json:"data"`
 }
 
 // sidebarThreads keeps the open threads in the order given and marks each, the first that holds:
@@ -121,7 +108,6 @@ func (a *api) markOpened(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	a.runs.ThreadRead(r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -266,165 +252,4 @@ func (a *api) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// earlierNotice is one row of the island's Earlier list: a notice of the type and with the data a
-// live event of that type has, and when it happened.
-type earlierNotice struct {
-	notice
-	Type string    `json:"type"`
-	At   time.Time `json:"at"`
-	key  string
-}
-
-// notices streams the events of every thread that the sidebar and the island show, each with its
-// thread's Bot and title: the approvals open now, then the island's Earlier list, then what
-// happens. A live event that Earlier already lists is skipped, as is an event whose thread is gone.
-func (a *api) notices(w http.ResponseWriter, r *http.Request) {
-	open, events, cancel := a.runs.SubscribeAll()
-	defer cancel()
-	earlier, err := a.earlier(r.Context())
-	if err != nil {
-		a.log.Error("build earlier", "err", err)
-	}
-	lead := make([]sseEvent, 0, len(open)+1)
-	for _, ev := range open {
-		if n, err := a.noticeOf(r.Context(), ev); err == nil {
-			lead = append(lead, sseEvent{Type: ev.Type, Data: n})
-		}
-	}
-	lead = append(lead, sseEvent{Type: "earlier", Data: earlier})
-	listed := make(map[string]bool, len(earlier))
-	for _, n := range earlier {
-		listed[n.key] = true
-	}
-	a.stream(w, r, events, func(ev run.Event) (any, bool) {
-		if key := eventKey(ev.Data); listed[key] {
-			delete(listed, key)
-			return nil, false
-		}
-		n, err := a.noticeOf(r.Context(), ev)
-		return n, err == nil
-	}, lead...)
-}
-
-// eventKey names what a run, MR or platform event is about, so that Earlier and the live stream
-// never both show it. Other events have no key.
-func eventKey(data any) string {
-	switch d := data.(type) {
-	case run.Finished:
-		return "run " + d.RunID
-	case run.Told:
-		return "told " + d.RunID
-	case run.MRUpdated:
-		return "mr " + d.URL + " " + d.State
-	case run.PlatformChanged:
-		return "change " + d.Change.ID
-	}
-	return ""
-}
-
-// earlier lists, newest first, what happened after the island was last read: runs that ended,
-// tell_user messages of runs that go on, MRs opened and platform changes.
-func (a *api) earlier(ctx context.Context) ([]earlierNotice, error) {
-	out := []earlierNotice{}
-	since, err := a.st.IslandSeenAt(ctx)
-	if err != nil {
-		return out, err
-	}
-	add := func(typ string, at time.Time, threadID string, data any) {
-		if n, err := a.noticeAbout(ctx, threadID, data); err == nil {
-			out = append(out, earlierNotice{notice: n, Type: typ, At: at, key: eventKey(data)})
-		}
-	}
-	runs, err := a.st.FinishedRunsSince(ctx, since)
-	if err != nil {
-		return out, err
-	}
-	for _, e := range runs {
-		add(run.EventRunFinished, e.At, e.ThreadID, run.Finished{RunID: e.RunID, Status: e.Status, Error: e.Error})
-	}
-	told, err := a.st.ToldSince(ctx, since)
-	if err != nil {
-		return out, err
-	}
-	for _, e := range told {
-		add(run.EventTold, e.At, e.ThreadID, run.Told{RunID: e.RunID})
-	}
-	mrs, err := a.st.OpenedMRsSince(ctx, since)
-	if err != nil {
-		return out, err
-	}
-	for _, e := range mrs {
-		add(run.EventMRUpdated, e.At, e.ThreadID, run.MRUpdated{URL: e.URL, State: "opened", Title: e.Title})
-	}
-	changes, err := a.st.ChangesSince(ctx, since)
-	if err != nil {
-		return out, err
-	}
-	for _, c := range changes {
-		add(run.EventPlatformChanged, c.Created, c.SourceThreadID,
-			run.PlatformChanged{SourceBotID: c.SourceBotID, ThreadID: c.SourceThreadID, RunID: c.SourceRunID, Change: c})
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
-	return out, nil
-}
-
-func (a *api) markIslandSeen(w http.ResponseWriter, r *http.Request) {
-	if err := a.st.MarkIslandSeen(context.WithoutCancel(r.Context())); err != nil {
-		a.fail(w, r, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// dismissIsland clears one Earlier row: a run row marks its thread read, an MR row and a platform
-// change row are hidden.
-func (a *api) dismissIsland(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Type string `json:"type"`
-		ID   string `json:"id"`
-	}
-	if json.NewDecoder(r.Body).Decode(&body) != nil || body.ID == "" {
-		fail(w, http.StatusBadRequest, "type and id are required")
-		return
-	}
-	var err error
-	switch body.Type {
-	case run.EventRunFinished, run.EventTold:
-		if err = a.st.MarkOpened(r.Context(), body.ID); err == nil {
-			a.runs.ThreadRead(body.ID)
-		}
-	case run.EventMRUpdated:
-		err = a.st.DismissMR(r.Context(), body.ID)
-	case run.EventPlatformChanged:
-		err = a.st.DismissChange(r.Context(), body.ID)
-	default:
-		fail(w, http.StatusBadRequest, "unknown type")
-		return
-	}
-	if err != nil {
-		a.fail(w, r, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *api) noticeOf(ctx context.Context, ev run.Event) (notice, error) {
-	return a.noticeAbout(ctx, ev.ThreadID, ev.Data)
-}
-
-func (a *api) noticeAbout(ctx context.Context, threadID string, data any) (notice, error) {
-	t, err := a.st.Thread(ctx, threadID)
-	if err != nil {
-		return notice{}, err
-	}
-	b, err := a.st.Bot(ctx, t.BotID)
-	if err != nil {
-		return notice{}, err
-	}
-	return notice{
-		ThreadID: t.ID, ParentThreadID: t.ParentThreadID, BotID: t.BotID, BotName: b.Name,
-		Title: t.Title, Data: data,
-	}, nil
 }

@@ -735,30 +735,7 @@ func TestStore_SetMR(t *testing.T) {
 		}
 	}
 	set(first, "opened", "opened")
-	since := time.Now()
-	time.Sleep(time.Millisecond)
 	set(second, "opened", "opened")
-	got, err := st.OpenedMRsSince(ctx, since)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || got[0].URL != second {
-		t.Errorf("OpenedMRsSince = %+v, want only %s", got, second)
-	}
-	got, err = st.OpenedMRsSince(ctx, time.Time{})
-	if err != nil || len(got) != 2 {
-		t.Fatalf("OpenedMRsSince = %+v, %v, want both PRs", got, err)
-	}
-	if err := st.DismissMR(ctx, second); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.DismissMR(ctx, second); err != nil {
-		t.Fatal(err)
-	}
-	got, err = st.OpenedMRsSince(ctx, time.Time{})
-	if err != nil || len(got) != 1 || got[0].URL != first {
-		t.Errorf("after dismissing %s: OpenedMRsSince = %+v, %v, want only %s", second, got, err, first)
-	}
 	set(first, "merged", "opened")
 	const third = "https://github.com/o/r/pull/3"
 	set(third, "merged", "merged")
@@ -1169,57 +1146,6 @@ func TestStore_ThreadLabels(t *testing.T) {
 			tt.do()
 			if got := read(); got != tt.want {
 				t.Errorf("labels %+v, want %+v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestStore_FinishedRunsSince(t *testing.T) {
-	ctx := t.Context()
-	tests := []struct {
-		name string
-		runs []store.RunResult
-		want []string
-	}{
-		{"a reply", []store.RunResult{{Status: store.StatusDone, Reply: "ok"}}, []string{"done"}},
-		{"a quiet run", []store.RunResult{{Status: store.StatusDone, Reply: "all quiet", StatusLine: true}}, nil},
-		{"a reply, then a quiet run", []store.RunResult{
-			{Status: store.StatusDone, Reply: "ok"},
-			{Status: store.StatusDone, Reply: "all quiet", StatusLine: true},
-		}, []string{"done"}},
-		{"a failure, then a quiet run", []store.RunResult{
-			{Status: store.StatusFailed, Error: "boom"},
-			{Status: store.StatusDone, Reply: "all quiet", StatusLine: true},
-		}, []string{"failed"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			st, err := store.Open(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = st.Close() })
-			bot, _ := st.CreateBot(ctx, store.Bot{Name: "a", Persona: "p", Provider: "claude"})
-			th, _ := st.CreateThread(ctx, bot.ID, "")
-			for _, res := range tt.runs {
-				_, ru, err := st.StartRunFrom(ctx, store.InboxItem{ThreadID: th.ID, Text: "hi"})
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := st.FinishRun(ctx, ru.ID, res, nil); err != nil {
-					t.Fatal(err)
-				}
-			}
-			evs, err := st.FinishedRunsSince(ctx, time.Time{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			var got []string
-			for _, e := range evs {
-				got = append(got, e.Status)
-			}
-			if !slices.Equal(got, tt.want) {
-				t.Errorf("statuses %v, want %v", got, tt.want)
 			}
 		})
 	}

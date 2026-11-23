@@ -10,7 +10,7 @@ in their briefs. Each line: the principle, then (where it came from).
 - Conversation first. A person answers in plain words, anywhere. No UI should force a specific widget or block the
   composer; replying in chat should resolve whatever was waiting. (approval card: "if user replied from compose it
   supposed to be gone")
-- People must always see what needs them, once, everywhere it matters (thread, sidebar, island), and nothing else
+- People must always see what needs them, once, everywhere it matters (thread, tab, sidebar, Now), and nothing else
   should compete for that attention. (decisions missed for 45 min; "Waiting on you" card)
 - Parallel work is the normal case: progress, ownership and spend across helpers must be readable at a glance.
 - Bots and people talk like humans: short, plain, specific. Long reports are a smell; the answer comes first.

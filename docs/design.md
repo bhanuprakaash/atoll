@@ -192,15 +192,6 @@ counts a Bot that is already gone as removed.
 - Pinning to the sidebar (`POST`/`DELETE /api/threads/{id}/pin`): at most 3 open threads per Bot.
   A 4th pin answers `409` unless it names a pin to replace (`{replace}`), done in one transaction.
   Closing a thread drops its pin; helper threads cannot be pinned. A thread's summary says `pinned`.
-- `GET /api/events` is one SSE stream for the whole app: `approval`, `approval_closed`,
-  `run_finished`, `told`, `mr_updated` and `platform_changed` from every thread, each as
-  `{thread_id, bot_id, bot_name, title, data}` with `data` as on the thread's own stream. On connect it sends
-  the approvals open now, then one `earlier` event: the island's Earlier list, built from rows
-  (see the island), each with `at` as RFC 3339. A live event for something `earlier` lists (a run
-  that finished while it was built, the same MR, the same change) is not sent again. Every
-  connect (reload, or reconnect after a restart) sends it again and it replaces what the page
-  holds. *A notifications table would need read state and cleanup for little gain; one timestamp
-  says what the user has seen.*
 - Resume by default. Each thread records the provider that owns its session. If the Bot's provider
   changes, its next run starts a fresh session and says so in the thread. New threads and
   delegation also start fresh.
@@ -837,8 +828,7 @@ Follow-ups:
   the last, and merges and CI on the others woke nothing.*
 - Where PRs show: the thread panel's Pull requests lists every tracked PR, open ones first, then
   merged and closed, each group newest first. Other threads' search matches any tracked
-  reference. The switcher and a closed thread's line show the newest open PR, else the newest. The
-  island's `opened` row is per PR; its dismiss is per PR (`pr_dismissals`).
+  reference. The switcher and a closed thread's line show the newest open PR, else the newest.
 - API: a thread summary carries `prs` (`[{url, state, title, ci}]`) in place of `mr_url`,
   `mr_state`, `mr_title` and `mr_ci`; `mr_updated` carries the `url` it is about.
 - Known gap: GitLab. An MR wakes nothing (merged, closed or CI) and its CI is not read: the poll
@@ -1778,7 +1768,7 @@ Voice
     error text under a control whose action failed, a failed CI mark) and a control that destroys
     or refuses (Delete Bot, Delete file, Deny; hover or keyboard focus only). Never red at rest
     because it waits.
-  - Needs you (a thread's marker, the sidebar's second line, the island's count and rows, a
+  - Needs you (a thread's marker, the sidebar's second line, a
     helper's line, the creature's pulse) is the light accent `#ECECEC`: light dot, main-ink text,
     neutral surfaces, never a red fill or border. The blue dot means Replied.
   - A PR or MR state dot is never red (merged blue, open green, closed grey). A diff's counts are
@@ -1858,7 +1848,7 @@ Voice
   *The server sends each thread's `parent_thread_id` and, for a live helper, its `step`, and for
   a live thread its `activity` (Now's note: the live verb or the waiting ask), and each Bot's open
   threads with their marker on `GET /api/bots`; the client builds the rows, tabs and lists.*
-- Thread tabs: under the header band, above the chat, a `tablist` named Threads. It holds a tab
+- Thread tabs: in the header row, left of the icons, a `tablist` named Threads. It holds a tab
   for the open thread (a closed one too, opened from Closed), then for the Bot's open threads that
   need the person (and failed ones), run or are pinned. A helper thread has no tab, except a failed
   one.
@@ -1881,7 +1871,7 @@ Voice
     bottom `Closed · N`, folded; open, it shows the latest few closed threads and "Search closed
     threads". `N more` shows only when other open threads exist (when only closed ones do, the
     button reads `Closed`). `+` beside it starts a new thread (`⌘N`).
-  - A running or asking helper shows in the header island, which lists the helper creatures. While
+  - A running or asking helper shows in the thread panel (Thread details). While
     a helper thread with no tab is open, the sidebar selects its boss Bot and the boss thread's tab
     is selected.
 - Now: the first sidebar row, a view across every Bot, never a forced landing. It goes to `/now`;
@@ -1911,8 +1901,7 @@ Voice
     reaches it.
   - Crossing the threshold does not carry the floating state: widening docks the sidebar at its
     stored width; narrowing leaves it closed.
-  - At 420 px and up no page scrolls sideways. The header island drops the thread title when it
-    lacks room, before the helper creatures and before the Bot name. The composer's placeholder
+  - At 420 px and up no page scrolls sideways. The composer's placeholder
     while a run works is `Working…`.
 - Bot list poll (`GET /api/bots`, every 2 s): the Bots with their summary, each with every open
   thread as `{id, title, state, pinned, helper?, hidden?}`, newest activity first. `hidden` is a
@@ -1937,7 +1926,6 @@ Voice
     stopped by the user, sets only `last_activity`, which still orders the rows. *Columns, not a scan of the runs since the last
     open, so the poll stays one row read.*
   - A run the user stopped gets no sidebar label: they stopped it, so nothing is waiting for them.
-    It is listed in the island's Earlier (see the island), as finished.
   - Known gap: the live scan reads the whole `runs` table each poll, so it grows with run history;
     an index on `runs.status` would fix it.
 - New thread: the tab bar's `+`, the Bot menu (right-click on a Bot row), or `⌘N` for the
@@ -1950,7 +1938,7 @@ Voice
   other Bot's or thread's content shows, and `Reconnecting` is for a lost server only, never for a
   `404`. *A blank page or a stuck Reconnecting tells the person nothing and gives no way on.*
 - Keyboard: Reef works like a chat app.
-  - Opening a thread or the New thread screen, by any route (sidebar, island, switcher, `⌘N`, a
+  - Opening a thread or the New thread screen, by any route (sidebar, Now, switcher, `⌘N`, a
     link), focuses its composer; a thread with no composer (a helper thread) takes none. A
     printable key pressed with nothing focused, and no `⌘`, `Ctrl` or `Alt` held, goes into the
     composer; with a dialog or menu open it goes nowhere. *Typing right after a thread opened was
@@ -1991,56 +1979,14 @@ Voice
     is a Bot id in the target section, null for last). `POST /api/groups/{id}/move {before}` (a
     group id, null for last) moves a group.
   *Move up and Move down took one step per click; dragging is how a list is reordered.*
-- Bot header: a solid band in the main background, 72 px tall, with a 24 px fade below it; the
-  centred island sits on it. Messages scroll under the band and fade out; no text shows above its
-  bottom edge. At rest the pill holds the creature, the Bot name, the thread title (cut with "…")
-  and the open thread's run state: three wave dots (text "Thinking") while its run works, "Needs
-  you" while an approval waits, "Run failed" after a failed run, nothing otherwise. No thread list,
-  search, New thread, Close thread or chevron. Bot settings is an icon at the right. *The user
-  preferred a centred island; the run state sits where the eye already is.*
-- The island is where work in other threads reaches the user: every thread except the one on
-  screen, the same Bot's other threads included (`GET /api/events`).
-  - An approval drops the island open: the Bot, the thread, the exact command or path, Open thread,
-    Deny and Allow; Allow lets that run go on without leaving the thread on screen. It stays until
-    answered; Esc or a click away shrinks it to a count on the pill. Open, it is one fixed width,
-    25rem or the thread column minus 7rem if narrower; long lines end in `…`.
-  - A finished run widens the island for about 4 s ("reviewer finished Review !42", View), with no
-    buttons, then it returns to rest.
-  - Clicking the island opens the notification list: Needs you (Allow and Deny inline), then
-    Earlier (finished runs, `tell_user` messages, MRs opened, Chief's changes). Hover does not open
-    it. *Conversation first: nothing forces an answer.*
-- The island remembers across a close of the app, server side like the sidebar's Replied (no
-  browser storage).
-  - One timestamp, `island_seen_at` (settings), set to now by `POST /api/island/seen`. The page
-    sends it when the notification list closes (a click on the pill, Esc, a click away, or an
-    item's link) and on Mark all read, a quiet button on the Earlier heading that empties Earlier
-    and leaves the list open ("Nothing new"). Opening the list alone does not. The launch that
-    added it starts the timestamp at now, so old runs do not flood the list.
-  - On connect the server builds Earlier from rows newer than the timestamp, newest first, one row
-    per event except runs, with the text a live event gets:
-    - A run that ended in an open thread: a thread's newest ended run only, and only while it ended
-      after the thread's `last_opened_at`. A newest ended run that is `done` with no message of the
-      Bot's is not listed. `runs.finished_at`; "Pilot finished Review !42", or "Pilot failed Review !42" for a failed one, which includes a
-      run the restart cut short; a run the user stopped counts as finished.
-    - A thread whose background run still goes and has stored a `tell_user` message since then and
-      since the thread was last opened: "Pilot messaged Review !42". The `told` event, sent when
-      the message is stored, makes the same row live and the thread's own stream refreshes its
-      messages. One row per thread: the run's end replaces it with the finished row.
-    - A PR or MR that is `opened` since then (`thread_prs.changed_at`, set when its `state`
-      changes or `track_mr` adds it): "Pilot opened !42", the MR title as detail.
-    - A platform change (`changes.created_at`): "Chief created Bot Lagoon".
-  - Threads on screen are left out, as they are live. The 4 s widening and the approval drop are
-    not replayed, except that an approval still open drops the island.
-  - Needs you is state, not an event: it shows while true and the timestamp never clears it. A
-    restart ends a run that waited on an approval as failed, so it moves under Earlier.
-  - The pill gets no new mark: the island and the sidebar's Replied agree (every unread reply is
-    both; a run the user stopped is only in Earlier) without a second red thing.
-  - Each row has a dismiss (×) button, shown on hover and keyboard focus,
-    `POST /api/island/dismiss`: a run row marks its thread read (`last_opened_at`), an MR row upserts
-    the PR's `pr_dismissals` time and stays hidden while the PR's `changed_at` is not newer, and a
-    platform change row sets `changes.dismissed_at`.
-  *The island said "Nothing new" next to 60 New threads after every launch (they were labelled New
-  then).*
+- Bot header: one row in the main background, 56 px tall, with a 24 px fade below it. Messages
+  scroll under it and fade out; no text shows above its bottom edge. It holds the thread tabs at
+  the left (after the `Sidebar` button below 900 px) and Thread details and Bot settings at the
+  right; the tabs scroll sideways and never push the icons. Empty space in the row drags the
+  window. The thread's title and run state are its tab; its
+  PRs, CI and helpers are in the thread panel; approvals are answered in the thread. *The header
+  island is gone: the Bot list, the tab dots and Now show everything waiting; the island repeated
+  it. With the island gone the band held only two icons, so the tabs moved up into it.*
 - Thread titles: the first six words of the first message (a helper's brief), stored when sent,
   trailing `.,;:!?` stripped from the last word. After the thread's first reply, Reef asks the Bot's
   provider for a better one: its own session on the cheapest model (Claude Code `haiku`, Codex
@@ -2064,7 +2010,7 @@ Voice
   first-words title stays. The user can set a title (`PATCH /api/threads/{id}`); it is never
   replaced. *Six words cut mid-thought ("hey we have to bring the"); one cheap call per thread is
   worth a real title. A label is the model describing its job, and a title cut on "of" or "and"
-  reads as broken in the sidebar, popup and island.*
+  reads as broken in the sidebar and popup.*
 - The chat has one rule per kind of message. The user's message is the only bubble. The thread's own
   Bot replies in markdown text, no avatar. Any other Bot (the boss's brief in a helper thread) gets
   its creature and name on a line above plain text, at the replies' edge. Everything else is one
@@ -2187,7 +2133,7 @@ Voice
 - Long text clamps where it can grow unbounded, never a Bot's reply: the user's message and a boss's
   brief at 8 lines with a fade and Show more / Show less; a memory item and an edit line at 2 lines.
   The window itself never scrolls.
-- Times use the locale's clock everywhere (sidebar, island, messages). A message's time sits under
+- Times use the locale's clock everywhere (sidebar, Now, messages). A message's time sits under
   it at its text edge. The log opens on its newest 50 messages and loads older pages at its top
   without shifting the reading position; a round jump control returns to the latest message when
   scrolled away.
@@ -2201,7 +2147,7 @@ Voice
   redrew a growing half sentence every frame and slid the time with it.* When the run ends, the
   reply (the request's final message, Threads and runs) appears once as a message; nothing is
   replaced or jumps. A reload mid-run shows
-  the status line with the latest text or step. The Now note and the island keep the short verb.
+  the status line with the latest text or step. The Now note keeps the short verb.
   *Streamed text swapped for the reply looked like a glitch.* Approvals show a short form per tool:
   a command shows the command, an edit shows the file with its diff behind a toggle, anything else
   shows the tool and its target.
@@ -2218,7 +2164,7 @@ Voice
   same words). An edit shows its file there and keeps its Show diff / Hide diff toggle. A
   command or path longer than 2 lines is clamped to 2 inside the code line with Show all / Show less
   in the card; the toggle never changes what Allow answers. Allow is the light pill, Deny an outline
-  pill that turns red on hover and keyboard focus only (the island and its list too). The waiting
+  pill that turns red on hover and keyboard focus only. The waiting
   state is the thread's own Needs you marker: the card adds no banner, badge or red. *An approval is
   usually one click; it should not compete with the reply.*
 - Thread panel. A list icon at the right of the Bot header, before Bot settings, named `Thread
@@ -2227,7 +2173,7 @@ Voice
   480 px tall or, if smaller, the column's height minus the composer, scrolling inside. Esc, a click outside, the icon again or
   opening another thread closes it; `⌘.` (`Ctrl+.` off macOS) toggles it. The icon carries no count
   or dot: a merged PR, a failed check or a finished helper reaches the person as the Bot's reply or
-  on the island, as before.
+  the thread's marker.
   - Sections, top to bottom, separated by hairlines; a section with nothing in it is left out.
   - Workspace: the repo; the worktree folder (cut in the middle with "…", the full path on hover,
     Copy); the branch in mono (cut at the end, full on hover, Copy). A thread with a repo but no
@@ -2278,7 +2224,7 @@ Voice
   thread, until opened); `Out until 3 PM` (the provider's usage limit, until its reset time);
   Replied (a reply or a `tell_user` message since the person last opened the thread, until opened;
   the API's `new`). `GET /api/bots` gives each thread's `state` (`needs_you`, `running`, `failed`,
-  `limited` with `resets_at`, `new` or empty). The thread tab, the sidebar row and the island use the same words. A helper thread
+  `limited` with `resets_at`, `new` or empty). The thread tab, the sidebar row and Now use the same words. A helper thread
   is never Replied: its replies are for its boss. *Each label is a fact Reef holds; whether a reply
   is a question is the model's meaning, so a question is Replied like any reply.*
 - A quiet background run (one that called no `tell_user`) shows its final message nowhere in the
@@ -2313,11 +2259,10 @@ Voice
   Reef does.* The chat keeps one line where work was handed off, after the message that led to it
   ("Handed off to Tester and Reviewer", `Tester ×2` for two helpers of one Bot), each name linking
   to its helper thread; a helper's report is not a message in the boss's chat (Delegation); the
-  person reads it in the helper thread. The island shows one small creature per such helper after
-  the boss's name (`Tester: working`, `needs you` with a light dot), the count includes helper
-  approvals, and the boss's thread tab does not say "Needs you" for a helper; the Bot's sidebar row and Now
-  do. A helper thread is not a tab of its boss's bar (Thread tabs); its header is a breadcrumb (the
-  boss thread's title with the boss creature, `›`, the helper Bot) and the composer is replaced by
+  person reads it in the helper thread. The thread panel lists each such helper
+  (`Tester: working`, `needs you` with a light dot), and the boss's thread tab does not say "Needs you" for a helper; the Bot's sidebar row and Now
+  do. A helper thread is not a tab of its boss's bar (Thread tabs); the boss thread's tab stays
+  selected and the composer is replaced by
   "{Boss} is handling this thread. Talk to {Boss} to change it.", `Open {Boss}'s thread` and, while
   its run goes, `Stop`. *The boss thread's stream carries only the boss's events, so the UI polls: a
   thread summary (`GET /api/threads/{id}`, `GET /api/bots/{id}/threads`) holds `helpers` (the helper
@@ -2540,7 +2485,7 @@ message and the boss's brief all render alike.
   to the component when the fence closes. A fence still open when the run ends shows as a code
   block. An open ordinary fence just grows as a code block. A half-written table is plain text until
   its rows arrive.
-- Plain-text surfaces (sidebar preview, island line, notification text) show the reply with every
+- Plain-text surfaces show the reply with every
   `reef-` fence removed; when nothing is left, the component's name. Raw `reef-` JSON never reaches
   them.
 - The prompt catalog is one line in the core, under How you talk (Prompt): tables, task lists,

@@ -4,7 +4,6 @@ import { useBots } from '@/modules/bots/api/bots';
 import { helperBoss } from '@/modules/bots/utils/thread-tree';
 import { Sidebar, useSidebarWidth } from '@/app/sidebar';
 import { Switcher } from '@/app/switcher';
-import { useNotifications } from '@/modules/threads/hooks/use-notifications';
 import { useTypeToCompose } from '@/modules/threads/hooks/use-type-to-compose';
 import { inDesktopApp } from '@/lib/app-update';
 
@@ -42,7 +41,6 @@ export function Shell() {
     setFloating(false);
     opener.current?.focus();
   };
-  const notifications = useNotifications();
   const botMatch = useMatch('/bots/:botId/*')?.params.botId;
   const urlBotId = botMatch === 'new' ? undefined : botMatch;
   const threadId = useMatch('/bots/:botId/threads/:threadId')?.params.threadId;
@@ -104,7 +102,7 @@ export function Shell() {
           aria-label="Sidebar"
           aria-expanded={floating}
           onClick={(event) => (floating ? closeSidebar() : openSidebar(event.currentTarget))}
-          className="fixed top-3.5 left-3 z-20 flex size-8 items-center justify-center rounded-lg text-muted"
+          className="fixed top-3 left-3 z-20 flex size-8 items-center justify-center rounded-lg text-muted"
         >
           <svg
             aria-hidden="true"
@@ -123,7 +121,7 @@ export function Shell() {
       )}
       {switching && <Switcher onClose={() => setSwitching(false)} />}
       <main className="flex min-w-0 flex-1 flex-col">
-        <Outlet context={notifications} />
+        <Outlet />
       </main>
     </div>
   );

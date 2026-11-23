@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { api, type Machine, newBotAPI, startAtoll } from './atoll';
+import { api, type Machine, newBotAPI, sidebarRow, startAtoll } from './atoll';
 
 let m: Machine;
 test.beforeAll(async () => {
@@ -32,7 +32,7 @@ test('a missing Bot says it is gone, with one link home', async ({ page }) => {
 
   await main.getByRole('link', { name: 'Go home' }).click();
   await expect(main.getByText('This Bot is gone')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Chief', exact: true })).toBeVisible();
+  await expect(sidebarRow(page, 'Chief')).toHaveAttribute('aria-current', 'page');
 });
 
 test('a deleted Bot, and a thread under it, say the Bot is gone', async ({ page }) => {

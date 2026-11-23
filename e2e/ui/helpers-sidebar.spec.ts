@@ -1,7 +1,7 @@
-// Delegated work in the sidebar and the tabs: the header island shows the helpers, the boss's Bot
+// Delegated work in the sidebar and the tabs: Thread details shows the helpers, the boss's Bot
 // row carries a helper's ask, the helper thread is never a tab or one of the other threads of its
-// own Bot (running or finished), and a breadcrumb leads from the helper thread back to the boss
-// thread.
+// own Bot (running or finished), and the boss thread's tab, selected on the helper thread, leads
+// back to the boss thread.
 import { expect, type Page, test } from '@playwright/test';
 import {
   api,
@@ -50,14 +50,17 @@ async function notListed(page: Page, botID: string, own: string, helperTitle: st
   await expect(moreButton(page)).toHaveCount(0);
 }
 
-test('one helper: the header island shows it; its thread is no tab of the boss, nor of its own Bot while it runs', async ({
+test('one helper: Thread details shows it; its thread is no tab of the boss, nor of its own Bot while it runs', async ({
   page,
 }) => {
   const { poteto, bots, boss, thread } = await bossHandsOff(m, page, [['Tester', prompts.hang]]);
   const helperTitle = await titleOf(thread('Tester'));
 
   await expect(page).toHaveURL(`${m.url}/bots/${poteto.id}/threads/${boss}`);
-  await expect(page.locator('header').getByLabel('Tester: working', { exact: true })).toBeVisible();
+  await expect(
+    (await openDetails(page)).getByLabel('Tester: working', { exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect(threadTab(page, await titleOf(boss))).toHaveAttribute('aria-selected', 'true');
   await expect(threadTab(page, helperTitle)).toHaveCount(0);
 
@@ -73,14 +76,14 @@ test('one helper: the header island shows it; its thread is no tab of the boss, 
   expect(sidebar.find((t) => t.id === boss)?.parent_thread_id ?? '').toBe('');
 });
 
-test('two helpers: the island shows both; neither thread is a tab', async ({ page }) => {
+test('two helpers: Thread details shows both; neither thread is a tab', async ({ page }) => {
   const { bots, thread } = await bossHandsOff(m, page, [
     ['Tester', prompts.hang],
     ['Reviewer', prompts.hang],
   ]);
-  const header = page.locator('header');
+  const region = await openDetails(page);
   for (const name of ['Tester', 'Reviewer']) {
-    await expect(header.getByLabel(`${name}: working`, { exact: true })).toBeVisible();
+    await expect(region.getByLabel(`${name}: working`, { exact: true })).toBeVisible();
     await expect(threadTab(page, await titleOf(thread(name)))).toHaveCount(0);
   }
   for (const name of ['Tester', 'Reviewer'])
@@ -110,18 +113,16 @@ test('a helper waiting on approval: the boss Bot row says what it asks; Allow in
   await expect(row).not.toContainText('Wants to');
 });
 
-test('the helper thread header is a breadcrumb: the boss thread title, then the helper Bot', async ({
+test('on the helper thread the boss thread tab is selected and leads back to the boss thread', async ({
   page,
 }) => {
   const { poteto, bots, boss, thread } = await bossHandsOff(m, page, [['Tester', prompts.hang]]);
   const title: string = (await api(m, 'GET', `/api/threads/${boss}`)).title;
 
   await page.goto(`${m.url}/bots/${bots.Tester.id}/threads/${thread('Tester')}`);
-  const crumb = page.locator('header').getByRole('navigation', { name: 'Breadcrumb' });
-  await expect(crumb.getByRole('img', { name: /^Whale\b/ })).toBeVisible();
-  await expect(crumb).toContainText('›');
-  await expect(crumb).toContainText('Tester');
-  await crumb.getByRole('link', { name: title }).click({ timeout: 10_000 });
+  const tab = threadTab(page, title);
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  await tab.click({ timeout: 10_000 });
   await expect(page).toHaveURL(`${m.url}/bots/${poteto.id}/threads/${boss}`);
 });
 
@@ -155,7 +156,7 @@ test('after the helper reports the helper thread is no tab of the boss nor of it
   expect(listed?.parent_thread_id).toBe(boss);
 });
 
-test('a finished helper thread is no row in Now; it still opens from Thread details with its history and its header leads back to the boss thread', async ({
+test('a finished helper thread is no row in Now; it still opens from Thread details with its history and the boss thread tab leads back to the boss thread', async ({
   page,
 }) => {
   const { poteto, bots, boss, thread } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
@@ -173,8 +174,8 @@ test('a finished helper thread is no row in Now; it still opens from Thread deta
   await expect(page).toHaveURL(`${m.url}/bots/${bots.Tester.id}/threads/${helper}`);
   await expect(page.getByRole('log', { name: 'Messages' })).toContainText(reportReply);
 
-  const crumb = page.locator('header').getByRole('navigation', { name: 'Breadcrumb' });
-  await expect(crumb).toContainText('Tester');
-  await crumb.getByRole('link', { name: title }).click({ timeout: 10_000 });
+  const tab = threadTab(page, title);
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  await tab.click({ timeout: 10_000 });
   await expect(page).toHaveURL(`${m.url}/bots/${poteto.id}/threads/${boss}`);
 });

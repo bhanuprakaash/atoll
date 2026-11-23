@@ -62,6 +62,10 @@ const pull = (n = 1) => `${github.url}/octo/hello/pull/${n}`;
 const aside = (page: Page) => page.getByRole('complementary', { name: 'Pull request' });
 const chip = (scope: Page | Locator, n = 1) =>
   scope.getByRole('link', { name: new RegExp(`^PR ${n}\\b`) });
+// detailsChip opens Thread details and returns its row of PR n.
+async function detailsChip(page: Page, n = 1) {
+  return chip(await openDetails(page), n);
+}
 const threadURL = (botID: string, id: string) => `${m.url}/bots/${botID}/threads/${id}`;
 
 async function thread(text: string, b: { id: string } = bot, repoID: string | undefined = repo.id) {
@@ -103,7 +107,7 @@ function popups(page: Page) {
   return urls;
 }
 
-test('the header chip opens the panel with title, number, branches, state and the checks, failed first', async ({
+test('the PR row in Thread details opens the panel with title, number, branches, state and the checks, failed first', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -112,7 +116,7 @@ test('the header chip opens the panel with title, number, branches, state and th
   const opened = popups(page);
   await page.goto(threadURL(bot.id, t.id));
   await expect(aside(page)).toHaveCount(0);
-  await chip(page.locator('header')).click();
+  await (await detailsChip(page)).click();
 
   const panel = aside(page);
   await expect(panel).toBeVisible();
@@ -155,7 +159,7 @@ test('the panel shows the description and files with counts; a file opens its di
   const t = await thread(fixPrompt);
   describeFirst();
   await page.goto(threadURL(bot.id, t.id));
-  await chip(page.locator('header')).click();
+  await (await detailsChip(page)).click();
   const panel = aside(page);
 
   await expect(panel).toContainText('Corrects the answer.');
@@ -197,7 +201,7 @@ test('the panel shows the description and files with counts; a file opens its di
 test('a PR with no files says so', async ({ page }) => {
   const t = await thread(fixPrompt);
   await page.goto(threadURL(bot.id, t.id));
-  await chip(page.locator('header')).click();
+  await (await detailsChip(page)).click();
   await expect(aside(page).getByText('This PR has no file changes.')).toBeVisible();
 });
 
@@ -358,12 +362,11 @@ test('another GitHub failure shows a plain line with Retry, Open on GitHub and t
 test('Esc and Close close the panel', async ({ page }) => {
   const t = await thread(fixPrompt);
   await page.goto(threadURL(bot.id, t.id));
-  const header = page.locator('header');
-  await chip(header).click();
+  await (await detailsChip(page)).click();
   await expect(aside(page)).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(aside(page)).toHaveCount(0);
-  await chip(header).click();
+  await (await detailsChip(page)).click();
   await expect(aside(page)).toBeVisible();
   await aside(page).getByRole('button', { name: 'Close' }).click();
   await expect(aside(page)).toHaveCount(0);
@@ -379,7 +382,7 @@ test('every request the page makes goes to Reef, never to GitHub', async ({ page
     if (/^https?:/.test(r.url()) && new URL(r.url()).origin !== origin) outside.push(r.url());
   });
   await page.goto(threadURL(bot.id, t.id));
-  await chip(page.locator('header')).click();
+  await (await detailsChip(page)).click();
   const panel = aside(page);
   await expect(panel.getByRole('heading', { level: 2, name: t.prs[0].title })).toBeVisible();
   await panel.getByRole('button', { name: /answer\.txt/ }).click();

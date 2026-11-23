@@ -20,7 +20,7 @@ test('Bot settings delete a Bot after confirmation, but not Chief', async ({ pag
   await expect(confirmation).toBeVisible();
   await confirmation.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(sidebarRow(page, 'Mako')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Chief', exact: true })).toBeVisible();
+  await expect(sidebarRow(page, 'Chief')).toHaveAttribute('aria-current', 'page');
 
   await page.getByRole('button', { name: 'Bot settings' }).click();
   await expect(

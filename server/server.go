@@ -141,9 +141,6 @@ func New(
 	mux.HandleFunc("DELETE /api/threads/{id}/messages/{mid}", a.removeQueued)
 	mux.HandleFunc("POST /api/threads/{id}/messages/{mid}/send", a.sendQueued)
 	mux.HandleFunc("GET /api/threads/{id}/events", a.events)
-	mux.HandleFunc("GET /api/events", a.notices)
-	mux.HandleFunc("POST /api/island/seen", a.markIslandSeen)
-	mux.HandleFunc("POST /api/island/dismiss", a.dismissIsland)
 	mux.HandleFunc("GET /api/threads/{id}/file", a.threadFile)
 	mux.HandleFunc("GET /api/threads/{id}/pr", a.readPR)
 	mux.HandleFunc("POST /api/threads/{id}/pr/merge", a.mergePR)
@@ -795,36 +792,17 @@ func (a *api) events(w http.ResponseWriter, r *http.Request) {
 	}
 	events, cancel := a.runs.Subscribe(id)
 	defer cancel()
-	a.stream(w, r, events, func(ev run.Event) (any, bool) { return ev.Data, true })
+	a.stream(w, r, events)
 }
 
-// sseEvent is one server-sent event.
-type sseEvent struct {
-	Type string
-	Data any
-}
-
-// stream writes events as server-sent events until the client goes or events closes. data gives
-// an event's payload, or false to skip it. The lead events are written first.
-func (a *api) stream(
-	w http.ResponseWriter, r *http.Request, events <-chan run.Event,
-	data func(run.Event) (any, bool), lead ...sseEvent,
-) {
+// stream writes events as server-sent events until the client goes or events closes.
+func (a *api) stream(w http.ResponseWriter, r *http.Request, events <-chan run.Event) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 	rc := http.NewResponseController(w)
 	if rc.Flush() != nil {
 		return
-	}
-	for _, ev := range lead {
-		line, err := json.Marshal(ev.Data)
-		if err == nil {
-			_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, line)
-		}
-		if err != nil || rc.Flush() != nil {
-			return
-		}
 	}
 	ping := time.NewTicker(_pingEvery)
 	defer ping.Stop()
@@ -839,12 +817,8 @@ func (a *api) stream(
 			if !ok {
 				return
 			}
-			payload, ok := data(ev)
-			if !ok {
-				continue
-			}
 			var line []byte
-			if line, err = json.Marshal(payload); err != nil {
+			if line, err = json.Marshal(ev.Data); err != nil {
 				a.log.Error("encode event", "type", ev.Type, "err", err)
 				continue
 			}

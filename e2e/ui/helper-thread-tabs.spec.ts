@@ -1,6 +1,6 @@
 // A helper thread has no tab and no row of its own, so while one is open the sidebar stays with its
 // boss: the boss Bot's row is selected and the boss thread's tab is, running or finished. No line
-// under a row names the helpers; the header island shows them. Rule in docs/design.md (Selected
+// under a row names the helpers; Thread details shows them. Rule in docs/design.md (Selected
 // row).
 import { expect, type Page, test } from '@playwright/test';
 import {
@@ -41,11 +41,14 @@ async function expectWithBoss(page: Page, boss: string, helper: string) {
 
 const helperURL = (bot: string, thread: string) => `/bots/${bot}/threads/${thread}`;
 
-test('opening a running helper thread from the handoff line selects the boss row and the boss thread tab; the island shows the helper', async ({
+test('opening a running helper thread from the handoff line selects the boss row and the boss thread tab; Thread details shows the helper', async ({
   page,
 }) => {
   const { bots, boss, thread } = await bossHandsOff(m, page, [['Tester', prompts.hang]]);
-  await expect(page.locator('header').getByLabel('Tester: working', { exact: true })).toBeVisible();
+  const region = await openDetails(page);
+  await expect(region.getByLabel('Tester: working', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(details(page)).toBeHidden();
   await expect(page.locator('[data-line="helpers"]')).toHaveCount(0);
 
   await page

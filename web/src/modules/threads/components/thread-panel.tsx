@@ -327,7 +327,7 @@ export function ThreadPanel({
       data-thread-panel
       tabIndex={-1}
       onKeyDown={move}
-      className="absolute top-28 right-4 z-20 w-[min(340px,calc(100%-2rem))] overflow-y-auto rounded-card border border-outline bg-popover text-[13.5px] shadow-[0_12px_32px_rgba(0,0,0,.45)] outline-none"
+      className="absolute top-14 right-4 z-20 w-[min(340px,calc(100%-2rem))] overflow-y-auto rounded-card border border-outline bg-popover text-[13.5px] shadow-[0_12px_32px_rgba(0,0,0,.45)] outline-none"
     >
       <Section title="Workspace">
         <div>
