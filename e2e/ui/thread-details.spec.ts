@@ -70,7 +70,9 @@ test('the header icon is before Bot settings; switching threads closes Thread de
   });
   await expect(icon).toBeVisible();
   expect((await box(icon)).x).toBeLessThan((await box(settings)).x);
-  await openDetails(page);
+  const header = await box(page.locator('header'));
+  const panel = await openDetails(page);
+  expect(Math.abs((await box(panel)).y - (header.y + header.height))).toBeLessThanOrEqual(2);
   // Use an in-app link so the check covers a route change, not a document reload.
   await page.locator(`a[href$="/threads/${second.id}"]`).first().click();
   await expect(page).toHaveURL(`${m.url}/bots/${bot.id}/threads/${second.id}`);

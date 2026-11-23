@@ -202,7 +202,7 @@ test('while a run works the composer placeholder is Working… and fits at 420',
   await api(m, 'POST', `/api/runs/${thread.run.id}/stop`);
 });
 
-test('at 420 px the header keeps Sidebar, Thread details and Bot settings in a row, and Thread details shows the helpers', async ({
+test('at 420 px the header keeps Sidebar, the thread tabs, Thread details and Bot settings in one row, and Thread details shows the helpers', async ({
   page,
 }) => {
   const boss = await newBotAPI(m, 'Poteto', 'claude', { look: 'whale' });
@@ -232,11 +232,22 @@ test('at 420 px the header keeps Sidebar, Thread details and Bot settings in a r
   await expect(toggle(page)).toBeVisible();
   await expect(details).toBeVisible();
   await expect(settings).toBeVisible();
+  const tabs = header.getByRole('tablist', { name: 'Threads' });
+  const tab = tabs.getByRole('tab').first();
+  await expect(tab).toBeInViewport();
+  const newThread = header.getByRole('button', { name: 'New thread', exact: true });
   const [button, d, s] = [await box(toggle(page)), await box(details), await box(settings)];
+  const [list, t, plus] = [await box(tabs), await box(tab), await box(newThread)];
   expect(button.x).toBeGreaterThanOrEqual(0);
+  expect(list.x).toBeGreaterThanOrEqual(button.x + button.width);
+  expect(t.x).toBeGreaterThanOrEqual(button.x + button.width);
+  expect(list.x + list.width).toBeLessThanOrEqual(plus.x);
+  expect(plus.x + plus.width).toBeLessThanOrEqual(d.x);
   expect(d.x).toBeGreaterThanOrEqual(button.x + button.width);
   expect(d.x + d.width).toBeLessThanOrEqual(s.x);
   expect(s.x + s.width).toBeLessThanOrEqual(420);
+  const mid = (b: { y: number; height: number }) => b.y + b.height / 2;
+  for (const b of [t, d, s]) expect(Math.abs(mid(b) - mid(button))).toBeLessThanOrEqual(2);
 
   await details.click();
   const panel = page.getByRole('dialog', { name: 'Thread details' });

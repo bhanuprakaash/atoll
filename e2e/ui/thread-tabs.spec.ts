@@ -238,6 +238,53 @@ test('when the tabs do not fit, the tab bar scrolls sideways and the page does n
   expect(over.main).toBeLessThanOrEqual(0);
 });
 
+test('at 1280x800 the tabs share the 56 px header row with Thread details and Bot settings; many tabs scroll and never push the icons', async ({
+  page,
+}) => {
+  const bot = await newBotAPI(m, 'Row');
+  const open = await openThreadAPI(m, bot.id, prompts.pong);
+  await waitStatus(m, open.id, 'done');
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openThread(page, m, bot.id, open.id);
+  const header = page.locator('header');
+  const details = header.getByRole('button', { name: 'Thread details', exact: true });
+  const settings = header.getByRole('button', { name: 'Bot settings', exact: true });
+  await expect(header.getByRole('tablist', { name: 'Threads' })).toBeVisible();
+  await expect(settings).toBeVisible();
+  const mid = (b: { y: number; height: number }) => b.y + b.height / 2;
+  const row = async () => {
+    const [h, tab, d, s] = [
+      await box(header),
+      await box(threadTabs(page).getByRole('tab').first()),
+      await box(details),
+      await box(settings),
+    ];
+    expect(h.height).toBeCloseTo(56, 0);
+    for (const b of [d, s]) expect(Math.abs(mid(b) - mid(tab))).toBeLessThanOrEqual(2);
+    expect(d.x + d.width).toBeLessThanOrEqual(s.x);
+    expect(s.x + s.width).toBeLessThanOrEqual(1280 - 16);
+    return { d, s };
+  };
+  const alone = await row();
+
+  for (let i = 1; i <= 9; i++) {
+    const t = await openThreadAPI(m, bot.id, prompts.write);
+    await waitStatus(m, t.id, 'waiting');
+    await rename(t.id, `A rather long waiting thread title ${i}`);
+  }
+  await expect(threadTabs(page).getByRole('tab')).toHaveCount(10);
+  const crowded = await row();
+  expect(crowded.d).toEqual(alone.d);
+  expect(crowded.s).toEqual(alone.s);
+  const list = await box(threadTabs(page));
+  expect(list.x + list.width).toBeLessThanOrEqual(crowded.d.x);
+  expect(
+    await threadTabs(page).evaluate((el) => el.scrollWidth > el.clientWidth),
+    'the tablist scrolls sideways',
+  ).toBe(true);
+});
+
 test('clicking a tab opens its thread; hover or focus shows Close thread; right-click has Rename, Pin or Unpin and Close; a 4th pin asks which pin to replace', async ({
   page,
 }) => {

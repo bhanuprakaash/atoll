@@ -26,7 +26,9 @@ async function send(page: import('@playwright/test').Page, text: string) {
   await page.getByRole('button', { name: 'Send' }).click();
 }
 
-test('the six-word title is on the open thread tab, not in the header', async ({ page }) => {
+test('the six-word title is on the open thread tab and nowhere else in the header', async ({
+  page,
+}) => {
   const bot = await newBotAPI(m, 'Titles');
   const thread = await openThreadAPI(m, bot.id, prompts.keep);
   await waitStatus(m, thread.id, 'done');
@@ -35,7 +37,9 @@ test('the six-word title is on the open thread tab, not in the header', async ({
   await page.goto(m.url);
   await sidebarRow(page, 'Titles').click();
   await expect(threadTab(page, title)).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('header')).not.toContainText(title);
+  await expect(page.locator('header').getByRole('heading')).toHaveCount(0);
+  await expect(page.locator('header').getByText(title)).toHaveCount(1);
+  await expect(threadTab(page, title).getByText(title)).toHaveCount(1);
 });
 
 test('the Bot row shows no reply; Now notes the current verb or the approval prompt, an idle Bot has no row', async ({

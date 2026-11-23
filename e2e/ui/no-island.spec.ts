@@ -1,4 +1,5 @@
-// No header island: a thread page's header holds only the Thread details and Bot settings buttons.
+// No header island: a thread page's header holds only the thread tabs and the Thread details and
+// Bot settings buttons.
 // What waits on the person shows on its Bot row, its tab and in Now, and is answered in the thread;
 // the open thread's run state is its tab's marker, or for a failed run the chat's own line.
 import { expect, type Locator, type Page, test } from '@playwright/test';
@@ -45,15 +46,26 @@ async function watchHeader(page: Page) {
 const headerSeen = (page: Page) =>
   page.evaluate(() => (window as unknown as { __header: string[] }).__header.join('\n'));
 
-// bareHeader: the header holds the two buttons and nothing of the island.
+// bareHeader: the header holds the Threads tablist and its N more and New thread buttons, then
+// Thread details and Bot settings, and nothing of the island.
 async function bareHeader(page: Page) {
   const header = page.locator('header');
   await expect(header.getByRole('button', { name: 'Bot settings', exact: true })).toBeVisible();
-  expect(
-    await header
-      .getByRole('button')
-      .evaluateAll((els) => els.map((el) => el.getAttribute('aria-label') ?? el.textContent)),
-  ).toEqual(['Thread details', 'Bot settings']);
+  await expect(header.getByRole('tablist', { name: 'Threads' })).toBeVisible();
+  const buttons = await header
+    .getByRole('button')
+    .evaluateAll((els) =>
+      els
+        .filter((el) => !el.closest('[role="tablist"]'))
+        .map((el) => el.getAttribute('aria-label') ?? el.textContent),
+    );
+  expect(buttons.filter((b) => !/^(\d+ more|Closed)$/.test(b ?? ''))).toEqual([
+    'New thread',
+    'Thread details',
+    'Bot settings',
+  ]);
+  expect(buttons.length).toBeLessThanOrEqual(4);
+  await expect(header).not.toContainText(editAsk);
   await expect(page.getByRole('button', { name: /^Notifications/ })).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'Notifications' })).toHaveCount(0);
   await expect(page.locator('[data-island]')).toHaveCount(0);
