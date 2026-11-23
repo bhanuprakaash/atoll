@@ -1,15 +1,16 @@
 import { expect, test } from '@playwright/test';
 import {
   api,
+  lines,
   type Machine,
   newBotAPI,
-  nowPane,
+  openNow,
   openThreadAPI,
   prompts,
   sendMessageAPI,
   sidebarRow,
   startAtoll,
-  threadPane,
+  threadTab,
   threadTitle,
   waitStatus,
 } from './atoll';
@@ -25,7 +26,7 @@ async function send(page: import('@playwright/test').Page, text: string) {
   await page.getByRole('button', { name: 'Send' }).click();
 }
 
-test('the six-word title is in the thread header and the thread pane', async ({ page }) => {
+test('the six-word title is in the thread header and on its tab', async ({ page }) => {
   const bot = await newBotAPI(m, 'Titles');
   const thread = await openThreadAPI(m, bot.id, prompts.keep);
   await waitStatus(m, thread.id, 'done');
@@ -34,10 +35,10 @@ test('the six-word title is in the thread header and the thread pane', async ({ 
   await page.goto(m.url);
   await sidebarRow(page, 'Titles').click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
-  await expect(threadPane(page, 'Titles').getByRole('listitem')).toContainText(title);
+  await expect(threadTab(page, title)).toHaveAttribute('aria-selected', 'true');
 });
 
-test('the face shows no activity; Now notes the current verb or the approval prompt, an idle Bot has no row', async ({
+test('the Bot row shows no reply; Now notes the current verb or the approval prompt, an idle Bot has no row', async ({
   page,
 }) => {
   const reply = await newBotAPI(m, 'Reply activity');
@@ -56,7 +57,8 @@ test('the face shows no activity; Now notes the current verb or the approval pro
   ).toBeVisible();
   expect((await api(m, 'GET', `/api/bots/${reply.id}`)).activity).toBe('ok');
 
-  const now = await nowPane(page);
+  await expect.poll(() => lines(sidebarRow(page, 'Reply activity'))).toEqual(['Reply activity']);
+  const now = await openNow(page);
   const rowOf = (id: string) =>
     now.getByRole('listitem').filter({ has: page.locator(`a[href$="/threads/${id}"]`) });
   await expect(rowOf(running.id)).toContainText('Working activity · Running Run the build');
@@ -112,7 +114,7 @@ test('user-to-reply and reply-to-next-user gaps are at least 12px', async ({ pag
   expect(replyToNextUser).toBeGreaterThanOrEqual(12);
 });
 
-test('the face menu pins a Bot under Chief and Bot settings exposes pinning', async ({ page }) => {
+test('the Bot menu pins a Bot under Chief and Bot settings exposes pinning', async ({ page }) => {
   const bot = await newBotAPI(m, 'Pin me');
   await page.goto(m.url);
   const row = sidebarRow(page, 'Pin me');

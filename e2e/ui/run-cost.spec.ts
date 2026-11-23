@@ -5,7 +5,7 @@ import {
   type Machine,
   newBotAPI,
   openThreadAPI,
-  nowPane,
+  openNow,
   sendMessageAPI,
   sidebarRow,
   startAtoll,
@@ -79,7 +79,7 @@ test('a Codex run ends with its model and calls, and no dollars', async ({ page 
   expect(await log.innerText()).not.toContain('$');
 });
 
-test('the rail and Now show no dollars, and a thread with runs keeps its time in Now', async ({
+test('the sidebar and Now show no dollars, and a thread with runs keeps its time in Now', async ({
   page,
 }) => {
   await twoRuns('Priced', 'claude');
@@ -89,7 +89,7 @@ test('the rail and Now show no dollars, and a thread with runs keeps its time in
   await expect(sidebarRow(page, 'Priced')).toBeVisible();
   for (const name of ['Priced', 'Unpriced', 'Resting'])
     await expect(sidebarRow(page, name)).not.toContainText('$');
-  const now = await nowPane(page);
+  const now = await openNow(page);
   await expect(now.getByRole('listitem').filter({ hasText: /Priced · / })).toContainText(
     /Priced · .*\d{1,2}:\d{2}/,
   );

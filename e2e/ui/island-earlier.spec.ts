@@ -6,13 +6,13 @@ import {
   api,
   type Machine,
   newBotAPI,
-  nowPane,
+  openNow,
   openThreadAPI,
   prompts,
   recordText,
   seenText,
+  sidebarRow,
   sendMessageAPI,
-  showPane,
   startAtoll,
   threadTitle,
   waitStatus,
@@ -21,23 +21,20 @@ import { delegate, helperThreads, makeBoss, runStatus, startThread } from './hel
 
 let m: Machine;
 
-// inPane checks a Bot's thread pane on a page of its own, so the page under test keeps its place
-// and no thread counts as seen.
-async function inPane(
-  page: Page,
-  botID: string,
-  name: string,
-  check: (pane: Locator) => Promise<void>,
-) {
+// inNow checks Now on a page of its own, so the page under test keeps its place and no thread
+// counts as seen.
+async function inNow(page: Page, check: (now: Locator) => Promise<void>) {
   const side = await page.context().newPage();
   try {
-    await check(await showPane(side, m, botID, name));
+    await side.goto(`${m.url}/settings`);
+    await check(await openNow(side));
   } finally {
     await side.close();
   }
 }
-const replied = (n: number) => (pane: Locator) =>
-  expect(pane.locator('[data-marker="new"]')).toHaveCount(n);
+const section = (now: Locator, name: string) =>
+  now.getByRole('list', { name, exact: true }).getByRole('listitem');
+const replied = (n: number) => (now: Locator) => expect(section(now, 'Replied')).toHaveCount(n);
 test.beforeEach(async () => {
   m = await startAtoll();
 });
@@ -184,27 +181,27 @@ test('dismissing a run row removes it at once, marks its thread read, and it sta
     await waitStatus(m, (await openThreadAPI(m, pilot.id, prompt)).id, 'done');
   }
   const { island, rows } = await open(page, home.id);
-  await inPane(page, pilot.id, 'Pilot', replied(2));
+  await inNow(page, replied(2));
   await island.click();
   await expect(rows).toHaveCount(2);
 
   await dismiss(finished(rows, prompts.pong)).click();
   await expect(finished(rows, prompts.pong)).toHaveCount(0);
   await expect(finished(rows, prompts.keep)).toHaveCount(1);
-  await inPane(page, pilot.id, 'Pilot', replied(1));
+  await inNow(page, replied(1));
 
   await page.reload();
   await island.click();
   await expect(finished(rows, prompts.keep)).toHaveCount(1);
   await expect(finished(rows, prompts.pong)).toHaveCount(0);
-  await inPane(page, pilot.id, 'Pilot', replied(1));
+  await inNow(page, replied(1));
 
   await restart();
   await page.reload();
   await island.click();
   await expect(finished(rows, prompts.keep)).toHaveCount(1);
   await expect(finished(rows, prompts.pong)).toHaveCount(0);
-  await inPane(page, pilot.id, 'Pilot', replied(1));
+  await inNow(page, replied(1));
 });
 
 const mrURL = 'https://gitlab.example/fixtures/seeded/-/merge_requests/7';
@@ -292,13 +289,14 @@ test('opening a thread from Now clears both its Replied row and its Earlier row'
   await waitStatus(m, a.id, 'done');
   await waitStatus(m, b.id, 'done');
   const { island, rows } = await open(page, home.id);
-  const tree = await nowPane(page);
-  const marks = tree.locator('[data-marker="new"]');
-  await expect(marks).toHaveCount(2);
+  const now = await openNow(page);
+  await expect(section(now, 'Replied')).toHaveCount(2);
 
-  await tree.getByRole('link', { name: threadTitle(prompts.pong) }).click();
+  await now.getByRole('link', { name: threadTitle(prompts.pong) }).click();
   await expect(page).toHaveURL(`${m.url}/bots/${pilot.id}/threads/${a.id}`);
-  await expect(marks).toHaveCount(1);
+  await openNow(page);
+  await expect(section(now, 'Replied')).toHaveCount(1);
+  await sidebarRow(page, 'Home').click();
   await island.click();
   await expect(finished(rows, prompts.keep)).toHaveCount(1);
   await expect(finished(rows, prompts.pong)).toHaveCount(0);
@@ -368,12 +366,12 @@ test('a quiet background run adds nothing to the island, live or after a reload'
 });
 
 // A reply or a failure the person has not read is the thread's newest news. A quiet run after it
-// changes neither the sidebar's label nor the island's row.
-for (const [news, preamble, label, verb] of [
+// changes neither the thread's place in Now nor the island's row.
+for (const [news, preamble, heading, verb] of [
   ['reply', '', 'Replied', 'finished'],
-  ['failure', 'Then fail. ', 'Run failed', 'failed'],
+  ['failure', 'Then fail. ', 'Needs you', 'failed'],
 ] as const) {
-  test(`an unread ${news} followed by a quiet background run keeps its Earlier row and its sidebar label`, async ({
+  test(`an unread ${news} followed by a quiet background run keeps its Earlier row and its place in Now`, async ({
     page,
   }) => {
     const { poteto } = await makeBoss(m, ['Tester']);
@@ -387,8 +385,8 @@ for (const [news, preamble, label, verb] of [
 
     const { island, rows } = await open(page, home.id);
     await page.reload();
-    await inPane(page, poteto.id, 'Poteto', (pane) =>
-      expect(pane.getByRole('listitem').filter({ hasText: label })).toHaveCount(1),
+    await inNow(page, (now) =>
+      expect(section(now, heading).filter({ hasText: 'Poteto · ' })).toHaveCount(1),
     );
     await island.click();
     await expect(potetoRows(rows, verb)).toHaveCount(1);

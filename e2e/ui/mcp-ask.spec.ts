@@ -1,13 +1,13 @@
-// An MCP tool's ask names the server and tool in words, not as mcp__server__tool: in the Bot's
-// pane, in Now and on the approval card. Plays testdata/claude/mcp-ask.jsonl.
+// An MCP tool's ask names the server and tool in words, not as mcp__server__tool: on the Bot's
+// row, in Now and on the approval card. Plays testdata/claude/mcp-ask.jsonl.
 import { expect, type Locator, test } from '@playwright/test';
 import {
   lines,
   type Machine,
   newBotAPI,
-  nowPane,
+  openNow,
   openThreadAPI,
-  showPane,
+  sidebarRow,
   startAtoll,
   threadTitle,
   waitStatus,
@@ -32,15 +32,13 @@ async function waiting(name: string) {
   return { bot, thread };
 }
 
-test('an approval for mcp__github__create_issue reads Wants to use GitHub: create issue in the Bot pane row', async ({
+test('an approval for mcp__github__create_issue reads Wants to use GitHub: create issue on the Bot row', async ({
   page,
 }) => {
-  const { bot, thread } = await waiting('Asker');
-  const pane = await showPane(page, m, bot.id, 'Asker');
+  await waiting('Asker');
+  await page.goto(`${m.url}/settings`);
   await page.mouse.move(1270, 5);
-  await expect
-    .poll(() => lines(rowOf(pane, thread.id)))
-    .toEqual([threadTitle(prompt), ask]);
+  await expect.poll(() => lines(sidebarRow(page, 'Asker'))).toEqual(['Asker', ask]);
 });
 
 test('the same approval reads Asker · Wants to use GitHub: create issue in Now', async ({
@@ -48,7 +46,7 @@ test('the same approval reads Asker · Wants to use GitHub: create issue in Now'
 }) => {
   const { thread } = await waiting('Asker');
   await page.goto(`${m.url}/settings`);
-  const now = await nowPane(page);
+  const now = await openNow(page);
   await page.mouse.move(1270, 5);
   await expect
     .poll(() => lines(rowOf(now, thread.id)))

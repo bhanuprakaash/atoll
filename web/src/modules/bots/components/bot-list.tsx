@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useState, type DragEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Creature } from '@/components/creature';
 import { Menu } from '@/components/menu';
-import { Tooltip, useTooltip } from '@/components/tooltip';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
 import {
   useCreateGroup,
@@ -16,60 +15,41 @@ import {
 } from '@/modules/bots/api/groups';
 import { BotMenu } from '@/modules/bots/components/bot-menu';
 import { GroupNameField } from '@/modules/bots/components/group-name-field';
+import { Dot, Wave } from '@/modules/bots/components/thread-tree';
 import { sidebarOrder } from '@/modules/bots/utils/sidebar-order';
 import { nowSections, workersByBoss } from '@/modules/bots/utils/thread-tree';
+import { relativeTime } from '@/utils/time';
 
 const botDragType = 'application/x-reef-bot';
 const groupDragType = 'application/x-reef-group';
 
-const stateLabel: Partial<Record<Bot['state'], string>> = {
-  needs_you: 'Needs you',
-  working: 'Working',
-  failed: 'Run failed',
-};
+const rowStyle = 'relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 outline-none';
 
-const faceStyle =
-  'relative flex w-full flex-col items-center gap-1 px-1 py-2 text-[11px] outline-none hover:text-ink focus-visible:text-ink';
-
-function Bar() {
-  return (
-    <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-ink" />
-  );
-}
-
-function NowButton({
-  current,
-  count,
-  onClick,
-}: {
-  current: boolean;
-  count: number;
-  onClick: (button: HTMLButtonElement) => void;
-}) {
+function NowRow({ current, count }: { current: boolean; count: number }) {
+  const navigate = useNavigate();
   return (
     <button
       type="button"
       aria-label={count > 0 ? `Now, ${count} waiting` : 'Now'}
-      data-current={current ? 'true' : undefined}
-      onClick={(event) => onClick(event.currentTarget)}
-      className={faceStyle}
+      aria-current={current ? 'page' : undefined}
+      onClick={() => navigate('/now')}
+      className={`${rowStyle} text-left text-[15px] ${current ? 'bg-selected' : 'hover:bg-field'}`}
     >
-      {current && <Bar />}
       {count > 0 ? (
         <span
           aria-hidden="true"
-          className="flex size-10 items-center justify-center rounded-control bg-accent text-base font-medium text-accent-ink"
+          className="flex size-7 flex-none items-center justify-center rounded-control bg-accent text-sm font-medium text-accent-ink"
         >
           {count}
         </span>
       ) : (
         <span
           aria-hidden="true"
-          className="flex size-10 items-center justify-center rounded-control bg-field text-muted"
+          className="flex size-7 flex-none items-center justify-center rounded-control bg-field text-muted"
         >
           <svg
-            width="16"
-            height="16"
+            width="14"
+            height="14"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -81,31 +61,51 @@ function NowButton({
           </svg>
         </span>
       )}
+      Now
     </button>
   );
 }
 
-function BotFace({
+function BotNote({ bot }: { bot: Bot }) {
+  if (bot.state === 'needs_you')
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-ink">
+        <Dot className="bg-accent" />
+        <span className="min-w-0 truncate">{bot.activity || 'Needs you'}</span>
+      </span>
+    );
+  if (bot.state === 'failed')
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-muted">
+        <Dot className="bg-danger" />
+        <span className="min-w-0 truncate">
+          Run failed{bot.last_activity ? ` · ${relativeTime(bot.last_activity)}` : ''}
+        </span>
+      </span>
+    );
+  if (bot.state === 'working')
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-muted">
+        <span className="min-w-0 truncate">{bot.activity || 'Working'}</span>
+        <Wave />
+      </span>
+    );
+  return null;
+}
+
+function BotRow({
   bot,
-  group,
   current,
-  onSelect,
   onNewGroup,
-  onDragging,
   onDropBot,
 }: {
   bot: Bot;
-  group?: string;
   current: boolean;
-  onSelect: (link: HTMLAnchorElement) => void;
   onNewGroup: () => void;
-  onDragging: (dragging: boolean) => void;
   onDropBot: (botId: string, after: boolean) => void;
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [dropAt, setDropAt] = useState<'before' | 'after' | null>(null);
-  const [anchor, tip] = useTooltip();
-  const state = stateLabel[bot.state];
   const after = (event: DragEvent) => {
     const box = event.currentTarget.getBoundingClientRect();
     return bot.id === 'chief' || event.clientY >= box.top + box.height / 2;
@@ -114,15 +114,12 @@ function BotFace({
     <>
       <Link
         to={`/bots/${bot.id}`}
-        data-current={current ? 'true' : undefined}
-        data-marker={bot.state === 'needs_you' ? 'needs-you' : undefined}
+        aria-current={current ? 'page' : undefined}
         aria-label={bot.name}
         draggable={bot.id !== 'chief'}
         onDragStart={(event) => {
           event.dataTransfer.setData(botDragType, bot.id);
-          onDragging(true);
         }}
-        onDragEnd={() => onDragging(false)}
         onDragOver={(event) => {
           if (!event.dataTransfer.types.includes(botDragType)) return;
           event.preventDefault();
@@ -136,34 +133,25 @@ function BotFace({
           const botId = event.dataTransfer.getData(botDragType);
           if (botId) onDropBot(botId, after(event));
           setDropAt(null);
-          onDragging(false);
         }}
-        onClick={(event) => onSelect(event.currentTarget)}
         onContextMenu={(event) => {
           event.preventDefault();
           setMenu({ x: event.clientX, y: event.clientY });
         }}
-        className={`${faceStyle} ${current ? 'text-ink' : 'text-muted'}`}
-        {...tip}
+        className={`${rowStyle} ${current ? 'bg-selected' : 'hover:bg-field'}`}
       >
-        {current && <Bar />}
         {dropAt && (
           <span
             aria-hidden="true"
             className={`absolute inset-x-2 h-0.5 rounded-full bg-ink ${dropAt === 'before' ? 'top-0' : 'bottom-0'}`}
           />
         )}
-        <Creature look={bot.look} colour={bot.colour} state={bot.state} size={40} />
-        <span className="max-w-16 truncate">{bot.name}</span>
+        <Creature look={bot.look} colour={bot.colour} state={bot.state} size={28} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[15px]">{bot.name}</span>
+          <BotNote bot={bot} />
+        </span>
       </Link>
-      {anchor && (
-        <Tooltip anchor={anchor}>
-          <span>{bot.name}</span>
-          {(group || state) && (
-            <span className="text-xs text-muted">{[group, state].filter(Boolean).join(' · ')}</span>
-          )}
-        </Tooltip>
-      )}
       {menu && (
         <BotMenu bot={bot} at={menu} onClose={() => setMenu(null)} onNewGroup={onNewGroup} />
       )}
@@ -174,20 +162,14 @@ function BotFace({
 function BotGroup({
   group,
   name,
-  count,
-  line,
-  dragging,
-  onDragging,
+  heading,
   onDropBot,
   onDropGroup,
   children,
 }: {
   group?: Group;
   name: string;
-  count: number;
-  line: boolean;
-  dragging: boolean;
-  onDragging: (dragging: boolean) => void;
+  heading: boolean;
   onDropBot: (botId: string) => void;
   onDropGroup?: (groupId: string) => void;
   children: ReactNode;
@@ -198,14 +180,12 @@ function BotGroup({
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [over, setOver] = useState(false);
-  const [anchor, tip] = useTooltip();
   const accepts = (event: DragEvent) =>
     event.dataTransfer.types.includes(botDragType) ||
     (!!group && event.dataTransfer.types.includes(groupDragType));
   const drop = (event: DragEvent) => {
     event.preventDefault();
     setOver(false);
-    onDragging(false);
     const botId = event.dataTransfer.getData(botDragType);
     const groupId = event.dataTransfer.getData(groupDragType);
     if (botId) onDropBot(botId);
@@ -213,7 +193,7 @@ function BotGroup({
   };
   return (
     <div role="group" aria-label={name} className="flex flex-col">
-      {line &&
+      {heading &&
         (renaming && group ? (
           <GroupNameField
             name={group.name}
@@ -240,9 +220,7 @@ function BotGroup({
             draggable={!!group}
             onDragStart={(event) => {
               event.dataTransfer.setData(groupDragType, group?.id ?? '');
-              onDragging(true);
             }}
-            onDragEnd={() => onDragging(false)}
             onDragOver={(event) => {
               if (!accepts(event)) return;
               event.preventDefault();
@@ -250,22 +228,12 @@ function BotGroup({
             }}
             onDragLeave={() => setOver(false)}
             onDrop={drop}
-            className={`group/line flex h-4 w-full items-center justify-center outline-none ${dragging ? 'relative z-10 after:absolute after:inset-x-0 after:-inset-y-1' : ''}`}
-            {...tip}
+            className={`mt-3 flex h-6 w-full items-center px-2 text-left text-xs outline-none focus-visible:text-ink ${over ? 'text-ink' : 'text-label'}`}
           >
-            <span
-              className={`h-px transition-[width] motion-reduce:transition-none group-hover/line:w-14 group-hover/line:bg-muted group-focus-visible/line:w-14 group-focus-visible/line:bg-muted ${over ? 'w-14 bg-ink' : 'w-8 bg-sidebar-line'}`}
-            />
+            <span className="truncate">{name}</span>
           </button>
         ))}
       {children}
-      {anchor && (
-        <Tooltip anchor={anchor}>
-          <span>
-            {name} <span className="text-muted">· {count === 1 ? '1 Bot' : `${count} Bots`}</span>
-          </span>
-        </Tooltip>
-      )}
       {menu && group && (
         <Menu
           at={menu}
@@ -284,16 +252,14 @@ function BotGroup({
   );
 }
 
-export function BotRail({
-  view,
+export function BotList({
+  now,
   openBotId,
-  onView,
   creatingGroup,
   onCreatingGroup,
 }: {
-  view?: string;
+  now: boolean;
   openBotId?: string;
-  onView: (view: string, from: HTMLElement) => void;
   creatingGroup: { botId?: string } | null;
   onCreatingGroup: (creating: { botId?: string } | null) => void;
 }) {
@@ -303,7 +269,6 @@ export function BotRail({
   const setGroup = useSetBotGroup();
   const place = usePlaceBot();
   const moveGroup = useMoveGroup();
-  const [dragging, setDragging] = useState(false);
   const { top, inGroup, ungrouped } = sidebarOrder(bots, groups);
   const waiting =
     nowSections(
@@ -311,33 +276,7 @@ export function BotRail({
       undefined,
       workersByBoss(bots),
     ).find((section) => section.label === 'Needs you')?.threads.length ?? 0;
-  const scroller = useRef<HTMLDivElement>(null);
-  const [overflows, setOverflows] = useState(false);
-  const [below, setBelow] = useState(0);
-  const [belowNeedsYou, setBelowNeedsYou] = useState(false);
-  useEffect(() => {
-    const box = scroller.current;
-    if (!box) return;
-    const measure = () => {
-      const bottom = box.getBoundingClientRect().bottom + 0.5;
-      const hidden = [...box.querySelectorAll<HTMLElement>('a[href^="/bots/"]')].filter(
-        (face) => face.getBoundingClientRect().bottom > bottom,
-      );
-      setOverflows(box.scrollHeight > box.clientHeight);
-      setBelow(hidden.length);
-      setBelowNeedsYou(hidden.some((face) => face.dataset.marker === 'needs-you'));
-    };
-    measure();
-    box.addEventListener('scroll', measure);
-    const observer = new ResizeObserver(measure);
-    observer.observe(box);
-    if (box.firstElementChild) observer.observe(box.firstElementChild);
-    return () => {
-      box.removeEventListener('scroll', measure);
-      observer.disconnect();
-    };
-  }, [bots, groups]);
-  const dropOnFace = (target: Bot) => (botId: string, after: boolean) => {
+  const dropOnRow = (target: Bot) => (botId: string, after: boolean) => {
     const dragged = bots.find((bot) => bot.id === botId);
     if (!dragged || dragged === target) return;
     const pinned = target.id === 'chief' || target.pinned;
@@ -356,16 +295,13 @@ export function BotRail({
       target.id === 'chief' ? others[0] : after ? others[others.indexOf(target) + 1] : target;
     place.mutate({ botId, pinned, groupId, before: before?.id ?? null });
   };
-  const face = (bot: Bot) => (
-    <BotFace
+  const row = (bot: Bot) => (
+    <BotRow
       key={bot.id}
       bot={bot}
-      group={groups.find((group) => group.id === bot.group_id)?.name}
-      current={view !== 'now' && (view === bot.id || openBotId === bot.id)}
-      onSelect={(link) => onView(bot.id, link)}
+      current={!now && openBotId === bot.id}
       onNewGroup={() => onCreatingGroup({ botId: bot.id })}
-      onDragging={setDragging}
-      onDropBot={dropOnFace(bot)}
+      onDropBot={dropOnRow(bot)}
     />
   );
   const moveTo = (groupId: string | null) => (botId: string) =>
@@ -375,37 +311,25 @@ export function BotRail({
   };
   return (
     <>
-      <div className="mt-2 flex-none">
-        <NowButton
-          current={view === 'now'}
-          count={waiting}
-          onClick={(button) => onView('now', button)}
-        />
-        <div aria-hidden="true" className="flex h-4 items-center justify-center">
-          <span className="h-px w-8 bg-sidebar-line" />
-        </div>
+      <div className="flex-none px-2">
+        <NowRow current={now} count={waiting} />
+        <div aria-hidden="true" className="mx-2 my-1.5 h-px bg-line" />
       </div>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 [scrollbar-width:thin]">
         <div className="flex flex-col">
-          <div className="flex flex-col">{top.map(face)}</div>
-          {groups.map((group) => {
-            const members = inGroup(group.id);
-            return (
-              <BotGroup
-                key={group.id}
-                group={group}
-                name={group.name}
-                count={members.length}
-                line
-                dragging={dragging}
-                onDragging={setDragging}
-                onDropBot={moveTo(group.id)}
-                onDropGroup={dropOnGroup(group)}
-              >
-                {members.map(face)}
-              </BotGroup>
-            );
-          })}
+          <div className="flex flex-col">{top.map(row)}</div>
+          {groups.map((group) => (
+            <BotGroup
+              key={group.id}
+              group={group}
+              name={group.name}
+              heading
+              onDropBot={moveTo(group.id)}
+              onDropGroup={dropOnGroup(group)}
+            >
+              {inGroup(group.id).map(row)}
+            </BotGroup>
+          ))}
           {creatingGroup && (
             <GroupNameField
               onDone={(name) => {
@@ -420,41 +344,11 @@ export function BotRail({
               }}
             />
           )}
-          <BotGroup
-            name="Ungrouped"
-            count={ungrouped.length}
-            line={groups.length > 0}
-            dragging={dragging}
-            onDragging={setDragging}
-            onDropBot={moveTo(null)}
-          >
-            {ungrouped.map(face)}
+          <BotGroup name="Ungrouped" heading={groups.length > 0} onDropBot={moveTo(null)}>
+            {ungrouped.map(row)}
           </BotGroup>
         </div>
       </div>
-      {overflows && (
-        <div className="mt-1 flex h-6 flex-none justify-center">
-          {below > 0 && (
-            <button
-              type="button"
-              aria-label={`${below} more${belowNeedsYou ? ', needs you' : ''}`}
-              onClick={() => {
-                const box = scroller.current;
-                box?.scrollBy({ top: box.clientHeight });
-              }}
-              className="relative flex h-full items-center rounded-full bg-field px-2.5 text-[11px] text-muted"
-            >
-              {below} more
-              {belowNeedsYou && (
-                <span
-                  aria-hidden="true"
-                  className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-accent"
-                />
-              )}
-            </button>
-          )}
-        </div>
-      )}
     </>
   );
 }

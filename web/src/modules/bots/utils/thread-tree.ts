@@ -6,35 +6,30 @@ export const isLiveHelper = (t: SidebarThread) =>
 
 const hasNoRow = (t: SidebarThread) => t.parent_thread_id !== '' && t.state !== 'failed';
 
-const sectionLabels = ['Needs you', 'Running', 'Threads'] as const;
-
-const sectionOf = (t: SidebarThread) =>
-  t.state === 'needs_you' || (t.state === 'failed' && t.parent_thread_id === '')
-    ? 'Needs you'
-    : t.state === 'running'
-      ? 'Running'
-      : 'Threads';
-
-// threadSections splits a Bot's threads into the pane's sections, keeping the server's order except
-// that pinned threads come first under Threads, and leaving out the empty ones. The open thread is
-// never Replied; a helper thread is no row (while it runs, its boss thread's helper line shows it,
-// with its Needs you) unless its run failed: then it is a row under Threads.
-export function threadSections(all: SidebarThread[], openId: string | undefined) {
-  const threads = all
-    .filter((t) => !hasNoRow(t))
+// tabThreads is a Bot's threads that get a tab: the open one and those that need the person, run,
+// failed or are pinned. A helper thread has none unless its run failed. The open thread is never
+// Replied.
+export const tabThreads = (all: SidebarThread[], openId: string | undefined) =>
+  all
+    .filter(
+      (t) =>
+        !hasNoRow(t) &&
+        (t.id === openId || t.pinned || ['needs_you', 'running', 'failed'].includes(t.state)),
+    )
     .map((t) => (t.id === openId && t.state === 'new' ? { ...t, state: '' as const } : t));
-  return sectionLabels
-    .map((label) => {
-      const inSection = threads.filter((t) => sectionOf(t) === label);
-      return {
-        label,
-        threads:
-          label === 'Threads'
-            ? inSection.sort((a, b) => Number(b.pinned) - Number(a.pinned))
-            : inSection,
-      };
-    })
-    .filter((section) => section.threads.length > 0);
+
+// otherThreads is a Bot's open threads without a tab, in the server's order.
+export const otherThreads = (all: SidebarThread[], tabs: SidebarThread[]) =>
+  all.filter((t) => !hasNoRow(t) && !tabs.some((tab) => tab.id === t.id));
+
+// orderTabs keeps the tabs already shown in place, drops the ones that left and puts new ones on
+// the right, so a tab never moves when its state changes.
+export function orderTabs(order: string[], threads: SidebarThread[]) {
+  const ids = threads.map((t) => t.id);
+  return [
+    ...order.filter((id) => ids.includes(id)),
+    ...ids.filter((id) => !order.includes(id)).reverse(),
+  ];
 }
 
 const nowLabels = [
@@ -71,13 +66,13 @@ export function nowSections(
     .filter((section) => section.threads.length > 0);
 }
 
-// helperBoss is the boss thread and its Bot for an open helper thread that has no row of its own:
+// helperBoss is the boss thread and its Bot for an open helper thread that has no tab of its own:
 // the sidebar stays with them.
 export function helperBoss(bots: Bot[], threadId: string | undefined) {
   const helper = bots.flatMap((bot) => bot.threads ?? []).find((t) => t.id === threadId);
   if (!helper || !hasNoRow(helper)) return undefined;
   const bot = bots.find((b) => b.threads?.some((t) => t.id === helper.parent_thread_id));
-  return bot && { botId: bot.id, threadId: helper.parent_thread_id, live: isLiveHelper(helper) };
+  return bot && { botId: bot.id, threadId: helper.parent_thread_id };
 }
 
 export type Worker = {

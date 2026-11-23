@@ -1,8 +1,21 @@
-// Delegated work in the thread pane: one line under the boss thread, the helper thread never a row
-// of its own Bot's pane (running or finished), a breadcrumb from the helper thread back to the boss
+// Delegated work in the sidebar and the tabs: the header island shows the helpers, the boss's Bot
+// row carries a helper's ask, the helper thread is never a tab or one of the other threads of its
+// own Bot (running or finished), and a breadcrumb leads from the helper thread back to the boss
 // thread.
 import { expect, type Page, test } from '@playwright/test';
-import { api, type Machine, nowPane, prompts, showPane, startAtoll, threadPane } from './atoll';
+import {
+  api,
+  type Machine,
+  moreButton,
+  openNow,
+  openThread,
+  openThreadAPI,
+  prompts,
+  sidebarRow,
+  startAtoll,
+  threadTab,
+  waitStatus,
+} from './atoll';
 import {
   bossHandsOff,
   reportPrompt,
@@ -19,28 +32,36 @@ test.beforeEach(async () => {
 });
 test.afterEach(() => m?.stop());
 
-const line = (page: Page, boss = 'Poteto') =>
-  threadPane(page, boss).locator('[data-line="helpers"]');
-const rowOf = (page: Page, bot: string, threadID: string) =>
-  threadPane(page, bot)
-    .getByRole('listitem')
-    .filter({ has: page.locator(`a[href$="/threads/${threadID}"]`) });
+const titleOf = async (id: string): Promise<string> =>
+  (await api(m, 'GET', `/api/threads/${id}`)).title;
 
-test('one helper: one line under the boss thread with its name and step; in its own Bot pane no row while it runs', async ({
+// ownThread gives the helper Bot a finished thread of its own, so a page of that Bot shows its tabs.
+async function ownThread(botID: string) {
+  const t = await openThreadAPI(m, botID, prompts.pong);
+  await waitStatus(m, t.id, 'done');
+  return t.id as string;
+}
+
+// notListed: on a page of the helper Bot, the helper thread is no tab and there are no other
+// threads under N more.
+async function notListed(page: Page, botID: string, own: string, helperTitle: string) {
+  await openThread(page, m, botID, own);
+  await expect(threadTab(page, helperTitle)).toHaveCount(0);
+  await expect(moreButton(page)).toHaveCount(0);
+}
+
+test('one helper: the header island shows it; its thread is no tab of the boss, nor of its own Bot while it runs', async ({
   page,
 }) => {
   const { poteto, bots, boss, thread } = await bossHandsOff(m, page, [['Tester', prompts.hang]]);
-  await showPane(page, m, poteto.id, 'Poteto');
+  const helperTitle = await titleOf(thread('Tester'));
 
-  await expect(line(page)).toHaveCount(1);
-  await expect(line(page)).toContainText('Tester');
-  await expect(line(page)).toContainText('Running make build');
-  await expect(line(page)).not.toContainText(/helper/i);
-  await expect(rowOf(page, 'Poteto', thread('Tester'))).toHaveCount(0);
+  await expect(page).toHaveURL(`${m.url}/bots/${poteto.id}/threads/${boss}`);
+  await expect(page.locator('header').getByLabel('Tester: working', { exact: true })).toBeVisible();
+  await expect(threadTab(page, await titleOf(boss))).toHaveAttribute('aria-selected', 'true');
+  await expect(threadTab(page, helperTitle)).toHaveCount(0);
 
-  await showPane(page, m, bots.Tester.id, 'Tester');
-  await expect(threadPane(page, 'Tester')).toBeVisible();
-  await expect(rowOf(page, 'Tester', thread('Tester'))).toHaveCount(0);
+  await notListed(page, bots.Tester.id, await ownThread(bots.Tester.id), helperTitle);
 
   const summaries: { threads?: { id: string; parent_thread_id?: string }[] }[] = await api(
     m,
@@ -52,56 +73,41 @@ test('one helper: one line under the boss thread with its name and step; in its 
   expect(sidebar.find((t) => t.id === boss)?.parent_thread_id ?? '').toBe('');
 });
 
-test('two helpers: still one line, naming one of them', async ({ page }) => {
-  const { poteto, bots, thread } = await bossHandsOff(m, page, [
+test('two helpers: the island shows both; neither thread is a tab', async ({ page }) => {
+  const { bots, thread } = await bossHandsOff(m, page, [
     ['Tester', prompts.hang],
     ['Reviewer', prompts.hang],
   ]);
-  await showPane(page, m, poteto.id, 'Poteto');
-
-  await expect(line(page)).toHaveCount(1);
-  await expect(line(page)).toContainText(/Tester|Reviewer/);
-  await expect(line(page)).not.toContainText(/Tester.*Reviewer|Reviewer.*Tester/);
+  const header = page.locator('header');
   for (const name of ['Tester', 'Reviewer']) {
-    await expect(rowOf(page, 'Poteto', thread(name))).toHaveCount(0);
-    await showPane(page, m, bots[name].id, name);
-    await expect(rowOf(page, name, thread(name))).toHaveCount(0);
-    await showPane(page, m, poteto.id, 'Poteto');
+    await expect(header.getByLabel(`${name}: working`, { exact: true })).toBeVisible();
+    await expect(threadTab(page, await titleOf(thread(name)))).toHaveCount(0);
   }
+  for (const name of ['Tester', 'Reviewer'])
+    await notListed(
+      page,
+      bots[name].id,
+      await ownThread(bots[name].id),
+      await titleOf(thread(name)),
+    );
 });
 
-test('a helper waiting on approval: Needs you shows once, on the line; Allow in the boss thread clears it', async ({
+test('a helper waiting on approval: the boss Bot row says what it asks; Allow in the boss thread clears it', async ({
   page,
 }) => {
-  const { poteto } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
+  await bossHandsOff(m, page, [['Tester', reportPrompt]]);
   const allow = composerArea(page).getByRole('button', {
     name: 'Allow',
     exact: true,
   });
   await expect(allow).toHaveCount(1);
-  const pane = await showPane(page, m, poteto.id, 'Poteto');
+  const row = sidebarRow(page, 'Poteto');
+  await expect(row).toContainText('Wants to run make check');
+  await expect(row).not.toContainText('Needs you');
 
-  await expect(pane.getByText('Needs you', { exact: true })).toHaveCount(1);
-  await expect(line(page)).toHaveCount(1);
-  await expect(line(page)).toContainText('Tester');
-  await expect(line(page)).toContainText('Needs you');
-  await expect(pane.locator('[data-marker="needs-you"]')).toHaveCount(0);
-
-  await page.goBack();
   await allow.click();
   await expect(allow).toHaveCount(0);
-  await expect(pane.getByText(/Needs you/)).toHaveCount(0);
-});
-
-test('clicking the line opens the boss thread with the helpers panel in view', async ({ page }) => {
-  const { poteto, boss } = await bossHandsOff(m, page, [['Tester', prompts.hang]]);
-  await showPane(page, m, poteto.id, 'Poteto');
-
-  await line(page).click({ timeout: 10_000 });
-  await expect(page).toHaveURL(`${m.url}/bots/${poteto.id}/threads/${boss}`);
-  await expect(details(page)).toContainText('Tester');
-  await expect(page.getByText(/Working with/)).toHaveCount(0);
-  await expect(details(page)).toBeInViewport();
+  await expect(row).not.toContainText('Wants to');
 });
 
 test('the helper thread header is a breadcrumb: the boss thread title, then the helper Bot', async ({
@@ -119,31 +125,26 @@ test('the helper thread header is a breadcrumb: the boss thread title, then the 
   await expect(page).toHaveURL(`${m.url}/bots/${poteto.id}/threads/${boss}`);
 });
 
-test('after the helper reports the line is gone and the helper thread is no row in any pane, also after a reload and a restart; the API still lists it', async ({
+test('after the helper reports the helper thread is no tab of the boss nor of its own Bot, also after a reload and a restart; the API still lists it', async ({
   page,
 }) => {
   const { poteto, bots, boss, thread } = await bossHandsOff(m, page, [['Tester', reportPrompt]]);
   const helper = thread('Tester');
+  const helperTitle = await titleOf(helper);
   await composerArea(page).getByRole('button', { name: 'Allow', exact: true }).click();
   await expect.poll(() => runStatus(m, helper), { timeout: 30_000 }).toBe('done');
-  await showPane(page, m, poteto.id, 'Poteto');
-  await expect(line(page)).toHaveCount(0);
-  await expect(rowOf(page, 'Poteto', helper)).toHaveCount(0);
+  await openThread(page, m, poteto.id, boss);
+  await expect(threadTab(page, helperTitle)).toHaveCount(0);
 
-  const noRow = async () => {
-    await showPane(page, m, bots.Tester.id, 'Tester');
-    await expect(threadPane(page, 'Tester').locator(`a[href$="/threads/${helper}"]`)).toHaveCount(
-      0,
-    );
-    await expect(rowOf(page, 'Tester', helper)).toHaveCount(0);
-  };
-  await noRow();
+  const own = await ownThread(bots.Tester.id);
+  await notListed(page, bots.Tester.id, own, helperTitle);
   await page.reload();
-  await expect(threadPane(page, 'Tester')).toBeVisible();
-  await expect(threadPane(page, 'Tester').locator(`a[href$="/threads/${helper}"]`)).toHaveCount(0);
+  await expect(threadTab(page, await titleOf(own))).toBeVisible();
+  await expect(threadTab(page, helperTitle)).toHaveCount(0);
+  await expect(moreButton(page)).toHaveCount(0);
   m.kill();
   await m.restart();
-  await noRow();
+  await notListed(page, bots.Tester.id, own, helperTitle);
 
   const summaries: { threads?: { id: string; parent_thread_id?: string }[] }[] = await api(
     m,
@@ -163,7 +164,7 @@ test('a finished helper thread is no row in Now; it still opens from Thread deta
   await composerArea(page).getByRole('button', { name: 'Allow', exact: true }).click();
   await expect.poll(() => runStatus(m, helper), { timeout: 30_000 }).toBe('done');
 
-  const now = await nowPane(page);
+  const now = await openNow(page);
   await expect(now.locator(`a[href$="/threads/${helper}"]`)).toHaveCount(0);
 
   await page.goto(`${m.url}/bots/${poteto.id}/threads/${boss}`);

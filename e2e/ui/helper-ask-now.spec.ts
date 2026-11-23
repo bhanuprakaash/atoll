@@ -2,7 +2,7 @@
 // Now button counts it, the row has the light dot and the note Boss · Helper: ask, and answering
 // clears the count and the row together.
 import { expect, type Page, test } from '@playwright/test';
-import { api, lines, type Machine, marks, nowPane, startAtoll, waitStatus } from './atoll';
+import { api, lines, type Machine, marks, openNow, startAtoll, waitStatus } from './atoll';
 import { bossHandsOff, reportPrompt } from './helpers-fixture';
 
 let m: Machine;
@@ -29,8 +29,8 @@ async function onlyHelperWaits(page: Page) {
 test('with only a helper waiting on an approval, the Now button reads 1', async ({ page }) => {
   await onlyHelperWaits(page);
 
-  await expect(nowButton(page)).toHaveAccessibleName('Now, 1 waiting');
-  await expect(nowButton(page)).toHaveText('1');
+  await expect(nowButton(page)).toHaveAccessibleName(/^Now\D*\b1\b/);
+  await expect(nowButton(page)).toContainText('1');
 });
 
 test('Now lists the boss thread under Needs you with the light dot and the note Boss · Helper: ask', async ({
@@ -39,7 +39,7 @@ test('Now lists the boss thread under Needs you with the light dot and the note 
   const { boss } = await onlyHelperWaits(page);
   const title: string = (await api(m, 'GET', `/api/threads/${boss}`)).title;
 
-  const now = await nowPane(page);
+  const now = await openNow(page);
   const row = now
     .getByRole('list', { name: 'Needs you', exact: true })
     .getByRole('listitem')
@@ -51,17 +51,17 @@ test('Now lists the boss thread under Needs you with the light dot and the note 
 
 test('when the person answers, the Now count and the boss row clear together', async ({ page }) => {
   const { boss, helper } = await onlyHelperWaits(page);
-  const now = await nowPane(page);
+  const now = await openNow(page);
   const needsYou = now.getByRole('list', { name: 'Needs you', exact: true });
   const row = needsYou
     .getByRole('listitem')
     .filter({ has: page.locator(`a[href$="/threads/${boss}"]`) });
-  await expect(nowButton(page)).toHaveAccessibleName('Now, 1 waiting');
+  await expect(nowButton(page)).toHaveAccessibleName(/^Now\D*\b1\b/);
   await expect(row).toHaveCount(1);
 
   const { approval } = await api(m, 'GET', `/api/threads/${helper}`);
   await api(m, 'POST', `/api/approvals/${approval.id}`, { approve: true });
-  await expect(nowButton(page)).toHaveAccessibleName('Now');
+  await expect(nowButton(page)).toHaveAccessibleName(/^Now\D*$/);
   await expect(needsYou).toHaveCount(0);
   await expect(row).toHaveCount(0);
 });

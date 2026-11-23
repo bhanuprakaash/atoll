@@ -4,15 +4,16 @@ import {
   Link,
   Outlet,
   useLocation,
-  useNavigate,
   useOutletContext,
   useParams,
   useSearchParams,
 } from 'react-router';
 import { Creature, type Appearance } from '@/components/creature';
+import { ThreadTabs } from '@/app/thread-tabs';
 import { Gone } from '@/components/gone';
 import { PRChip, pullNumber } from '@/components/pr-chip';
 import { useBots, type Bot } from '@/modules/bots/api/bots';
+import { helperBoss } from '@/modules/bots/utils/thread-tree';
 import { BotMemory } from '@/modules/memory/components/bot-memory';
 import { BotSettings } from '@/modules/bots/components/bot-settings';
 import { useConnections } from '@/modules/connections/api/connections';
@@ -87,7 +88,7 @@ export function BotHeader({
   return (
     <header
       data-tauri-drag-region="deep"
-      className="@container relative z-10 grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5"
+      className={`@container relative ${open ? 'z-30' : 'z-10'} grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5`}
     >
       <div
         data-island
@@ -263,8 +264,6 @@ function BotFrame() {
       { replace: true },
     );
   const [list, setList] = useState(false);
-  const location = useLocation();
-  const navigate = useNavigate();
   const { data: openThread } = useThread(threadId);
   const [detailsFor, setDetailsFor] = useState('');
   const [opened, setOpened] = useState<
@@ -282,11 +281,6 @@ function BotFrame() {
   const headWord = headPull ? ciWord(headPull) : '';
   const detailsOpen = !!openThread && detailsFor === threadId;
   useEffect(() => setDetailsFor(''), [threadId]);
-  useEffect(() => {
-    if (!(location.state as { helpers?: boolean } | null)?.helpers) return;
-    setDetailsFor(threadId);
-    navigate(location.pathname + location.search, { replace: true, state: null });
-  }, [location, threadId, navigate]);
   useEffect(() => {
     const icon = () => document.querySelector<HTMLElement>('[data-thread-details]');
     const onKey = (e: KeyboardEvent) => {
@@ -338,6 +332,8 @@ function BotFrame() {
         .flatMap((b) => (b.threads ?? []).map((t) => ({ bot: b, thread: t })))
         .find(({ thread }) => thread.id === current.parent_thread_id)
     : undefined;
+  const tabBoss = helperBoss(bots, threadId);
+  const tabBot = tabBoss ? bots.find((item) => item.id === tabBoss.botId) : bot;
   const helpers = (threads.find((thread) => thread.id === threadId)?.helpers ?? [])
     .filter(isLiveHelper)
     .map((helper) => {
@@ -402,6 +398,7 @@ function BotFrame() {
             widened && <FinishedNotice notice={widened} look={looks[widened.bot_id]} />
           )}
         </BotHeader>
+        {tabBot && <ThreadTabs bot={tabBot} openThreadId={tabBoss ? tabBoss.threadId : threadId} />}
         <Outlet context={{ openPR, openFile }} />
         {detailsOpen && (
           <ThreadPanel

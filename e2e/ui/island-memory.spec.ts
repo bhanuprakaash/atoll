@@ -6,9 +6,9 @@ import { expect, type Page, test } from "@playwright/test";
 import {
   type Machine,
   newBotAPI,
+  openNow,
   openThreadAPI,
   prompts,
-  showPane,
   startAtoll,
   threadTitle,
   waitStatus,
@@ -52,9 +52,12 @@ test("runs that ended while the page was closed are under Earlier on the next op
   await waitStatus(m, failed.id, "failed");
 
   const side = await context.newPage();
-  const pane = await showPane(side, m, pilot.id, "Pilot");
-  await expect(pane.locator('[data-marker="new"]')).toHaveCount(2);
-  await expect(pane.locator('[data-marker="failed"]')).toHaveCount(1);
+  await side.goto(`${m.url}/settings`);
+  const now = await openNow(side);
+  const section = (name: string) =>
+    now.getByRole("list", { name, exact: true }).getByRole("listitem");
+  await expect(section("Replied")).toHaveCount(2);
+  await expect(section("Needs you")).toHaveCount(1);
   await side.close();
   const fresh = await context.newPage();
   const { island, list } = await open(fresh, home.id);

@@ -177,7 +177,7 @@ counts a Bot that is already gone as removed.
 ## Threads and runs
 
 - Thread records keep the tracked MR title and state, close time, and worktree cleanup and snapshot
-  status, so chat and the thread pane show them after a restart. `track_mr` accepts the MR title
+  status, so chat and the sidebar show them after a restart. `track_mr` accepts the MR title
   with its URL. A thread summary includes the current work verb and pending approval.
 - A run can start without a user message: a helper's notice (Delegation) and a Reef wake for a
   tracked MR (Repos and worktrees). Both are held when a run is going.
@@ -756,7 +756,7 @@ Follow-ups:
   shows while that run goes. A message from the person brings it back for good; a later merge of a
   newly tracked PR hides it again. *A boss with a PR still open is not finished; hiding it would
   hide the next wake.* A pinned thread and the open thread are never hidden. A hidden
-  thread is a row under Threads in the thread pane and is left out of Now.
+  thread is listed in Other threads and is left out of Now.
 - GitHub reads per PR: the PR; and, while it is open and its head commit has no stored CI
   result, that commit's check runs and combined status, with `per_page=100`, following `Link` until
   every item is read. Each read sends `If-None-Match` with the last ETag (in memory); a `304` costs
@@ -836,7 +836,7 @@ Follow-ups:
   row per PR still answers that. On 2026-11-13 one thread opened six PRs, each `track_mr` replaced
   the last, and merges and CI on the others woke nothing.*
 - Where PRs show: the thread panel's Pull requests lists every tracked PR, open ones first, then
-  merged and closed, each group newest first. The thread pane's search matches any tracked
+  merged and closed, each group newest first. Other threads' search matches any tracked
   reference. The switcher and a closed thread's line show the newest open PR, else the newest. The
   island's `opened` row is per PR; its dismiss is per PR (`pr_dismissals`).
 - API: a thread summary carries `prs` (`[{url, state, title, ci}]`) in place of `mr_url`,
@@ -1820,29 +1820,25 @@ Voice
   recalling, eyes scan; editing, writing, remembering or changing the platform, it bounces; running
   a command, it breathes. No spinner rings or bubbles; a running thread shows three small wave
   dots.
-- Sidebar: a rail of Bot faces and, beside it, the thread pane of the selected Bot or of Now.
-  Mockups: the "Reef sidebar: rail + threads" canvas, board A
-  (https://claude.ai/artifact/Nw8knYvm9Mxk4PwfuXwbeY). *One column held Bots, groups, up to 3
-  threads per Bot and helper lines; with 7 Bots and 2 running it read as a tree, not a list.*
-  - Rail: 76 px, fixed. Top to bottom: Now, a hairline, Chief, pinned Bots in pinned order (no heading), the
-    user's groups in order, Ungrouped; at the bottom `+` (New Bot, New group) and the user's avatar
-    (Settings). Settings shows the rail alone, with no thread pane; clicking Now or a face brings the
-    pane back. *Settings has its own section list, and the pane beside it made three columns.* No logo, no search field, no group chats. A face is the Bot's 40 px creature
-    with the Bot's name under it, 11 px, one line, cut with `…` at 64 px; no group name, cost, time
-    or activity line on the rail. *The owner wants names readable at a glance.* Now and its hairline stay at the top; the faces scroll beneath them without a scrollbar. When faces fall below the fold,
-    a chip above `+` reads `N more` for the faces not wholly in view and carries the light dot when
-    one of them needs you; clicking it scrolls the faces by one rail height. With every face in view there is no chip.
-    *A Bot that needs the person never hides below the fold without a cue.*
-  - Hover or keyboard focus on a face shows a label beside the rail: the full name and, under it,
-    the Bot's group and state joined by ` · ` (`Frontend · Run failed`); the state alone with no
-    group, the group alone with no state, the name alone with neither. A face of a Bot that is not
-    selected still shows Needs you (the pulsing light dot) and its working motion; a failed Bot
-    (its newest run failed and that thread is still unread) shows a red pip at the same place as the light dot, and Needs you wins when a Bot has both.
-  - Clicking a face opens the Bot's latest thread and shows its pane. Right-click on a face opens
-    the Bot menu (New thread, Pin to sidebar, Move to group, Bot settings). Chief cannot be pinned.
-  - Current Bot: a 3 px light bar at the rail's left edge; no fill. *One selected mark: the fill
-    belongs to the open thread.* While Now's pane shows, the bar is on Now, even with a Bot's thread
-    open from it.
+- Sidebar: one column of Bot rows. A Bot's open threads are tabs above its chat (Thread tabs,
+  below). Mockup: https://claude.ai/artifact/2hLBJKWhEwm8MiabunxGmr. *The rail and pane took two
+  columns (360 px) and hid names; tabs keep threads beside the chat and the sidebar a plain list.*
+  - Column, top to bottom: Now, a hairline, Chief, pinned Bots in pinned order (no heading), the
+    user's groups in order, each under its name as a text heading, Ungrouped (its heading shows
+    only when a group exists); at the bottom `+` (New Bot, New group) and the user's row, their
+    avatar and name (Settings). The sidebar stays in Settings. No logo, no search field, no group
+    chats. The Bots scroll beneath Now, with a thin scrollbar.
+  - A Bot row is the Bot's 28 px creature and its name; no group name, cost or time. A second line
+    shows only while the Bot works (the live verb and three wave dots), waits on the person (what
+    it asks, `Wants to run make check`, with the light dot, `--color-accent`) or failed (its
+    newest run failed and that thread is still unread: `Run failed · 3:02 PM`, with the red dot,
+    `--color-danger`). Needs you wins when a Bot has both.
+  - Clicking a row opens the Bot's latest thread. Right-click opens the Bot menu (New thread, Pin
+    to sidebar, Move to group, Bot settings). Chief cannot be pinned.
+  - Selected row: the sidebar marks where you are once. The open Bot's row has the selected fill
+    and `aria-current="page"`; no other row does. In Now the Now row has them, and in Settings or
+    on the new-Bot form no row does. While a helper thread with no tab of its own is open, the
+    selected row is its boss Bot's.
   - Opening Reef at `/` goes to the Bot whose newest thread that is not a helper's moved last.
     *Landing on a helper's thread showed work the person never asked to see.*
   - A thread's activity time moves when a run starts, an approval opens or closes, and a run ends
@@ -1855,90 +1851,72 @@ Voice
     not a quiet one (a done run that posted no message). A run that called `tell_user` may still
     move the thread. *Its final message is a status line, shown nowhere; it moved the older thread
     above a newer one and replaced the Bot's activity (#459).*
-- Thread pane: the selected Bot's open threads, in full. Header: the Bot's 28 px creature, its
-  name, its group (Chief: "Sets up your Bots"; no group: no line), `+` (New thread) and `⋯`
-  (the Bot menu). Under it a search field filters this Bot's threads by title, branch and MR
-  reference (`#92`, `!7`); in Now it searches every Bot's open threads.
-  - Sections: Needs you (threads that need you and failed threads), Running, Threads (pinned
-    first, then the rest), each newest activity first, a section with no rows left out. Closed is
-    folded at the bottom ("Closed · N"); open, it shows the latest few closed threads and "Search
-    closed threads". No 3-row cap, no `N more`. *The pane has the room the tree lacked, so the cap,
-    `N more`, `N more running` and the threads popup retired. A failed run sat in Recent under
-    Pinned and was absent from Now: attention the person missed.*
-  - A row is 32 px: the title and one marker at its right end, the thread's label (Thread labels,
-    below): a light dot for Needs you; three wave dots for Working; the red dot for a failed run;
-    `Out until 3 PM`, muted; a blue dot and a bold title for Replied; a pin beside the label of a
-    pinned row in Threads (alone when no label applies). The thread on screen is never Replied. A
-    Needs you or failed row has a second line under the title: what the Bot asks (the approval's
-    verb and the short target the live step names: `Wants to edit hello.txt`, `Wants to run make
-    check`) or `Run failed · 3:02 PM`; the word "Needs you" is not on the row. *The heading says
-    it once; the title was cut to about 14 characters to make room for the marker's words.* Hover
-    or keyboard focus swaps the marker for Pin (Unpin when pinned) and Close (Close thread,
-    saving unfinished work); right-click has Rename and Close. Pinning a 4th thread asks which
-    pin to replace.
-  - While a helper runs, one line under its boss thread (not a row) shows the helper Bots'
-    creatures, then the name and step of the one that acted last only (never cut), or the one
-    that needs the person first with its name and `Needs you`. Clicking it opens the boss thread with its
-    thread panel open.
-  - A helper thread is never a row in its own Bot's pane, running, needing you or finished; only
-    the boss thread's helper line shows a running one (with `Needs you`), and its boss thread
-    holds a finished one. A failed helper thread is the exception: a row under Threads with the
-    red dot, not under Needs you. A merged thread the watcher hides (`hidden`) is still a row under
-    Threads. *The finished helper threads piled up in the helper Bot's pane, where the person
-    cannot close them; the boss thread already holds that work. A restart fails every running
-    helper at once; the person never asked to see helper threads, and the boss's wake already
-    reports the failure.*
-  - Width: the pane is 284 px by default, dragged on its right edge between 240 px and 420 px;
-    double-click on the edge resets it; Left and Right arrows on the focused edge move it 16 px.
-    Kept in the web view's `localStorage` (`atoll.sidebarWidth`), clamped when read. The rail never
-    resizes. The list's scrollbar is thin, in its own lane in the pane's right padding, so it never
-    draws over a row.
-  - `⌘B` (`Ctrl+B` off macOS) hides or shows the pane; the rail always stays.
+  - Width: 260 px by default, dragged on its right edge between 240 px and 420 px; double-click on
+    the edge resets it; Left and Right arrows on the focused edge move it 16 px. Kept in the web
+    view's `localStorage` (`atoll.sidebarWidth`), clamped when read. `⌘B` (`Ctrl+B` off macOS)
+    hides or shows the sidebar.
   *The server sends each thread's `parent_thread_id` and, for a live helper, its `step`, and for
   a live thread its `activity` (Now's note: the live verb or the waiting ask), and each Bot's open
-  threads with their marker on `GET /api/bots`; the client builds the sections.*
-- Now: the first rail item, a view across every Bot, never a forced landing. Its pane lists Needs
-  you (threads that need you and failed threads, but not a failed helper thread), Running and
-  Replied threads; a row is the Bot's
-  22 px creature, the title and, under it, "Bot · note" (the waiting ask, `Run failed · 3:02 PM`,
-  the live verb, else the time), with 8 px above and below and 10 px from the edge to the creature,
-  and one marker at its right end: the light dot (Needs you), the red dot (failed), the blue dot
-  (Replied) or wave dots (running), never a pin. The words "Needs you" show only in the heading. A boss
-  thread's row has no helper line; its note names the helper that acted last and its step
-  (`Poteto · Tester: Running make check`), or the helper that needs the person and its ask. A
-  helper's ask counts on its boss thread's row: the boss sits under Needs you with the light dot
-  and the note `Boss · Helper: Wants to …`, so the one pending item shows in Now, on the rail and
-  on the boss row, and clears in all when the person answers. On the rail Now is the count of
-  rows under Needs you (a live or failed helper thread is not counted, as Now lists none; the boss
-  is, and its report carries a helper's failure), on
-  the light accent, with no icon and no badge; with none it rests as a grey mark. A hairline separates it from Chief. Opening a thread from Now keeps the pane on Now
-  and selects that row. With nothing waiting, running or replied it reads "Nothing needs you".
-- Selected row: the sidebar marks where you are once. With a thread open, only that thread's row
-  has the selected fill and `aria-current="page"`, in the Bot's pane or in Now. On the New thread
-  screen no row is selected; the rail bar alone marks the Bot. Never two selected rows. A running
-  helper thread has no row, so while one is open the sidebar stays with its boss: the rail bar on
-  the boss Bot, the boss's pane, and the selected fill and `aria-current="page"` on the boss
-  thread's helper line, not on the boss thread's row. A finished helper thread has no row either, so
-  the sidebar stays with its boss the same way, and the selected fill and `aria-current="page"` are
-  on the boss thread's row, since the helper line is gone. Opened from Now, a helper
-  thread keeps the pane on Now. *The rail followed the helper Bot in the URL, whose pane has no row
-  for a running helper: the sidebar marked a place where the open thread was not.*
-- Narrow windows: below 900 px (inner width; 900 itself is wide) the rail stays docked and the
-  pane floats over the thread column with a scrim; nothing shifts.
-  - The pane is closed whenever the window becomes narrow and on every launch. Clicking a face or
-    Now, or `⌘B`, opens it; picking a thread, the scrim, Esc or `⌘B` closes it, and focus returns
-    to the face. Width: the stored pane width, at most the window minus the rail and 48 px so the
-    scrim shows; no resize handle. A closed pane is hidden, so Tab never reaches it.
-  - Crossing the threshold does not carry the floating state: widening docks the pane at its
+  threads with their marker on `GET /api/bots`; the client builds the rows, tabs and lists.*
+- Thread tabs: under the header band, above the chat, a `tablist` named Threads. It holds a tab
+  for the open thread (a closed one too, opened from Closed), then for the Bot's open threads that
+  need the person (and failed ones), run or are pinned. A helper thread has no tab, except a failed
+  one.
+  - Order is fixed: a thread that gets a tab goes on the right and keeps its place; a tab never
+    moves when its state changes. Tabs shown at once line up oldest activity first. A thread that
+    stops needing the person, running or being pinned loses its tab unless it is open. When the
+    tabs do not fit, the bar scrolls sideways. The number of tabs follows thread state, never the
+    window's width.
+  - A tab is the title and one marker at its right end, the thread's label (Thread labels, below):
+    a light dot for Needs you; three wave dots for Working; the red dot for a failed run; `Out
+    until 3 PM`, muted; a blue dot and a bold title for Replied; a pin beside the label of a
+    pinned thread (alone when no label applies). The open thread is never Replied. What a Bot asks
+    shows on its sidebar row and in Now, not on the tab.
+  - Clicking a tab opens that thread; the open tab is `aria-selected`. Hover or keyboard focus
+    swaps the marker for Close (Close thread, saving unfinished work); right-click has Rename,
+    Pin or Unpin, and Close. Closing the open thread opens the tab to its right, else to its left,
+    else New thread. Pinning a 4th thread asks which pin to replace.
+  - After the tabs, `N more` opens the dialog Other threads: a search field on top (title, branch
+    and MR reference, `#92`, `!7`), the Bot's other open threads, newest activity first, and at the
+    bottom `Closed · N`, folded; open, it shows the latest few closed threads and "Search closed
+    threads". `N more` shows only when other open threads exist (when only closed ones do, the
+    button reads `Closed`). `+` beside it starts a new thread (`⌘N`).
+  - A running or asking helper shows in the header island, which lists the helper creatures. While
+    a helper thread with no tab is open, the sidebar selects its boss Bot and the boss thread's tab
+    is selected.
+- Now: the first sidebar row, a view across every Bot, never a forced landing. It goes to `/now`;
+  the main area shows a region named Now with Needs you (threads that need you and failed threads,
+  but not a failed helper thread), Running and Replied threads; a row is a link to the thread: the
+  Bot's 22 px creature, the title and, under it, "Bot · note" (the waiting ask, `Run failed ·
+  3:02 PM`, the live verb, else the time), with 8 px above and below and 10 px from the edge to the
+  creature, and one marker at its right end: the light dot (Needs you), the red dot (failed), the
+  blue dot (Replied) or wave dots (running), never a pin. The words "Needs you" show only in the
+  heading. A boss thread's row has no helper line; its note names the helper that acted last and
+  its step (`Poteto · Tester: Running make check`), or the helper that needs the person and its
+  ask. A helper's ask counts on its boss thread's row: the boss sits under Needs you with the light
+  dot and the note `Boss · Helper: Wants to …`, so the one pending item shows in Now, on the
+  sidebar and on the boss row, and clears in all when the person answers. On the sidebar Now is the
+  count of rows under Needs you (a live or failed helper thread is not counted, as Now lists none;
+  the boss is, and its report carries a helper's failure), on the light accent, with no icon and no
+  badge; with none it rests as a grey mark. A hairline separates it from Chief. Opening a thread
+  from Now leaves Now and selects that Bot's row. With nothing waiting, running or replied it reads
+  "Nothing needs you".
+- Narrow windows: below 900 px (inner width; 900 itself is wide) the sidebar is hidden and the chat
+  fills the window.
+  - The sidebar is closed whenever the window becomes narrow and on every launch. A `Sidebar`
+    button at the top left (`aria-expanded`) or `⌘B` opens it floating over the chat with a scrim;
+    clicking a Bot row or Now (any navigation), Esc, the scrim or `⌘B` closes it, and Esc, the
+    scrim and `⌘B` return focus to where it was. Width: the stored width, at most the window minus
+    48 px so the scrim shows; no resize handle. A closed sidebar is not rendered, so Tab never
+    reaches it.
+  - Crossing the threshold does not carry the floating state: widening docks the sidebar at its
     stored width; narrowing leaves it closed.
   - At 420 px and up no page scrolls sideways. The header island drops the thread title when it
     lacks room, before the helper creatures and before the Bot name. The composer's placeholder
     while a run works is `Working…`.
-  *The whole-sidebar drawer and its Sidebar button hid every Bot's state behind a click; the rail
-  keeps it in view.*
 - Bot list poll (`GET /api/bots`, every 2 s): the Bots with their summary, each with every open
   thread as `{id, title, state, pinned, helper?, hidden?}`, newest activity first. `hidden` is a
-  merged thread (see the watcher); the pane lists it under Threads. `state` is
+  merged thread (see the watcher); Other threads lists it. `state` is
   `needs_you`, `running`, `failed`, `limited`, `new` (shown as Replied) or empty.
   - Two queries, a Bots query and a threads query. The threads query reads each thread row once,
     never joins every thread to its newest run, never reads `runs` inside the loop over threads.
@@ -1962,7 +1940,7 @@ Voice
     It is listed in the island's Earlier (see the island), as finished.
   - Known gap: the live scan reads the whole `runs` table each poll, so it grows with run history;
     an index on `runs.status` would fix it.
-- New thread: pane `+`, the Bot menu (rail right-click or the pane's `⋯`), or `⌘N` for the
+- New thread: the tab bar's `+`, the Bot menu (right-click on a Bot row), or `⌘N` for the
   selected Bot.
 - A missing Bot or thread: a URL naming one that does not exist (deleted, mistyped) shows one calm
   line in the main area, answer first, and one link, with the sidebar as always. A missing Bot
@@ -1982,7 +1960,7 @@ Voice
     Bot row is its creature and name; Enter opens its latest thread, or its New thread screen when
     it has none. A thread row is its Bot's creature, the title, the Bot's name and, on a second
     line, its branch and MR reference (`#92`, `!7`) when it has them. Closed threads are not listed
-    (the thread pane's Closed has them).
+    (Other threads' Closed has them).
   - A query is split into words; each must be contained, ignoring case, in the Bot name, thread
     title, branch or MR reference. With no query: threads that need you, threads by last activity,
     then Bots in the sidebar's order. With a query: Bots whose name matches; threads whose title
@@ -1994,18 +1972,16 @@ Voice
     returns to where it was. No match shows "No threads or Bots match".
   - The Bots poll (`GET /api/bots`) gives each open thread its `branch`, `prs` and
     `last_activity`, so the switcher needs no request of its own.
-- Bot groups are only rail sections; they change nothing else about a Bot. A Bot is in one group
-  or Ungrouped. A hairline separates groups, and the rail shows no group name; hover or keyboard focus grows the
-  line and shows the group name and Bot count beside the rail. Create one from `+` › New group (an inline name field:
+- Bot groups are only sidebar sections; they change nothing else about a Bot. A Bot is in one group
+  or Ungrouped. Each group has its name as a heading above its Bots. Create one from `+` › New group (an inline name field:
   Enter saves, Esc cancels). Move a Bot with right-click › Move to group (the groups, No group, New
-  group…) or by dragging. Right-click on a line opens the group menu (Rename, New Bot in this
+  group…) or by dragging. Right-click on a heading opens the group menu (Rename, New Bot in this
   group, Delete group); deleting moves its Bots to Ungrouped. Name and order are stored
-  (`/api/groups`). Groups do not fold on the rail.
+  (`/api/groups`). Groups do not fold.
 - Drag to reorder (native HTML5 drag and drop): a thin line shows where a drop lands.
-  - A Bot face drags to any place in Pinned, a group or Ungrouped. Dropping into Pinned pins it;
-    dragging a pinned Bot out unpins it. A face dropped on a group's line goes last in that group.
-  - A group's line drags the whole group, its Bots with it, to another place among the groups.
-    While a drag is going, each line has a larger hit area.
+  - A Bot row drags to any place in Pinned, a group or Ungrouped. Dropping into Pinned pins it;
+    dragging a pinned Bot out unpins it. A row dropped on a group's heading goes last in that group.
+  - A group's heading drags the whole group, its Bots with it, to another place among the groups.
   - Chief is not draggable and nothing lands above it; Pinned stays above every group. Ungrouped
     stays last and does not drag. Threads never drag.
   - Each Bot has a position, filled from the old order by a migration (pinned order, then oldest
@@ -2302,7 +2278,7 @@ Voice
   thread, until opened); `Out until 3 PM` (the provider's usage limit, until its reset time);
   Replied (a reply or a `tell_user` message since the person last opened the thread, until opened;
   the API's `new`). `GET /api/bots` gives each thread's `state` (`needs_you`, `running`, `failed`,
-  `limited` with `resets_at`, `new` or empty). The thread row, the rail label and the island use the same words. A helper thread
+  `limited` with `resets_at`, `new` or empty). The thread tab, the sidebar row and the island use the same words. A helper thread
   is never Replied: its replies are for its boss. *Each label is a fact Reef holds; whether a reply
   is a question is the model's meaning, so a question is Replied like any reply.*
 - A quiet background run (one that called no `tell_user`) shows its final message nowhere in the
@@ -2339,8 +2315,8 @@ Voice
   to its helper thread; a helper's report is not a message in the boss's chat (Delegation); the
   person reads it in the helper thread. The island shows one small creature per such helper after
   the boss's name (`Tester: working`, `needs you` with a light dot), the count includes helper
-  approvals, and the boss's thread row does not say "Needs you" for a helper; the line under it
-  does. A helper thread is not a row of its boss's pane (Thread pane); its header is a breadcrumb (the
+  approvals, and the boss's thread tab does not say "Needs you" for a helper; the Bot's sidebar row and Now
+  do. A helper thread is not a tab of its boss's bar (Thread tabs); its header is a breadcrumb (the
   boss thread's title with the boss creature, `›`, the helper Bot) and the composer is replaced by
   "{Boss} is handling this thread. Talk to {Boss} to change it.", `Open {Boss}'s thread` and, while
   its run goes, `Stop`. *The boss thread's stream carries only the boss's events, so the UI polls: a

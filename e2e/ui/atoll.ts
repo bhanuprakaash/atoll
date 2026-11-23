@@ -351,7 +351,7 @@ export async function pickModel(
   ).click();
 }
 
-// sidebarRow is a Bot's face on the rail.
+// sidebarRow is a Bot's row in the sidebar.
 export function sidebarRow(page: Page, name: string) {
   return page
     .getByRole('navigation', { name: 'Bots' })
@@ -388,30 +388,54 @@ export async function seenText(page: Page) {
   return page.evaluate(() => (window as unknown as { __seen: string[] }).__seen.join('\n'));
 }
 
-// threadPane is the thread pane beside the rail: a region named after the selected Bot, or "Now".
-export function threadPane(page: Page, name: string) {
-  return page.getByRole('region', { name, exact: true });
+// threadTabs is the tab bar above the chat: the open thread and the Bot's threads that need you,
+// run or are pinned.
+export function threadTabs(page: Page) {
+  return page.getByRole('tablist', { name: 'Threads' });
 }
 
-// showPane opens the Bot's New thread screen, which selects the Bot without opening a thread, so
-// its pane shows and none of its threads counts as seen.
-export async function showPane(page: Page, m: { url: string }, botID: string, name: string) {
-  await page.goto(`${m.url}/bots/${botID}/new`);
-  await expect(page.getByRole('heading', { name: `What should ${name} work on?` })).toBeVisible();
-  const pane = threadPane(page, name);
-  await expect(pane).toBeVisible();
-  return pane;
+// threadTab is the tab of the thread titled title.
+export function threadTab(page: Page, title: string) {
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return threadTabs(page).getByRole('tab', { name: new RegExp(`^${escaped}`) });
 }
 
-// nowPane opens Now from the rail and returns its pane.
-export async function nowPane(page: Page) {
+// moreButton is `N more` after the tabs: the Bot's open threads that have no tab.
+export function moreButton(page: Page) {
+  return page.getByRole('button', { name: /^\d+ more$/ });
+}
+
+// otherThreads opens `N more` and returns its list.
+export async function otherThreads(page: Page) {
+  await moreButton(page).click();
+  const list = page.getByRole('dialog', { name: 'Other threads' });
+  await expect(list).toBeVisible();
+  return list;
+}
+
+// nowView is Now in the main area, across every Bot.
+export function nowView(page: Page) {
+  return page.getByRole('region', { name: 'Now', exact: true });
+}
+
+// openNow opens Now from the sidebar and returns it.
+export async function openNow(page: Page) {
   await page
     .getByRole('navigation', { name: 'Bots' })
     .getByRole('button', { name: /^Now\b/ })
     .click();
-  const pane = threadPane(page, 'Now');
-  await expect(pane).toBeVisible();
-  return pane;
+  await expect(page).toHaveURL(/\/now$/);
+  const now = nowView(page);
+  await expect(now).toBeVisible();
+  return now;
+}
+
+// openThread opens a thread in the page, so it counts as seen.
+export async function openThread(page: Page, m: { url: string }, botID: string, threadID: string) {
+  await page.goto(`${m.url}/bots/${botID}/threads/${threadID}`);
+  await expect(
+    page.getByRole('log', { name: 'Messages' }).getByRole('article').first(),
+  ).toBeVisible();
 }
 
 export type Mark = { colour: 'light' | 'red' | 'blue'; x: number; right: number };

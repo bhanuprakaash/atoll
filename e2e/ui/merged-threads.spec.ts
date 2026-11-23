@@ -1,5 +1,5 @@
-// A thread the person started whose PR merged is hidden but stays open: it stays a row under Threads
-// in its Bot's pane, opens with its history, and is left out of Now until the person writes in it.
+// A thread the person started whose PR merged is hidden but stays open: it stays in its Bot's
+// `N more` list, opens with its history, and is left out of Now until the person writes in it.
 // An open approval and a pin keep it shown. GitHub is a scripted server the PR watcher reads.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -9,12 +9,15 @@ import {
   api,
   type Machine,
   newBotAPI,
-  nowPane,
+  nowView,
+  openNow,
+  openThread,
+  openThreadAPI,
+  otherThreads,
   prompts,
   sendMessageAPI,
-  showPane,
   startAtoll,
-  threadPane,
+  threadTitle,
   waitStatus,
 } from './atoll';
 import { githubEnv, type GitHubFake, seedRepo, startGitHub, trackPR } from './github-fixture';
@@ -31,9 +34,7 @@ let github: GitHubFake;
 let root = '';
 let coder: { id: string };
 let repo: { id: string };
-let elsewhere: { id: string } | undefined;
 test.beforeEach(async () => {
-  elsewhere = undefined;
   github = await startGitHub();
   root = mkdtempSync(join(tmpdir(), 'atoll-ui-merged-threads-'));
   m = await startAtoll({
@@ -118,36 +119,36 @@ async function woken(threadID: string, count = 1, kind = 'merged') {
   await waitStatus(m, threadID, 'done', 30_000);
 }
 
-// away is a page on another Bot, so no thread of Coder is open: an open thread always shows.
-async function away(page: Page) {
-  elsewhere ??= await newBotAPI(m, 'Elsewhere');
-  await showPane(page, m, elsewhere.id, 'Elsewhere');
+// showNow opens Now from Settings, so no thread of Coder is on screen: an open thread always shows.
+async function showNow(page: Page) {
+  await page.goto(`${m.url}/settings`);
+  await openNow(page);
 }
 
 // inNow is the thread's link in Now; Now lists a thread that needs you, runs or replied, unless the
 // watcher hides it. A thread whose run ended while it was not on screen is Replied.
 const inNow = (page: Page, threadID: string) =>
-  threadPane(page, 'Now').locator(`a[href$="/threads/${threadID}"]`);
+  nowView(page).locator(`a[href$="/threads/${threadID}"]`);
 
-const rowOf = (page: Page, threadID: string) =>
-  threadPane(page, 'Now')
-    .getByRole('listitem')
-    .filter({ has: page.locator(`a[href$="/threads/${threadID}"]`) });
-
-// recentOf is the thread's link under Threads in Coder's pane.
-async function recentOf(page: Page, threadID: string) {
-  await showPane(page, m, coder.id, 'Coder');
-  return threadPane(page, 'Coder')
-    .getByRole('list', { name: 'Threads', exact: true })
+// inSection is the thread's link under one of Now's sections.
+const inSection = (page: Page, section: string, threadID: string) =>
+  nowView(page)
+    .getByRole('list', { name: section, exact: true })
     .locator(`a[href$="/threads/${threadID}"]`);
+
+// recentOf is the merged thread's link in Coder's `N more` list, seen from another Coder thread.
+async function recentOf(page: Page) {
+  const other = await openThreadAPI(m, coder.id, prompts.pong);
+  await waitStatus(m, other.id, 'done');
+  await openThread(page, m, coder.id, other.id);
+  return (await otherThreads(page)).getByRole('link', { name: threadTitle(fix) });
 }
 
-test('a thread whose PR merged leaves Now, stays a row under Threads in its Bot pane and opens with its history', async ({
+test('a thread whose PR merged leaves Now, stays in its Bot’s N more list and opens with its history', async ({
   page,
 }) => {
   const id = await prThread(1);
-  await away(page);
-  await nowPane(page);
+  await showNow(page);
   await expect(inNow(page, id)).toHaveCount(1);
 
   await merged(id, 1);
@@ -155,7 +156,7 @@ test('a thread whose PR merged leaves Now, stays a row under Threads in its Bot 
   await expect(inNow(page, id)).toHaveCount(0, { timeout: 10_000 });
   expect((await api(m, 'GET', `/api/threads/${id}`)).closed).toBe(false);
 
-  const recent = await recentOf(page, id);
+  const recent = await recentOf(page);
   await expect(recent).toHaveCount(1);
   await recent.click();
   await expect(page).toHaveURL(new RegExp(`/threads/${id}$`));
@@ -183,8 +184,7 @@ test('a thread with one PR merged and one still open stays in Now; it leaves onc
   github.open('second change');
   await trackPR(m, id, github, 2, 'second change');
   await waitStatus(m, id, 'done', 30_000);
-  await away(page);
-  await nowPane(page);
+  await showNow(page);
   await expect(inNow(page, id)).toHaveCount(1);
 
   await merged(id, 1, 2);
@@ -198,7 +198,7 @@ test('a thread with one PR merged and one still open stays in Now; it leaves onc
   await expect(inNow(page, id)).toHaveCount(0, { timeout: 10_000 });
   expect(await hiddenInAPI(id)).toBe(true);
   expect((await api(m, 'GET', `/api/threads/${id}`)).closed).toBe(false);
-  await expect(await recentOf(page, id)).toHaveCount(1);
+  await expect(await recentOf(page)).toHaveCount(1);
 });
 
 test('a thread with one PR closed unmerged and one merged is done: it leaves Now', async ({
@@ -208,8 +208,7 @@ test('a thread with one PR closed unmerged and one merged is done: it leaves Now
   github.open('second change');
   await trackPR(m, id, github, 2, 'second change');
   await waitStatus(m, id, 'done', 30_000);
-  await away(page);
-  await nowPane(page);
+  await showNow(page);
 
   await merged(id, 2, 1);
   await woken(id);
@@ -230,14 +229,13 @@ test('a merged thread with an approval waiting stays in Now while it waits', asy
   const id = await prThread(1, fix);
   await api(m, 'POST', `/api/threads/${id}/messages`, { text: prompts.write });
   await waitStatus(m, id, 'waiting', 30_000);
-  await away(page);
-  await nowPane(page);
+  await showNow(page);
   await expect(inNow(page, id)).toHaveCount(1);
-  await expect(rowOf(page, id)).toHaveAttribute('data-marker', 'needs-you');
+  await expect(inSection(page, 'Needs you', id)).toHaveCount(1);
 
   await merged(id, 1);
   await expect(inNow(page, id)).toHaveCount(1);
-  await expect(rowOf(page, id)).toHaveAttribute('data-marker', 'needs-you');
+  await expect(inSection(page, 'Needs you', id)).toHaveCount(1);
 
   const answering = await context.newPage();
   await answering.goto(`${m.url}/bots/${coder.id}/threads/${id}`);
@@ -254,8 +252,7 @@ test('a merged thread with an approval waiting stays in Now while it waits', asy
 test('a pinned thread whose PR merged stays in Now', async ({ page }) => {
   const id = await prThread(1);
   await api(m, 'POST', `/api/threads/${id}/pin`);
-  await away(page);
-  await nowPane(page);
+  await showNow(page);
   await expect(inNow(page, id)).toHaveCount(1);
 
   await merged(id, 1);
@@ -267,16 +264,15 @@ test('a message sent to a merged thread brings it back for good: it is in Now af
   page,
 }) => {
   const id = await prThread(1);
-  await away(page);
-  await nowPane(page);
+  await showNow(page);
   await merged(id, 1);
   await woken(id);
   await expect(inNow(page, id)).toHaveCount(0, { timeout: 10_000 });
 
   await sendMessageAPI(m, id, recall);
   await expect(inNow(page, id)).toHaveCount(1);
-  await expect(rowOf(page, id)).not.toHaveAttribute('data-marker', 'running');
+  await expect(inSection(page, 'Running', id)).toHaveCount(0);
   await page.reload();
-  await nowPane(page);
+  await expect(nowView(page)).toBeVisible();
   await expect(inNow(page, id)).toHaveCount(1);
 });

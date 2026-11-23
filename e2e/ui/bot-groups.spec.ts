@@ -1,5 +1,5 @@
-// Bot groups: rail sections the user creates, fills, renames, drags into order (#246) and deletes;
-// groups do not fold on the rail.
+// Bot groups: sidebar sections the user creates, fills, renames, drags into order (#246) and
+// deletes; groups do not fold in the sidebar.
 import { expect, type Page, test } from '@playwright/test';
 import { type Machine, newBotAPI, sidebarRow, startAtoll } from './atoll';
 
@@ -11,7 +11,7 @@ test.afterEach(() => m?.stop());
 
 const nav = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
 const group = (page: Page, name: string) => nav(page).getByRole('group', { name, exact: true });
-// line is the group's hairline on the rail.
+// line is the group's heading in the sidebar.
 const line = (page: Page, name: string) =>
   group(page, name).getByRole('button', { name, exact: true });
 

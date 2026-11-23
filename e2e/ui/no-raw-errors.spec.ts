@@ -15,10 +15,9 @@ function files(dir: string): string[] {
 }
 
 // Every file of web/src that rendered an error's text in red before the notice (grep text-danger
-// and .message at the time of #149), by path under web/src. The threads popup's pin notice now lives
-// in the thread pane (#470).
+// and .message at the time of #149), by path under web/src. The thread pane that held the pin notice
+// is gone; the first test still covers wherever it lives now.
 const formerSites = [
-  'app/thread-pane.tsx',
   'modules/bots/components/bot-settings.tsx',
   'modules/bots/components/new-bot-form.tsx',
   'modules/connections/components/connections-settings.tsx',

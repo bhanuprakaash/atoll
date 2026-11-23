@@ -287,7 +287,7 @@ test('while an approval waits nothing on screen is red: thread, sidebar, header,
   expect(await reds(page.locator('body'))).toEqual([]);
 });
 
-test('an approval in another thread: the face, the dropped island, its count and the list are not red', async ({
+test('an approval in another thread: the Bot row, the dropped island, its count and the list are not red', async ({
   page,
 }) => {
   const asker = await newBotAPI(m, 'Asker', 'claude', { look: 'whale' });
@@ -298,7 +298,7 @@ test('an approval in another thread: the face, the dropped island, its count and
   const body = page.locator('body');
 
   await expect(header.getByRole('button', { name: 'Allow', exact: true })).toBeVisible();
-  await expect(sidebarRow(page, 'Asker')).toHaveAttribute('data-marker', 'needs-you');
+  await expect(sidebarRow(page, 'Asker')).toContainText('Wants to edit hello.txt');
   await page.mouse.move(0, 0);
   expect(await reds(body)).toEqual([]);
 
@@ -332,7 +332,7 @@ test('a group with a Bot that needs you shows no red', async ({ page }) => {
 
   const waiting = await openThreadAPI(m, pager.id, prompts.write);
   await waitStatus(m, waiting.id, 'waiting');
-  await expect(sidebarRow(page, 'Pager')).toHaveAttribute('data-marker', 'needs-you');
+  await expect(sidebarRow(page, 'Pager')).toContainText('Wants to edit hello.txt');
   await page.mouse.move(0, 0);
   expect(await reds(group)).toEqual([]);
 });

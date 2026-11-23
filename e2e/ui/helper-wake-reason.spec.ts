@@ -1,13 +1,13 @@
 // A CI wake for a helper's PR stays with the helper (it runs in the helper's thread), and the boss's
-// view of its helpers says why the helper runs: the line under the boss thread and the helper's row
-// in Thread details name CI and the PR, not only the Bot and its step. The helper opens a PR and
-// ends; CI fails; the wake plays testdata/claude/pr-wake-ci-hang.jsonl, which waits so the run stays
-// live while the spec reads the boss's view.
+// view of its helpers says why the helper runs: the helper's row in Thread details names CI and the
+// PR, not only the Bot and its step. The helper opens a PR and ends; CI fails; the wake plays
+// testdata/claude/pr-wake-ci-hang.jsonl, which waits so the run stays live while the spec reads the
+// boss's view.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { api, type Machine, showPane, startAtoll, threadPane } from './atoll';
+import { api, type Machine, startAtoll } from './atoll';
 import { githubEnv, type GitHubFake, seedRepo, startGitHub } from './github-fixture';
 import {
   delegate,
@@ -38,7 +38,7 @@ test.afterEach(() => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test('a CI failure on a helper PR runs the helper, and the boss line and the helper row say CI and the PR', async ({
+test('a CI failure on a helper PR runs the helper, and the helper row in Thread details says CI and the PR', async ({
   page,
 }) => {
   test.setTimeout(180_000);
@@ -75,13 +75,6 @@ test('a CI failure on a helper PR runs the helper, and the boss line and the hel
       { timeout: 60_000 },
     )
     .toBe(true);
-
-  await showPane(page, m, poteto.id, 'Poteto');
-  const line = threadPane(page, 'Poteto').locator('[data-line="helpers"]');
-  await expect(line).toHaveCount(1);
-  await expect(line).toContainText('Tester');
-  await expect(line).toContainText(/\bCI\b/);
-  await expect(line).toContainText(/#1\b/);
 
   await page.goto(`${m.url}/bots/${poteto.id}/threads/${boss}`);
   await openDetails(page);
