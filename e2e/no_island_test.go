@@ -14,9 +14,10 @@ import (
 
 // Issue #614: the header island is gone, and with it its API and what it stored.
 
-// The island's endpoints answer like any unknown API path: 404 with the not-found sentence, also
-// for a dismiss of a PR the database holds. GET /api/events was a stream, so the request carries
-// its own deadline.
+// The island's endpoints answer like any unknown API path, also for a dismiss of a PR the database
+// holds: a POST gets 405, as every non-GET unknown path does, and GET /api/events gets 404, both
+// with the not-found sentence. GET /api/events was a stream, so the request carries its own
+// deadline.
 func TestNoIsland_EndpointsGone(t *testing.T) {
 	t.Parallel()
 	m := newMachine(t, "claude")
@@ -26,10 +27,11 @@ func TestNoIsland_EndpointsGone(t *testing.T) {
 	for _, tc := range []struct {
 		method, path string
 		body         any
+		status       int
 	}{
-		{"POST", "/api/island/seen", nil},
-		{"POST", "/api/island/dismiss", map[string]string{"type": "mr_updated", "id": "https://github.com/octo/hello/pull/9"}},
-		{"GET", "/api/events", nil},
+		{"POST", "/api/island/seen", nil, http.StatusMethodNotAllowed},
+		{"POST", "/api/island/dismiss", map[string]string{"type": "mr_updated", "id": "https://github.com/octo/hello/pull/9"}, http.StatusMethodNotAllowed},
+		{"GET", "/api/events", nil, http.StatusNotFound},
 	} {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -50,8 +52,8 @@ func TestNoIsland_EndpointsGone(t *testing.T) {
 				t.Fatalf("%s %s: %v", tc.method, tc.path, err)
 			}
 			defer func() { _ = resp.Body.Close() }()
-			if resp.StatusCode != http.StatusNotFound {
-				t.Fatalf("%s %s: status %d (%s), want 404", tc.method, tc.path, resp.StatusCode, resp.Header.Get("Content-Type"))
+			if resp.StatusCode != tc.status {
+				t.Fatalf("%s %s: status %d (%s), want %d", tc.method, tc.path, resp.StatusCode, resp.Header.Get("Content-Type"), tc.status)
 			}
 			var got failure
 			b, _ := io.ReadAll(resp.Body)
