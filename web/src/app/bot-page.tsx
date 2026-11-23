@@ -88,7 +88,7 @@ export function BotHeader({
   return (
     <header
       data-tauri-drag-region="deep"
-      className="@container relative z-10 grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5"
+      className={`@container relative ${open ? 'z-30' : 'z-10'} grid h-18 flex-none grid-cols-[1fr_auto_1fr] items-start bg-bg pt-3.5`}
     >
       <div
         data-island
