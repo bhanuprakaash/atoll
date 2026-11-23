@@ -150,7 +150,9 @@ test.describe('the Bot list', () => {
     const lastRow = sidebar(page).locator('a[href^="/bots/"]').last();
     const last = await box(lastRow);
     expect((await box(plus)).y).toBeGreaterThanOrEqual(last.y + last.height - 1);
-    expect((await box(settings)).y).toBeGreaterThanOrEqual((await box(plus)).y);
+    const s = await box(settings);
+    const p = await box(plus);
+    expect(s.y + s.height).toBeGreaterThanOrEqual(p.y + p.height);
     await plus.click();
     await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText([
       /^New Bot/,

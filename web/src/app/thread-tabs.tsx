@@ -268,7 +268,16 @@ export function ThreadTabs({ bot, openThreadId }: { bot: Bot; openThreadId?: str
                 thread={thread}
                 selected={id === openThreadId}
                 onPin={() => setPinned(thread, !thread.pinned)}
-                onClose={() => close.mutate(id)}
+                onClose={() =>
+                  close.mutate(id, {
+                    onSuccess: () => {
+                      if (id !== openThreadId) return;
+                      const at = order.indexOf(id);
+                      const next = order[at + 1] ?? order[at - 1];
+                      navigate(next ? `/bots/${bot.id}/threads/${next}` : `/bots/${bot.id}/new`);
+                    },
+                  })
+                }
                 onRename={(title) => rename.mutate({ id, title })}
               />
             );

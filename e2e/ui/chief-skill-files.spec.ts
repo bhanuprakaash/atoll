@@ -31,8 +31,7 @@ test('an edit_skill that swaps a file shows Edited <name>: files, lists the path
   await page.goto(m.url);
   await sidebarRow(page, 'Chief').click();
   await page
-    .getByRole('region', { name: 'Chief', exact: true })
-    .getByRole('button', { name: 'New thread' })
+    .getByRole('button', { name: 'New thread', exact: true })
     .click();
   await page
     .getByRole('textbox', { name: 'Message' })

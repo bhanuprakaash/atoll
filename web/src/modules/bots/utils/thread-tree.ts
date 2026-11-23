@@ -26,7 +26,10 @@ export const otherThreads = (all: SidebarThread[], tabs: SidebarThread[]) =>
 // the right, so a tab never moves when its state changes.
 export function orderTabs(order: string[], threads: SidebarThread[]) {
   const ids = threads.map((t) => t.id);
-  return [...order.filter((id) => ids.includes(id)), ...ids.filter((id) => !order.includes(id))];
+  return [
+    ...order.filter((id) => ids.includes(id)),
+    ...ids.filter((id) => !order.includes(id)).reverse(),
+  ];
 }
 
 const nowLabels = [
