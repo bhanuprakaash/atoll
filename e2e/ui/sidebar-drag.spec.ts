@@ -155,6 +155,8 @@ test('Chief has no drag and nothing lands above it; Ungrouped stays last and doe
   await expect.poll(() => names(group(page, 'Platform'))).toEqual(byID(['Ivy', 'Oak', 'Pine']));
   await expect.poll(first).toBe('/bots/chief');
 
+  await api(m, 'DELETE', `/api/bots/${ids.Elm}/pin`);
+  await expect(groupLine(page, 'Ungrouped')).toBeVisible();
   await drop(groupLine(page, 'Ungrouped'), groupLine(page, 'Platform'));
   await drop(groupLine(page, 'Platform'), groupLine(page, 'Ungrouped'));
   await expect.poll(() => groupOrder(page)).toEqual(['Platform', 'Frontend', 'Ungrouped']);
