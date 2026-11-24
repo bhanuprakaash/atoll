@@ -224,7 +224,7 @@ test('when the tabs do not fit, the tab bar scrolls sideways and the page does n
   });
   expect(scroller.found).toBe(true);
   expect(scroller.left).toBeGreaterThan(0);
-  await expect(threadTab(page, 'A rather long waiting thread title 9')).toBeInViewport();
+  await expect(tabs.last()).toBeInViewport();
 
   const over = await page.evaluate(() => {
     const root = document.documentElement;
