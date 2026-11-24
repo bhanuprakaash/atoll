@@ -16,6 +16,7 @@ import {
   prompts,
   openNow,
   sendMessageAPI,
+  sidebarRow,
   startAtoll,
 } from "./atoll";
 
@@ -338,7 +339,7 @@ test("scrolled up, the status line changing and the run ending do not move the v
   await expect(jump).toBeVisible();
 });
 
-test("Now's note and the thread tab keep the short verb and never show the text", async ({
+test("Now's note and the thread tab keep the short verb and never show the text; the Bot row shows the verb while running and never the streamed text", async ({
   page,
 }) => {
   const { log, status, thread } = await openRun(page, "Quiet");
@@ -349,23 +350,25 @@ test("Now's note and the thread tab keep the short verb and never show the text"
     .getByRole("listitem")
     .filter({ has: side.locator(`a[href$="/threads/${thread.id}"]`) });
   const tabs = page.getByRole("tablist", { name: "Threads" });
+  const nav = page.getByRole("navigation", { name: "Bots" });
   await Promise.all(
-    [page.getByRole("navigation", { name: "Bots" }), now, tabs].map((part) =>
-      part.evaluate((el) => {
-        const w = window as unknown as { __shown?: string[] };
-        const shown = (w.__shown ??= []);
+    [nav, now, tabs].map((part) =>
+      part.evaluate((el, key) => {
+        const w = window as unknown as Record<string, string[] | undefined>;
+        const shown = (w[key] ??= []);
         shown.push(el.innerText);
         new MutationObserver(() => shown.push(el.innerText)).observe(el, {
           subtree: true,
           childList: true,
           characterData: true,
         });
-      }),
+      }, part === nav ? "__nav" : "__shown"),
     ),
   );
 
   await expect(status).toHaveText(openingStart);
   await expect(row).toContainText("Quiet · Thinking");
+  await expect(sidebarRow(page, "Quiet")).toContainText("Thinking");
   await expect(
     tabs
       .locator('[aria-selected="true"]')
@@ -387,6 +390,13 @@ test("Now's note and the thread tab keep the short verb and never show the text"
   ).join("\n");
   for (const text of [openingStart, opening, closingStart]) {
     expect(shown, `never shows "${text}"`).not.toContain(text);
+  }
+  // The sidebar row may preview the finished reply, so only the streamed text is barred there.
+  const navSeen = await page.evaluate(() =>
+    ((window as unknown as { __nav?: string[] }).__nav ?? []).join("\n"),
+  );
+  for (const text of [openingStart, opening]) {
+    expect(navSeen, `the Bot row never shows "${text}"`).not.toContain(text);
   }
 });
 

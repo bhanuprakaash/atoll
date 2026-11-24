@@ -41,6 +41,7 @@ const editAsk = 'Wants to edit hello.txt';
 const checkAsk = 'Wants to run make check';
 // A time today: the locale's clock, `6:21 AM` or `18:21`.
 const time = String.raw`\d{1,2}:\d{2}(\s?[AP]M)?`;
+const clock = new RegExp(`^${time}$`);
 
 const section = (pane: Locator, name: string) => pane.getByRole('list', { name, exact: true });
 const rowOf = (pane: Locator, id: string) =>
@@ -83,7 +84,7 @@ async function helperAsks(id: string) {
     .not.toBe('');
 }
 
-test('a Bot row that needs you is its name over what the Bot asks, with the light dot; a failed Bot row reads Run failed · time with the red dot', async ({
+test('a Bot row that needs you is its name over what the Bot asks, with the light dot; a failed Bot row reads Run failed with the red dot, its time on the right', async ({
   page,
 }) => {
   const asker = await newBotAPI(m, 'Asker');
@@ -96,15 +97,14 @@ test('a Bot row that needs you is its name over what the Bot asks, with the ligh
   await page.goto(`${m.url}/settings`);
   await away(page);
   const asking = sidebarRow(page, 'Asker');
-  await expect.poll(() => lines(asking)).toEqual(['Asker', editAsk]);
+  await expect.poll(() => lines(asking)).toEqual(['Asker', expect.stringMatching(clock), editAsk]);
   await expect.poll(() => colours(asking)).toContain('light');
   expect(await colours(asking)).not.toContain('red');
 
   const failing = sidebarRow(page, 'Breaker');
   await expect
     .poll(() => lines(failing))
-    .toEqual(['Breaker', expect.stringMatching(/^Run failed · /)]);
-  expect((await lines(failing))[1]).toMatch(new RegExp(`^Run failed · ${time}$`));
+    .toEqual(['Breaker', expect.stringMatching(clock), 'Run failed']);
   await expect.poll(() => colours(failing)).toContain('red');
   expect(await colours(failing)).not.toContain('light');
 });

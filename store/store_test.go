@@ -1496,6 +1496,7 @@ func TestStore_QuietRunLeavesThread(t *testing.T) {
 		{"a failure", person, store.RunResult{Status: store.StatusFailed, Error: "boom"}, got{"failed", "", true}},
 		{"a quiet run after a failure", notice, quiet, got{"failed", "", false}},
 		{"a reply after a quiet run", person, store.RunResult{Status: store.StatusDone, Reply: "back"}, got{"done", "back", true}},
+		{"a run that told the person", notice, quiet, got{"done", "told", true}},
 	}
 	var prev time.Time
 	for _, tt := range tests {
@@ -1503,6 +1504,11 @@ func TestStore_QuietRunLeavesThread(t *testing.T) {
 			_, ru, err := st.StartRunFrom(ctx, tt.give)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if tt.want.Reply == "told" {
+				if err := st.AddBotMessage(ctx, th.ID, ru.ID, "told"); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if err := st.FinishRun(ctx, ru.ID, tt.res, nil); err != nil {
 				t.Fatal(err)

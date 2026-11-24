@@ -15,6 +15,9 @@ import {
   waitStatus,
 } from './atoll';
 
+// A time today: the locale's clock, `6:21 AM` or `18:21`.
+const clock = /^\d{1,2}:\d{2}(\s?[AP]M)?$/;
+
 let m: Machine;
 test.beforeAll(async () => {
   m = await startAtoll();
@@ -42,7 +45,7 @@ test('the six-word title is on the open thread tab and nowhere else in the heade
   await expect(threadTab(page, title).getByText(title)).toHaveCount(1);
 });
 
-test('the Bot row shows no reply; Now notes the current verb or the approval prompt, an idle Bot has no row', async ({
+test('the Bot row shows the last reply and its time; Now notes the current verb or the approval prompt, an idle Bot has no row', async ({
   page,
 }) => {
   const reply = await newBotAPI(m, 'Reply activity');
@@ -61,7 +64,9 @@ test('the Bot row shows no reply; Now notes the current verb or the approval pro
   ).toBeVisible();
   expect((await api(m, 'GET', `/api/bots/${reply.id}`)).activity).toBe('ok');
 
-  await expect.poll(() => lines(sidebarRow(page, 'Reply activity'))).toEqual(['Reply activity']);
+  await expect
+    .poll(() => lines(sidebarRow(page, 'Reply activity')))
+    .toEqual(['Reply activity', expect.stringMatching(clock), 'ok']);
   const now = await openNow(page);
   const rowOf = (id: string) =>
     now.getByRole('listitem').filter({ has: page.locator(`a[href$="/threads/${id}"]`) });
@@ -83,7 +88,10 @@ test('message times use the locale clock in muted 12px text', async ({ page }) =
   const want = await page.evaluate(
     (stamps: string[]) =>
       stamps.map((s) => {
-        return new Date(s).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        return new Date(s).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+        });
       }),
     messages.map((msg: { created_at: string }) => msg.created_at),
   );

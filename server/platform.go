@@ -108,7 +108,7 @@ func (a *api) botSummary(
 		if t.Status == "" {
 			continue
 		}
-		if latest == "" {
+		if latest == "" && t.ParentThreadID == "" {
 			latest = t.Status
 			failed = latest == "failed" && t.Failed
 			at := t.LastActivity

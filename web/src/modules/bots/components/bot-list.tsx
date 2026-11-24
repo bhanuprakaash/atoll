@@ -15,7 +15,7 @@ import {
 } from '@/modules/bots/api/groups';
 import { BotMenu } from '@/modules/bots/components/bot-menu';
 import { GroupNameField } from '@/modules/bots/components/group-name-field';
-import { Dot, Wave } from '@/modules/bots/components/thread-tree';
+import { Dot, outUntil, Wave } from '@/modules/bots/components/thread-tree';
 import { sidebarOrder } from '@/modules/bots/utils/sidebar-order';
 import { nowSections, workersByBoss } from '@/modules/bots/utils/thread-tree';
 import { relativeTime } from '@/utils/time';
@@ -69,28 +69,34 @@ function NowRow({ current, count }: { current: boolean; count: number }) {
 function BotNote({ bot }: { bot: Bot }) {
   if (bot.state === 'needs_you')
     return (
-      <span className="flex items-center gap-1.5 text-xs text-ink">
+      <span className="flex items-center gap-1.5 text-[13px] text-ink">
         <Dot className="bg-accent" />
         <span className="min-w-0 truncate">{bot.activity || 'Needs you'}</span>
       </span>
     );
   if (bot.state === 'failed')
     return (
-      <span className="flex items-center gap-1.5 text-xs text-muted">
+      <span className="flex items-center gap-1.5 text-[13px] text-muted">
         <Dot className="bg-danger" />
-        <span className="min-w-0 truncate">
-          Run failed{bot.last_activity ? ` · ${relativeTime(bot.last_activity)}` : ''}
-        </span>
+        <span className="min-w-0 truncate">Run failed</span>
       </span>
     );
   if (bot.state === 'working')
     return (
-      <span className="flex items-center gap-1.5 text-xs text-muted">
+      <span className="flex items-center gap-1.5 text-[13px] text-muted">
         <span className="min-w-0 truncate">{bot.activity || 'Working'}</span>
         <Wave />
       </span>
     );
-  return null;
+  const limited = bot.threads?.find((t) => t.state === 'limited');
+  const unread = bot.threads?.some((t) => t.state === 'new');
+  return (
+    <span className={`block truncate text-[13px] ${unread ? 'text-ink' : 'text-muted'}`}>
+      {limited
+        ? outUntil(limited)
+        : bot.activity || (bot.last_activity ? 'No reply' : 'No messages yet')}
+    </span>
+  );
 }
 
 function BotRow({
@@ -146,9 +152,16 @@ function BotRow({
             className={`absolute inset-x-2 h-0.5 rounded-full bg-ink ${dropAt === 'before' ? 'top-0' : 'bottom-0'}`}
           />
         )}
-        <Creature look={bot.look} colour={bot.colour} state={bot.state} size={28} />
+        <Creature look={bot.look} colour={bot.colour} state={bot.state} size={36} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px]">{bot.name}</span>
+          <span className="flex items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate text-[15px]">{bot.name}</span>
+            {bot.last_activity && (
+              <time dateTime={bot.last_activity} className="flex-none text-xs text-label">
+                {relativeTime(bot.last_activity)}
+              </time>
+            )}
+          </span>
           <BotNote bot={bot} />
         </span>
       </Link>

@@ -30,6 +30,8 @@ test.afterEach(() => m?.stop());
 const away = (page: Page) => page.mouse.move(1270, 5);
 const colours = async (el: Locator) => (await marks(el)).map((d) => d.colour);
 const editAsk = 'Wants to edit hello.txt';
+// A time today: the locale's clock, `6:21 AM` or `18:21`.
+const clock = /^\d{1,2}:\d{2}(\s?[AP]M)?$/;
 
 // watchHeader collects every text the header shows from now on.
 async function watchHeader(page: Page) {
@@ -94,7 +96,7 @@ test('a thread page has no island while another Bot waits on approval; the appro
   await away(page);
 
   const row = sidebarRow(page, 'Asker');
-  await expect.poll(() => lines(row)).toEqual(['Asker', editAsk]);
+  await expect.poll(() => lines(row)).toEqual(['Asker', expect.stringMatching(clock), editAsk]);
   await expect.poll(() => colours(row)).toContain('light');
   await bareHeader(page);
   const seen = await headerSeen(page);

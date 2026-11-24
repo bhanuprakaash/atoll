@@ -1,6 +1,6 @@
 // The sidebar as one list of Bots: Now, Chief, pinned Bots, groups and Ungrouped, one row per Bot
-// with a second line only while it works, waits on you or failed; Now opens its list in the main
-// area. The resize is in sidebar-resize.spec.ts, narrow windows in narrow-drawer.spec.ts, drag in
+// with a second line always (last reply, live verb, ask, Run failed, Stopped); Now opens its list
+// in the main area. The resize is in sidebar-resize.spec.ts, narrow windows in narrow-drawer.spec.ts, drag in
 // sidebar-drag.spec.ts.
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
@@ -31,6 +31,7 @@ test.afterEach(() => m?.stop());
 const editAsk = 'Wants to edit hello.txt';
 // A time today: the locale's clock, `6:21 AM` or `18:21`.
 const time = String.raw`\d{1,2}:\d{2}(\s?[AP]M)?`;
+const clock = new RegExp(`^${time}$`);
 
 const sidebar = (page: Page) => page.getByRole('navigation', { name: 'Bots' });
 const nowButton = (page: Page) => sidebar(page).getByRole('button', { name: /^Now\b/ });
@@ -92,6 +93,20 @@ const waves = (el: Locator) =>
   );
 
 const colours = async (el: Locator) => (await marks(el)).map((d) => d.colour);
+
+// paintOf is the text colour token el has: muted (--color-muted), ink (--color-ink) or neither.
+const paintOf = (el: Locator) =>
+  el.evaluate((node) => {
+    const same = (token: string) => {
+      const probe = document.createElement('div');
+      probe.style.color = `var(--color-${token})`;
+      document.body.append(probe);
+      const want = getComputedStyle(probe).color;
+      probe.remove();
+      return getComputedStyle(node).color === want;
+    };
+    return same('muted') ? 'muted' : same('ink') ? 'ink' : 'other';
+  });
 
 async function approve(threadID: string) {
   const { approval } = await api(m, 'GET', `/api/threads/${threadID}`);
@@ -170,7 +185,7 @@ test.describe('the Bot list', () => {
     await expect(lastRow).toBeInViewport();
   });
 
-  test('a Bot row is its 28 px creature and name; a second line shows only while it works, waits on you or failed; Needs you wins over failed', async ({
+  test('a Bot row is its 36 px creature, name, time and an always-there second line: the last reply, the live verb, the ask, Run failed, Stopped or No messages yet; Needs you wins over failed', async ({
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -178,6 +193,10 @@ test.describe('the Bot list', () => {
     const quiet = await openThreadAPI(m, calm.id, prompts.pong);
     await waitStatus(m, quiet.id, 'done');
     await api(m, 'POST', `/api/threads/${quiet.id}/opened`);
+    const fresh = await newBotAPI(m, 'Fresh', 'claude', { look: 'whale' });
+    const unread = await openThreadAPI(m, fresh.id, prompts.pong);
+    await waitStatus(m, unread.id, 'done');
+    await newBotAPI(m, 'Idle', 'claude', { look: 'whale' });
     const worker = await newBotAPI(m, 'Worker', 'claude', { look: 'whale' });
     const busy = await openThreadAPI(m, worker.id, prompts.hang);
     const asker = await newBotAPI(m, 'Asker', 'claude', { look: 'whale' });
@@ -197,31 +216,58 @@ test.describe('the Bot list', () => {
       await page.goto(`${m.url}/settings`);
       await away(page);
 
+      const activity = async (id: string): Promise<string> =>
+        (await api(m, 'GET', '/api/bots')).find((b: { id: string }) => b.id === id).activity;
+
       const row = sidebarRow(page, 'Calm');
       const creature = row.getByRole('img', { name: 'Whale, idle', exact: true });
       await expect(creature).toBeVisible();
       const c = await box(creature);
-      expect(Math.abs(c.width - 28)).toBeLessThanOrEqual(1);
-      expect(Math.abs(c.height - 28)).toBeLessThanOrEqual(1);
+      expect(Math.abs(c.width - 36)).toBeLessThanOrEqual(1);
+      expect(Math.abs(c.height - 36)).toBeLessThanOrEqual(1);
       const name = await box(row.getByText('Calm', { exact: true }));
       expect(name.x).toBeGreaterThanOrEqual(c.x + c.width - 1);
       expect(name.y + name.height / 2).toBeGreaterThan(c.y);
       expect(name.y + name.height / 2).toBeLessThan(c.y + c.height);
-      await expect.poll(() => lines(row)).toEqual(['Calm']);
+
+      // The time is on the right of the name, on the name's line.
+      const pong = await activity(calm.id);
+      expect(pong).toBeTruthy();
+      await expect.poll(() => lines(row)).toEqual(['Calm', expect.stringMatching(clock), pong]);
+      const [, stamp] = await lines(row);
+      const at = await box(row.getByText(stamp, { exact: true }));
+      expect(at.x).toBeGreaterThanOrEqual(name.x + name.width - 1);
+      expect(Math.abs(at.y + at.height / 2 - (name.y + name.height / 2))).toBeLessThanOrEqual(4);
       expect(await marks(row)).toEqual([]);
       expect(await waves(row)).toBe(0);
 
+      // An idle Bot's reply is muted once its thread was opened and ink while one is unopened.
+      expect(await paintOf(row.getByText(pong, { exact: true }))).toBe('muted');
+      const unopened = sidebarRow(page, 'Fresh');
+      await expect
+        .poll(() => lines(unopened))
+        .toEqual(['Fresh', expect.stringMatching(clock), pong]);
+      expect(await paintOf(unopened.getByText(pong, { exact: true }))).toBe('ink');
+      expect(await marks(unopened)).toEqual([]);
+
+      // A Bot that never ran has no time.
+      const never = sidebarRow(page, 'Idle');
+      await expect.poll(() => lines(never)).toEqual(['Idle', 'No messages yet']);
+      expect(await paintOf(never.getByText('No messages yet', { exact: true }))).toBe('muted');
+
       const working = sidebarRow(page, 'Worker');
-      const verb = (await api(m, 'GET', '/api/bots')).find(
-        (b: { id: string }) => b.id === worker.id,
-      ).activity;
+      const verb = await activity(worker.id);
       expect(verb).toBeTruthy();
-      await expect.poll(() => lines(working)).toEqual(['Worker', verb]);
+      await expect
+        .poll(() => lines(working))
+        .toEqual(['Worker', expect.stringMatching(clock), verb]);
       await expect.poll(() => waves(working)).toBeGreaterThan(0);
       await expect(working.getByRole('img', { name: 'Whale, working', exact: true })).toBeVisible();
 
       const asking = sidebarRow(page, 'Asker');
-      await expect.poll(() => lines(asking)).toEqual(['Asker', editAsk]);
+      await expect
+        .poll(() => lines(asking))
+        .toEqual(['Asker', expect.stringMatching(clock), editAsk]);
       await expect.poll(() => colours(asking)).toContain('light');
       expect(await colours(asking)).not.toContain('red');
       await expect(
@@ -229,24 +275,34 @@ test.describe('the Bot list', () => {
       ).toBeVisible();
 
       const failing = sidebarRow(page, 'Breaker');
-      await expect.poll(async () => (await lines(failing)).length).toBe(2);
-      expect((await lines(failing))[0]).toBe('Breaker');
-      expect((await lines(failing))[1]).toMatch(new RegExp(`^Run failed · ${time}$`));
+      await expect
+        .poll(() => lines(failing))
+        .toEqual(['Breaker', expect.stringMatching(clock), 'Run failed']);
       await expect.poll(() => colours(failing)).toContain('red');
       expect(await colours(failing)).not.toContain('light');
 
       const wins = sidebarRow(page, 'Both');
-      await expect.poll(() => lines(wins)).toEqual(['Both', editAsk]);
+      await expect.poll(() => lines(wins)).toEqual(['Both', expect.stringMatching(clock), editAsk]);
       await expect.poll(() => colours(wins)).toContain('light');
       expect(await colours(wins)).not.toContain('red');
 
+      // The ask answered, the row goes back to the Bot's last reply, with no dot.
       await approve(waiting.id);
-      await expect.poll(() => lines(asking)).toEqual(['Asker']);
+      const reply = await activity(asker.id);
+      expect(reply).toBeTruthy();
+      expect(reply).not.toBe(editAsk);
+      await expect
+        .poll(() => lines(asking))
+        .toEqual(['Asker', expect.stringMatching(clock), reply]);
       expect(await colours(asking)).not.toContain('light');
 
       await stop(busy);
       await waitStatus(m, busy.id, 'stopped');
-      await expect.poll(() => lines(working)).toEqual(['Worker']);
+      await expect
+        .poll(() => lines(working))
+        .toEqual(['Worker', expect.stringMatching(clock), 'Stopped']);
+      expect(await paintOf(working.getByText('Stopped', { exact: true }))).toBe('muted');
+      expect(await colours(working)).toEqual([]);
       await expect.poll(() => waves(working)).toBe(0);
     } finally {
       await stop(busy).catch(() => {});

@@ -78,6 +78,7 @@ test('a thread of a provider at its usage limit reads Out until the reset time',
   await expect(tab).toContainText(/Out until \d/);
   await expect(tab).not.toContainText('Run failed');
   await expect(tab).not.toContainText('Replied');
+  await expect(sidebarRow(page, 'Limited')).toContainText(/Out until \d/);
 });
 
 // The boss hands its work to Tester, which answers at once; the boss's run for Reef's notice calls
